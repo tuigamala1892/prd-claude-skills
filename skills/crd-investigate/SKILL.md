@@ -3,7 +3,6 @@ name: crd-investigate
 description: Deep codebase investigation to generate PROJECT.md context. Analyzes architecture, patterns, features, APIs, and schemas.
 context: fork
 agent: crd-investigator
-allowed-tools: Read Glob Grep Bash
 model: claude-sonnet-4-6
 ---
 

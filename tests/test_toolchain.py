@@ -217,7 +217,7 @@ def _():
 # ------------------------------------------------------------ fork / model rules
 # These encode what the Phase 0 probes measured. See docs/skills/probes/README.md.
 
-@check("no skill declares `allowed-tools`", finding="F13", expect_fail="4.11")
+@check("no skill declares `allowed-tools`", finding="F13")
 def _():
     bad = [name for name, path in skill_files()
            if "allowed-tools" in parse_frontmatter(path)[0]]
@@ -227,7 +227,7 @@ def _():
         f"forks, `agent:` never fires and `model:` never applies:\n    " + "\n    ".join(bad))
 
 
-@check("every skill declaring `context: fork` can actually fork", finding="F13", expect_fail="4.11")
+@check("every skill declaring `context: fork` can actually fork", finding="F13")
 def _():
     bad = [name for name, path in skill_files()
            if parse_frontmatter(path)[0].get("context") == "fork"

@@ -3,7 +3,6 @@ name: breakdown-generate-tasks
 description: Generate implementation task files for a specific layer. Called by /breakdown skill during Phase 4.
 context: fork
 agent: task-generator
-allowed-tools: Read Write Glob Grep
 model: claude-sonnet-4-6
 ---
 

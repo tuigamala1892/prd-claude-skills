@@ -1,15 +1,19 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 complete and measured; items 4.1–4.11 proposed, not yet implemented
+**Status:** Phase 0 complete and measured; **item 4.11 done — skills now fork**; items 4.1–4.10 proposed
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
 **Intended workflow:** load with `claude --plugin-dir <checkout>`, apply and test changes against a scratch project, then commit back.
 
 > **Phase 0 has been run.** The three items previously marked *Unverified* are now
-> measured, and one of the results is severe enough to have been promoted to a
-> **Blocking** finding (F13). It changes the shape of items 4.1 and 4.2 and resolves
-> open questions 1–3. See §3.5 for results and §3.6 for method.
+> measured, and one result was severe enough to become a **Blocking** finding (F13):
+> no skill in this toolchain had ever forked. That is now **fixed** (item 4.11) and
+> verified on real skills. Items 4.1 and 4.2 changed shape as a result, and open
+> questions 1–3 are resolved. See §3.5 for results and §3.6 for method.
+>
+> A regression suite at `tests/` enforces these findings; run it before and after any
+> change to frontmatter.
 
 ---
 
@@ -91,6 +95,8 @@ other repository, so no repo needs to ignore another and no gitlink can form.
 | `README.md` with upstream attribution, and `LICENSE.md` (MIT) | `e0256cd`, `0747b66` |
 | **Phase 0 probes run** — 45 `claude -p` runs over three iterations; see §3.5 and §3.6 | — |
 | Probe harness committed under `docs/skills/probes/`, with a guard refusing to generate inside this repository | — |
+| Regression suite added at `tests/` — 17 static checks tied to finding IDs, known failures marked with the item that fixes them | `973604c` |
+| **Item 4.11 done** — `allowed-tools` removed from all 15 skills; forking verified on real skills. **Skills fork for the first time** | — |
 
 The ampersand fix brought the PRD directory to **61 of 62 files parsing as well-formed XML**.
 The single holdout is `docs/prd/test-project/what-next.md`, which is prose markdown rather
@@ -115,7 +121,20 @@ than XML — addressed by item **4.4** below.
 > Findings are numbered in discovery order. **F13 is the most severe item in this
 > document** and is placed first for that reason.
 
-#### F13 — `allowed-tools` silently disables `context: fork` on every skill
+#### F13 — `allowed-tools` silently disables `context: fork` on every skill — **RESOLVED**
+
+> **Fixed by item 4.11.** The `allowed-tools` line was removed from all 15 skills, and
+> forking was then verified on real skills rather than assumed:
+> `breakdown-analyze-prd` and `crd-impact-analysis` both report
+> `toolUseResult.status == "forked"`, with their declared `claude-haiku-4-5-20251001`
+> appearing in `modelUsage` alongside the session model.
+>
+> `crd-impact-analysis` also confirms F6 on production code: it declares
+> `claude-haiku-4-5-20251001` while its agent `crd-impact-analyzer` declares
+> `claude-haiku-4-5`, and the **skill's** model is the one that ran.
+>
+> `tests/test_toolchain.py` now guards against the key returning. The description below
+> is kept because the failure mode is subtle and worth being able to recognise again.
 
 Found by the Phase 0 probes. `allowed-tools` is a **command** frontmatter key; the
 equivalent key for a skill or an agent is `tools`. Fifteen of fifteen skills use the
@@ -424,8 +443,9 @@ unverified assumption.
 | 0.2 | Is `agent:` honoured? | **Yes, but only with `context: fork`** — which F13 currently prevents |
 | 0.3 | Model precedence, skill vs agent | **The skill's `model:` wins.** Currently moot: nothing forks |
 
-The single most important consequence: **item 4.11 must be done before 4.1 or 4.2 change
-anything observable.** Until skills fork, every `model:` and `agent:` edit is a no-op.
+The single most important consequence was that **item 4.11 had to precede 4.1 and 4.2**,
+since until skills forked every `model:` and `agent:` edit was a no-op. 4.11 is now done,
+so those items change real behaviour and should be applied with that in mind.
 
 ### 4.1 Frontmatter and command→skill conversion
 
@@ -464,10 +484,12 @@ Notes:
 
 ### 4.2 Model assignments across skills *and* agents
 
-**Addresses F5, F6, F7** *(unblocked by Phase 0; gated on 4.11)*
+**Addresses F5, F6, F7** *(unblocked — 4.11 is done)*
 
-**Do item 4.11 first.** Until `allowed-tools` is removed, every row in this table is a
-string edit with no runtime effect — skills do not fork, so no `model:` applies.
+**These rows now change real behaviour.** Before 4.11 they were string edits with no
+runtime effect. Skills fork today, so every `model:` here selects the model that
+actually runs — verified live on `crd-impact-analysis`, whose declared
+`claude-haiku-4-5-20251001` appeared in `modelUsage`.
 
 Phase 0 also settles *how* to apply it: the skill's `model:` beats the agent's. Where a skill
 and its agent disagree, the agent's line is the one that silently loses, so the alignment below
@@ -635,9 +657,22 @@ Add to `breakdown`'s `manifest.json` specification:
 Decide `agents/project-context-finalizer.md`: wire it into `/execute`'s completion phase, or
 delete it. Leaving 219 unreferenced lines in a reusable toolchain is a maintenance liability.
 
-### 4.11 Remove `allowed-tools` from all 15 skills — **do this first**
+### 4.11 Remove `allowed-tools` from all 15 skills — **DONE**
 
 **Addresses F13, and unblocks 4.1 and 4.2**
+
+> **Completed.** One line deleted per skill, 15 deletions, no other change. Verified
+> behaviourally on two read-only skills (`breakdown-analyze-prd`, `crd-impact-analysis`),
+> both of which now fork and run on their declared model. The two F13 regression checks
+> have been promoted from expected-failure to permanent guards; the suite is now
+> 13 pass / 4 known.
+>
+> The predicted fallout — skills that relied on mutating the caller's conversation state
+> now returning a summary instead — has **not** been exercised. Both verified skills are
+> leaf analysis skills. `execute-batch` and `execute-layer` orchestrate other skills and
+> are the ones most likely to behave differently; neither can be tested without a real
+> `/execute` run. **That is the outstanding risk from this item**, and it is best
+> discovered on the item 5.1 fixture rather than on real work.
 
 1. In every `skills/*/SKILL.md`, delete the `allowed-tools:` line. Renaming it to `tools:`
    is equally safe for forking, but is misleading: it restricts nothing (§3.5, U1). Deleting
@@ -700,7 +735,7 @@ bad = [p for p in files if not _parses(p)]
 
 | # | Item | Grade | Files |
 |---|---|---|---|
-| **4.11** | **Remove `allowed-tools` — restores forking; do first** | **Blocking** | all 15 `skills/*/SKILL.md` |
+| ~~4.11~~ | ~~Remove `allowed-tools` — restores forking~~ **DONE** | ~~Blocking~~ | all 15 `skills/*/SKILL.md` |
 | 4.1 | Command→skill conversion, frontmatter *(frontmatter done)* | Consistency | `commands/*.md` |
 | 4.2 | Model assignments, skills and agents *(gated on 4.11)* | Correctness | all skills, all agents |
 | 4.3 | Resume detection and overwrite guard | Correctness | `prd` |

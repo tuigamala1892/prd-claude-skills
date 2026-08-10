@@ -2,7 +2,6 @@
 name: execute
 description: Main entry point for hierarchical task execution. Orchestrates layer-by-layer implementation of PRD tasks with parallel worktree execution.
 context: fork
-allowed-tools: Read Write Bash Skill Glob Task
 model: claude-sonnet-4-6
 user-invocable: true
 ---

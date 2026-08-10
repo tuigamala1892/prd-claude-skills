@@ -2,17 +2,19 @@
 
 > **Partly out of date — read with `docs/skills/toolchain-assessment-and-plan.md` alongside it.**
 >
-> Two things have changed since this was written:
+> **Layout.** Skills, agents and commands now live at the repository root as a Claude
+> Code plugin, not under `.claude/`. Paths below of the form `.claude/skills/...` are
+> now `skills/...`.
 >
-> 1. **Layout.** Skills, agents and commands now live at the repository root as a Claude
->    Code plugin, not under `.claude/`. Paths below of the form `.claude/skills/...` are
->    now `skills/...`.
-> 2. **Context fork does not currently work.** This document describes it as functioning.
->    All 15 skills declare `allowed-tools`, which is a *command* frontmatter key and stops
->    `context: fork` taking effect — so no skill forks, `agent:` never fires, and no
->    skill's `model:` applies. Measured, not inferred: see finding **F13**.
+> **Context fork now works** (item 4.11). It did not for the life of this toolchain
+> until then: every skill also declared `allowed-tools`, a *command* frontmatter key
+> that stopped `context: fork` taking effect, so nothing forked, `agent:` never fired
+> and no skill's `model:` applied. Removing that one line fixed all of it. Verified on
+> real skills, not inferred — `toolUseResult.status == "forked"`, with the declared
+> model appearing in `modelUsage`. See finding **F13**.
 >
-> The design this describes is sound; it is the implementation that does not match it yet.
+> The design this document describes was sound throughout; it is the implementation
+> that had not matched it.
 
 This document describes the system architecture for developers who want to understand, extend, or contribute to the PRD Breakdown Execute workflow.
 

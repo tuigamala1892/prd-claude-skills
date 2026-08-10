@@ -3,7 +3,6 @@ name: crd-impact-analysis
 description: Analyze the impact of a proposed change on an existing codebase. Identifies affected files, features, and potential breaking changes.
 context: fork
 agent: crd-impact-analyzer
-allowed-tools: Read Glob Grep
 model: claude-haiku-4-5-20251001
 ---
 

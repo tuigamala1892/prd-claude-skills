@@ -26,7 +26,21 @@ skills/<name>/SKILL.md       15 skills, some with references/
 agents/*.md                  8 subagent definitions
 commands/*.md                3 slash commands
 docs/skills/                 assessment and remediation notes
+docs/skills/probes/          harness that measured the frontmatter behaviour
+tests/                       regression suite
 ```
+
+## Tests
+
+```bash
+python tests/test_toolchain.py              # static checks, fast and offline
+python tests/test_toolchain.py --behaviour  # + plugin-load check (needs `claude`)
+```
+
+Standard library only. Checks encoding a fix that has not landed yet are marked with
+the remediation item that will fix them; they report as known and do not break the
+build, but fail the run once they start passing, so the marker gets removed and the
+check becomes a permanent guard. See [`tests/README.md`](tests/README.md).
 
 ## Use
 
@@ -45,11 +59,11 @@ target project.
 See [`docs/skills/toolchain-assessment-and-plan.md`](docs/skills/toolchain-assessment-and-plan.md)
 for the full assessment. The findings that matter most before relying on it:
 
-- **All 15 skills declare both `context: fork` and `allowed-tools`.** `allowed-tools`
-  is not a recognised skill key, and its presence stops `context: fork` from taking
-  effect — verified at 0/6 forked with it versus 9/9 without, across repeated runs.
-  Consequence: no skill forks, so `agent:` never fires and each skill's `model:`
-  declaration is inert. Everything runs inline on the caller's model.
+- ~~All 15 skills declare `allowed-tools`, which stops `context: fork` working.~~
+  **Fixed** (item 4.11). That key is a *command* key; in a skill it restricted nothing
+  and silently disabled forking, so for the life of this toolchain no skill forked,
+  `agent:` never fired, and no skill's `model:` applied. Removing one line per file
+  fixed all three. `tests/test_toolchain.py` now guards against its return.
 - **`/execute` cannot run against a repository with no remote.** `execute-task` runs
   `git pull origin main` as the first command of every task.
 - **The generated Layer 0 task runs `rm -rf {output-dir}/.git`.** That destroys git

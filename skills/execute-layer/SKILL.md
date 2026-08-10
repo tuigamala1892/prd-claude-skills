@@ -2,7 +2,6 @@
 name: execute-layer
 description: Handles one layer of task execution. Groups ready tasks into batches, spawns batch agents, and processes merge queue after each batch.
 context: fork
-allowed-tools: Read Write Bash Skill Glob
 model: claude-sonnet-4-6
 ---
 

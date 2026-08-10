@@ -3,7 +3,6 @@ name: crd-context-update
 description: Incremental PROJECT.md update using git diff. Only re-analyzes changed areas for efficient context maintenance.
 context: fork
 agent: crd-context-updater
-allowed-tools: Read Write Glob Grep Bash
 model: claude-haiku-4-5-20251001
 ---
 

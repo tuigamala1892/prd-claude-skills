@@ -2,18 +2,18 @@
 
 Instructions for Claude when working in this repository.
 
-> **Two corrections to what follows, both measured rather than assumed.**
+> **Two notes on what follows, both measured rather than assumed.**
 >
 > - **Layout:** `skills/`, `agents/` and `commands/` are at the repository root as a Claude
 >   Code plugin, not under `.claude/`. Load with `claude --plugin-dir <checkout>`.
-> - **Context fork is currently broken.** It is described below as the key innovation, and
->   the design is sound — but all 15 skills also declare `allowed-tools`, a *command* key
->   that stops `context: fork` taking effect. Nothing forks today. See finding **F13** and
->   item **4.11** in `docs/skills/toolchain-assessment-and-plan.md`; the fix is one line
->   per skill.
+> - **Context fork works as of item 4.11.** It is described below as the key innovation,
+>   and it now is one — but it did not function at all until that item landed, because
+>   every skill also declared `allowed-tools`, a *command* key that stopped `context: fork`
+>   taking effect. If you reintroduce that key to a skill, forking silently stops again;
+>   `tests/test_toolchain.py` guards against exactly that.
 >
-> Do not treat statements below about forking, `agent:` delegation, or per-skill `model:`
-> selection as describing current behaviour until 4.11 is done.
+> When a skill and the agent it names declare different models, **the skill's wins** —
+> so the agent's `model:` is the one silently ignored. Measured, see finding F6.
 
 ---
 

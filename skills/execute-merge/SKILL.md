@@ -2,7 +2,6 @@
 name: execute-merge
 description: Merges completed task worktree to main branch. Handles sequential merge queue to prevent conflicts.
 context: fork
-allowed-tools: Read Write Bash Glob
 model: claude-sonnet-4-6
 ---
 

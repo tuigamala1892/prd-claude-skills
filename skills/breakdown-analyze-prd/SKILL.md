@@ -2,7 +2,6 @@
 name: breakdown-analyze-prd
 description: Analyze a PRD to extract features, tech stack, and implementation requirements. Called by /breakdown skill during Phase 2.
 context: fork
-allowed-tools: Read Glob Grep
 model: claude-haiku-4-5-20251001
 ---
 

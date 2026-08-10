@@ -2,7 +2,6 @@
 name: crd
 description: Orchestrates Change Request Document workflow. Manages context, captures changes, analyzes impact, and generates CRD files.
 context: fork
-allowed-tools: Read Write Glob Grep Bash Skill
 model: claude-sonnet-4-6
 user-invocable: true
 ---

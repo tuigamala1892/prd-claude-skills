@@ -2,7 +2,6 @@
 name: execute-task
 description: Implements one task in an isolated git worktree following TDD. Creates commits for implementation and fixes, invokes independent verification.
 context: fork
-allowed-tools: Read Write Edit Glob Grep Bash Skill
 model: claude-sonnet-4-6
 ---
 

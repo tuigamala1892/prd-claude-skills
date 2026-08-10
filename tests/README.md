@@ -23,19 +23,20 @@ When one starts passing it reports `FIXED` and **fails the run**. That is the si
 to delete the marker, at which point the check becomes a permanent regression guard.
 Without that flip, a suite that is quietly red forever just teaches you to ignore it.
 
-Current baseline: **11 pass, 6 known**.
+Current baseline: **13 pass, 4 known**.
 
 | Known failure | Fixed by | Finding |
 |---|---|---|
-| No skill declares `allowed-tools` | 4.11 | F13 |
-| Skills declaring `context: fork` can actually fork | 4.11 | F13 |
 | Skill and its named agent declare the same model | 4.2 | F7 |
 | No stale or invalid model identifiers | 4.2 | F5 |
 | No unguarded `git pull origin main` | 4.8 | F1 |
 | Nothing deletes a `.git` directory | 4.7 | F2 |
 
-Verified by dry run: stripping `allowed-tools` from all 15 skills flips both F13
-checks to `FIXED` and the exit code to 1, leaving the other four untouched.
+The mechanism has been exercised end to end. The two F13 checks — no skill declares
+`allowed-tools`, and skills declaring `context: fork` can actually fork — were marked
+`expect_fail="4.11"`. When 4.11 landed they reported `FIXED` with exit code 1, the
+markers were removed, and they are now permanent guards. Reintroducing `allowed-tools`
+to any skill fails the suite.
 
 ## What it does not do, deliberately
 

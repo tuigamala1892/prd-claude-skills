@@ -2,7 +2,6 @@
 name: execute-batch
 description: Handles one batch of tasks. Spawns task agents in parallel using git worktrees, waits for completion, and updates state.
 context: fork
-allowed-tools: Read Write Bash Task Glob TaskOutput
 model: claude-sonnet-4-6
 ---
 

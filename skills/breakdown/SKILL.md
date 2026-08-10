@@ -2,7 +2,6 @@
 name: breakdown
 description: Break down a PRD or CRD into self-contained implementation tasks for LLM execution. Use when you have a PRD/CRD file and want to generate executable task files for autonomous implementation.
 context: fork
-allowed-tools: Read Glob Grep Write Skill Bash
 model: claude-sonnet-4-6
 ---
 
