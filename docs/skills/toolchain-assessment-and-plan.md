@@ -90,6 +90,7 @@ other repository, so no repo needs to ignore another and no gitlink can form.
 | Frontmatter added to the three command files — see F8, which turned out to be worse than described | `e0256cd` |
 | `README.md` with upstream attribution, and `LICENSE.md` (MIT) | `e0256cd`, `0747b66` |
 | **Phase 0 probes run** — 45 `claude -p` runs over three iterations; see §3.5 and §3.6 | — |
+| Probe harness committed under `docs/skills/probes/`, with a guard refusing to generate inside this repository | — |
 
 The ampersand fix brought the PRD directory to **61 of 62 files parsing as well-formed XML**.
 The single holdout is `docs/prd/test-project/what-next.md`, which is prose markdown rather
@@ -398,10 +399,15 @@ Claude Code versions, so these answers have a shelf life:
   including names that do not exist proves the answer is a real lookup.
 - **Model identity came from `modelUsage`, never from self-report.**
 
-The probe harness and raw results were written to a scratch directory outside this repository
-— deliberately, since F4 is precisely "generated output leaked into the toolchain tree". They
-are therefore transient. If these questions are likely to be re-asked on a future Claude Code
-version, the harness is worth committing under `docs/skills/probes/` rather than rebuilt.
+**The harness is committed under [`probes/`](probes/)** so these questions can be re-asked
+cheaply. Frontmatter handling is harness behaviour rather than documented API, so the answers
+above have a shelf life and should be re-measured on a newer Claude Code rather than assumed.
+
+The harness generates into a temp directory and **refuses to run with a `--workdir` inside this
+repository** — F4 is precisely "generated output leaked into the toolchain tree", and the first
+version of that guard had an off-by-one that let it write here anyway. The raw results are not
+committed: roughly 2.3 MB of transcripts across 375 files, only meaningful next to the Claude
+Code build that produced them.
 
 ---
 
@@ -440,9 +446,13 @@ The case against is that these three are interactive, user-facing entry points, 
 them into a separate context is not obviously desirable — a forked skill returns a summary to
 the caller rather than conducting a conversation in it.
 
-**Recommendation:** convert `/breakdown`-style batch work to skills; leave `/prd` and `/crd` as
-commands, since an interview that reports back a summary is not the same thing as an interview.
-Decide `/crd-context` on the same basis — it is closer to batch work.
+**Decision taken: `/prd` and `/crd` stay commands.** An interview that reports a summary back
+to the caller is not the same thing as an interview, and forking is the price of a `model:`
+selector. Both therefore run on whatever model the user is already using — which is the correct
+trade for an interactive entry point, but should be a conscious one.
+
+Still to decide: `/crd-context`, which is closer to batch work than to an interview and so may
+be worth converting on the opposite reasoning.
 
 Notes:
 
@@ -714,15 +724,20 @@ Resolved by Phase 0, kept for the record:
 | ~~2~~ | `allowed-tools` (U1) | **Answered** — wrong key, restricts nothing, breaks forking → F13 / item 4.11 |
 | ~~3~~ | `agent:` honoured (U2) | **Answered** — yes, but only with `context: fork` |
 
+Decided since:
+
+| | Question | Decision |
+|---|---|---|
+| ~~4~~ | Should `/prd` and `/crd` become skills? | **No — they stay commands.** See 4.1 |
+| ~~5~~ | Should the probe harness be committed? | **Yes** — [`probes/`](probes/) |
+
 Still open:
 
 1. **Per-layer model tiering** — worth it, or one global implementation model? Now a real
    decision rather than a hypothetical, since 4.11 makes `model:` take effect.
 2. **Branch naming** — derive from HEAD, or keep `main` as a documented requirement?
-3. **Should `/prd` and `/crd` become skills?** See the revised 4.1 — turns on whether a forked
-   context is acceptable for an interactive interview.
+3. **Should `/crd-context` become a skill?** Unlike `/prd` and `/crd` it is closer to batch work
+   than to an interview, so the reasoning that kept those two as commands may invert here.
 4. **Is any tool sandboxing available at all?** `tools:` on a skill does not restrict. If real
    confinement is wanted for `task-implementer`, it will have to come from somewhere other than
    skill frontmatter.
-5. **Should the probe harness be committed?** These answers are specific to this Claude Code
-   version. Re-deriving them costs about 45 runs; keeping the harness costs a directory.
