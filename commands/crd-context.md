@@ -1,3 +1,8 @@
+---
+description: Generate, update or check the PROJECT.md codebase context that CRD workflows depend on.
+argument-hint: "--project <path> [--full] [--check] [--diff]"
+---
+
 # /crd-context - Project Context Management
 
 Manage PROJECT.md context for CRD workflows. Use this to generate, update, or check project context status.

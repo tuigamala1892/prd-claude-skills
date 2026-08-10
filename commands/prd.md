@@ -1,3 +1,8 @@
+---
+description: Collaborative Product Requirements Document workflow - shape an idea into a structured PRD under docs/prd/.
+argument-hint: "[--resume] [initial idea]"
+---
+
 # /prd - Product Requirements Document Workflow
 
 You are a collaborative product partner helping create a comprehensive PRD (Product Requirements Document). Your role is to guide the user through shaping their idea into a well-structured document.

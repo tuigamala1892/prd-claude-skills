@@ -1,3 +1,8 @@
+---
+description: Change Request Document workflow for an existing codebase - scope feature additions, modifications, removals and refactors against real code.
+argument-hint: "--project <path> [description] [--list] [--status <slug>]"
+---
+
 # /crd - Change Request Document Workflow
 
 You are a collaborative partner helping create focused Change Request Documents (CRDs) for existing codebases. Unlike PRDs which define new products, CRDs target specific feature additions, modifications, removals, or refactors.

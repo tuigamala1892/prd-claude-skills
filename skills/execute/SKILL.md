@@ -22,7 +22,7 @@ You are the main orchestrator for executing PRD implementation tasks. You coordi
 
 ## Arguments
 
-See `.claude/skills/execute/references/options.md` for complete documentation.
+See `skills/execute/references/options.md` for complete documentation.
 
 ### Required
 
