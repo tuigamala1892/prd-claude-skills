@@ -61,10 +61,14 @@ match what `/prd` actually writes.
 
 ## Attribution and licensing
 
-Derived from [vinzenz/prd-breakdown-execute](https://github.com/vinzenz/prd-breakdown-execute).
+Derived from [vinzenz/prd-breakdown-execute](https://github.com/vinzenz/prd-breakdown-execute),
+created January 2026.
 
-That repository's README states its licence as MIT, but it carries **no `LICENSE`
-file** and GitHub reports no detected licence for it. This repository therefore does
-not yet ship a `LICENSE` of its own — adding one means deciding how to represent both
-the upstream grant and any local copyright, which is a call for the maintainer rather
-than something to assume.
+Licensed under the MIT Licence — see [`LICENSE.md`](LICENSE.md), which carries both the
+upstream copyright and the copyright on modifications made here.
+
+One caveat is recorded in that file and repeated here because it is easy to miss: the
+upstream repository declares MIT in the body of its `README.md` but ships no `LICENSE`
+file, and GitHub reports no detected licence for it. The upstream copyright line is
+therefore reconstructed from that stated licence, the owner's public name and the
+repository's creation year, not copied from an upstream notice.
