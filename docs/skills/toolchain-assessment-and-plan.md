@@ -727,10 +727,26 @@ mutating the caller's conversation state will change behaviour. `execute-batch` 
 
 Run in a scratch project, not against `test-project`.
 
-### 5.1 Fixture
+### 5.1 Fixture — **DONE**
 
 A minimal PRD with two or three features — enough to exercise layer planning without a 60-file
 generation cycle on every iteration.
+
+> **Built at [`tests/fixture/`](../../tests/fixture/).** `Link Shelf`: three features, two
+> models, three endpoints, no frontend, no auth. `setup_fixture.py` materialises a workspace
+> outside this repository — refusing to build inside it, since `/execute` creates branches and
+> removes worktrees in its target.
+>
+> Choices that matter: SQLite so nothing external must be running; no template path so Layer 0
+> creates directories rather than copying a tree; the target repository pre-created **with no
+> remote**, which is exactly the configuration F1 could not survive; and tags as a join table
+> rather than a string column, so the data-model layer is not trivial.
+>
+> `--verify` makes **F2 falsifiable**. It records the target repository's root commit at build
+> time and checks it is still reachable afterwards, so reinitialising the repository is caught
+> as well as deleting it. The negative case is tested: removing `app/.git` makes `--verify`
+> exit 1. The suite also validates the fixture PRD statically, so drift fails fast rather than
+> during an end-to-end run.
 
 ### 5.2 Sequence
 

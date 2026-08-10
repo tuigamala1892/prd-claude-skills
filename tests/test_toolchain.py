@@ -362,6 +362,29 @@ def _():
                      + "\n    ".join(bad))
 
 
+@check("the §5.1 fixture PRD is valid and self-consistent")
+def _():
+    # The fixture is only useful if /breakdown can parse it. Validating here means a
+    # drifting fixture fails the fast suite rather than an end-to-end run.
+    import xml.etree.ElementTree as ET
+    base = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
+    assert os.path.isdir(base), "tests/fixture/prd/link-shelf is missing"
+
+    root = ET.parse(os.path.join(base, "index.md")).getroot()
+    assert root.tag == "prd", f"index.md root is <{root.tag}>, expected <prd>"
+    feats = root.findall("features/feature")
+    assert 2 <= len(feats) <= 4, f"{len(feats)} features; §5.1 asks for two or three"
+
+    missing = [f.get("file") for f in feats
+               if not f.get("file")
+               or not os.path.isfile(os.path.join(base, f.get("file").replace("/", os.sep)))]
+    assert not missing, f"feature files missing: {missing}"
+
+    wn = ET.parse(os.path.join(base, "what-next.md")).getroot()
+    assert (wn.findtext("status") or "").strip() == "in-progress", \
+        "fixture what-next.md needs <status>in-progress</status> for the resume test (F3)"
+
+
 @check("every referenced references/ file exists")
 def _():
     bad = []
