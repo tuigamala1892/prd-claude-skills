@@ -1,13 +1,13 @@
 ---
 name: execute-merge
-description: Merges completed task worktree to main branch. Handles sequential merge queue to prevent conflicts.
+description: Merges completed task worktree to the base branch. Handles sequential merge queue to prevent conflicts.
 context: fork
 model: claude-sonnet-4-6
 ---
 
 # Merge Agent
 
-You merge a completed task's worktree branch into the main branch. Tasks complete in parallel but merge sequentially to avoid conflicts.
+You merge a completed task's worktree branch into the base branch. Tasks complete in parallel but merge sequentially to avoid conflicts.
 
 ## Input Arguments
 
@@ -20,8 +20,18 @@ Parse these from the prompt:
 | `--worktree-path <path>` | Yes | Path to task's worktree |
 | `--task-file <path>` | Yes | Task XML for commit context |
 | `--tasks-path <path>` | Yes | Tasks directory for state update |
+| `--base-branch <name>` | No | Branch to merge into. Defaults to the repository's current HEAD — never assume `main` |
 
 ## Execution Flow
+
+### Step 0: Resolve the Base Branch
+
+Do this before any command that references `{base_branch}`. If `--base-branch` was not
+supplied, take it from the repository rather than assuming `main`:
+
+```bash
+base_branch=$(git -C {project_path} symbolic-ref --short HEAD)
+```
 
 ### Step 1: Parse Task XML
 
@@ -53,7 +63,7 @@ git status --porcelain
 # Expected: empty (all changes committed)
 
 # Get commit count
-git rev-list --count main..HEAD
+git rev-list --count {base_branch}..HEAD
 # Expected: >= 1
 ```
 
@@ -79,12 +89,15 @@ EOF
 ```bash
 cd {project_path}
 
-# Ensure we're on main
-git checkout main
+# Ensure we're on the base branch
+git checkout {base_branch}
 
-# Pull latest (in case of external changes)
-git fetch origin main
-git merge origin/main --ff-only 2>/dev/null || true
+# Pull latest ONLY if a remote is configured. A repository with no remote is a
+# supported configuration, and an unconditional fetch fails the merge queue.
+if git remote get-url origin >/dev/null 2>&1; then
+  git fetch origin {base_branch} || true
+  git merge origin/{base_branch} --ff-only 2>/dev/null || true
+fi
 ```
 
 ### Step 5: Merge Worktree Branch
@@ -259,14 +272,14 @@ git worktree remove {worktree_path}
 
 Action: Already removed (maybe manual cleanup). Continue.
 
-### Uncommitted Changes in Main
+### Uncommitted Changes on the Base Branch
 
 ```bash
-git checkout main
+git checkout {base_branch}
 # error: Your local changes would be overwritten
 ```
 
-Action: Error - main should always be clean. Report and stop.
+Action: Error - the base branch should always be clean. Report and stop.
 
 ### Merge Conflict
 
@@ -287,7 +300,7 @@ Action:
 ### Status Line
 
 ```
-[MERGE] L1-001 → main (abc1234)
+[MERGE] L1-001 → {base_branch} (abc1234)
 ```
 
 ### Final Result
@@ -308,4 +321,4 @@ MERGE_RESULT:
 | `git branch -d branch` | Delete merged branch |
 | `git branch -D branch` | Force delete branch |
 | `git rev-parse HEAD` | Get current commit hash |
-| `git rev-list --count main..HEAD` | Count commits since main |
+| `git rev-list --count {base_branch}..HEAD` | Count commits since the base branch |

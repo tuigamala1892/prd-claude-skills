@@ -55,23 +55,31 @@ target project.
 
 ## Status
 
-**This toolchain is under repair and is not currently expected to run end to end.**
-See [`docs/skills/toolchain-assessment-and-plan.md`](docs/skills/toolchain-assessment-and-plan.md)
-for the full assessment. The findings that matter most before relying on it:
+**All three blocking defects are fixed, but the pipeline has not yet been run end to
+end.** Treat it as repaired-but-unproven rather than working. See
+[`docs/skills/toolchain-assessment-and-plan.md`](docs/skills/toolchain-assessment-and-plan.md)
+for the full assessment.
+
+Fixed:
 
 - ~~All 15 skills declare `allowed-tools`, which stops `context: fork` working.~~
-  **Fixed** (item 4.11). That key is a *command* key; in a skill it restricted nothing
-  and silently disabled forking, so for the life of this toolchain no skill forked,
-  `agent:` never fired, and no skill's `model:` applied. Removing one line per file
-  fixed all three. `tests/test_toolchain.py` now guards against its return.
-- **`/execute` cannot run against a repository with no remote.** `execute-task` runs
-  `git pull origin main` as the first command of every task.
-- **The generated Layer 0 task runs `rm -rf {output-dir}/.git`.** That destroys git
-  history at whatever path is passed in.
+  **Fixed** (4.11). That key is a *command* key; in a skill it restricted nothing and
+  silently disabled forking, so for the life of this toolchain no skill forked,
+  `agent:` never fired, and no skill's `model:` applied. One line per file fixed all
+  three.
+- ~~`/execute` cannot run against a repository with no remote.~~ **Fixed** (4.8).
+  Remote operations are now conditional on a remote existing, and the branch name is a
+  parameter defaulting to the repository's HEAD rather than a hardcoded `main`.
+- ~~The generated Layer 0 task deletes the target's `.git`.~~ **Fixed** (4.7). The
+  template now excludes `.git` from the copy instead of deleting it at the
+  destination, Layer 0 no longer contradicts the preflight by running `git init`, and
+  `/execute` refuses to target a docs tree or the toolchain itself.
 
-Model identifiers in the frontmatter (`claude-sonnet-4-6`, `claude-sonnet-4-5`) are
-also stale, and the `<what-next.md>` template that `/prd --resume` greps for does not
-match what `/prd` actually writes.
+Still outstanding: model identifiers in the frontmatter (`claude-sonnet-4-6`,
+`claude-sonnet-4-5`) are stale (4.2), and the `what-next.md` template that
+`/prd --resume` greps for does not match what `/prd` writes (4.3, 4.4).
+
+`tests/test_toolchain.py` guards every one of the fixes above against regression.
 
 ## Attribution and licensing
 

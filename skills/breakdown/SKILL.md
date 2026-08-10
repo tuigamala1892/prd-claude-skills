@@ -96,7 +96,9 @@ If layer_plan.json exists, skip this phase.
 Invoke the `breakdown-plan-layers` skill with the analysis JSON.
 
 Request organization into 4-5 layers:
-1. **0-setup**: Template copy, git init, environment (greenfield only)
+1. **0-setup**: Template copy, initial commit, environment (greenfield only).
+   Does NOT create the repository - `/execute` requires `{project_path}` to be an
+   existing git repository, so Layer 0 commits into it rather than initialising it.
 2. **1-foundation**: Database models, migrations, base config
 3. **2-backend**: API endpoints, services, business logic
 4. **3-frontend**: React components, state management, routing
@@ -240,7 +242,7 @@ Saved layer plan to: docs/tasks/voice-prd-generator/layer_plan.json
 Generating Layer 0 (Setup)...
 Batch 1/1: [L0-001, L0-002, L0-003, L0-004]
 - L0-001-copy-template.xml
-- L0-002-init-git-env.xml
+- L0-002-commit-template.xml
 - L0-003-configure-database.xml
 - L0-004-verify-setup.xml
 Reviewing batch... PASSED

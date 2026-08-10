@@ -33,6 +33,8 @@ See `skills/execute/references/options.md` for complete documentation.
 --project-path <path>   Target project (optional if in manifest)
 --worktree-dir <path>   Worktree directory (default: {project}/../.worktrees)
 --max-parallel <N>      Max concurrent tasks (default: 3)
+--base-branch <name>    Branch tasks branch from and merge into
+                        (default: the repository's current HEAD)
 --layer <name>          Execute specific layer only
 --task <id>             Execute specific task only
 --resume                Resume from existing state
@@ -51,6 +53,7 @@ tasks_path = required
 project_path = optional  # from args or manifest
 worktree_dir = optional  # default derived from project_path
 max_parallel = 3
+base_branch = None   # resolved in Step 3; never defaulted to "main"
 layer_filter = None
 task_filter = None
 resume = False
@@ -83,8 +86,9 @@ Check:
 - Tasks path exists
 - `manifest.json` exists
 - `layer_plan.json` exists
-- Project path exists (or will be created for greenfield)
-- Git repository initialized in project
+- Project path exists — `{project_path}` must already be a git repository
+- `{project_path}` is not a repository that must never be written to
+- Base branch resolved
 
 ```bash
 test -d {tasks_path}
@@ -93,6 +97,36 @@ test -f {tasks_path}/layer_plan.json
 test -d {project_path}
 test -d {project_path}/.git
 ```
+
+**Refuse to operate on the wrong repository.** `/execute` creates branches, merges,
+and removes worktrees inside `{project_path}`. A mistyped argument therefore does real
+damage, so rule out the paths that are never valid targets before doing anything:
+
+```bash
+# Never target a documentation/PRD tree
+test -d {project_path}/docs/prd && \
+  echo "REFUSED: {project_path} contains docs/prd/ - this looks like a docs repository, not a target project" && exit 1
+
+# Never target the toolchain itself
+test -f {project_path}/.claude-plugin/plugin.json && \
+  echo "REFUSED: {project_path} is a Claude Code plugin - this looks like the toolchain repository, not a target project" && exit 1
+
+# Never target the tasks directory
+case "{project_path}" in
+  "{tasks_path}"|"{tasks_path}"/*) echo "REFUSED: {project_path} is inside the tasks directory" && exit 1 ;;
+esac
+```
+
+**Resolve the base branch.** Everything downstream branches from and merges into this,
+and it is threaded to `/execute-layer`, `/execute-batch`, `/execute-task` and
+`/execute-merge`. It is never assumed to be `main`:
+
+```bash
+base_branch={--base-branch if provided, else $(git -C {project_path} symbolic-ref --short HEAD)}
+```
+
+Fail with a clear message if HEAD is detached, since there is then no branch to merge
+into and the operator must choose one explicitly with `--base-branch`.
 
 ### Step 4: Handle State
 
@@ -182,7 +216,7 @@ for layer in layers:
 For each layer, call `/execute-layer`:
 
 ```
-/execute-layer --tasks-path {tasks_path} --layer {layer} --project-path {project_path} --worktree-dir {worktree_dir} --max-parallel {max_parallel}
+/execute-layer --tasks-path {tasks_path} --layer {layer} --project-path {project_path} --worktree-dir {worktree_dir} --max-parallel {max_parallel} --base-branch {base_branch}
 ```
 
 Wait for layer completion and parse `LAYER_RESULT`.

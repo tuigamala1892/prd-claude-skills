@@ -23,20 +23,31 @@ When one starts passing it reports `FIXED` and **fails the run**. That is the si
 to delete the marker, at which point the check becomes a permanent regression guard.
 Without that flip, a suite that is quietly red forever just teaches you to ignore it.
 
-Current baseline: **13 pass, 4 known**.
+Current baseline: **17 pass, 2 known**.
 
 | Known failure | Fixed by | Finding |
 |---|---|---|
 | Skill and its named agent declare the same model | 4.2 | F7 |
 | No stale or invalid model identifiers | 4.2 | F5 |
-| No unguarded `git pull origin main` | 4.8 | F1 |
-| Nothing deletes a `.git` directory | 4.7 | F2 |
 
-The mechanism has been exercised end to end. The two F13 checks — no skill declares
-`allowed-tools`, and skills declaring `context: fork` can actually fork — were marked
-`expect_fail="4.11"`. When 4.11 landed they reported `FIXED` with exit code 1, the
-markers were removed, and they are now permanent guards. Reintroducing `allowed-tools`
-to any skill fails the suite.
+The mechanism has been exercised repeatedly. Items 4.11, 4.8 and 4.7 each began as
+`expect_fail` checks; when the fix landed they reported `FIXED` with exit code 1, the
+markers were removed, and they became permanent guards. Reintroducing `allowed-tools`
+to a skill, an unguarded `git pull`, a hardcoded `main`, or a command that deletes
+`.git` now fails the suite.
+
+The 4.7/4.8 round also demonstrated the suite catching something a manual sweep had
+missed: after the fix looked complete by grep, the new hardcoded-branch check still
+failed, pointing at four `git checkout main` lines in
+`skills/execute-merge/references/merge-strategy.md`.
+
+### Scope of the dangerous-command checks
+
+Those checks scan only `skills/`, `agents/` and `commands/` — the files whose text
+becomes instructions to a model. Prose elsewhere legitimately quotes the commands it
+is warning about, and failing the build for *describing* a hazard teaches the wrong
+lesson. This was not the original scoping; the first version failed on the README's
+own description of the findings.
 
 ## What it does not do, deliberately
 

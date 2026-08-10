@@ -18,6 +18,7 @@ The orchestrator provides these arguments (parse from the prompt):
 | `--task-file <path>` | Yes | Absolute path to task XML file |
 | `--project-path <path>` | Yes | Main project path (where main branch lives) |
 | `--worktree-dir <path>` | Yes | Directory for worktrees |
+| `--base-branch <name>` | No | Branch to create the worktree from. Defaults to the repository's current HEAD — never assumed to be `main` |
 | `--attempt <N>` | No | Current attempt number (default: 1) |
 | `--worktree-path <path>` | No | Existing worktree to reuse (for retries) |
 | `--retry-feedback <json>` | No | Previous failure feedback JSON |
@@ -57,17 +58,26 @@ Extract and store:
 
 **If attempt == 1 (first attempt):**
 
-Create a new worktree from main:
+Create a new worktree from `{base_branch}`:
 
 ```bash
 cd {project_path}
-git fetch origin main
-git checkout main
-git pull origin main
-git checkout -b worktree-{task_id}
-git worktree add {worktree_dir}/{task_id} worktree-{task_id}
-git checkout main
+
+# Refresh from the remote ONLY if one is configured. This is the first command of
+# every task, so an unconditional `git pull` fails the entire pipeline on a
+# repository with no remote -- which is a supported configuration.
+if git remote get-url origin >/dev/null 2>&1; then
+  git fetch origin {base_branch} || true
+fi
+
+# Create branch and worktree in one step, based on {base_branch}. Do NOT check
+# {base_branch} out in the main working tree: tasks run in parallel, and checking
+# out a shared branch there races with every other task in the batch.
+git worktree add -b worktree-{task_id} {worktree_dir}/{task_id} {base_branch}
 ```
+
+`{base_branch}` is passed in by the caller and is never assumed to be `main`. See
+`--base-branch` in the arguments table.
 
 Set `worktree_path = {worktree_dir}/{task_id}`
 

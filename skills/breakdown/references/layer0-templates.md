@@ -43,15 +43,19 @@ Reference templates for Layer 0 (setup) tasks. These templates are for greenfiel
     Create target directory: mkdir -p {TARGET_DIR}
     </requirement>
     <requirement id="2">
-    Copy template contents: cp -r {TEMPLATE_PATH}/* {TARGET_DIR}/
-    </requirement>
-    <requirement id="3">
-    Copy hidden files: cp -r {TEMPLATE_PATH}/.[!.]* {TARGET_DIR}/ (if any)
-    </requirement>
-    <requirement id="4">
-    Remove any existing .git: rm -rf {TARGET_DIR}/.git
+    Copy template contents, including hidden files but excluding the template's
+    own git metadata:
+    rsync -a --exclude='.git' {TEMPLATE_PATH}/ {TARGET_DIR}/
     </requirement>
   </requirements>
+
+  <!--
+    NEVER emit a requirement that recursively deletes the .git directory at
+    {TARGET_DIR}. This template used to end with exactly that, meaning "drop the
+    template's git metadata after copying" -- but {TARGET_DIR} is the caller's
+    project, so it destroyed that project's history instead. Excluding .git from the
+    copy achieves the intent with nothing to delete afterwards. See finding F2.
+  -->
 
   <test-requirements>
     <test id="1">
@@ -78,13 +82,19 @@ Reference templates for Layer 0 (setup) tasks. These templates are for greenfiel
 </task>
 ```
 
-## L0-002: Initialize Git Repository
+## L0-002: Commit the Template Files
+
+> **This task does not run `git init`.** `/execute` refuses to start unless
+> `{project_path}/.git` already exists, so a task that creates the repository could
+> never usefully run — the preflight would have aborted first. The repository is the
+> operator's to create before invoking `/execute`; this task only records the template
+> files as its first commit. See finding F2 and item 4.7.
 
 ```xml
 <task>
   <meta>
     <id>L0-002</id>
-    <name>Initialize Git Repository</name>
+    <name>Commit Template Files</name>
     <layer>0-setup</layer>
     <priority>2</priority>
     <estimated-files>0</estimated-files>
@@ -106,7 +116,8 @@ Reference templates for Layer 0 (setup) tasks. These templates are for greenfiel
   </dependencies>
 
   <objective>
-  Initialize a git repository with the template files as the initial commit.
+  Record the copied template files as a commit in the project's existing git
+  repository.
   </objective>
 
   <requirements>
@@ -114,13 +125,16 @@ Reference templates for Layer 0 (setup) tasks. These templates are for greenfiel
     Navigate to project: cd {TARGET_DIR}
     </requirement>
     <requirement id="2">
-    Initialize git: git init
+    Confirm the repository already exists: test -d {TARGET_DIR}/.git
+    If it does not, stop and report - do NOT run `git init`. /execute's preflight
+    requires the repository to exist, so a missing one means the wrong path was
+    passed.
     </requirement>
     <requirement id="3">
     Add all files: git add -A
     </requirement>
     <requirement id="4">
-    Initial commit: git commit -m "Initial commit from {TEMPLATE_NAME} template"
+    Commit: git commit -m "Add {TEMPLATE_NAME} template files"
     </requirement>
   </requirements>
 

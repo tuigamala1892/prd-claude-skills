@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 complete and measured; **item 4.11 done — skills now fork**; items 4.1–4.10 proposed
+**Status:** Phase 0 complete; **all three blocking items done (4.7, 4.8, 4.11)**; items 4.1–4.6 and 4.9–4.10 proposed
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -12,8 +12,12 @@
 > verified on real skills. Items 4.1 and 4.2 changed shape as a result, and open
 > questions 1–3 are resolved. See §3.5 for results and §3.6 for method.
 >
-> A regression suite at `tests/` enforces these findings; run it before and after any
-> change to frontmatter.
+> Items **4.7** and **4.8** have since been completed too, so all three blocking findings
+> (F1, F2, F13) are resolved. The pipeline has **not** been run end to end — treat it as
+> repaired but unproven.
+>
+> A regression suite at `tests/` enforces every one of these fixes; run it before and
+> after any change to skill frontmatter or git commands.
 
 ---
 
@@ -97,6 +101,8 @@ other repository, so no repo needs to ignore another and no gitlink can form.
 | Probe harness committed under `docs/skills/probes/`, with a guard refusing to generate inside this repository | — |
 | Regression suite added at `tests/` — 17 static checks tied to finding IDs, known failures marked with the item that fixes them | `973604c` |
 | **Item 4.11 done** — `allowed-tools` removed from all 15 skills; forking verified on real skills. **Skills fork for the first time** | — |
+| **Item 4.8 done** — remote operations guarded; branch name parameterised as `--base-branch`, defaulting to repository HEAD | — |
+| **Item 4.7 done** — Layer 0 no longer deletes the target's `.git` or contradicts the preflight; `/execute` refuses wrong-repository targets | — |
 
 The ampersand fix brought the PRD directory to **61 of 62 files parsing as well-formed XML**.
 The single holdout is `docs/prd/test-project/what-next.md`, which is prose markdown rather
@@ -174,7 +180,13 @@ line per file, and it is a precondition for items 4.1 and 4.2 meaning anything.
 tool restriction. A forked skill declaring only `tools: Read, Glob, Grep` still wrote a
 file in 3/3 runs. Treat `tools:` on a skill as documentation, not as a sandbox.
 
-#### F1 — `/execute` cannot run against a repository with no remote
+#### F1 — `/execute` cannot run against a repository with no remote — **RESOLVED**
+
+> **Fixed by item 4.8.** Remote operations in `execute-task` and `execute-merge` are now
+> conditional on `git remote get-url origin` succeeding. The branch name is no longer
+> hardcoded either: `--base-branch` is threaded through `execute` → `execute-layer` →
+> `execute-batch` → `execute-task`/`execute-merge`, defaulting to the repository's own
+> HEAD. Two regression checks guard both halves.
 
 `skills/execute-task/SKILL.md:67` runs, before every task:
 
@@ -186,7 +198,13 @@ With no remote configured this fails, and it is the first command of every task.
 complete.** The plan is explicitly "no remote for now", so this blocks the entire pipeline
 regardless of any other fix.
 
-#### F2 — Layer 0's git initialisation is self-contradictory and destructive
+#### F2 — Layer 0's git initialisation is self-contradictory and destructive — **RESOLVED**
+
+> **Fixed by item 4.7.** The template now excludes `.git` from the copy rather than
+> deleting it at the destination, so there is no destructive step to get wrong. Layer 0's
+> `git init` task became "commit the template files", matching the preflight that already
+> required the repository to exist. `/execute` additionally refuses to target a tree
+> containing `docs/prd/`, a Claude Code plugin, or the tasks directory itself.
 
 Two facts that cannot both hold:
 
@@ -610,9 +628,15 @@ In `breakdown` and `breakdown-generate-tasks`:
 Then delete the stray `skills/breakdown-generate-tasks/output/` tree, which is currently only
 gitignored.
 
-### 4.7 Layer 0 git contradictions
+### 4.7 Layer 0 git contradictions — **DONE**
 
 **Addresses F2**
+
+> **Completed.** All three parts. The intent behind the original line was to drop the
+> *template's* git metadata after copying, but the path it was given is the *caller's*
+> project — so excluding `.git` from the copy achieves the intent with nothing to delete.
+> That is the safer shape: a step that cannot be misdirected beats a step that must be
+> given the right target.
 
 1. **Remove `rm -rf {output-dir}/.git` from the Layer 0 template** (`breakdown-generate-tasks`
    line 308). Removing template `.git` is only meaningful when scaffolding from a cloned
@@ -627,9 +651,17 @@ gitignored.
    contains `docs/prd/` or is the toolchain repository. Cheap insurance against a mistyped
    argument destroying the wrong `.git`.
 
-### 4.8 `git pull origin main` guard
+### 4.8 `git pull origin main` guard — **DONE**
 
 **Addresses F1**
+
+> **Completed**, including the branch-name half. `--base-branch` is now a documented
+> parameter defaulting to the repository's HEAD.
+>
+> Worth recording: after the change looked complete by grep, the regression suite's new
+> hardcoded-branch check still failed, pointing at four `git checkout main` lines in
+> `execute-merge/references/merge-strategy.md` that the sweep had missed. The suite
+> earned its keep on its first real use.
 
 In `execute-task`, replace the unconditional pull with a conditional:
 
@@ -742,8 +774,8 @@ bad = [p for p in files if not _parses(p)]
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
-| 4.7 | Layer 0 git contradictions | **Blocking** | `breakdown-generate-tasks`, `execute` |
-| 4.8 | `git pull origin main` guard | **Blocking** | `execute-task`, `execute-merge` |
+| ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
+| ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |
 | 4.10 | Orphaned agent | Structural | `agents/project-context-finalizer.md` |
 

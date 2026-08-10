@@ -117,10 +117,9 @@ Benefits:
 
 ```bash
 cd {project_path}
-git checkout main
-git checkout -b worktree-L1-001
-git worktree add {worktree_dir}/L1-001 worktree-L1-001
-git checkout main
+# One step, based on {base_branch}, without checking anything out in the main
+# working tree -- parallel tasks would race on a shared checkout.
+git worktree add -b worktree-L1-001 {worktree_dir}/L1-001 {base_branch}
 ```
 
 ### During Implementation
@@ -139,7 +138,7 @@ Worktree added to merge queue with "ready" status.
 
 ```bash
 cd {project_path}
-git checkout main
+git checkout {base_branch}
 git merge --no-ff worktree-L1-001 -m "..."
 ```
 
@@ -187,9 +186,9 @@ If a conflict occurs (shouldn't happen normally):
 ### Resolution Steps
 
 ```bash
-# In main project
+# In the main project
 cd {project_path}
-git checkout main
+git checkout {base_branch}
 
 # Re-attempt merge
 git merge worktree-L1-001

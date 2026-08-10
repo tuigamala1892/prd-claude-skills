@@ -125,6 +125,19 @@ def all_tracked_text():
             yield rel, open(p, encoding="utf-8", errors="replace").read()
 
 
+def instruction_text():
+    """Only the files whose text becomes instructions to a model.
+
+    Checks for dangerous commands must scope to these. Prose elsewhere -- the README,
+    this suite's own documentation, the assessment -- legitimately quotes the commands
+    it is warning about, and failing the build for describing a hazard would teach the
+    wrong lesson.
+    """
+    for rel, text in all_tracked_text():
+        if rel.startswith(("skills/", "agents/", "commands/")):
+            yield rel, text
+
+
 # ------------------------------------------------------- plugin/layout integrity
 
 @check("plugin.json exists, parses, and declares name + description")
@@ -283,30 +296,62 @@ def _():
 
 # ------------------------------------------------------------- dangerous content
 
-@check("no unguarded `git pull origin main`", finding="F1", expect_fail="4.8")
+@check("no remote operation that assumes a remote exists", finding="F1")
 def _():
+    # `/execute` must work against a repository with no remote. A bare `git pull` or
+    # `git fetch` is the first command of every task, so an unguarded one fails the
+    # whole pipeline. Guarded means the file also tests for the remote first.
     bad = []
-    for rel, text in all_tracked_text():
-        if rel.startswith("docs/"):
-            continue
+    for rel, text in instruction_text():
+        guarded = "remote get-url" in text
         for i, line in enumerate(text.splitlines(), 1):
-            if re.search(r"git\s+pull\s+origin\s+main", line) and "remote get-url" not in text:
+            if line.lstrip().startswith("#"):
+                continue
+            if re.search(r"\bgit\s+(pull|fetch)\b", line) and not guarded:
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
-    assert not bad, ("fails on a repository with no remote, and it is the first command of "
-                     "every task:\n    " + "\n    ".join(bad))
+    assert not bad, ("fails on a repository with no remote, and this runs before every "
+                     "task:\n    " + "\n    ".join(bad))
 
 
-@check("nothing deletes a .git directory", finding="F2", expect_fail="4.7")
+@check("no hardcoded `main` branch in the execute pipeline", finding="F1")
+def _():
+    # The branch name is a parameter (`--base-branch`, defaulting to HEAD). A literal
+    # `main` in a git command silently targets the wrong branch on any other default.
+    bad = []
+    for rel, text in instruction_text():
+        for i, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith("#") or "base-branch" in line:
+                continue
+            if re.search(r"\bgit\s+\S+.*\b(origin/main|main\.\.|\bmain\b)\s*$", line) or \
+               re.search(r"\bgit\s+(checkout|merge|fetch|pull|rebase)\s+(origin/)?main\b", line):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("hardcodes the branch name instead of using {base_branch}:\n    "
+                     + "\n    ".join(bad))
+
+
+@check("nothing deletes a .git directory", finding="F2")
 def _():
     bad = []
-    for rel, text in all_tracked_text():
-        if rel.startswith("docs/"):
-            continue
+    for rel, text in instruction_text():
         for i, line in enumerate(text.splitlines(), 1):
             if re.search(r"rm\s+-rf?\s+[^\s]*\.git\b", line):
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("destroys git history at whatever path is passed in:\n    "
                      + "\n    ".join(bad))
+
+
+@check("`/execute` refuses to target the wrong repository", finding="F2")
+def _():
+    # A mistyped --project-path makes /execute create branches and merge in the wrong
+    # repo. The preflight must rule out the paths that are never valid targets.
+    text = open(os.path.join(SKILLS, "execute", "SKILL.md"),
+                encoding="utf-8", errors="replace").read()
+    missing = [name for name, pat in (
+        ("docs/prd guard", r"docs/prd"),
+        ("toolchain guard", r"\.claude-plugin"),
+        ("REFUSED message", r"REFUSED"),
+    ) if not re.search(pat, text)]
+    assert not missing, ("execute preflight is missing: " + ", ".join(missing))
 
 
 @check("no generated output committed under skills/", finding="F4")

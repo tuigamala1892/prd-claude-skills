@@ -20,6 +20,7 @@ Parse these from the prompt:
 | `--project-path <path>` | Yes | Main project directory |
 | `--worktree-dir <path>` | Yes | Directory for worktrees |
 | `--max-parallel <N>` | No | Max concurrent tasks (default: 3) |
+| `--base-branch <name>` | No | Branch to base worktrees on and merge into (default: repository HEAD) |
 
 ## Execution Flow
 
@@ -121,7 +122,7 @@ state["current_batch"] = batch_number
 Invoke `/execute-batch` skill:
 
 ```
-/execute-batch --tasks-path {tasks_path} --task-ids {comma_separated_ids} --project-path {project_path} --worktree-dir {worktree_dir} --batch-number {batch_number} --layer {layer}
+/execute-batch --tasks-path {tasks_path} --task-ids {comma_separated_ids} --project-path {project_path} --worktree-dir {worktree_dir} --batch-number {batch_number} --layer {layer} --base-branch {base_branch}
 ```
 
 Wait for batch completion.
@@ -160,7 +161,7 @@ for item in merge_queue:
 Call `/execute-merge` for each ready task:
 
 ```
-/execute-merge --task-id {task_id} --project-path {project_path} --worktree-path {worktree_path} --task-file {task_file}
+/execute-merge --task-id {task_id} --project-path {project_path} --worktree-path {worktree_path} --task-file {task_file} --base-branch {base_branch}
 ```
 
 **IMPORTANT**: Merge tasks **sequentially** in priority order to avoid conflicts.

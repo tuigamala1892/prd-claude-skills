@@ -19,6 +19,7 @@ Parse these from the prompt:
 | `--task-ids <ids>` | Yes | Comma-separated task IDs (e.g., "L1-001,L1-002,L1-006") |
 | `--project-path <path>` | Yes | Main project directory |
 | `--worktree-dir <path>` | Yes | Directory for worktrees |
+| `--base-branch <name>` | No | Branch to base worktrees on (default: repository HEAD) |
 | `--batch-number <N>` | Yes | Batch number within layer |
 | `--layer <name>` | Yes | Layer name (for status reporting) |
 
@@ -77,7 +78,7 @@ Task(
 You are executing task {task_id} using the /execute-task skill.
 
 Execute the following command:
-/execute-task --task-file {task_file_path} --project-path {project_path} --worktree-dir {worktree_dir} --attempt {attempt}
+/execute-task --task-file {task_file_path} --project-path {project_path} --worktree-dir {worktree_dir} --attempt {attempt} --base-branch {base_branch}
 
 {IF RETRY:}
 --worktree-path {existing_worktree_path}

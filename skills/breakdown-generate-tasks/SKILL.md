@@ -301,12 +301,18 @@ Layer 0 (setup) tasks are different - they use shell commands instead of code ge
     Create target directory if it doesn't exist: mkdir -p /path/to/new-project
     </requirement>
     <requirement id="2">
-    Copy template contents: cp -r webapps/backends/python/* /path/to/new-project/
-    </requirement>
-    <requirement id="3">
-    Remove template-specific files: rm -rf /path/to/new-project/.git (if exists)
+    Copy template contents, excluding the template's own git metadata:
+    rsync -a --exclude='.git' webapps/backends/python/ /path/to/new-project/
     </requirement>
   </requirements>
+
+  <!--
+    NEVER emit a task that recursively deletes the .git directory at the target path.
+    Earlier versions of this template did exactly that, intending to drop the
+    TEMPLATE's git metadata after a copy. But the path is the caller's project, so it
+    destroyed the target repository's history instead. Exclude .git from the copy;
+    nothing then needs deleting. See finding F2.
+  -->
 
   <test-requirements>
     <test id="1">
@@ -333,7 +339,7 @@ Layer 0 (setup) tasks are different - they use shell commands instead of code ge
     <interface name="project_directory" type="path">
     /path/to/new-project
     - Contains: app/, frontend/, Makefile, docker-compose.yml
-    - Ready for: git init, dependency installation
+    - Ready for: initial commit, dependency installation
     </interface>
   </exports>
 </task>
