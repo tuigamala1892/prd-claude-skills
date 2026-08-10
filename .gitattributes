@@ -1,0 +1,2 @@
+# Normalize to LF in the repo and in working copies (files here are LF today)
+* text=auto eol=lf
