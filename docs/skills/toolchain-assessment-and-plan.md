@@ -197,6 +197,12 @@ Addressed by item **4.13**.
 
 #### F16 — `execute-state.json` is not a truthful record
 
+> A fix is designed in [`resumable-execution-proposal.md`](resumable-execution-proposal.md):
+> record a commit SHA per task, appended *after* the commit, and have `--resume` verify each
+> SHA against git rather than trusting a status field. That proposal also covers stopping
+> cleanly on a subscription usage limit — but the truthful ledger is its prerequisite, not the
+> other way round.
+
 Found by §5.2 test 9. The state file claimed 20/20 tasks completed with zero failures while
 git contained a single merge commit, and it listed two task IDs — `L0-005` and `L0-006` —
 that have no corresponding generated task file.
