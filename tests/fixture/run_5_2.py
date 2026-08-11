@@ -85,11 +85,20 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
         with open(os.path.join(results_dir, fn), "w", encoding="utf-8") as f:
             f.write(body or "")
 
-    # The transcript is the only reliable record of what tools actually ran.
+    # The transcript is the only reliable record of what tools actually ran -- but for a
+    # forked skill the parent transcript records almost nothing, because the work happens
+    # in subagent sessions written to <sid>/subagents/. Capturing only the parent yields a
+    # file with zero tool calls in it, which reads as "nothing ran" and hides the entire
+    # execution. Copy both.
     for root, _d, files in os.walk(os.path.join(os.path.expanduser("~"), ".claude", "projects")):
         if f"{sid}.jsonl" in files:
             shutil.copy2(os.path.join(root, f"{sid}.jsonl"),
                          os.path.join(results_dir, "transcript.jsonl"))
+            subs = os.path.join(root, sid, "subagents")
+            if os.path.isdir(subs):
+                dest = os.path.join(results_dir, "subagents")
+                shutil.rmtree(dest, ignore_errors=True)
+                shutil.copytree(subs, dest)
             break
     return {"rc": rc, "text": text or "", "elapsed": elapsed, "session": sid,
             "timed_out": timed_out}

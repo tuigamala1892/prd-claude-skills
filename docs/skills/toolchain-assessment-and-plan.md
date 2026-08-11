@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. F14 is **withdrawn** — an artefact of the harness's permission mode. Its replacement, **F17, is real and blocking**: worktree isolation is applied per *layer*, not per task — layers 0–1 bypass it entirely while layer 2 performs it correctly in the same run. F15 and F16 stand. Items 4.12 and 4.13 open
+**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. F14 is **withdrawn** — an artefact of the harness's permission mode. Its replacement, **F17, is real and blocking**, and the third run found its cause: a forked skill cannot await background work, so `execute-layer` and `execute-batch` dispatch a child, announce they are waiting, and return immediately — after which `/execute` re-implements everything inline. Twenty tasks, one commit, no worktrees. F15 and F16 stand. Items 4.12 and 4.13 open
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -13,17 +13,20 @@
 > questions 1–3 are resolved. See §3.5 for results and §3.6 for method.
 >
 > Items **4.7** and **4.8** have since been completed too, so F1, F2 and F13 are resolved and
-> confirmed under a real run. **The pipeline has now been run end to end (§5.2.)** The first
-> such run appeared to show worktree isolation collapsing (F14) — that reading was wrong, and
-> the finding is withdrawn in §3.1: the harness ran the toolchain under a permission mode that
-> denied subagents `Bash`, so they could not create worktrees and said so. What survives that
-> correction is real and unglamorous: documented guards are ignored (F15) and the state file
-> lies about what was done (F16).
+> confirmed under a real run. **The pipeline has been run end to end three times (§5.2), and
+> the third run is the one to read.** `/execute` produced a working application with 91
+> passing tests in 17 minutes — as a single commit for twenty tasks, with no worktrees, no
+> branches and no merges, because the forked orchestrators dispatch their children in the
+> background and then return immediately (**F17**). Add to that: documented guards are ignored
+> (F15) and the state file invents its own numbers (F16).
 >
-> **The lesson generalises past this one finding.** A negative result from an end-to-end run
-> is only as trustworthy as the harness's permissions, and this one was misread for a day. Any
-> future §5.2 failure should be checked against the subagent transcripts for permission denials
-> before it is written up as a toolchain defect.
+> **Two lessons generalise past these findings, both learned the hard way here.** A negative
+> result from an end-to-end run is only as trustworthy as the harness's permissions — run 1
+> was misread for a day because subagents had been denied `Bash`. And a forked skill's parent
+> transcript records almost nothing, because the work happens in `<sid>/subagents/`; capturing
+> only the parent yields a file with zero tool calls in it, which reads as "nothing ran". The
+> harness now captures both. Check the subagent transcripts before writing up any §5.2 failure
+> as a toolchain defect.
 >
 > A regression suite at `tests/` enforces every one of these fixes; run it before and
 > after any change to skill frontmatter or git commands.
@@ -142,12 +145,14 @@ than XML — addressed by item **4.4** below.
 > ever forked, so no declared model or agent had ever applied — but it is fixed, so **F17
 > leads the open findings**.
 >
-> The path from one to the other is worth following, because two of the three steps were
-> wrong. F13's fix made skills fork for the first time. The first end-to-end run then appeared
-> to show that forking had destroyed worktree isolation (F14) — a tidy story, and false: the
-> harness had denied subagents `Bash`. Re-running with permissions granted showed isolation
-> working perfectly in layer 2 and absent in layers 0–1 (F17). The real defect was neither
-> "isolation works" nor "forking broke it", and it took three runs to see it.
+> The path from one to the other is worth following, because the first two steps were both
+> wrong and both convincing. F13's fix made skills fork for the first time. Run 1 appeared to
+> show that forking had destroyed worktree isolation (F14) — a tidy story, and false: the
+> harness had denied subagents `Bash`. Run 2, with permissions granted, showed isolation
+> working perfectly in layer 2 and absent in layers 0–1, which read as a per-layer defect.
+> Run 3 was the first to complete, and found the actual cause: a forked skill dispatches its
+> child in the background, says it is waiting, and returns immediately — because ending its
+> turn *is* its return (F17). Three runs, three stories, and only the last one survives.
 
 #### ~~F14 — worktree isolation is not happening~~ — **WITHDRAWN**
 
@@ -202,14 +207,57 @@ same artefact and settles nothing either way.
 correctly for layer 2. That observation held up and is now recorded as **F17** below — a real
 defect, but a different and narrower one than F14 described, with a different cause.
 
-#### F17 — worktree isolation is applied per *layer*, not per task
+#### F17 — a forked skill cannot await background work, so the orchestration chain collapses
 
-Found by the `bypassPermissions` re-run of §5.2 test 9 — the first measurement of this
-toolchain taken with `Bash` actually available to subagents. This is what F14 should have
-said.
+This finding was first written as *"worktree isolation is applied per layer, not per task"*,
+drawn from a single truncated run. A third run — the first to complete — showed the layer
+pattern was a symptom, and found the cause. The heading and framing are corrected here;
+the earlier observation is preserved below because it remains true of that run.
 
-The run was killed by the harness timeout at 90 minutes with 15 of 18 tasks complete, so
-layer 4 was in flight and is excluded from what follows. Layers 0, 1 and 2 all finished:
+**The mechanism.** `execute-batch` dispatches each task with `run_in_background: true` and
+then, per Step 5 of its own instructions, is supposed to "use TaskOutput to wait for each".
+A forked skill has no way to do that. **Ending its turn *is* its return.** There is no
+suspended state to resume into, so the intent to wait resolves as an immediate return with
+the work still outstanding.
+
+Both intermediate levels did exactly this. Their final returns, verbatim:
+
+> **execute-layer:** *"The execute-batch skill has started L0-001 in the background… I'm
+> waiting for the background task agent to complete and notify me before proceeding to the
+> next batch."*
+
+> **execute-batch:** *"Task agent for L0-001 is now running in the background. Waiting for
+> completion notification before collecting results and updating state."*
+
+Neither called `TaskOutput`. Both returned that text as their summary and terminated.
+
+**What the parent then does is the damaging part.** `/execute` received a child that had
+plainly not finished, and compensated by implementing all twenty tasks itself — 40 `Write`
+calls, 15 `PowerShell` calls, **zero** `git worktree`, `git branch` or `git merge` commands —
+and committed the lot as one commit:
+
+```
+ffbe2fb feat: implement Link Shelf API (all layers 0-4)
+897fef9 Initial commit
+```
+
+Two commits in the repository. Twenty tasks. No branches, no worktrees, no merges.
+
+**The orphaned agent is the corroboration.** The one task that was dispatched, `L0-001`, ran
+to completion — 23 `Bash` calls, 8 `Write`s — and its completion notification was delivered to
+the *top-level session*, because the fork that spawned it no longer existed to receive it. The
+orchestrator's own closing summary describes it as *"a stray result from a background agent
+that was spawned early on but superseded"*. Work was done, and thrown away, in a run that
+reported total success. (That task never ran `git worktree add` either, so even the one task
+that went down the documented path skipped isolation — F15 again.)
+
+**Why the three runs disagreed.** This is stochastic in *degree*, not in kind. Run 2 got layer
+2 right — 4 worktrees, 4 branches, 4 merges — and layers 0–1 wrong. Run 3 got nothing right
+and collapsed to a single inline commit in 17 minutes. The architecture works when a level
+happens to dispatch synchronously and fails when it happens to dispatch in the background, and
+nothing in the toolchain forces the former.
+
+**What run 2 showed, preserved.** Layers 0, 1 and 2 completed before that run was killed:
 
 | Layer | Tasks | Worktrees | Branches | Merge commits |
 |---|---|---|---|---|
@@ -217,46 +265,27 @@ layer 4 was in flight and is excluded from what follows. Layers 0, 1 and 2 all f
 | 1-foundation | 5 | **0** | **0** | **0** |
 | 2-backend | 4 | 4 | 4 | 4 |
 
-Layer 2 is textbook — `worktree-L2-001` through `-004`, each with an implementation commit and
-a real merge:
+That layer 2 is textbook is the useful part: the worktree machinery is correct and does work.
+It is the dispatch-and-wait step above it that fails.
 
-```
-d730a14 Merge worktree-L2-004: Export router from app/api package
-879568c Merge worktree-L2-003: POST /links/{link_id}/tags endpoint - Add tags to a link
-b62da93 Merge worktree-L2-002: GET /links endpoint - List all links with optional tag filter
-aba78b7 Merge worktree-L2-001: POST /links endpoint - Create new link
-```
+**Severity.** Blocking. The toolchain's entire claim is isolated parallel execution with a
+commit per task; run 3 delivered a single commit for twenty tasks while reporting
+`status: completed`, 20/20. Note that it *did* produce a working application with 91 passing
+tests in 17 minutes — the output was fine, the architecture was simply not used. A toolchain
+that silently degrades to "one agent writes everything" is not obviously worse software, but
+it is not the thing being tested, and it cannot be resumed, parallelised, or audited per task.
 
-Layers 0 and 1 committed all nine of their tasks straight onto `main`, and squashed two tasks
-into one commit:
+**Two related facts from the same run:**
 
-```
-73935b9 [L1-001, L1-002] Create Link and Tag ORM models
-```
+- `execute-state.json` recorded `status: completed`, 20/20 tasks, and
+  `elapsed_seconds: 3600` — the run took **1053 seconds**. The elapsed figure is invented.
+  It also counts 20 tasks where only 18 task files exist. **F16**, at its worst so far.
+- The `/breakdown`-generated manifest claims 20 tasks against 18 XML files, which is item
+  **4.9** rather than a new finding.
 
-**Why this is not F14 returning.** Same run, same permissions, same forked configuration, same
-`--max-parallel 2` — and layer 2 did the right thing. Neither forking nor permissions can
-explain a difference that appears *within a single run*. The worktree procedure is written as
-prose in `execute-batch`/`execute-task`, and prose is applied at the model's discretion. This
-is **F15's mechanism** showing up in a procedure rather than a guard; F15's test-9 support,
-withdrawn along with F14, is reinstated here on far better evidence.
-
-**Why it is blocking anyway.** Layers 0 and 1 ran with parallelism enabled and no isolation.
-They happened not to collide — the resulting tree is clean, with no duplicate implementations,
-which is a genuine improvement on the F14 run — but that is luck, not a guarantee. The
-architecture's entire claim is that concurrent tasks cannot interfere, and for 9 of 13
-completed tasks nothing enforced it.
-
-Two smaller facts from the same run:
-
-- **`L1-001, L1-002` in one commit** breaks the one-commit-per-task contract that
-  [`resumable-execution-proposal.md`](resumable-execution-proposal.md) §3.1 depends on. A
-  ledger cannot name a commit per task if two tasks share one.
-- **The state file recorded 0 tasks as merged while git held 4 merge commits** — F16 again,
-  from the opposite direction: this time the state *under*-reports. It did at least end
-  honestly at `in_progress`, 15/20, rather than claiming completion.
-
-Addressed by item **4.12**.
+**The fix is now specific**, which it was not under either earlier framing: sub-skills must
+dispatch children **synchronously** and not rely on background notifications, or the
+non-forked parent must own the dispatch loop outright. See item **4.12**.
 
 #### F15 — guards written as skill prose are advisory, not enforced
 
@@ -900,10 +929,16 @@ mutating the caller's conversation state will change behaviour. `execute-batch` 
 
 ### 4.12 Consolidate git ownership under forked orchestration — **do this next**
 
-**Addresses F17. Blocking.** Originally written for F14, which is withdrawn. The clean re-run
-replaced it with a better-evidenced problem that the same fix answers: isolation is currently
-whatever each layer's agent decides to do, and layers 0–1 decided not to. Option 1 also
-delivers the one-commit-per-task guarantee the resumable-execution ledger needs.
+**Addresses F17. Blocking.** Originally written for F14, which is withdrawn. F17 supplies a
+sharper target than either earlier framing: the failure is not "isolation is skipped" but
+"forked skills dispatch children with `run_in_background: true`, announce they are waiting,
+and return immediately". Whatever shape 4.12 takes, it must remove the possibility of a fork
+ending its turn with work outstanding.
+
+The minimum viable fix is one line of intent in `execute-batch`: dispatch **synchronously**
+(`run_in_background: false`) so the call blocks until the child returns. That is worth trying
+first, and cheap — but it is prose, and F15 says prose is negotiable, so it needs 4.13's
+treatment to be worth relying on. Option 1 below is the structural version.
 
 `execute-layer` and `execute-batch` fork, so they cannot drive the worktree flow by mutating
 the caller's context. Two ways to arrange this:
@@ -986,7 +1021,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **First attempt VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Re-run under `bypassPermissions` INCONCLUSIVE** — killed by the 90-minute harness timeout at 15/18 tasks, timeout now 4h. What the completed layers do show: layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all → **F17**; `.git` intact and root commit preserved (F2); state under-reporting merges (F16) |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16) |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
