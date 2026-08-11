@@ -258,15 +258,78 @@ the same rule: verify SHAs, and stop scanning at the first gap.
 
 ---
 
-## 8. Open questions
+## 8. Decisions taken
 
-1. **Where does the ledger live?** Alongside `execute-state.json` in the tasks directory, or
-   in the target repository? The tasks directory keeps the target clean; the target repo makes
-   the ledger travel with the commits it references.
-2. **Should `--resume` be the default** when a ledger exists, rather than an explicit flag?
-   Today a bare `/execute` on an existing state asks the operator; an unattended run cannot
-   answer.
-3. **Should the guard also cover `/breakdown`?** Test 6 in §5.2 took 67 minutes — long enough
-   to hit a window, and generation has no natural checkpoint granularity.
-4. **What is the right default threshold?** 85% is a guess. The right number depends on how
-   much a single task costs relative to the window, which the fixture can measure.
+### 8.1 The ledger lives in the target repository
+
+```
+{project_path}/.execute/<slug>/ledger.jsonl
+{project_path}/.execute/.gitignore          # contains a single line: *
+```
+
+**Rationale — index and evidence must share a fate.** The ledger is an index into git; its
+entries are meaningless anywhere else. A ledger in the tasks directory *survives* the target
+repository being reset, re-cloned, or recreated, and then names SHAs that no longer exist —
+F16 reappearing by another route, a record outliving its evidence. Co-located in the target,
+it dies with the commits it references and cannot drift independently.
+
+Second reason: **one task set can be executed against several targets.** `/breakdown` output
+is reusable — the same 18 tasks may be run into a fresh repo after an abandoned attempt. A
+tasks-directory ledger implicitly assumes one execution; a target-side ledger gives one per
+target for free.
+
+The **self-ignoring `.gitignore`** is what makes writing into the user's repository
+acceptable: it keeps the directory out of `git status` and out of accidental commits *without
+modifying any tracked file*. It lives in the working tree rather than under `.git/`, which
+Claude Code treats as a protected path and denies agent writes to. This is the mechanism
+superpowers' `sdd-workspace` script uses, for the same reasons.
+
+Two consequences accepted knowingly:
+
+- **`git clean -xdff` destroys it.** Acceptable — `git log` is the source of truth and the
+  ledger is an index; recovery means re-deriving from commit messages.
+- **Regenerating tasks can stale it.** If `/breakdown` re-runs and task IDs shift, the ledger
+  references IDs that no longer mean the same thing. Record a `manifest` hash in the ledger
+  header so resume detects the mismatch rather than acting on it.
+
+### 8.2 `--resume` is the default when a ledger exists
+
+A bare `/execute` with a ledger present resumes from the last verified task rather than
+prompting. Prompting cannot work for the unattended overnight runs this feature exists to
+support — and after §8.1, resuming is the safe default: verification is against git, so a
+resume with nothing verified simply starts from the beginning.
+
+`--reset` remains the explicit way to discard progress and start fresh, and should say how
+many verified tasks it is about to abandon before doing so.
+
+### 8.3 The threshold defaults to 85% and is overrideable
+
+`--stop-at-usage <percent>`, defaulting to `85`. The right value depends on what a single task
+costs relative to the window, which the §5.1 fixture can measure — treat 85 as a starting
+point to be tuned, not a finding. A premature stop is safe and resumable by design, so erring
+low costs little.
+
+### 8.4 `/breakdown` gets the same guard, on weaker evidence
+
+Test 6 in §5.2 ran 67 minutes — long enough to meet a window. `/breakdown` has no commits to
+verify against, but it is not checkpoint-less: it already writes per-layer `.done` markers
+alongside the generated task files. That is the same principle in weaker form — **verify the
+artifact exists** rather than trust a status field — with files as the evidence instead of
+commits.
+
+Two known gaps, which is why this is lower priority than the `/execute` work:
+
+- The checkpoint granularity is a whole layer, so an interrupted layer is re-generated.
+- Existing `.done` resumption cannot distinguish *resumed deliberately* from *inherited
+  someone else's partial run*. This is not hypothetical: it silently contaminated §5.2 test 6,
+  which resumed from test 5's markers and generated only three of four layers while reporting
+  success.
+
+## 9. Open questions
+
+1. **Should the ledger header record a manifest hash?** §8.1 argues yes — it is the only way
+   resume can detect that the task set was regenerated underneath it. Cheap to add; the
+   question is whether a mismatch should warn or refuse.
+2. **What locks a target against two concurrent runs?** Target-side ledgers make a lock file a
+   natural companion, but nothing currently prevents two `/execute` invocations against one
+   repository.

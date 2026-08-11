@@ -51,6 +51,9 @@ def git(args, cwd):
     return p.stdout.strip()
 
 
+PERMISSION_MODE = "acceptEdits"   # overridden by --permission-mode
+
+
 def claude(prompt, cwd, results_dir, name, timeout, extra=()):
     """One `claude -p` run, with its transcript and result JSON captured."""
     os.makedirs(results_dir, exist_ok=True)
@@ -58,7 +61,7 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
     # rerun with a date-derived id fails before doing anything.
     sid = str(uuid.uuid5(NS, f"5.2/{name}/{time.strftime('%Y%m%d-%H%M%S')}"))
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--session-id", sid,
-           "--model", "sonnet", "--permission-mode", "acceptEdits",
+           "--model", "sonnet", "--permission-mode", PERMISSION_MODE,
            "--plugin-dir", REPO, *extra]
     started = time.time()
     try:
@@ -299,8 +302,13 @@ def main():
     ap.add_argument("--only", help="comma-separated test ids")
     ap.add_argument("--include-full", action="store_true", help="also run test 9")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--permission-mode", default="acceptEdits",
+                    help="acceptEdits permits file writes but NOT Bash; /execute needs git, "
+                         "so a real run requires bypassPermissions. The first test 9 failed "
+                         "silently on this: subagents wrote files but could not create worktrees.")
     args = ap.parse_args()
 
+    globals()["PERMISSION_MODE"] = args.permission_mode
     ws = args.workdir
     app = os.path.join(ws, "app")
     prd_fresh = os.path.join(ws, "prd-fresh")
