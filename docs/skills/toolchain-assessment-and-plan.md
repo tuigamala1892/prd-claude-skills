@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. **Two new blocking findings from that run: F14 (worktree isolation lost) and F15 (prose guards not enforced).** Items 4.12–4.13 proposed and unstarted
+**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. **F15 (prose guards not enforced) and F16 (state file untruthful) stand. F14 is withdrawn — it was an artefact of the test harness's permission mode, not a toolchain defect.** Item 4.13 proposed and unstarted; 4.12 is on hold pending a clean run
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -13,10 +13,17 @@
 > questions 1–3 are resolved. See §3.5 for results and §3.6 for method.
 >
 > Items **4.7** and **4.8** have since been completed too, so F1, F2 and F13 are resolved and
-> confirmed under a real run. **The pipeline has now been run end to end (§5.2), and it does
-> not work.** It completes and reports success while 19 of 20 tasks bypass worktree isolation
-> entirely (F14), and documented guards are ignored (F15). Repaired at the level it was broken
-> before; broken at a level that was previously invisible because nothing had ever run.
+> confirmed under a real run. **The pipeline has now been run end to end (§5.2.)** The first
+> such run appeared to show worktree isolation collapsing (F14) — that reading was wrong, and
+> the finding is withdrawn in §3.1: the harness ran the toolchain under a permission mode that
+> denied subagents `Bash`, so they could not create worktrees and said so. What survives that
+> correction is real and unglamorous: documented guards are ignored (F15) and the state file
+> lies about what was done (F16).
+>
+> **The lesson generalises past this one finding.** A negative result from an end-to-end run
+> is only as trustworthy as the harness's permissions, and this one was misread for a day. Any
+> future §5.2 failure should be checked against the subagent transcripts for permission denials
+> before it is written up as a toolchain defect.
 >
 > A regression suite at `tests/` enforces every one of these fixes; run it before and
 > after any change to skill frontmatter or git commands.
@@ -106,7 +113,7 @@ other repository, so no repo needs to ignore another and no gitlink can form.
 | **Item 4.8 done** — remote operations guarded; branch name parameterised as `--base-branch`, defaulting to repository HEAD | — |
 | **Item 4.7 done** — Layer 0 no longer deletes the target's `.git` or contradicts the preflight. The wrong-repository guard was added but **does not work in practice** — see F15 | — |
 | §5.1 fixture built at `tests/fixture/`, §5.2 sequence run end to end | `3972064`, `a623d83` |
-| **First full `/execute` ever run** — completed in 83 min; surfaced F14, F15, F16 | — |
+| **First full `/execute` ever run** — completed in 83 min; surfaced F15 and F16, and F14 which was later withdrawn | — |
 
 The ampersand fix brought the PRD directory to **61 of 62 files parsing as well-formed XML**.
 The single holdout is `docs/prd/test-project/what-next.md`, which is prose markdown rather
@@ -131,44 +138,69 @@ than XML — addressed by item **4.4** below.
 > Findings are numbered in discovery order, and listed here worst first rather than in
 > numeric order.
 >
-> **F14 now leads.** F13 was the most severe item while nothing had ever been run: no skill
-> forked, so no declared model or agent applied. Fixing it exposed F14 — the orchestration
-> depended on skills *not* forking, and now that they do, worktree isolation is gone. F13
-> made the toolchain's declarations meaningless; F14 makes its central guarantee false.
-> Both were invisible until something actually ran.
+> **F13 leads again.** It briefly ceded the top spot to F14, on the reading that fixing
+> forking had destroyed worktree isolation. That reading did not survive scrutiny — see the
+> withdrawal below — so F13 stands as the most severe thing this assessment found: no skill
+> in the toolchain had ever forked, so no declared model or agent had ever applied. It was
+> invisible until something actually ran.
 
-#### F14 — worktree isolation is not happening; tasks write to the main working tree
+#### ~~F14 — worktree isolation is not happening~~ — **WITHDRAWN**
 
-Found by §5.2 test 9, the first full `/execute` ever run. **This is a regression introduced
-by item 4.11**, and it removes the guarantee the parallel architecture is built on.
+> **This finding was wrong, and wrong in a way worth recording rather than deleting.** The
+> observation was real; the diagnosis was not. It is left in place, struck through, because
+> the mistake is instructive and because item 4.12 and open question 1 were both written on
+> top of it.
 
-The run reported itself a complete success — `status: completed`, 20/20 tasks, 0 failed,
-0 abandoned, 0 retries. The repository says otherwise:
+**What was observed.** §5.2 test 9, the first full `/execute` ever run, reported complete
+success — `status: completed`, 20/20 tasks, 0 failed, 0 abandoned — while git contained one
+merge commit and one branch. Nineteen of twenty tasks wrote directly into the main working
+tree, which the orchestrator swept up in a commit titled *"Pre-merge baseline: commit working
+tree state from prior tasks"*, leaving duplicate implementations (`api/links.py` beside
+`app/api/links.py`, `main.py` beside `app/main.py`).
 
-| | |
-|---|---|
-| Tasks in state | 20 |
-| Marked `merged` in state | 4 |
-| **Actual merge commits in git** | **1** |
-| Branches created | 1 |
+**What it was attributed to.** Item 4.11. The argument was that `execute-layer` and
+`execute-batch` had only ever worked by mutating the caller's context inline, so making them
+fork severed the worktree→merge flow. It was coherent, it matched a risk recorded when 4.11
+landed, and it was wrong.
 
-Nineteen of twenty tasks never used a worktree. They wrote directly into the main working
-tree, which the orchestrator then swept up in a commit titled *"Pre-merge baseline: commit
-working tree state from prior tasks"*. The resulting project carries duplicate
-implementations — `api/links.py` beside `app/api/links.py`, `main.py` beside `app/main.py`,
-and three separate test-runner scripts — the signature of unisolated concurrent writes.
+**What actually caused it.** The harness ran `/execute` with `--permission-mode acceptEdits`.
+That grants file edits but **not `Bash`**, and the subagents said so in plain language:
 
-**Why 4.11 caused it.** Before 4.11 nothing forked, so `execute-layer` and `execute-batch`
-ran inline and their instructions mutated the caller's context directly. Now they fork,
-return a summary, and the parent no longer drives the worktree→merge flow. Making forking
-work broke the orchestration that had been relying on it *not* working. This was predicted
-when 4.11 landed and recorded as untested; it is now observed.
+> *"I need permission to create a git worktree."*
 
-Note what this does **not** undermine: `.git` stayed intact with the root commit reachable,
-and the whole run completed against a repository with no remote. F1 and F2 hold under a real
-run. The failure is isolation, not safety.
+They could not run `git worktree add`, so they fell back to the only thing left available to
+them — editing files in place — and the orchestrator committed the result. The toolchain
+behaved correctly given what it was permitted to do. §5.2 test 9 was measuring its own
+permission mode.
 
-Addressed by item **4.12**.
+**The counter-evidence.** Re-running test 9 under `bypassPermissions`, on the unmodified
+forked `main` configuration, produces worktrees. Taken from the fixture while that run was
+still in flight:
+
+```
+$ git -C app log --oneline
+aba78b7 Merge worktree-L2-001: POST /links endpoint - Create new link
+...
+$ git -C app worktree list
+.../app                 aba78b7 [main]
+.../.worktrees/L2-002   aba78b7 [worktree-L2-002]
+```
+
+A worktree created, a branch per task, a real merge commit. Forked orchestration and worktree
+isolation are not in conflict — which is exactly what F14 claimed they were.
+
+**Experiment B is void for the same reason.** The un-forked-orchestrator branch
+(`experiment/unfork-orchestrators`) ran under the same permission mode, so it measured the
+same artefact and settles nothing either way.
+
+**What survives, provisionally.** The run above commits layer 0 and layer 1 tasks *directly*
+to `main` with no worktree, and merges `L1-001` and `L1-002` into a single commit, reserving
+worktrees for layer 2. If that holds when the run finishes it is a genuine defect, but a far
+narrower one than F14 described, and it matters mainly because it breaks the
+one-commit-per-task contract that
+[`resumable-execution-proposal.md`](resumable-execution-proposal.md) §3.1 depends on. It is
+deliberately **not** promoted to a numbered finding until the run completes — drawing a
+conclusion from a partial run is the error that produced F14 in the first place.
 
 #### F15 — guards written as skill prose are advisory, not enforced
 
@@ -181,9 +213,12 @@ reasoned past the missing repository as well:
 
 Two separate guards ignored in one run: the `docs/prd/` refusal, and the preflight's
 `test -d {project_path}/.git`. Both are written as prose instructions, and a capable model
-treated them as context to be weighed rather than conditions to be met. Test 9 shows the same
-shape applied to a *procedure* rather than a guard — the documented worktree flow was skipped
-while the run reported success (F14).
+treated them as context to be weighed rather than conditions to be met.
+
+This finding stands on test 8 alone. It originally cited test 9 as a second instance — the
+documented worktree flow skipped while the run reported success — and that support is
+withdrawn with F14: test 9's subagents were denied `Bash`, so skipping the flow was
+compliance with their permissions, not disregard of an instruction.
 
 Two consequences worth stating plainly:
 
@@ -773,47 +808,6 @@ Add to `breakdown`'s `manifest.json` specification:
 Decide `agents/project-context-finalizer.md`: wire it into `/execute`'s completion phase, or
 delete it. Leaving 219 unreferenced lines in a reusable toolchain is a maintenance liability.
 
-### 4.12 Restore worktree isolation under forked orchestration — **do this next**
-
-**Addresses F14. Blocking.**
-
-`execute-layer` and `execute-batch` now fork, so they cannot drive the worktree flow by
-mutating the caller's context the way they used to. Decide which of these the architecture
-actually wants:
-
-1. *(recommended)* **Move worktree creation and merging out of the forked skills.** Have the
-   fork return a structured result — task id, branch, worktree path, verification outcome —
-   and let the non-forked orchestrator perform `git worktree add` and the merge queue.
-   Forking is then a way to isolate *reasoning*, and git operations stay in one place with
-   one owner.
-2. **Stop `execute-layer`/`execute-batch` forking**, by dropping `context: fork` from those
-   two specifically. Cheapest to do, but it gives up per-skill `model:` on exactly the
-   skills that orchestrate the expensive work, and re-creates the coupling that made this
-   fragile.
-
-Whichever is chosen, the acceptance test is not "the run reports success". It is
-`git log --merges` in the target repository showing one merge per task, and no duplicate
-implementations at the project root — both now asserted by §5.2 test 9.
-
-### 4.13 Make the critical guards executable rather than advisory
-
-**Addresses F15**
-
-The `docs/prd/`, toolchain-repository and detached-HEAD guards are prose, and F15 shows prose
-is negotiable. Options, in increasing order of reliability:
-
-1. Express each guard as a **single shell command whose exit status is the decision**, phrased
-   so there is nothing to interpret: `test -d {p}/docs/prd && exit 1`. Better than prose, still
-   dependent on the model choosing to run it.
-2. Put the preconditions in a **script the skill invokes** — one `preflight.sh` that exits
-   non-zero — so the check is a program, not an instruction.
-3. Accept that a skill cannot police its own target and move the guard **outward**, to whatever
-   wraps `/execute`.
-
-Option 2 is the smallest change that actually changes the guarantee. Note the regression suite
-currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
-that check should assert the mechanism, not the wording, once one is chosen.
-
 ### 4.11 Remove `allowed-tools` from all 15 skills — **DONE**
 
 **Addresses F13, and unblocks 4.1 and 4.2**
@@ -845,6 +839,52 @@ Expect this to surface latent issues rather than none: code that has only ever r
 the caller's context will now run in a fork that returns a summary. Any skill that relied on
 mutating the caller's conversation state will change behaviour. `execute-batch` and
 `execute-layer`, which orchestrate other skills, are the most likely to be affected.
+
+### 4.12 Consolidate git ownership under forked orchestration — **on hold**
+
+**Was: addresses F14, blocking. F14 is withdrawn, so the emergency is gone.** Do not start
+this until the `bypassPermissions` re-run of §5.2 test 9 finishes, since its result decides
+whether there is anything here to fix. Kept on the list because option 1 has value
+independent of F14: it is the cleanest way to guarantee one commit per task, which the
+resumable-execution ledger needs.
+
+`execute-layer` and `execute-batch` fork, so they cannot drive the worktree flow by mutating
+the caller's context. Two ways to arrange this:
+
+1. *(recommended)* **Move worktree creation and merging out of the forked skills.** Have the
+   fork return a structured result — task id, branch, worktree path, verification outcome —
+   and let the non-forked orchestrator perform `git worktree add` and the merge queue.
+   Forking is then a way to isolate *reasoning*, and git operations stay in one place with
+   one owner.
+2. **Stop `execute-layer`/`execute-batch` forking**, by dropping `context: fork` from those
+   two specifically. Cheapest to do, but it gives up per-skill `model:` on exactly the
+   skills that orchestrate the expensive work, and re-creates the coupling that made this
+   fragile.
+
+Whichever is chosen, the acceptance test is not "the run reports success". It is
+`git log --merges` in the target repository showing one merge per task, and no duplicate
+implementations at the project root — both now asserted by §5.2 test 9, **run with `Bash`
+actually available to subagents**. Asserting on a run that was not permitted to create a
+worktree measures nothing.
+
+### 4.13 Make the critical guards executable rather than advisory
+
+**Addresses F15**
+
+The `docs/prd/`, toolchain-repository and detached-HEAD guards are prose, and F15 shows prose
+is negotiable. Options, in increasing order of reliability:
+
+1. Express each guard as a **single shell command whose exit status is the decision**, phrased
+   so there is nothing to interpret: `test -d {p}/docs/prd && exit 1`. Better than prose, still
+   dependent on the model choosing to run it.
+2. Put the preconditions in a **script the skill invokes** — one `preflight.sh` that exits
+   non-zero — so the check is a program, not an instruction.
+3. Accept that a skill cannot police its own target and move the guard **outward**, to whatever
+   wraps `/execute`.
+
+Option 2 is the smallest change that actually changes the guarantee. Note the regression suite
+currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
+that check should assert the mechanism, not the wording, once one is chosen.
 
 ---
 
@@ -888,7 +928,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **FAIL** — ran 83 min and reported success, but 19 of 20 tasks bypassed worktree isolation → **F14**. `.git` intact and root commit preserved, so the F2 fix held |
+| 9 | Full `/execute` run on the fixture | **VOID** — ran 83 min and reported success while 19 of 20 tasks bypassed worktree isolation, but under `--permission-mode acceptEdits`, which denied subagents `Bash`. The result measured the harness → **F14 withdrawn**. Re-running under `bypassPermissions`. What does hold from it: `.git` intact and root commit preserved (F2), and the state file untruthful (F16) |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -903,6 +943,13 @@ reaching the behaviour under test — `/execute` errored because `/breakdown` ha
 and the checker read "an error occurred" as "the guard refused correctly". Test 6 separately
 inherited test 5's output, because `/breakdown` resumes from `.done` markers and both tests
 share `docs/tasks/<slug>/`.
+
+**Test 9's FAIL was also wrong**, and cost the most. Re-graded from PASS to FAIL on a
+tightened criterion, it was written up as blocking finding F14 and drove a whole remediation
+item — when the actual cause was that the harness ran the toolchain under a permission mode
+denying subagents `Bash`. The subagents said so explicitly in their transcripts, which nobody
+read before drawing the conclusion. **Check the transcripts for permission denials before
+attributing an end-to-end failure to the code.**
 
 Every one of those was a fault in the harness, not the toolchain. They are recorded because
 the same shapes will recur: assert that a test reached the thing it claims to test, isolate
@@ -934,7 +981,7 @@ bad = [p for p in files if not _parses(p)]
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
-| **4.12** | **Restore worktree isolation under forked orchestration** | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
+| 4.12 | Consolidate git ownership under forked orchestration *(on hold — F14 withdrawn)* | Structural | `execute-layer`, `execute-batch`, `execute-task` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |
@@ -961,9 +1008,10 @@ Decided since:
 
 Still open:
 
-1. **How should forked skills orchestrate git?** The central question raised by F14, and item
-   4.12 is a choice between two answers rather than a fix to apply. Everything else in the
-   `/execute` path is downstream of it.
+1. **How should forked skills orchestrate git?** Raised by F14 and outliving its withdrawal.
+   Forked orchestration and worktrees demonstrably coexist, so this is no longer urgent — but
+   *which layer owns `git worktree add` and the merge queue* is still unanswered, and the
+   one-commit-per-task contract the resume ledger needs depends on the answer.
 2. **Can a skill enforce anything about its own target?** F15 says prose cannot. If the answer
    is "no", guards belong outside the skill entirely, and item 4.6's proposed absolute-path
    check needs rethinking before it is written rather than after.
