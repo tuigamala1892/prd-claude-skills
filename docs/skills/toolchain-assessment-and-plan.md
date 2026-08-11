@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. **F15 (prose guards not enforced) and F16 (state file untruthful) stand. F14 is withdrawn — it was an artefact of the test harness's permission mode, not a toolchain defect.** Item 4.13 proposed and unstarted; 4.12 is on hold pending a clean run
+**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. F14 is **withdrawn** — an artefact of the harness's permission mode. Its replacement, **F17, is real and blocking**: worktree isolation is applied per *layer*, not per task — layers 0–1 bypass it entirely while layer 2 performs it correctly in the same run. F15 and F16 stand. Items 4.12 and 4.13 open
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -138,11 +138,16 @@ than XML — addressed by item **4.4** below.
 > Findings are numbered in discovery order, and listed here worst first rather than in
 > numeric order.
 >
-> **F13 leads again.** It briefly ceded the top spot to F14, on the reading that fixing
-> forking had destroyed worktree isolation. That reading did not survive scrutiny — see the
-> withdrawal below — so F13 stands as the most severe thing this assessment found: no skill
-> in the toolchain had ever forked, so no declared model or agent had ever applied. It was
-> invisible until something actually ran.
+> **F13 remains the most severe thing this assessment found** — no skill in the toolchain had
+> ever forked, so no declared model or agent had ever applied — but it is fixed, so **F17
+> leads the open findings**.
+>
+> The path from one to the other is worth following, because two of the three steps were
+> wrong. F13's fix made skills fork for the first time. The first end-to-end run then appeared
+> to show that forking had destroyed worktree isolation (F14) — a tidy story, and false: the
+> harness had denied subagents `Bash`. Re-running with permissions granted showed isolation
+> working perfectly in layer 2 and absent in layers 0–1 (F17). The real defect was neither
+> "isolation works" nor "forking broke it", and it took three runs to see it.
 
 #### ~~F14 — worktree isolation is not happening~~ — **WITHDRAWN**
 
@@ -193,14 +198,65 @@ isolation are not in conflict — which is exactly what F14 claimed they were.
 (`experiment/unfork-orchestrators`) ran under the same permission mode, so it measured the
 same artefact and settles nothing either way.
 
-**What survives, provisionally.** The run above commits layer 0 and layer 1 tasks *directly*
-to `main` with no worktree, and merges `L1-001` and `L1-002` into a single commit, reserving
-worktrees for layer 2. If that holds when the run finishes it is a genuine defect, but a far
-narrower one than F14 described, and it matters mainly because it breaks the
-one-commit-per-task contract that
-[`resumable-execution-proposal.md`](resumable-execution-proposal.md) §3.1 depends on. It is
-deliberately **not** promoted to a numbered finding until the run completes — drawing a
-conclusion from a partial run is the error that produced F14 in the first place.
+**What survives.** The clean run does bypass worktrees for layers 0 and 1 while using them
+correctly for layer 2. That observation held up and is now recorded as **F17** below — a real
+defect, but a different and narrower one than F14 described, with a different cause.
+
+#### F17 — worktree isolation is applied per *layer*, not per task
+
+Found by the `bypassPermissions` re-run of §5.2 test 9 — the first measurement of this
+toolchain taken with `Bash` actually available to subagents. This is what F14 should have
+said.
+
+The run was killed by the harness timeout at 90 minutes with 15 of 18 tasks complete, so
+layer 4 was in flight and is excluded from what follows. Layers 0, 1 and 2 all finished:
+
+| Layer | Tasks | Worktrees | Branches | Merge commits |
+|---|---|---|---|---|
+| 0-setup | 4 | **0** | **0** | **0** |
+| 1-foundation | 5 | **0** | **0** | **0** |
+| 2-backend | 4 | 4 | 4 | 4 |
+
+Layer 2 is textbook — `worktree-L2-001` through `-004`, each with an implementation commit and
+a real merge:
+
+```
+d730a14 Merge worktree-L2-004: Export router from app/api package
+879568c Merge worktree-L2-003: POST /links/{link_id}/tags endpoint - Add tags to a link
+b62da93 Merge worktree-L2-002: GET /links endpoint - List all links with optional tag filter
+aba78b7 Merge worktree-L2-001: POST /links endpoint - Create new link
+```
+
+Layers 0 and 1 committed all nine of their tasks straight onto `main`, and squashed two tasks
+into one commit:
+
+```
+73935b9 [L1-001, L1-002] Create Link and Tag ORM models
+```
+
+**Why this is not F14 returning.** Same run, same permissions, same forked configuration, same
+`--max-parallel 2` — and layer 2 did the right thing. Neither forking nor permissions can
+explain a difference that appears *within a single run*. The worktree procedure is written as
+prose in `execute-batch`/`execute-task`, and prose is applied at the model's discretion. This
+is **F15's mechanism** showing up in a procedure rather than a guard; F15's test-9 support,
+withdrawn along with F14, is reinstated here on far better evidence.
+
+**Why it is blocking anyway.** Layers 0 and 1 ran with parallelism enabled and no isolation.
+They happened not to collide — the resulting tree is clean, with no duplicate implementations,
+which is a genuine improvement on the F14 run — but that is luck, not a guarantee. The
+architecture's entire claim is that concurrent tasks cannot interfere, and for 9 of 13
+completed tasks nothing enforced it.
+
+Two smaller facts from the same run:
+
+- **`L1-001, L1-002` in one commit** breaks the one-commit-per-task contract that
+  [`resumable-execution-proposal.md`](resumable-execution-proposal.md) §3.1 depends on. A
+  ledger cannot name a commit per task if two tasks share one.
+- **The state file recorded 0 tasks as merged while git held 4 merge commits** — F16 again,
+  from the opposite direction: this time the state *under*-reports. It did at least end
+  honestly at `in_progress`, 15/20, rather than claiming completion.
+
+Addressed by item **4.12**.
 
 #### F15 — guards written as skill prose are advisory, not enforced
 
@@ -215,10 +271,12 @@ Two separate guards ignored in one run: the `docs/prd/` refusal, and the preflig
 `test -d {project_path}/.git`. Both are written as prose instructions, and a capable model
 treated them as context to be weighed rather than conditions to be met.
 
-This finding stands on test 8 alone. It originally cited test 9 as a second instance — the
-documented worktree flow skipped while the run reported success — and that support is
-withdrawn with F14: test 9's subagents were denied `Bash`, so skipping the flow was
-compliance with their permissions, not disregard of an instruction.
+Test 9 is a second instance, though not the one originally claimed. That citation was
+withdrawn with F14 — those subagents were denied `Bash`, so skipping the worktree flow was
+compliance with their permissions rather than disregard of an instruction. The clean re-run
+restores the point on better evidence: with `Bash` available, layers 0 and 1 still skipped the
+documented worktree procedure while layer 2 followed it (**F17**). A prose *procedure* is as
+negotiable as a prose *guard*.
 
 Two consequences worth stating plainly:
 
@@ -840,13 +898,12 @@ the caller's context will now run in a fork that returns a summary. Any skill th
 mutating the caller's conversation state will change behaviour. `execute-batch` and
 `execute-layer`, which orchestrate other skills, are the most likely to be affected.
 
-### 4.12 Consolidate git ownership under forked orchestration — **on hold**
+### 4.12 Consolidate git ownership under forked orchestration — **do this next**
 
-**Was: addresses F14, blocking. F14 is withdrawn, so the emergency is gone.** Do not start
-this until the `bypassPermissions` re-run of §5.2 test 9 finishes, since its result decides
-whether there is anything here to fix. Kept on the list because option 1 has value
-independent of F14: it is the cleanest way to guarantee one commit per task, which the
-resumable-execution ledger needs.
+**Addresses F17. Blocking.** Originally written for F14, which is withdrawn. The clean re-run
+replaced it with a better-evidenced problem that the same fix answers: isolation is currently
+whatever each layer's agent decides to do, and layers 0–1 decided not to. Option 1 also
+delivers the one-commit-per-task guarantee the resumable-execution ledger needs.
 
 `execute-layer` and `execute-batch` fork, so they cannot drive the worktree flow by mutating
 the caller's context. Two ways to arrange this:
@@ -864,8 +921,9 @@ the caller's context. Two ways to arrange this:
 Whichever is chosen, the acceptance test is not "the run reports success". It is
 `git log --merges` in the target repository showing one merge per task, and no duplicate
 implementations at the project root — both now asserted by §5.2 test 9, **run with `Bash`
-actually available to subagents**. Asserting on a run that was not permitted to create a
-worktree measures nothing.
+actually available to subagents and long enough to finish**. Asserting on a run that was not
+permitted to create a worktree, or was killed before it could, measures nothing. F17 is the
+concrete target: every layer must look like layer 2 did.
 
 ### 4.13 Make the critical guards executable rather than advisory
 
@@ -928,7 +986,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **VOID** — ran 83 min and reported success while 19 of 20 tasks bypassed worktree isolation, but under `--permission-mode acceptEdits`, which denied subagents `Bash`. The result measured the harness → **F14 withdrawn**. Re-running under `bypassPermissions`. What does hold from it: `.git` intact and root commit preserved (F2), and the state file untruthful (F16) |
+| 9 | Full `/execute` run on the fixture | **First attempt VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Re-run under `bypassPermissions` INCONCLUSIVE** — killed by the 90-minute harness timeout at 15/18 tasks, timeout now 4h. What the completed layers do show: layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all → **F17**; `.git` intact and root commit preserved (F2); state under-reporting merges (F16) |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -981,7 +1039,7 @@ bad = [p for p in files if not _parses(p)]
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
-| 4.12 | Consolidate git ownership under forked orchestration *(on hold — F14 withdrawn)* | Structural | `execute-layer`, `execute-batch`, `execute-task` |
+| **4.12** | **Consolidate git ownership under forked orchestration** *(now addresses F17)* | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |

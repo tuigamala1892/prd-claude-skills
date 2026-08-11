@@ -68,10 +68,12 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, encoding="utf-8", errors="replace")
         out, err, rc = p.stdout, p.stderr, p.returncode
+        timed_out = False
     except subprocess.TimeoutExpired as e:
         raw = e.stdout or ""
         out = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
         err, rc = f"TIMEOUT after {timeout}s", -1
+        timed_out = True
     elapsed = round(time.time() - started, 1)
 
     text = out
@@ -89,7 +91,8 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
             shutil.copy2(os.path.join(root, f"{sid}.jsonl"),
                          os.path.join(results_dir, "transcript.jsonl"))
             break
-    return {"rc": rc, "text": text or "", "elapsed": elapsed, "session": sid}
+    return {"rc": rc, "text": text or "", "elapsed": elapsed, "session": sid,
+            "timed_out": timed_out}
 
 
 def refused(text):
@@ -290,7 +293,7 @@ def make_tests(ws, app, prd_fresh):
              prompt=f"/{P}:execute {tasks_dir} --project-path {ws} "
                     f"--worktree-dir {os.path.join(ws, '.worktrees')} --dry-run"),
         dict(id=9, name="execute-full", desc="Full /execute run on the fixture",
-             cwd=ws, timeout=5400, check=t9, full=True,
+             cwd=ws, timeout=14400, check=t9, full=True,
              prompt=f"/{P}:execute {tasks_dir} --project-path {app} "
                     f"--worktree-dir {os.path.join(ws, '.worktrees')} --max-parallel 2"),
     ]
@@ -363,7 +366,14 @@ def main():
         except Exception as e:
             ok, why = False, f"check raised {type(e).__name__}: {e}"
 
-        if ok and t.get("expect_fail"):
+        # A killed run has no behavioural verdict to give. Grading one as FAIL is how
+        # test 9 produced finding F14: the checker described a truncated run as if the
+        # toolchain had chosen to skip worktrees. Say "inconclusive" and mean it.
+        if r["timed_out"]:
+            status = "INCONCLUSIVE"
+            why = (f"run killed at {t['timeout']}s before finishing -- no verdict. "
+                   f"State at the cut: {why}")
+        elif ok and t.get("expect_fail"):
             status = "FIXED"
         elif ok:
             status = "PASS"
@@ -381,7 +391,9 @@ def main():
         json.dump([{"id": i, "desc": d, "status": s, "why": w, "seconds": e}
                    for i, d, s, w, e in summary], f, indent=2)
     print(f"\n  results: {results}")
-    return 1 if any(s == "FAIL" for _i, _d, s, _w, _e in summary) else 0
+    # INCONCLUSIVE is not a pass, so it must not exit 0 -- but it is not evidence of a
+    # defect either, so it is reported separately from FAIL.
+    return 1 if any(s in ("FAIL", "INCONCLUSIVE") for _i, _d, s, _w, _e in summary) else 0
 
 
 if __name__ == "__main__":
