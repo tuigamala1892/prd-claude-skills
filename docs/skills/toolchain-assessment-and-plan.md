@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 complete; **all three blocking items done (4.7, 4.8, 4.11)**; items 4.1–4.6 and 4.9–4.10 proposed
+**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. **Two new blocking findings from that run: F14 (worktree isolation lost) and F15 (prose guards not enforced).** Items 4.12–4.13 proposed and unstarted
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -12,9 +12,11 @@
 > verified on real skills. Items 4.1 and 4.2 changed shape as a result, and open
 > questions 1–3 are resolved. See §3.5 for results and §3.6 for method.
 >
-> Items **4.7** and **4.8** have since been completed too, so all three blocking findings
-> (F1, F2, F13) are resolved. The pipeline has **not** been run end to end — treat it as
-> repaired but unproven.
+> Items **4.7** and **4.8** have since been completed too, so F1, F2 and F13 are resolved and
+> confirmed under a real run. **The pipeline has now been run end to end (§5.2), and it does
+> not work.** It completes and reports success while 19 of 20 tasks bypass worktree isolation
+> entirely (F14), and documented guards are ignored (F15). Repaired at the level it was broken
+> before; broken at a level that was previously invisible because nothing had ever run.
 >
 > A regression suite at `tests/` enforces every one of these fixes; run it before and
 > after any change to skill frontmatter or git commands.
@@ -102,7 +104,9 @@ other repository, so no repo needs to ignore another and no gitlink can form.
 | Regression suite added at `tests/` — 17 static checks tied to finding IDs, known failures marked with the item that fixes them | `973604c` |
 | **Item 4.11 done** — `allowed-tools` removed from all 15 skills; forking verified on real skills. **Skills fork for the first time** | — |
 | **Item 4.8 done** — remote operations guarded; branch name parameterised as `--base-branch`, defaulting to repository HEAD | — |
-| **Item 4.7 done** — Layer 0 no longer deletes the target's `.git` or contradicts the preflight; `/execute` refuses wrong-repository targets | — |
+| **Item 4.7 done** — Layer 0 no longer deletes the target's `.git` or contradicts the preflight. The wrong-repository guard was added but **does not work in practice** — see F15 | — |
+| §5.1 fixture built at `tests/fixture/`, §5.2 sequence run end to end | `3972064`, `a623d83` |
+| **First full `/execute` ever run** — completed in 83 min; surfaced F14, F15, F16 | — |
 
 The ampersand fix brought the PRD directory to **61 of 62 files parsing as well-formed XML**.
 The single holdout is `docs/prd/test-project/what-next.md`, which is prose markdown rather
@@ -124,8 +128,82 @@ than XML — addressed by item **4.4** below.
 
 ### 3.1 Blocking
 
-> Findings are numbered in discovery order. **F13 is the most severe item in this
-> document** and is placed first for that reason.
+> Findings are numbered in discovery order, and listed here worst first rather than in
+> numeric order.
+>
+> **F14 now leads.** F13 was the most severe item while nothing had ever been run: no skill
+> forked, so no declared model or agent applied. Fixing it exposed F14 — the orchestration
+> depended on skills *not* forking, and now that they do, worktree isolation is gone. F13
+> made the toolchain's declarations meaningless; F14 makes its central guarantee false.
+> Both were invisible until something actually ran.
+
+#### F14 — worktree isolation is not happening; tasks write to the main working tree
+
+Found by §5.2 test 9, the first full `/execute` ever run. **This is a regression introduced
+by item 4.11**, and it removes the guarantee the parallel architecture is built on.
+
+The run reported itself a complete success — `status: completed`, 20/20 tasks, 0 failed,
+0 abandoned, 0 retries. The repository says otherwise:
+
+| | |
+|---|---|
+| Tasks in state | 20 |
+| Marked `merged` in state | 4 |
+| **Actual merge commits in git** | **1** |
+| Branches created | 1 |
+
+Nineteen of twenty tasks never used a worktree. They wrote directly into the main working
+tree, which the orchestrator then swept up in a commit titled *"Pre-merge baseline: commit
+working tree state from prior tasks"*. The resulting project carries duplicate
+implementations — `api/links.py` beside `app/api/links.py`, `main.py` beside `app/main.py`,
+and three separate test-runner scripts — the signature of unisolated concurrent writes.
+
+**Why 4.11 caused it.** Before 4.11 nothing forked, so `execute-layer` and `execute-batch`
+ran inline and their instructions mutated the caller's context directly. Now they fork,
+return a summary, and the parent no longer drives the worktree→merge flow. Making forking
+work broke the orchestration that had been relying on it *not* working. This was predicted
+when 4.11 landed and recorded as untested; it is now observed.
+
+Note what this does **not** undermine: `.git` stayed intact with the root commit reachable,
+and the whole run completed against a repository with no remote. F1 and F2 hold under a real
+run. The failure is isolation, not safety.
+
+Addressed by item **4.12**.
+
+#### F15 — guards written as skill prose are advisory, not enforced
+
+Found by §5.2 test 8. `/execute` was pointed at a path containing `docs/prd/` — the exact
+case item 4.7 added a refusal for — and did not refuse. It produced a full execution plan and
+reasoned past the missing repository as well:
+
+> *"The project path is not yet a git repository — which is expected since this is a
+> greenfield project where L0-002 initializes git."*
+
+Two separate guards ignored in one run: the `docs/prd/` refusal, and the preflight's
+`test -d {project_path}/.git`. Both are written as prose instructions, and a capable model
+treated them as context to be weighed rather than conditions to be met. Test 9 shows the same
+shape applied to a *procedure* rather than a guard — the documented worktree flow was skipped
+while the run reported success (F14).
+
+Two consequences worth stating plainly:
+
+- **Item 4.7's third part is not delivered.** The wrong-repository guard exists in the text
+  and does not work. The regression suite checks the text is present, which is now known to
+  be insufficient.
+- **The same doubt applies to every other prose guard in the toolchain**, including 4.6's
+  proposed absolute-path check. Writing more emphatic prose is not a fix.
+
+Addressed by item **4.13**.
+
+#### F16 — `execute-state.json` is not a truthful record
+
+Found by §5.2 test 9. The state file claimed 20/20 tasks completed with zero failures while
+git contained a single merge commit, and it listed two task IDs — `L0-005` and `L0-006` —
+that have no corresponding generated task file.
+
+This matters beyond tidiness: `--resume` trusts this file, so a resumed run would skip work
+that was never done, and the completion report shown to the operator is not evidence of
+anything. Any future check on `/execute` must read the repository, not the state file.
 
 #### F13 — `allowed-tools` silently disables `context: fork` on every skill — **RESOLVED**
 
@@ -689,6 +767,47 @@ Add to `breakdown`'s `manifest.json` specification:
 Decide `agents/project-context-finalizer.md`: wire it into `/execute`'s completion phase, or
 delete it. Leaving 219 unreferenced lines in a reusable toolchain is a maintenance liability.
 
+### 4.12 Restore worktree isolation under forked orchestration — **do this next**
+
+**Addresses F14. Blocking.**
+
+`execute-layer` and `execute-batch` now fork, so they cannot drive the worktree flow by
+mutating the caller's context the way they used to. Decide which of these the architecture
+actually wants:
+
+1. *(recommended)* **Move worktree creation and merging out of the forked skills.** Have the
+   fork return a structured result — task id, branch, worktree path, verification outcome —
+   and let the non-forked orchestrator perform `git worktree add` and the merge queue.
+   Forking is then a way to isolate *reasoning*, and git operations stay in one place with
+   one owner.
+2. **Stop `execute-layer`/`execute-batch` forking**, by dropping `context: fork` from those
+   two specifically. Cheapest to do, but it gives up per-skill `model:` on exactly the
+   skills that orchestrate the expensive work, and re-creates the coupling that made this
+   fragile.
+
+Whichever is chosen, the acceptance test is not "the run reports success". It is
+`git log --merges` in the target repository showing one merge per task, and no duplicate
+implementations at the project root — both now asserted by §5.2 test 9.
+
+### 4.13 Make the critical guards executable rather than advisory
+
+**Addresses F15**
+
+The `docs/prd/`, toolchain-repository and detached-HEAD guards are prose, and F15 shows prose
+is negotiable. Options, in increasing order of reliability:
+
+1. Express each guard as a **single shell command whose exit status is the decision**, phrased
+   so there is nothing to interpret: `test -d {p}/docs/prd && exit 1`. Better than prose, still
+   dependent on the model choosing to run it.
+2. Put the preconditions in a **script the skill invokes** — one `preflight.sh` that exits
+   non-zero — so the check is a program, not an instruction.
+3. Accept that a skill cannot police its own target and move the guard **outward**, to whatever
+   wraps `/execute`.
+
+Option 2 is the smallest change that actually changes the guarantee. Note the regression suite
+currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
+that check should assert the mechanism, not the wording, once one is chosen.
+
 ### 4.11 Remove `allowed-tools` from all 15 skills — **DONE**
 
 **Addresses F13, and unblocks 4.1 and 4.2**
@@ -748,22 +867,40 @@ generation cycle on every iteration.
 > exit 1. The suite also validates the fixture PRD statically, so drift fails fast rather than
 > during an end-to-end run.
 
-### 5.2 Sequence
+### 5.2 Sequence — **RUN**
 
-| # | Test | Passes when |
+Executed against the §5.1 fixture by [`tests/fixture/run_5_2.py`](../../tests/fixture/run_5_2.py),
+which captures each run's result JSON and transcript.
+
+| # | Test | Result |
 |---|---|---|
 | 1 | ~~Phase 0 probes (U1, U2, F6 precedence)~~ | **Done** — see §3.5 |
-| 1a | After 4.11, invoke each of the 15 skills | `toolUseResult.status == "forked"` on every one |
-| 1b | After 4.11, invoke the six skills declaring `agent:` | `modelUsage` shows the declared model, not just the session model |
-| 2 | `/prd` on a fresh directory | PRD written; `what-next.md` is valid XML with `<status>` and `<toolchain-version>` |
-| 3 | `/prd` again with no arguments | Existing PRD detected and offered; nothing overwritten |
-| 4 | `/prd --resume` | Finds the PRD via `what-next.md` |
-| 5 | `/breakdown` with a relative `--output-dir` | Rejected with a clear error |
-| 6 | `/breakdown` with an absolute `--output-dir` | Tasks land there; nothing written into the toolchain tree; manifest carries `project_path` and `toolchain_version` |
-| 7 | `/execute` against a repo with **no remote** | Runs; no `git pull` failure |
-| 8 | `/execute` against a path containing `docs/prd/` | Refused |
-| 9 | Full `/execute` run on the fixture | Tasks implement, verify and merge; no `.git` deleted anywhere |
-| 10 | Artefact version mismatch | Toolchain warns rather than misreading |
+| 2 | `/prd` on a fresh directory | **PASS** — PRD written, `what-next.md` valid XML with `<status>`. No `<toolchain-version>`: item 4.5 not done |
+| 3 | `/prd` again with no arguments | **KNOWN/4.3** — opened a fresh interview with a PRD already present. Confirms F3 |
+| 4 | `/prd --resume` | **PASS** — found the existing PRD |
+| 5 | `/breakdown` with a relative `--output-dir` | **KNOWN/4.6** — not rejected, and worse: generated Layer 0 tasks with the relative-derived path baked in, then timed out |
+| 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
+| 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
+| 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
+| 9 | Full `/execute` run on the fixture | **FAIL** — ran 83 min and reported success, but 19 of 20 tasks bypassed worktree isolation → **F14**. `.git` intact and root commit preserved, so the F2 fix held |
+| 10 | Artefact version mismatch | Not run — depends on item 4.5 |
+
+Two results deserve emphasis because they are the opposite of what the summary line said.
+
+**Test 9 first reported PASS.** The criterion was "more than zero commits merged", which a
+run satisfies while doing almost nothing correctly. Tightening it to require merge commits
+proportional to task count re-graded the same run to FAIL. A weak assertion is worse than no
+assertion: it converts an unexamined failure into a green tick.
+
+**Tests 7 and 8 also first reported PASS**, having actually failed at input validation before
+reaching the behaviour under test — `/execute` errored because `/breakdown` had not yet run,
+and the checker read "an error occurred" as "the guard refused correctly". Test 6 separately
+inherited test 5's output, because `/breakdown` resumes from `.done` markers and both tests
+share `docs/tasks/<slug>/`.
+
+Every one of those was a fault in the harness, not the toolchain. They are recorded because
+the same shapes will recur: assert that a test reached the thing it claims to test, isolate
+shared state between runs, and never accept "something happened" as evidence of success.
 
 ### 5.3 Regression check against this project
 
@@ -790,7 +927,9 @@ bad = [p for p in files if not _parses(p)]
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
-| ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
+| ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
+| **4.12** | **Restore worktree isolation under forked orchestration** | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
+| **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |
 | 4.10 | Orphaned agent | Structural | `agents/project-context-finalizer.md` |
@@ -816,11 +955,20 @@ Decided since:
 
 Still open:
 
-1. **Per-layer model tiering** — worth it, or one global implementation model? Now a real
+1. **How should forked skills orchestrate git?** The central question raised by F14, and item
+   4.12 is a choice between two answers rather than a fix to apply. Everything else in the
+   `/execute` path is downstream of it.
+2. **Can a skill enforce anything about its own target?** F15 says prose cannot. If the answer
+   is "no", guards belong outside the skill entirely, and item 4.6's proposed absolute-path
+   check needs rethinking before it is written rather than after.
+3. **Per-layer model tiering** — worth it, or one global implementation model? Now a real
    decision rather than a hypothetical, since 4.11 makes `model:` take effect.
-2. **Branch naming** — derive from HEAD, or keep `main` as a documented requirement?
-3. **Should `/crd-context` become a skill?** Unlike `/prd` and `/crd` it is closer to batch work
+4. **Branch naming** — derive from HEAD, or keep `main` as a documented requirement?
+5. **Should `/crd-context` become a skill?** Unlike `/prd` and `/crd` it is closer to batch work
    than to an interview, so the reasoning that kept those two as commands may invert here.
-4. **Is any tool sandboxing available at all?** `tools:` on a skill does not restrict. If real
+6. **Is any tool sandboxing available at all?** `tools:` on a skill does not restrict. If real
    confinement is wanted for `task-implementer`, it will have to come from somewhere other than
    skill frontmatter.
+7. **What is `/execute`'s completion report worth?** F16 shows it can report 20/20 success
+   against one merge commit. Until that is fixed, no automated check should trust it, and
+   neither should an operator.
