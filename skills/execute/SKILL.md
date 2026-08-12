@@ -260,12 +260,25 @@ sh {skill_dir}/scripts/ledger-status.sh {project_path} {prd_slug} {total_tasks}
 
 Write `verified` into `metrics.tasks_completed` and `expected - verified` into
 `tasks_remaining`. **These are the numbers you report.** Do not report a count that you
-incremented, and do not report success while `missing` is non-empty.
+incremented.
 
-If `verified` is below `expected`, say so plainly and name `first_unverified` as the point a
-resume would restart from. A run that completed 14 of 18 tasks is a useful outcome honestly
-reported; the same run described as complete is worse than a crash, because it invites the
-operator to build on work that does not exist.
+**`status` may only be `completed` when `verified == expected` and `missing` is empty.**
+Otherwise it is `incomplete`, whatever else went right. Two separate conditions, because they
+fail separately:
+
+- `missing` non-empty means a recorded commit has vanished — the repository was reset or
+  rebased. Name `first_unverified` as the point a resume restarts from.
+- `verified < expected` means tasks were never done at all. Name which: the task ids in the
+  manifest that have no ledger entry.
+
+This is not pedantry. Run 7 verified 18 tasks against a manifest claiming 20 and still wrote
+`status: completed` with `tasks_remaining: 2` — internally contradictory, and precisely the
+shape of statement that invites an operator to build on work that does not exist. A run that
+completed 18 of 20 is a useful outcome honestly reported.
+
+If the shortfall is because the manifest counts tasks that have no task file, that is a
+`/breakdown` defect (item 4.9) and worth saying so in the report — but it is still not a
+completed run.
 
 **Why this exists.** Run 6 genuinely succeeded and still recorded `tasks_completed: 23`
 against `tasks_total: 18`, 19 entries in an 18-task `completed[]` list, and an invented
