@@ -192,8 +192,32 @@ fact about its environment, not a task — and its worked example says:
 `cd` into a worktree, not `git worktree add`. The agent expects to be *placed* in one. Nothing
 places it there. So it does the only thing it can: works where it stands, in the main tree.
 
-Two documents describe this job. One is never loaded, and the one that is loaded assumes the
-other already ran.
+**They are not duplicates, which is the part that makes this fixable.** The two files are the
+toolchain's standard skill/agent split — *procedure* and *persona* — and their section headings
+show it plainly:
+
+| `execute-task/SKILL.md` (procedure) | `task-implementer.md` (persona) |
+|---|---|
+| Input Arguments | Core Principles |
+| Execution Flow — worktree, TDD, commit, verify | What You Must NEVER Do |
+| Constraints, Error Recovery | Quality Standards, Example Workflow |
+
+One is a runbook, the other a character brief. Six other skills bind the two halves with an
+`agent:` line in frontmatter — `execute-verify` → `verification-runner`,
+`crd-investigate` → `crd-investigator`, and four more. **`execute-task` is the only one of the
+seven that omits `agent:`**, so its halves were never joined, and `execute-batch` reaches past
+it to the agent with `subagent_type: "task-implementer"` — the only use of `subagent_type` in
+the toolchain.
+
+**Why this one pair broke and the other six did not** is worth recording, because it is a
+design limit rather than an oversight. Every other pair is invoked *once*, by one caller, so a
+`Skill` call suffices. `execute-task` must run *N times in parallel*, and a `Skill` invocation
+cannot fan out — parallel dispatch requires the Agent tool, and the Agent tool takes an
+**agent**, not a skill. The pattern has no way to express "run this skill N times in parallel",
+so the author reached for the only thing that could, and the skill was stranded.
+
+The consequence is that only the persona half is guaranteed to load. Anything that must be read
+has to live in the agent definition.
 
 **This re-reads the earlier findings rather than replacing them:**
 
