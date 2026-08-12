@@ -1081,9 +1081,23 @@ Option 2 is the smallest change that actually changes the guarantee. Note the re
 currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
 that check should assert the mechanism, not the wording, once one is chosen.
 
-### 4.14 Make worktree creation a script, and refuse to operate outside the target
+### 4.14 Make worktree creation a script, and refuse to operate outside the target — **DONE**
 
 **Addresses F18 and F19. Blocking.**
+
+> **Completed.** `skills/execute-task/scripts/create-worktree.sh` is now the single place the
+> command exists; `execute-task` Step 2 invokes it, `execute-merge` asserts its toplevel before
+> merging, the duplicate command in `merge-strategy.md` is replaced by a pointer, and
+> `/execute`'s "git not initialised" advice no longer reads as an instruction to run `git init`.
+> The script was tested against all six paths — two parallel worktrees created, and refusals
+> for a non-repository (without initialising one), a subdirectory of a repository, a
+> pre-existing branch, and a missing base branch.
+>
+> Two regression guards added, both verified to fail when the old pattern is reintroduced:
+> no `git worktree add` in any instruction `.md`, and no `git init` outside backticks. Suite:
+> 22 passed, 0 failed, 2 known.
+>
+> **Not yet verified behaviourally** — that needs a §5.2 run 5.
 
 Two halves, both narrow, both mechanical. Neither is a rewrite of the architecture — 4.12
 option 1 is that — but together they remove the failure that has cost four runs.

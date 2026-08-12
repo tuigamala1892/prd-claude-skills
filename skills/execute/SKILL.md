@@ -404,9 +404,12 @@ For greenfield projects, Layer 0 will create it.
 
 ### Git Not Initialized
 
+`/execute` never creates a repository — not at `{project_path}`, and emphatically not
+anywhere above it. Stop and report, so the operator can decide:
+
 ```
 Error: Git repository not initialized at {project_path}
-Run: cd {project_path} && git init
+/execute does not create repositories. Initialise it yourself, then re-run.
 ```
 
 ### Resume Without State

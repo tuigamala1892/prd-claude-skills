@@ -285,6 +285,54 @@ def _():
                      "context:\n    " + "\n    ".join(bad))
 
 
+@check("worktree creation is a script, never a command in prose", finding="F18")
+def _():
+    # A `git worktree add` line in a document gets retyped from understanding rather than
+    # copied. Across an 18-task run, six agents attempted it, none included `-b`, and all
+    # six failed -- without `-b` git checks out the base branch, which the primary worktree
+    # already holds, so it refuses every time. The script is the only place this command
+    # may live.
+    script = os.path.join(SKILLS, "execute-task", "scripts", "create-worktree.sh")
+    assert os.path.isfile(script), "skills/execute-task/scripts/create-worktree.sh is missing"
+    body = open(script, encoding="utf-8").read()
+    assert re.search(r"worktree add\s+-b\b", body), (
+        "create-worktree.sh does not pass `-b`, which is the entire reason it exists")
+    assert "--show-toplevel" in body, (
+        "create-worktree.sh does not assert it is in the intended repository (F19)")
+
+    bad = []
+    for rel, text in instruction_text():
+        if not rel.endswith(".md"):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if re.search(r"^\s*git worktree add\b", line):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("spell out `git worktree add` in prose; call the bundled script "
+                     "instead:\n    " + "\n    ".join(bad))
+
+
+@check("no skill instructs `git init`", finding="F19")
+def _():
+    # /execute creates no repositories. A run that failed to make a worktree walked up to
+    # the workspace root, ran `git init` there and merged into it, producing a stray
+    # repository holding the docs tree and a gitlink to the real project. Lines that
+    # *forbid* git init are the point and must not trip this.
+    # Distinguish instructing from discussing. Prose quotes the command inside backticks
+    # ("does NOT run `git init`"); an instruction is a bare command, which in these files
+    # means inside a fenced block. Stripping inline-code spans separates the two cleanly
+    # and needs no keyword list to keep in step with the wording.
+    bad = []
+    for rel, text in instruction_text():
+        if not rel.endswith(".md"):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if "git init" not in re.sub(r"`[^`]*`", "", line):
+                continue
+            bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("instruct `git init`, which /execute must never do:\n    "
+                     + "\n    ".join(bad))
+
+
 @check("every `agent:` named by a skill exists in agents/", finding="F7")
 def _():
     known = {stem for stem, _p in agent_files()}

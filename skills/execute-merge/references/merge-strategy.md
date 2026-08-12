@@ -115,12 +115,16 @@ Benefits:
 
 ### Creation (by task agent)
 
+Via the bundled script — see `skills/execute-task/scripts/create-worktree.sh`, which is the
+single source of truth for how a worktree is created:
+
 ```bash
-cd {project_path}
-# One step, based on {base_branch}, without checking anything out in the main
-# working tree -- parallel tasks would race on a shared checkout.
-git worktree add -b worktree-L1-001 {worktree_dir}/L1-001 {base_branch}
+sh {skill_dir}/scripts/create-worktree.sh {project_path} L1-001 {worktree_dir} {base_branch}
 ```
+
+The command is deliberately not reproduced here. It was written out in two places, and the
+`-b` flag survived neither: every hand-typed attempt in an 18-task run omitted it, and without
+`-b` git refuses because `{base_branch}` is already checked out in the primary worktree.
 
 ### During Implementation
 

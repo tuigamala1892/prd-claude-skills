@@ -89,6 +89,14 @@ EOF
 ```bash
 cd {project_path}
 
+# Refuse to merge into anything other than the repository we were pointed at. A previous
+# run, having failed to create a worktree, walked up to the workspace root, ran `git init`
+# there and merged into *that* -- producing a stray repository holding the docs tree and a
+# gitlink to the real project. Assert the target before mutating it.
+test "$(git rev-parse --show-toplevel)" = "$(pwd -P)" || {
+  echo "REFUSED: $(pwd -P) is not a repository root; refusing to merge" && exit 1
+}
+
 # Ensure we're on the base branch
 git checkout {base_branch}
 

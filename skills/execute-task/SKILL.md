@@ -58,28 +58,34 @@ Extract and store:
 
 **If attempt == 1 (first attempt):**
 
-Create a new worktree from `{base_branch}`:
+Run the bundled script. Do not hand-write the `git worktree add` command:
 
 ```bash
-cd {project_path}
-
-# Refresh from the remote ONLY if one is configured. This is the first command of
-# every task, so an unconditional `git pull` fails the entire pipeline on a
-# repository with no remote -- which is a supported configuration.
-if git remote get-url origin >/dev/null 2>&1; then
-  git fetch origin {base_branch} || true
-fi
-
-# Create branch and worktree in one step, based on {base_branch}. Do NOT check
-# {base_branch} out in the main working tree: tasks run in parallel, and checking
-# out a shared branch there races with every other task in the batch.
-git worktree add -b worktree-{task_id} {worktree_dir}/{task_id} {base_branch}
+sh {skill_dir}/scripts/create-worktree.sh {project_path} {task_id} {worktree_dir} {base_branch}
 ```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute-task`. The script prints the created worktree path on stdout; set
+`worktree_path` to that value.
+
+**Why a script and not a command here.** This step used to be a `git worktree add` line in
+this document. It was correct, and it was never once executed correctly: across an 18-task
+run, six agents attempted it, **none** included `-b`, five ran it from the wrong directory,
+and all six failed. Without `-b`, git checks out `{base_branch}` itself rather than creating
+a task branch — and `{base_branch}` is already checked out in the primary worktree, so git
+refuses every time. A flag does not survive being retyped from memory; a script does not have
+to be. The script also refuses to touch a repository other than `{project_path}`, and refuses
+to run `git init`, which is how a previous run ended up creating a stray repository in the
+workspace above the target.
 
 `{base_branch}` is passed in by the caller and is never assumed to be `main`. See
 `--base-branch` in the arguments table.
 
-Set `worktree_path = {worktree_dir}/{task_id}`
+**If the script fails, the task fails.** Report it and stop. Do not create the worktree by
+other means, do not fall back to working in the main tree, and do not move to a different
+directory and retry. Every one of those has been observed, and each one silently gives up the
+isolation this task depends on. The retry loop exists to handle failure; improvisation does
+not need to.
 
 **If attempt > 1 (retry):**
 
