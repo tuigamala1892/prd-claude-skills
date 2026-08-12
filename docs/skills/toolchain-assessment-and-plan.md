@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Phase 0 and §5.2 both run. F1/F2/F13 fixed and confirmed under a real `/execute`. F14 is **withdrawn** — an artefact of the harness's permission mode. Its replacement, **F17, is real and blocking**, and the third run found its cause: a forked skill cannot await background work, so `execute-layer` and `execute-batch` dispatch a child, announce they are waiting, and return immediately — after which `/execute` re-implements everything inline. Twenty tasks, one commit, no worktrees. F15 and F16 stand. Items 4.12 and 4.13 open
+**Status:** Four end-to-end runs. F1/F2/F13 fixed; F14 **withdrawn** (a harness artefact); **F17 fixed and verified** — synchronous dispatch restored the orchestration chain, and run 4 produced 18 task agents and one commit per task where run 3 produced one commit for all twenty. The fix exposed the next layer: **F18** (the `git worktree add` command is retyped from prose and drifts — 6 of 6 attempts dropped `-b`, making them always fatal) and **F19, blocking and destructive** (on failure the agents improvise upward and `git init` a repository *outside* `{project_path}`, swallowing the docs tree and recording the real project as a gitlink). F15 and F16 stand. Items 4.13 and 4.14 open
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -154,6 +154,94 @@ than XML — addressed by item **4.4** below.
 > child in the background, says it is waiting, and returns immediately — because ending its
 > turn *is* its return (F17). Three runs, three stories, and only the last one survives.
 
+#### F19 — `/execute` creates a git repository outside `{project_path}`
+
+Found by §5.2 run 4. **Blocking, and the first finding in this document that damages
+something outside the target directory.**
+
+When `git worktree add` failed (F18), task agents did not stop. They improvised upward: `cd`
+to the workspace root and try again there. Something in that sequence ran `git init`, and the
+result is a repository at the workspace root — the one place §2.1 states must *not* be a
+repository, because that is the whole reason the topology was chosen.
+
+What it contains:
+
+```
+$ git -C <workspace-root> log --oneline
+4628944 Merge L2-004: Export router from app/api package
+2c5ef51 Merge L2-002: GET /links endpoint with tag filtering
+3bd2225 Add comprehensive tests for GET /links endpoint
+eed0151 Initial commit
+
+$ git -C <workspace-root> ls-files -s app
+160000 abf60608dc585701fdf5817b9d95868dbd9ddc01 0    app
+```
+
+Three things are wrong at once:
+
+1. **A repository exists where the design forbids one.** Created at 09:34 during the run;
+   `setup_fixture.py` only ever initialises `app/`.
+2. **`app/` is recorded as a gitlink** (mode `160000`). This is precisely the failure the
+   §2.1 table documents: cloning the outer repository yields an **empty** `app/`. The real
+   project has been swallowed by reference.
+3. **39 files under `docs/` were committed into it** — the PRD and the generated task tree,
+   which live in a different repository entirely and are no business of `/execute`'s.
+
+Merges then happened *in the stray repository* rather than in the target, which is why run 4
+shows `Merge L2-002` and `Merge L2-004` commits that are absent from `app/`'s history.
+
+The preflight already refuses to *target* a docs tree or the toolchain (item 4.7). It has no
+opinion about the target's **parent**, because nothing anticipated an agent walking upward
+after a failure. Prose guards constrain where `/execute` is pointed; nothing constrains where
+it wanders.
+
+Addressed by item **4.14**, and this is the strongest argument yet for **4.13**: a guard that
+only exists as prose cannot stop an improvisation it never contemplated.
+
+#### F18 — the `git worktree add` command is retyped from prose, and drifts
+
+Found by §5.2 run 4, and the direct cause of F19.
+
+`execute-task/SKILL.md:76` documents the command correctly:
+
+```bash
+git worktree add -b worktree-{task_id} {worktree_dir}/{task_id} {base_branch}
+```
+
+Not one agent ran it. Across the whole run:
+
+| | |
+|---|---|
+| Task agents dispatched | 18 |
+| Agents that attempted `git worktree add` | **6** |
+| Attempts including the `-b` flag | **0** |
+| Attempts run from the wrong directory | 5 of 6 |
+| Attempts that succeeded | **0** |
+
+What they ran instead:
+
+```
+git worktree add ".worktrees/L4-001" main
+fatal: 'main' is already used by worktree at '.../app'
+```
+
+Dropping `-b worktree-{task_id}` changes the meaning entirely. With `-b`, git creates a *new*
+branch and checks it out into the new worktree. Without it, git tries to check out the
+*existing* `main` — which is already checked out in the primary worktree, so git refuses. **The
+paraphrase is not merely different, it is unconditionally fatal.** Every attempt failed
+identically, which is why no run has ever produced a worktree this way.
+
+Twelve of the eighteen agents never attempted a worktree at all, and five of the six that did
+ran from the workspace root rather than `{project_path}`. Three distinct drifts — a dropped
+flag, a wrong directory, a skipped step — from one paragraph of prose.
+
+This is **F15 in its purest form**. The instruction is correct, unambiguous, and in the right
+file. It is also a shell command written in a document, which a model retypes from
+understanding rather than copies verbatim, and understanding does not preserve `-b`.
+
+Addressed by item **4.14**: a command this load-bearing should be a script the skill invokes,
+not a line the skill describes.
+
 #### ~~F14 — worktree isolation is not happening~~ — **WITHDRAWN**
 
 > **This finding was wrong, and wrong in a way worth recording rather than deleting.** The
@@ -207,7 +295,20 @@ same artefact and settles nothing either way.
 correctly for layer 2. That observation held up and is now recorded as **F17** below — a real
 defect, but a different and narrower one than F14 described, with a different cause.
 
-#### F17 — a forked skill cannot await background work, so the orchestration chain collapses
+#### F17 — a forked skill cannot await background work — **FIXED, verified by run 4**
+
+> **Resolved by item 4.12 step one** (commit `d278c05`): `execute-batch` now dispatches with
+> `run_in_background: false`, and the polling step is gone. Run 4 confirms it behaviourally —
+> **18 task agents for 18 task files**, all 18 dispatched synchronously, 55 subagent
+> transcripts against run 3's 4, and 17 commits at roughly one per task against run 3's single
+> commit for all twenty. The chain that collapsed now runs end to end.
+>
+> Two regression guards hold the fix (`tests/test_toolchain.py`, both tagged F17), and both
+> were verified to fail when the old pattern is reintroduced.
+>
+> The description below is retained because it explains what was wrong and why three runs
+> disagreed. **What it did not fix is isolation** — see F18 and F19, which the fix exposed.
+
 
 This finding was first written as *"worktree isolation is applied per layer, not per task"*,
 drawn from a single truncated run. A third run — the first to complete — showed the layer
@@ -927,18 +1028,19 @@ the caller's context will now run in a fork that returns a summary. Any skill th
 mutating the caller's conversation state will change behaviour. `execute-batch` and
 `execute-layer`, which orchestrate other skills, are the most likely to be affected.
 
-### 4.12 Consolidate git ownership under forked orchestration — **do this next**
+### 4.12 Consolidate git ownership under forked orchestration — *step one done; structural half open*
 
-**Addresses F17. Blocking.** Originally written for F14, which is withdrawn. F17 supplies a
-sharper target than either earlier framing: the failure is not "isolation is skipped" but
-"forked skills dispatch children with `run_in_background: true`, announce they are waiting,
-and return immediately". Whatever shape 4.12 takes, it must remove the possibility of a fork
-ending its turn with work outstanding.
+**Addresses F17 — step one DONE (`d278c05`), and it worked.** `execute-batch` now dispatches
+with `run_in_background: false`; the `TaskOutput` polling step is deleted; the single-message
+rule is promoted from formatting preference to the mechanism that produces parallelism; and
+two regression guards hold it. Run 4 verified it behaviourally: 18 task agents, one commit per
+task, against run 3's single commit for twenty tasks.
 
-The minimum viable fix is one line of intent in `execute-batch`: dispatch **synchronously**
-(`run_in_background: false`) so the call blocks until the child returns. That is worth trying
-first, and cheap — but it is prose, and F15 says prose is negotiable, so it needs 4.13's
-treatment to be worth relying on. Option 1 below is the structural version.
+**What remains of 4.12 is the structural half.** The dispatch fix restored the chain but not
+isolation, because git operations are still performed by whichever agent happens to run them,
+from whichever directory it happens to be in — which is how F18 and F19 arose. Option 1 below
+is the answer to that, and it is no longer optional: it is the only version of this item that
+puts `git worktree add` and the merge queue in one place with one owner.
 
 `execute-layer` and `execute-batch` fork, so they cannot drive the worktree flow by mutating
 the caller's context. Two ways to arrange this:
@@ -978,6 +1080,48 @@ is negotiable. Options, in increasing order of reliability:
 Option 2 is the smallest change that actually changes the guarantee. Note the regression suite
 currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
 that check should assert the mechanism, not the wording, once one is chosen.
+
+### 4.14 Make worktree creation a script, and refuse to operate outside the target
+
+**Addresses F18 and F19. Blocking.**
+
+Two halves, both narrow, both mechanical. Neither is a rewrite of the architecture — 4.12
+option 1 is that — but together they remove the failure that has cost four runs.
+
+**1. Bundle the worktree command as a script.** F18 shows a shell command in prose gets
+retyped from understanding, and understanding does not preserve `-b`. Ship a script and have
+`execute-task` invoke it:
+
+```bash
+# skills/execute-task/scripts/create-worktree.sh <task-id> <worktree-dir> <base-branch>
+set -euo pipefail
+cd "$PROJECT_PATH"                      # never inherited from the caller's cwd
+git rev-parse --git-dir >/dev/null      # fail loudly if this is not a repository
+git worktree add -b "worktree-$1" "$2/$1" "$3"
+```
+
+The point is not that a script is tidier. It is that `-b` cannot be dropped from a file that
+is executed rather than read, and the working directory cannot drift. This is the same reason
+superpowers bundles its worktree and workspace setup as scripts rather than describing them.
+
+**2. Refuse to operate outside `{project_path}`.** F19's damage came from agents walking
+*upward* after a failure. The preflight constrains where `/execute` is pointed; nothing
+constrains where it wanders. Add, as a precondition on every git-mutating step:
+
+```bash
+test "$(git rev-parse --show-toplevel)" = "$PROJECT_PATH" || exit 1
+```
+
+and state plainly in `execute-task` that a failed worktree creation is a **task failure to be
+reported**, not a problem to be worked around. The retry loop exists for this; improvisation
+does not need to.
+
+A `git init` anywhere other than `{project_path}` should be treated the way item 4.7 treats
+deleting `.git` — as something the toolchain never does.
+
+**Acceptance:** run 4's fixture, replayed, produces a worktree per task and *no* repository at
+the workspace root. The regression suite cannot check the second half statically, which is
+what item **4.13** is for.
 
 ---
 
@@ -1021,7 +1165,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16) |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19** |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -1074,7 +1218,9 @@ bad = [p for p in files if not _parses(p)]
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
-| **4.12** | **Consolidate git ownership under forked orchestration** *(now addresses F17)* | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
+| ~~4.12 step one~~ | ~~Synchronous dispatch~~ **DONE `d278c05`** — F17 fixed, verified by run 4 | ~~Blocking~~ | `execute-batch` |
+| **4.14** | **Worktree creation as a script; refuse to operate outside the target** | **Blocking** | `execute-task`, new `scripts/` |
+| **4.12** | **Consolidate git ownership under forked orchestration** *(structural half)* | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |
