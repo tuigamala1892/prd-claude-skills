@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Four end-to-end runs. F1/F2/F13 fixed; F14 **withdrawn** (a harness artefact); **F17 fixed and verified** — synchronous dispatch restored the orchestration chain, and run 4 produced 18 task agents and one commit per task where run 3 produced one commit for all twenty. The fix exposed the next layer: **F18** (the `git worktree add` command is retyped from prose and drifts — 6 of 6 attempts dropped `-b`, making them always fatal) and **F19, blocking and destructive** (on failure the agents improvise upward and `git init` a repository *outside* `{project_path}`, swallowing the docs tree and recording the real project as a gitlink). F15 and F16 stand. Items 4.13 and 4.14 open
+**Status:** Five end-to-end runs, and run 5 found the thing underneath all of it: **`execute-task/SKILL.md` has never once been loaded.** Task agents are dispatched with a *prompt* that says "using the /execute-task skill", which is text, not an invocation — so the file describing worktree creation, TDD and verification has never been read by anything, in any run (**F20**). The agent that does the work, `task-implementer.md`, is written on the assumption that its worktree already exists. That is why no fix aimed at the worktree command has ever changed the outcome. Previously: F1/F2/F13 fixed; F14 **withdrawn** (a harness artefact); **F17 fixed and verified** — synchronous dispatch restored the orchestration chain, and run 4 produced 18 task agents and one commit per task where run 3 produced one commit for all twenty. The fix exposed the next layer: **F18** (the `git worktree add` command is retyped from prose and drifts — 6 of 6 attempts dropped `-b`, making them always fatal) and **F19, blocking and destructive** (on failure the agents improvise upward and `git init` a repository *outside* `{project_path}`, swallowing the docs tree and recording the real project as a gitlink). F15 and F16 stand. Items 4.13 and 4.14 open
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -153,6 +153,68 @@ than XML — addressed by item **4.4** below.
 > Run 3 was the first to complete, and found the actual cause: a forked skill dispatches its
 > child in the background, says it is waiting, and returns immediately — because ending its
 > turn *is* its return (F17). Three runs, three stories, and only the last one survives.
+
+#### F20 — `execute-task/SKILL.md` has never been loaded; the task agent assumes a worktree it never gets
+
+Found by §5.2 run 5. **Blocking, and it supersedes the diagnosis behind F18, F19 and item
+4.14.** Everything below follows from one measurement:
+
+| | |
+|---|---|
+| Task agents dispatched in run 5 | 19 |
+| That invoked the `execute-task` skill | **0** |
+| Skills actually invoked in the run | `execute-batch` ×17, `execute-merge` ×14, `execute-layer` ×4 |
+
+`execute-batch` dispatches each task through the **Agent** tool with a prompt that opens:
+
+> *"You are executing task L1-004 using the /execute-task skill. Execute the following
+> command: `/execute-task --task-file …`"*
+
+Inside an agent prompt, `/execute-task` is **text**. It is not a command, it does not resolve,
+and nothing loads the skill. The other three skills are invoked properly because their callers
+use the `Skill` tool; this one is described rather than invoked. Every task agent has therefore
+been implementing tasks straight from the task XML, with no procedure at all.
+
+**So `execute-task/SKILL.md` is dead code.** Its worktree creation, its TDD sequence, its
+verification hand-off, its commit format, its retry handling — none of it has ever executed, in
+any of the five runs. Item 4.8's `git fetch` guard and item 4.14's script live in that file too,
+which is why neither changed anything.
+
+**And the agent that does run assumes the missing step already happened.**
+`agents/task-implementer.md` opens with *"You work in an isolated git worktree"* — stated as a
+fact about its environment, not a task — and its worked example says:
+
+```
+2. Change to worktree:
+   cd ../.worktrees/L1-001/
+```
+
+`cd` into a worktree, not `git worktree add`. The agent expects to be *placed* in one. Nothing
+places it there. So it does the only thing it can: works where it stands, in the main tree.
+
+Two documents describe this job. One is never loaded, and the one that is loaded assumes the
+other already ran.
+
+**This re-reads the earlier findings rather than replacing them:**
+
+- **F18** (the `-b` flag never survived) is a true observation with the wrong cause attached.
+  The agents were not paraphrasing an instruction badly — they had never seen one, and were
+  improvising `git worktree add` from general knowledge. Improvisation is why `-b` was missing.
+- **F19** recurred in run 5 despite 4.14's guards, for the same reason: the guards are in a
+  file nobody reads. One `git init` at the workspace root, one stray repository again.
+- **F6's model precedence is moot on this path.** `execute-task` declares
+  `claude-sonnet-4-6`; the work has always run on `task-implementer`'s `claude-haiku-4-5`,
+  because the skill never loads to contest it.
+
+**One task did get a worktree** — `L4-002`, hand-rolled with `git worktree add .worktrees/L4-002
+-b L4-002` from the workspace root, and merged as `b979869`. Improvisation occasionally lands.
+That is not isolation, it is luck.
+
+**The fix is the one item 4.12 option 1 already described**, now on much firmer ground: the
+worktree must be created *before* the agent is dispatched, by the caller, and its path passed
+in — which is exactly the world `task-implementer.md` is already written for. Nothing needs to
+be persuaded to call a script; `execute-batch` creates the worktree, then hands over. See item
+**4.15**.
 
 #### F19 — `/execute` creates a git repository outside `{project_path}`
 
@@ -1097,7 +1159,12 @@ that check should assert the mechanism, not the wording, once one is chosen.
 > no `git worktree add` in any instruction `.md`, and no `git init` outside backticks. Suite:
 > 22 passed, 0 failed, 2 known.
 >
-> **Not yet verified behaviourally** — that needs a §5.2 run 5.
+> **Run 5 says it is inert.** The script was invoked **zero** times, because the file telling
+> anyone to invoke it — `execute-task/SKILL.md` — has never been loaded (**F20**). Five
+> hand-written `git worktree add` commands ran instead, and one `git init` re-created the stray
+> repository at the workspace root. Nothing here is *wrong*; it simply sits in a document that
+> is not in the execution path. It becomes live the moment item **4.15** lands, and the script
+> itself is tested and correct.
 
 Two halves, both narrow, both mechanical. Neither is a rewrite of the architecture — 4.12
 option 1 is that — but together they remove the failure that has cost four runs.
@@ -1136,6 +1203,42 @@ deleting `.git` — as something the toolchain never does.
 **Acceptance:** run 4's fixture, replayed, produces a worktree per task and *no* repository at
 the workspace root. The regression suite cannot check the second half statically, which is
 what item **4.13** is for.
+
+### 4.15 Create the worktree before dispatch, and invoke skills rather than describing them
+
+**Addresses F20. Blocking, and it is the precondition for 4.8, 4.13 and 4.14 having any
+effect at all** — all three edited a file that is not in the execution path.
+
+**1. `execute-batch` creates the worktree, then dispatches into it.** Before spawning the task
+agent, call the script and pass the resulting path:
+
+```bash
+worktree_path=$(sh {execute_task_skill_dir}/scripts/create-worktree.sh                   {project_path} {task_id} {worktree_dir} {base_branch})
+```
+
+Then hand `{worktree_path}` to the agent in its prompt. This is the world
+`agents/task-implementer.md` is *already* written for — it says "change to worktree", not
+"create one" — so the agent needs no change. If the script fails, the task fails before any
+agent is spawned, which is both cheaper and louder than discovering it afterwards.
+
+This is item **4.12 option 1** applied to the one link that most needs it. Git operations move
+to the caller; the agent gets an isolated directory and a specification, which is all it ever
+wanted.
+
+**2. Stop describing skills in prompts as though that invoked them.** `/execute-task …` inside
+an Agent prompt is text. Either the caller invokes the `Skill` tool explicitly, or — better
+here — the instructions the agent needs live in the **agent definition**, which is loaded by
+construction. Prefer the second: it removes a step that can be skipped.
+
+**3. Decide what `execute-task/SKILL.md` is for.** It currently duplicates
+`task-implementer.md` and loses the race by never loading. Either fold the parts worth keeping
+into the agent definition and delete the skill, or make it genuinely invoked. Two documents
+describing one job, with no mechanism ensuring the right one runs, is how five runs produced
+five different behaviours.
+
+**Acceptance:** a run in which every task agent begins inside `{worktree_dir}/{task_id}`, one
+`worktree-*` branch exists per task, and no `git worktree add` or `git init` appears in any
+subagent transcript at all.
 
 ---
 
@@ -1179,7 +1282,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19** |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. One task got a hand-rolled worktree and merged; the rest wrote to the main tree, and one `git init` re-created the stray repository |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -1233,7 +1336,8 @@ bad = [p for p in files if not _parses(p)]
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
 | ~~4.12 step one~~ | ~~Synchronous dispatch~~ **DONE `d278c05`** — F17 fixed, verified by run 4 | ~~Blocking~~ | `execute-batch` |
-| **4.14** | **Worktree creation as a script; refuse to operate outside the target** | **Blocking** | `execute-task`, new `scripts/` |
+| **4.15** | **Create the worktree before dispatch; invoke skills rather than describing them** | **Blocking** | `execute-batch`, `task-implementer`, `execute-task` |
+| ~~4.14~~ | ~~Worktree creation as a script~~ **DONE but inert until 4.15** — the file it lives in is never loaded | ~~Blocking~~ | `execute-task`, `scripts/` |
 | **4.12** | **Consolidate git ownership under forked orchestration** *(structural half)* | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
