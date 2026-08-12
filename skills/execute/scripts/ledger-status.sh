@@ -10,7 +10,11 @@
 #   ledger-status.sh <project-path> <slug> [expected-total]
 #
 # Prints a JSON object on stdout:
-#   {"recorded":18,"verified":18,"missing":[],"first_unverified":null,"expected":18}
+#   {"recorded":18,"verified":18,"verified_tasks":["L0-001",...],"missing":[],
+#    "first_unverified":null,"expected":18}
+#
+# `verified_tasks` is what a resume skips. It lists only tasks confirmed done *before* the
+# first gap, so a resume never skips a task on the strength of a record it could not check.
 #
 # `verified` counts ledger entries whose commit is actually reachable now. An entry whose
 # SHA has vanished -- the repository was reset, rebased, or the entry was written
@@ -36,13 +40,14 @@ git rev-parse --show-toplevel >/dev/null 2>&1 || {
 
 ledger=".execute/$slug/ledger.jsonl"
 if [ ! -f "$ledger" ]; then
-    printf '{"recorded":0,"verified":0,"missing":[],"first_unverified":null,"expected":%s}\n' "$expected"
+    printf '{"recorded":0,"verified":0,"verified_tasks":[],"missing":[],"first_unverified":null,"expected":%s}\n' "$expected"
     exit 0
 fi
 
 recorded=0
 verified=0
 missing=""
+vtasks=""
 first_unverified=""
 gap=0
 
@@ -52,8 +57,13 @@ while IFS= read -r line || [ -n "$line" ]; do
     task=$(printf '%s' "$line" | sed -n 's/.*"task_id":"\([^"]*\)".*/\1/p')
     sha=$(printf '%s' "$line" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
     if [ -n "$sha" ] && git cat-file -e "${sha}^{commit}" 2>/dev/null; then
-        # Only count as verified while no earlier entry has gone missing.
-        [ "$gap" -eq 0 ] && verified=$((verified + 1))
+        # Only count as verified while no earlier entry has gone missing. A resume must not
+        # skip a task on the strength of a record it could not check.
+        if [ "$gap" -eq 0 ]; then
+            verified=$((verified + 1))
+            [ -n "$vtasks" ] && vtasks="$vtasks,"
+            vtasks="$vtasks\"$task\""
+        fi
     else
         gap=1
         [ -n "$missing" ] && missing="$missing,"
@@ -68,5 +78,5 @@ else
     fu="\"$first_unverified\""
 fi
 
-printf '{"recorded":%s,"verified":%s,"missing":[%s],"first_unverified":%s,"expected":%s}\n' \
-    "$recorded" "$verified" "$missing" "$fu" "$expected"
+printf '{"recorded":%s,"verified":%s,"verified_tasks":[%s],"missing":[%s],"first_unverified":%s,"expected":%s}\n' \
+    "$recorded" "$verified" "$vtasks" "$missing" "$fu" "$expected"

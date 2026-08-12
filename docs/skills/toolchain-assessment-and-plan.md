@@ -1361,7 +1361,7 @@ five different behaviours.
 `worktree-*` branch exists per task, and no `git worktree add` or `git init` appears in any
 subagent transcript at all.
 
-### 4.16 Record completion as a SHA; derive counts from git — **DONE**
+### 4.16 Record completion as a SHA; derive counts from git, and resume from it — **DONE**
 
 **Addresses F16.** Step 1 of
 [`resumable-execution-proposal.md`](resumable-execution-proposal.md), and the precondition for
@@ -1385,6 +1385,18 @@ its `--resume`.
 > Tested against a real repository: three tasks recorded and derived correctly; a non-existent
 > commit refused with the ledger unchanged; and — the case that defines the finding — after a
 > `git reset` the ledger claims 3 while only 1 verifies, naming `L1-002` as the restart point.
+>
+> **Resume now runs off it (proposal step 2).** `ledger-status.sh` also reports
+> `verified_tasks`, and `/execute` skips exactly those, re-running everything else — including
+> anything `execute-state.json` calls completed. Resuming is the **default** when the ledger has
+> verified entries, because an unattended run has nobody to answer a prompt. `--reset` discards
+> the record only: it never deletes commits, branches or worktrees.
+>
+> Tested on a scratch repository: a run interrupted after 3 of 5 tasks resumes by skipping
+> exactly those 3; and when the repository is rewound *after* recording, the ledger claims 3
+> while git confirms 2, so `L1-003` is reported vanished and the resume restarts there rather
+> than skipping it. That second case is the silent-data-loss scenario the old state-file resume
+> would have walked straight into.
 >
 > **Verified by run 7** — see F16. Ledger and merge commits correspond exactly, in both
 > directions, and the state file's counts are finally correct.

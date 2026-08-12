@@ -230,8 +230,8 @@ preference:
 
 | # | Step | Why here |
 |---|---|---|
-| 1 | **Truthful ledger — SHA per task, appended after commit** | Fixes F16. Everything else is unsafe without it |
-| 2 | **`--resume` verifies SHAs against git** | Makes interruption survivable at all |
+| ~~1~~ | ~~**Truthful ledger — SHA per task, appended after commit**~~ **DONE** (`f2049d2`, verified by run 7) | Fixed F16 |
+| ~~2~~ | ~~**`--resume` verifies SHAs against git**~~ **DONE** — resume is now driven by `verified_tasks`, and is the default when the ledger has entries | Interruption is now survivable |
 | 3 | **Wall-clock and cost guards** (`--max-runtime`, `--max-cost`) | No API dependency; works for every auth mode |
 | 4 | **Limit-error detection in the retry loop** | Stops five doomed retries against a closed window |
 | 5 | **Usage guard against the endpoint** | The precise signal, once stopping is already safe |

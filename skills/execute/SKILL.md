@@ -37,8 +37,9 @@ See `skills/execute/references/options.md` for complete documentation.
                         (default: the repository's current HEAD)
 --layer <name>          Execute specific layer only
 --task <id>             Execute specific task only
---resume                Resume from existing state
---reset                 Delete state and start fresh
+--resume                Resume from the ledger (default when it has verified entries)
+--reset                 Discard the progress record and start fresh.
+                        Never deletes commits, branches or worktrees.
 --dry-run               Show plan without executing
 ```
 
@@ -129,27 +130,49 @@ into and the operator must choose one explicitly with `--base-branch`.
 
 ### Step 4: Handle State
 
-**If `--reset`:**
+**Always start by asking git what is already done**, before deciding anything:
+
 ```bash
-rm -f {tasks_path}/execute-state.json
+sh {skill_dir}/scripts/ledger-status.sh {project_path} {prd_slug} {total_tasks}
 ```
 
-**If `--resume`:**
-```python
-if state_file_exists:
-    state = load_state()
-    validate_state_schema()
-else:
-    error("No state file to resume from")
-```
+`verified_tasks` is the authoritative list of completed work. It is derived from commits that
+exist right now, not from anything the previous run claimed.
 
-**If new execution:**
+**Resuming is the default whenever the ledger has verified entries.** Do not prompt. An
+unattended run — the overnight case this whole design exists for — has nobody to answer, and
+resuming is safe precisely because it is verified against git: a ledger with nothing verified
+simply starts from the beginning.
+
 ```python
-if state_file_exists:
-    ask_user("State file exists. Resume or start fresh?")
-else:
+status = ledger_status()
+
+if reset:
+    # Say what is being thrown away before throwing it away.
+    print(f"--reset: discarding {status['verified']} verified task(s); "
+          f"branches and commits in {project_path} are NOT deleted")
+    rm -f {tasks_path}/execute-state.json
+    rm -rf {project_path}/.execute/{prd_slug}
     state = init_state()
+
+elif status["verified"] > 0:
+    print(f"[EXEC] Resuming: {status['verified']} task(s) already verified in git")
+    state = load_state_if_present() or init_state()
+    skip = set(status["verified_tasks"])
+
+else:
+    state = load_state_if_present() or init_state()
+    skip = set()
 ```
+
+Note what `--reset` does **not** do: it never deletes commits, branches or worktrees. It
+discards the *record*, so the next run rebuilds it. Destroying work is the operator's call,
+made with git, not a side effect of a flag.
+
+**`missing` is not a resume point, it is a warning.** If it is non-empty, the repository has
+been reset or rebased under the ledger — recorded commits no longer exist. Report it, resume
+from `first_unverified`, and treat every task from that point on as outstanding regardless of
+what the ledger says about them.
 
 ### Step 5: Dry Run (if requested)
 
@@ -191,9 +214,11 @@ for layer in layers:
     if layer_filter and layer != layer_filter:
         continue
 
-    # Skip if already completed
-    if state["layers"].get(layer, {}).get("status") == "completed":
-        print(f"[EXEC] Skipping {layer} (already completed)")
+    # Skip only if every task in the layer has a verified commit. The state file's own
+    # "completed" flag is not evidence -- it once said 20/20 with one merge commit in git.
+    layer_tasks = tasks_in(layer)
+    if layer_tasks and all(t in skip for t in layer_tasks):
+        print(f"[EXEC] Skipping {layer} ({len(layer_tasks)} task(s) already verified in git)")
         continue
 
     # Execute layer
@@ -418,14 +443,30 @@ compute it at report time from `started_at`; do not carry a field that invites i
 
 ## Resume Behavior
 
+Resume is driven by the ledger, verified against git — **never by `execute-state.json`**. The
+state file is a convenience that cannot be checked; it once reported 20 of 20 tasks complete
+when the repository held one merge commit, and a resume trusting it would have skipped
+seventeen tasks that were never done. That is silent data loss, and worse than crashing.
+
 On resume:
 
-1. Load existing state
-2. Find current layer (from `current_layer` or first incomplete)
-3. Re-evaluate ready queue within layer
-4. Continue execution from ready tasks
-5. Retry `failed` tasks (if attempts < 5)
-6. Skip `completed` and `abandoned` tasks
+1. Run `ledger-status.sh`; take `verified_tasks` as the set of completed work
+2. **Skip** any task in `verified_tasks` — its commit exists, so it is done
+3. **Re-run** every other task, including any the state file calls `completed`
+4. Retry `failed` tasks while `attempts < 5`; `abandoned` tasks stay abandoned until an
+   operator intervenes
+5. Reuse a preserved worktree when one exists for a task being retried, via
+   `--worktree-path`; do not create a second one
+6. If `missing` is non-empty, say so prominently — recorded commits have vanished, so the
+   repository was reset or rebased since the last run
+
+**Partial work from an interrupted task is preserved but never counted.** Its worktree and
+branch stay for inspection, and the task re-runs from its last verified base. A task that was
+half-done when the run stopped has no commit, therefore no ledger entry, therefore is
+outstanding — which is exactly right.
+
+The invariant worth remembering: **a task is done when a commit exists, and at no other
+time.** Everything else in this section follows from it.
 
 ## Error Handling
 
@@ -455,12 +496,17 @@ Error: Git repository not initialized at {project_path}
 /execute does not create repositories. Initialise it yourself, then re-run.
 ```
 
-### Resume Without State
+### Resume With Nothing To Resume
+
+Not an error. `--resume` against an empty or absent ledger simply runs from the beginning,
+because that is what the evidence says is outstanding:
 
 ```
-Error: No state file found at {tasks_path}/execute-state.json
-Cannot resume. Start fresh without --resume flag.
+[EXEC] --resume: no verified tasks in the ledger; starting from the beginning
 ```
+
+A missing `execute-state.json` is likewise not fatal — the ledger is the record that matters,
+and it lives in `{project_path}/.execute/{prd_slug}/`.
 
 ## Output Format
 

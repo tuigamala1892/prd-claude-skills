@@ -338,6 +338,26 @@ def _():
     assert "ledger-status.sh" in ex, "execute never reconciles its state against git"
 
 
+@check("resume is decided by verified commits, not by the state file", finding="F16")
+def _():
+    # A resume that trusts execute-state.json skips work that was never done. That file once
+    # reported 20/20 complete against a single merge commit; acting on it is silent data
+    # loss, which is worse than crashing. The ledger, re-verified against git, is the only
+    # acceptable input.
+    sts = os.path.join(SKILLS, "execute", "scripts", "ledger-status.sh")
+    assert "verified_tasks" in open(sts, encoding="utf-8").read(), (
+        "ledger-status.sh does not report which tasks are verified, so a resume has "
+        "nothing safe to skip on")
+
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert "verified_tasks" in ex, (
+        "execute never consults verified_tasks; resume would be trusting the state file")
+    # --reset must not be a way to lose work by accident.
+    reset_section = ex[ex.find("--reset"):ex.find("--reset") + 4000]
+    assert re.search(r"NOT deleted|never deletes", reset_section, re.I), (
+        "--reset does not state that it leaves commits and branches alone")
+
+
 @check("no skill increments a progress counter by hand", finding="F16")
 def _():
     # `tasks_completed += 1` is the shape of the bug: a number that drifts from reality and
