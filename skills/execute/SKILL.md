@@ -14,8 +14,8 @@ You are the main orchestrator for executing PRD implementation tasks. You coordi
 /execute (you)
     └─► /execute-layer (per layer)
             └─► /execute-batch (per batch)
-                    ├─► /execute-task (per task, parallel)
-                    │       └─► /execute-verify (verification)
+                    ├─► task-implementer agent (per task, parallel)
+                    │       └─► /execute-verify (independent check)
                     └─► /execute-merge (sequential merges)
 ```
 
@@ -118,8 +118,7 @@ esac
 ```
 
 **Resolve the base branch.** Everything downstream branches from and merges into this,
-and it is threaded to `/execute-layer`, `/execute-batch`, `/execute-task` and
-`/execute-merge`. It is never assumed to be `main`:
+and it is threaded to `/execute-layer`, `/execute-batch` and `/execute-merge`. It is never assumed to be `main`:
 
 ```bash
 base_branch={--base-branch if provided, else $(git -C {project_path} symbolic-ref --short HEAD)}

@@ -292,8 +292,8 @@ def _():
     # six failed -- without `-b` git checks out the base branch, which the primary worktree
     # already holds, so it refuses every time. The script is the only place this command
     # may live.
-    script = os.path.join(SKILLS, "execute-task", "scripts", "create-worktree.sh")
-    assert os.path.isfile(script), "skills/execute-task/scripts/create-worktree.sh is missing"
+    script = os.path.join(SKILLS, "execute-batch", "scripts", "create-worktree.sh")
+    assert os.path.isfile(script), "skills/execute-batch/scripts/create-worktree.sh is missing"
     body = open(script, encoding="utf-8").read()
     assert re.search(r"worktree add\s+-b\b", body), (
         "create-worktree.sh does not pass `-b`, which is the entire reason it exists")
@@ -309,6 +309,47 @@ def _():
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("spell out `git worktree add` in prose; call the bundled script "
                      "instead:\n    " + "\n    ".join(bad))
+
+
+@check("no agent is told to invoke a skill it cannot invoke", finding="F20")
+def _():
+    # `/execute-task ...` inside an Agent prompt is text. It does not resolve, nothing
+    # loads, and for five runs the entire task procedure went unread because of it. A
+    # dispatched agent has no Skill tool: everything it needs belongs in the prompt or in
+    # its agent definition.
+    #
+    # This catches the two phrasings that produced the bug, not the whole class -- a
+    # skill named in a prompt is textually identical to a skill invoked from a skill's own
+    # instructions, so no static rule separates them in general. Treat it as a tripwire.
+    bad = []
+    for rel, text in instruction_text():
+        if not rel.endswith(".md"):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if re.search(r"using the /[a-z][a-z0-9-]* skill", line, re.I) or \
+               re.search(r"Execute the following command:", line, re.I):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("tell a dispatched agent to run a slash command, which in an agent "
+                     "prompt is inert text:\n    " + "\n    ".join(bad))
+
+
+@check("the task agent is handed a worktree rather than asked to make one", finding="F20")
+def _():
+    # The caller creates the worktree and passes the path; the agent is forbidden from
+    # creating one. Both halves must hold or isolation silently reverts to "whatever
+    # directory the agent happened to be in".
+    batch = os.path.join(SKILLS, "execute-batch", "SKILL.md")
+    assert os.path.isfile(batch), "skills/execute-batch/SKILL.md is missing"
+    btext = open(batch, encoding="utf-8").read()
+    assert "create-worktree.sh" in btext, (
+        "execute-batch does not call create-worktree.sh -- nothing creates the worktree")
+    assert "{worktree_path}" in btext, (
+        "execute-batch never passes {worktree_path} to the agent it spawns")
+
+    agent = os.path.join(AGENTS, "task-implementer.md")
+    atext = open(agent, encoding="utf-8").read()
+    assert re.search(r"[Nn]ever run `git worktree add`", atext), (
+        "task-implementer is not told to leave worktree creation alone")
 
 
 @check("no skill instructs `git init`", finding="F19")

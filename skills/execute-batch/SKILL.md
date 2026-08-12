@@ -57,7 +57,33 @@ find {tasks_path} -name "{task_id}-*.xml" -type f
 
 Example: `L1-001` → `docs/tasks/voice-prd/1-foundation/L1-001-create-enums.xml`
 
-### Step 4: Spawn Task Agents in Parallel
+### Step 4: Create Each Task's Worktree — *before* any agent exists
+
+Isolation is created here, by you, not by the agent. Run the bundled script once per task:
+
+```bash
+worktree_path=$(sh {skill_dir}/scripts/create-worktree.sh \
+                  {project_path} {task_id} {worktree_dir} {base_branch})
+```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute-batch`. The script prints the worktree path on stdout; keep it per task.
+
+**If the script fails for a task, that task fails now.** Record it as `failed` with the
+script's stderr, do not spawn an agent for it, and carry on with the rest of the batch. A task
+with no worktree has nowhere to work, and an agent spawned anyway will work somewhere else —
+which is how five consecutive runs ended up writing into the main tree.
+
+**Why this belongs to you and not to the task agent.** `agents/task-implementer.md` is written
+on the assumption that its worktree already exists — it says *"change to worktree"*, never
+*"create one"*. For five runs nothing created it, because the file that described creation was
+never loaded. Creating it here removes the assumption: the agent is *handed* an isolated
+directory, which is the only arrangement in which its instructions are true.
+
+Never create a worktree by hand. The script exists because every hand-typed attempt across an
+18-task run omitted `-b`, and without `-b` git refuses outright.
+
+### Step 5: Spawn Task Agents in Parallel
 
 Two properties matter here, and one instruction delivers both: **issue every task agent for
 this batch as multiple tool calls in a single message, with `run_in_background: false`.**
@@ -89,21 +115,36 @@ Task(
 )
 ```
 
-**Task execution prompt template:**
+**Task execution prompt template.** Everything the agent needs must be *in this prompt*. It
+cannot load a skill, and naming one here does nothing — `/execute-task` in an agent prompt is
+text, not an invocation, which is why the procedure it named went unread for five runs:
 
 ```
-You are executing task {task_id} using the /execute-task skill.
+Implement task {task_id}.
 
-Execute the following command:
-/execute-task --task-file {task_file_path} --project-path {project_path} --worktree-dir {worktree_dir} --attempt {attempt} --base-branch {base_branch}
+Your worktree already exists and is yours alone: {worktree_path}
+Work only there. Do not create a worktree, do not run `git worktree add`, and never
+`cd` to {project_path} or above it.
+
+Task specification: {task_file_path}
+Attempt: {attempt} of 5
+
+Read these first — they define the workflow and the commit format you must follow:
+  {skill_dir}/references/tdd-workflow.md
+  {skill_dir}/references/commit-format.md
 
 {IF RETRY:}
---worktree-path {existing_worktree_path}
---retry-feedback '{retry_feedback_json}'
+This is a retry. The previous attempt failed as follows; fix exactly this and do not
+repeat it:
+{retry_feedback_json}
 {END IF}
 
-Return the RESULT JSON when complete.
+Commit your work in the worktree when the local verification passes, then end with the
+RESULT JSON described in your instructions.
 ```
+
+The two reference paths are absolute so the agent can `Read` them; it has the `Read` tool and
+no `Skill` tool.
 
 **Example - launching 3 tasks in parallel:**
 
@@ -114,32 +155,48 @@ In a SINGLE message, call Task tool 3 times:
   <subagent_type>task-implementer</subagent_type>
   <run_in_background>false</run_in_background>
   <description>Execute task L1-001</description>
-  <prompt>Execute /execute-task --task-file .../L1-001-create-enums.xml ...</prompt>
+  <prompt>Implement task L1-001. Your worktree: .../.worktrees/L1-001 ...</prompt>
 </Task>
 
 <Task>
   <subagent_type>task-implementer</subagent_type>
   <run_in_background>false</run_in_background>
   <description>Execute task L1-002</description>
-  <prompt>Execute /execute-task --task-file .../L1-002-create-model.xml ...</prompt>
+  <prompt>Implement task L1-002. Your worktree: .../.worktrees/L1-002 ...</prompt>
 </Task>
 
 <Task>
   <subagent_type>task-implementer</subagent_type>
   <run_in_background>false</run_in_background>
   <description>Execute task L1-006</description>
-  <prompt>Execute /execute-task --task-file .../L1-006-setup-config.xml ...</prompt>
+  <prompt>Implement task L1-006. Your worktree: .../.worktrees/L1-006 ...</prompt>
 </Task>
 ```
 
-All three run concurrently, and the message completes only once all three have returned.
-There is no separate waiting step to perform: **do not poll with `TaskOutput`.** These agents
-are not background tasks and have no task id to poll; their results are already in hand when
-Step 5 begins.
+Each prompt carries that task's own worktree path — the ones created in Step 4. All three run
+concurrently, and the message completes only once all three have returned. There is no
+separate waiting step: **do not poll with `TaskOutput`.** These agents are not background tasks
+and have no task id to poll; their results are already in hand when Step 6 begins.
 
-### Step 5: Collect Results
+### Step 6: Verify Each Task Independently
 
-Parse the RESULT JSON from each task agent:
+The task agent checks its own work, which is not the same as it being checked. Invoke the
+verification skill per task — this one *is* a skill invocation, through the `Skill` tool:
+
+```
+/execute-verify --task-file {task_file_path} --worktree-path {worktree_path}
+```
+
+It runs on Haiku with no knowledge of how the implementation was written, which is the point.
+A task is `verified` only when this passes; the agent's own `status` is a claim, not a verdict.
+
+If verification fails and `attempt < 5`, the task is `failed` and returns to the batch with the
+verification feedback as `retry_feedback` — Step 4's worktree is reused via `--worktree-path`,
+not re-created. At `attempt >= 5` it is `abandoned`.
+
+### Step 7: Collect Results
+
+Combine each agent's RESULT JSON with its verification verdict:
 
 **Success result:**
 ```json
@@ -182,7 +239,7 @@ Parse the RESULT JSON from each task agent:
 }
 ```
 
-### Step 6: Update State
+### Step 8: Update State
 
 Read current state, update each task, write back:
 
@@ -211,7 +268,7 @@ Write updated state:
 echo '{updated_state_json}' > {tasks_path}/execute-state.json
 ```
 
-### Step 7: Report Batch Status
+### Step 9: Report Batch Status
 
 Output batch completion summary:
 
@@ -224,7 +281,7 @@ Output batch completion summary:
 Merge queue: 2 tasks ready
 ```
 
-### Step 8: Return Batch Result
+### Step 10: Return Batch Result
 
 Output structured result for layer agent:
 

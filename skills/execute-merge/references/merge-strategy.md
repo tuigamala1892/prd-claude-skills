@@ -115,11 +115,12 @@ Benefits:
 
 ### Creation (by task agent)
 
-Via the bundled script — see `skills/execute-task/scripts/create-worktree.sh`, which is the
-single source of truth for how a worktree is created:
+Created by `execute-batch` *before* the task agent is spawned, via
+`skills/execute-batch/scripts/create-worktree.sh` — the single source of truth for how a
+worktree is created:
 
 ```bash
-sh {skill_dir}/scripts/create-worktree.sh {project_path} L1-001 {worktree_dir} {base_branch}
+sh {execute_batch_skill_dir}/scripts/create-worktree.sh {project_path} L1-001 {worktree_dir} {base_branch}
 ```
 
 The command is deliberately not reproduced here. It was written out in two places, and the

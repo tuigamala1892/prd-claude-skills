@@ -1228,7 +1228,26 @@ deleting `.git` — as something the toolchain never does.
 the workspace root. The regression suite cannot check the second half statically, which is
 what item **4.13** is for.
 
-### 4.15 Create the worktree before dispatch, and invoke skills rather than describing them
+### 4.15 Create the worktree before dispatch, and invoke skills rather than describing them — **DONE**
+
+> **Completed (option A).** `execute-batch` now creates each worktree via the script *before*
+> spawning anything, and passes `{worktree_path}` into the agent prompt — the arrangement
+> `task-implementer.md` was always written for. `skills/execute-task/` is deleted; its
+> procedural content moved to the agent (worktree framing, the commit step it never had, a
+> result schema that actually carries `commit_hash`), its two reference files moved to
+> `skills/execute-batch/references/` and are named in the dispatch prompt, and the script moved
+> to `skills/execute-batch/scripts/`. Independent verification is now invoked by `execute-batch`
+> through the `Skill` tool, because a dispatched agent has no `Skill` tool at all.
+>
+> Two defects fixed in passing: the agent had **no commit step**, while `execute-batch` parsed
+> `commit_hash` from its result; and the two result schemas disagreed (`status: success` vs
+> `verified`, no `branch`/`worktree_path`).
+>
+> Two regression guards added, both verified to bite. One is a tripwire rather than a proof: a
+> skill *named in a prompt* is textually identical to a skill *invoked from a skill*, so no
+> static rule separates them in general.
+>
+> **Not yet verified behaviourally** — that needs run 6.
 
 **Addresses F20. Blocking, and it is the precondition for 4.8, 4.13 and 4.14 having any
 effect at all** — all three edited a file that is not in the execution path.
