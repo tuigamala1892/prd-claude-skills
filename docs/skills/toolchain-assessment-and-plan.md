@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 survives** — the state file still miscounts — and items 4.1–4.6, 4.9, 4.10 and 4.13 remain open.
+**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is fixed** by item 4.16 (ledger of SHAs, counts derived from git) though not yet exercised by a full run, and items 4.1–4.6, 4.9, 4.10 and 4.13 remain open.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -523,7 +523,20 @@ Two consequences worth stating plainly:
 
 Addressed by item **4.13**.
 
-#### F16 — `execute-state.json` is not a truthful record — **still open, now the only liar left**
+#### F16 — `execute-state.json` is not a truthful record — **FIXED, awaiting behavioural verification**
+
+> **Fixed by item 4.16.** A task is now recorded by SHA in a ledger, appended only after the
+> commit exists, and the metrics block is recomputed from git at the end of the run rather than
+> incremented along the way. `elapsed_seconds` is gone — it was a field nobody measured.
+>
+> Two scripts, both tested against a real repository: `record-task.sh` refuses to record a
+> commit that does not exist, and `ledger-status.sh` re-verifies every SHA and reports the first
+> gap. Two regression guards, both verified to bite, including one that fails the build on any
+> `tasks_completed += 1`.
+>
+> **Verified only in isolation so far** — the scripts behave correctly, including the case where
+> the repository is reset underneath the ledger, but no full `/execute` run has exercised them.
+
 
 > **Run 6 sharpens it.** With everything else working, the state file is measurably wrong in a
 > run that genuinely succeeded:
@@ -1321,6 +1334,35 @@ five different behaviours.
 `worktree-*` branch exists per task, and no `git worktree add` or `git init` appears in any
 subagent transcript at all.
 
+### 4.16 Record completion as a SHA; derive counts from git — **DONE**
+
+**Addresses F16.** Step 1 of
+[`resumable-execution-proposal.md`](resumable-execution-proposal.md), and the precondition for
+its `--resume`.
+
+> **Completed.** Two bundled scripts:
+>
+> - `skills/execute-merge/scripts/record-task.sh` — appends
+>   `{task_id, commit, at, attempts, verified}` to `{project_path}/.execute/<slug>/ledger.jsonl`
+>   **after** verifying the commit exists with `git cat-file -e`. Refuses otherwise. The ledger
+>   sits behind a self-ignoring `.gitignore`, so it never appears in the target's `git status`
+>   and never touches a tracked file.
+> - `skills/execute/scripts/ledger-status.sh` — re-verifies every recorded SHA and reports
+>   `{recorded, verified, missing, first_unverified}`. Stops counting at the first gap, because
+>   a later verified SHA is not evidence that an earlier missing one was done.
+>
+> `execute-merge` records before touching any counter; `/execute` recomputes `metrics` from the
+> script's output before reporting, and must not report success while `missing` is non-empty.
+> The hand-increments are gone, as is `elapsed_seconds`.
+>
+> Tested against a real repository: three tasks recorded and derived correctly; a non-existent
+> commit refused with the ledger unchanged; and — the case that defines the finding — after a
+> `git reset` the ledger claims 3 while only 1 verifies, naming `L1-002` as the restart point.
+>
+> **Ledger location** follows §8.1 of the proposal: it lives with the commits it indexes so the
+> two share a fate. A ledger in the tasks directory would survive a reset target and go on
+> describing work that no longer exists — F16 by another route.
+
 ---
 
 ## 5. Test plan
@@ -1419,6 +1461,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.12 step one~~ | ~~Synchronous dispatch~~ **DONE `d278c05`** — F17 fixed, verified by run 4 | ~~Blocking~~ | `execute-batch` |
 | ~~4.15~~ | ~~Create the worktree before dispatch~~ **DONE `c915422`** — F20 resolved, verified by run 6 | ~~Blocking~~ | `execute-batch`, `task-implementer` |
 | ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
+| ~~4.16~~ | ~~Record completion as a SHA; derive counts from git~~ **DONE** — F16 fixed, run pending | ~~Correctness~~ | `execute-merge`, `execute`, `scripts/` |
 | 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |

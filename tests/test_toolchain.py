@@ -311,6 +311,49 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("task completion is recorded as a SHA and counted from git", finding="F16")
+def _():
+    # Run 6 succeeded and still reported 23 of 18 tasks complete, 19 entries in an 18-task
+    # list, and an invented elapsed time. Every wrong number was incremented by hand; the
+    # only right one was derived. Both scripts must exist, and both must check git rather
+    # than take anyone's word.
+    rec = os.path.join(SKILLS, "execute-merge", "scripts", "record-task.sh")
+    sts = os.path.join(SKILLS, "execute", "scripts", "ledger-status.sh")
+    assert os.path.isfile(rec), "skills/execute-merge/scripts/record-task.sh is missing"
+    assert os.path.isfile(sts), "skills/execute/scripts/ledger-status.sh is missing"
+
+    rtext = open(rec, encoding="utf-8").read()
+    assert "cat-file -e" in rtext, (
+        "record-task.sh does not verify the commit exists before recording it")
+    assert "gitignore" in rtext, (
+        "record-task.sh does not keep the ledger out of the target's git status")
+
+    stext = open(sts, encoding="utf-8").read()
+    assert "cat-file -e" in stext, (
+        "ledger-status.sh trusts the ledger instead of verifying SHAs against git")
+
+    merge = open(os.path.join(SKILLS, "execute-merge", "SKILL.md"), encoding="utf-8").read()
+    assert "record-task.sh" in merge, "execute-merge never records anything in the ledger"
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert "ledger-status.sh" in ex, "execute never reconciles its state against git"
+
+
+@check("no skill increments a progress counter by hand", finding="F16")
+def _():
+    # `tasks_completed += 1` is the shape of the bug: a number that drifts from reality and
+    # cannot be checked. Counts come from ledger-status.sh, which asks git.
+    bad = []
+    for rel, text in instruction_text():
+        if not rel.endswith(".md"):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if re.search(r"(tasks_completed|tasks_remaining|tasks_failed|total_attempts)"
+                         r"\W*\]?\W*(\+=|-=)", line):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("increment progress counters by hand instead of deriving them from "
+                     "git:\n    " + "\n    ".join(bad))
+
+
 @check("no agent is told to invoke a skill it cannot invoke", finding="F20")
 def _():
     # `/execute-task ...` inside an Agent prompt is text. It does not resolve, nothing

@@ -163,13 +163,35 @@ git worktree remove --force {worktree_path}
 git branch -D worktree-{task_id}
 ```
 
-### Step 8: Update State
+### Step 8: Record the Task in the Ledger
+
+**Do this immediately after the merge commit exists, before updating any counters.** The
+ledger is the record that can be checked; `execute-state.json` is a convenience that cannot.
+
+```bash
+sh {skill_dir}/scripts/record-task.sh {project_path} {prd_slug} {task_id} {merge_commit_sha} {attempts}
+```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute-merge`. `{merge_commit_sha}` is the merge commit you just created:
+`git rev-parse HEAD` in `{project_path}`.
+
+The script refuses to record a SHA that does not exist, which is the entire point: a task
+cannot be marked done by asserting it. **If it exits non-zero, the task is not done** — treat
+that as a merge failure and do not report success.
+
+Order matters. Appending after the commit means a crash between the two *under*-reports
+progress, which a resume can recover from. Appending first over-reports, and over-reporting is
+how `execute-state.json` came to claim 23 of 18 tasks complete in a run that did 18.
+
+### Step 9: Update State
 
 Update `execute-state.json`:
 
 ```python
 state["tasks"][task_id]["status"] = "completed"
 state["tasks"][task_id]["merged_at"] = now()
+state["tasks"][task_id]["merge_commit"] = merge_commit_sha   # the checkable field
 state["tasks"][task_id]["worktree_path"] = None
 state["tasks"][task_id]["branch"] = None
 
@@ -178,18 +200,21 @@ for item in state["merge_queue"]:
     if item["task_id"] == task_id:
         item["status"] = "merged"
 
-# Add to completed list
-state["completed"].append(task_id)
+# Add to completed list -- only if absent. A retried task reaches here more than once,
+# and blind appends are why a run of 18 tasks recorded 19 entries.
+if task_id not in state["completed"]:
+    state["completed"].append(task_id)
 
 # Remove from worktrees
 del state["worktrees"][task_id]
-
-# Update metrics
-state["metrics"]["tasks_completed"] += 1
-state["metrics"]["tasks_remaining"] -= 1
 ```
 
-### Step 9: Report Result
+**Do not increment `metrics`.** Counters maintained by hand drift, and in run 6 every wrong
+number in the state file was one that had been incremented while every correct one was
+derived. `/execute` recomputes the metrics block from the ledger at the end of the run, by
+asking git. Leave it alone here.
+
+### Step 10: Report Result
 
 **Success:**
 

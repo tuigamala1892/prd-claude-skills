@@ -243,7 +243,34 @@ Review errors and fix issues, then run:
   /execute {tasks_path} --resume
 ```
 
-### Step 9: Report Final Status
+### Step 9: Reconcile State Against Git, Then Report
+
+Before reporting anything, ask git what actually happened:
+
+```bash
+sh {skill_dir}/scripts/ledger-status.sh {project_path} {prd_slug} {total_tasks}
+```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute`. It returns, for example:
+
+```json
+{"recorded":18,"verified":18,"missing":[],"first_unverified":null,"expected":18}
+```
+
+Write `verified` into `metrics.tasks_completed` and `expected - verified` into
+`tasks_remaining`. **These are the numbers you report.** Do not report a count that you
+incremented, and do not report success while `missing` is non-empty.
+
+If `verified` is below `expected`, say so plainly and name `first_unverified` as the point a
+resume would restart from. A run that completed 14 of 18 tasks is a useful outcome honestly
+reported; the same run described as complete is worse than a crash, because it invites the
+operator to build on work that does not exist.
+
+**Why this exists.** Run 6 genuinely succeeded and still recorded `tasks_completed: 23`
+against `tasks_total: 18`, 19 entries in an 18-task `completed[]` list, and an invented
+elapsed time. Every wrong figure was maintained by hand; the one correct figure — the merge
+queue — was derived from what had actually been merged. So derive all of them.
 
 On completion:
 
@@ -359,6 +386,7 @@ def init_state(prd_slug, project_path, worktree_dir, tasks_path, options):
         "completed": [],
         "failed": [],
         "abandoned": [],
+        # Derived, never incremented. Recomputed from the ledger by Step 9; see below.
         "metrics": {
             "tasks_total": total_tasks,
             "tasks_completed": 0,
@@ -366,11 +394,14 @@ def init_state(prd_slug, project_path, worktree_dir, tasks_path, options):
             "tasks_abandoned": 0,
             "tasks_remaining": total_tasks,
             "total_attempts": 0,
-            "total_retries": 0,
-            "elapsed_seconds": 0
+            "total_retries": 0
         }
     }
 ```
+
+**`elapsed_seconds` is deliberately absent.** It was previously written as a number nobody
+measured — run 6 recorded 4000 for a run that took 10476 seconds. If elapsed time is wanted,
+compute it at report time from `started_at`; do not carry a field that invites invention.
 
 ## Resume Behavior
 
