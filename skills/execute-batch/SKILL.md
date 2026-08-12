@@ -59,7 +59,24 @@ Example: `L1-001` → `docs/tasks/voice-prd/1-foundation/L1-001-create-enums.xml
 
 ### Step 4: Spawn Task Agents in Parallel
 
-**CRITICAL**: Launch ALL task agents in a SINGLE message using multiple Task tool calls.
+Two properties matter here, and one instruction delivers both: **issue every task agent for
+this batch as multiple tool calls in a single message, with `run_in_background: false`.**
+
+Why each half matters:
+
+- **`run_in_background: false`** makes the call block until the agent returns, so its
+  `RESULT JSON` arrives here, in this context, where Step 5 can parse it. This skill runs in
+  a fork, and *a fork ends when its turn ends* — there is no suspended state to resume into
+  and no notification to wait for. Dispatching in the background and then intending to wait
+  does not pause anything: it returns immediately with the work still outstanding, the parent
+  sees an unfinished batch and re-implements everything itself, and the task agent's real
+  output arrives after this context no longer exists. That is not hypothetical — it is
+  exactly what happened on the first three end-to-end runs.
+- **One message, all calls** is now what produces the parallelism. Tool calls issued together
+  in a single message run concurrently; calls issued one message at a time run one after
+  another. With blocking dispatch there is no background execution to fall back on, so
+  splitting them across messages does not merely lose a little speed — it serialises the
+  entire batch.
 
 For each task, invoke the Task tool:
 
@@ -67,7 +84,7 @@ For each task, invoke the Task tool:
 Task(
   subagent_type: "task-implementer",
   prompt: <task execution prompt>,
-  run_in_background: true,
+  run_in_background: false,
   description: "Execute task {task_id}"
 )
 ```
@@ -95,39 +112,32 @@ In a SINGLE message, call Task tool 3 times:
 ```xml
 <Task>
   <subagent_type>task-implementer</subagent_type>
-  <run_in_background>true</run_in_background>
+  <run_in_background>false</run_in_background>
   <description>Execute task L1-001</description>
   <prompt>Execute /execute-task --task-file .../L1-001-create-enums.xml ...</prompt>
 </Task>
 
 <Task>
   <subagent_type>task-implementer</subagent_type>
-  <run_in_background>true</run_in_background>
+  <run_in_background>false</run_in_background>
   <description>Execute task L1-002</description>
   <prompt>Execute /execute-task --task-file .../L1-002-create-model.xml ...</prompt>
 </Task>
 
 <Task>
   <subagent_type>task-implementer</subagent_type>
-  <run_in_background>true</run_in_background>
+  <run_in_background>false</run_in_background>
   <description>Execute task L1-006</description>
   <prompt>Execute /execute-task --task-file .../L1-006-setup-config.xml ...</prompt>
 </Task>
 ```
 
-### Step 5: Wait for Completion
+All three run concurrently, and the message completes only once all three have returned.
+There is no separate waiting step to perform: **do not poll with `TaskOutput`.** These agents
+are not background tasks and have no task id to poll; their results are already in hand when
+Step 5 begins.
 
-After launching all tasks, use TaskOutput to wait for each:
-
-```
-TaskOutput(task_id: "{task_1_id}", block: true, timeout: 600000)
-TaskOutput(task_id: "{task_2_id}", block: true, timeout: 600000)
-TaskOutput(task_id: "{task_3_id}", block: true, timeout: 600000)
-```
-
-Timeout: 10 minutes per task (600000ms)
-
-### Step 6: Collect Results
+### Step 5: Collect Results
 
 Parse the RESULT JSON from each task agent:
 
@@ -172,7 +182,7 @@ Parse the RESULT JSON from each task agent:
 }
 ```
 
-### Step 7: Update State
+### Step 6: Update State
 
 Read current state, update each task, write back:
 
@@ -201,7 +211,7 @@ Write updated state:
 echo '{updated_state_json}' > {tasks_path}/execute-state.json
 ```
 
-### Step 8: Report Batch Status
+### Step 7: Report Batch Status
 
 Output batch completion summary:
 
@@ -214,7 +224,7 @@ Output batch completion summary:
 Merge queue: 2 tasks ready
 ```
 
-### Step 9: Return Batch Result
+### Step 8: Return Batch Result
 
 Output structured result for layer agent:
 
@@ -248,18 +258,27 @@ If any task is abandoned:
 
 ## Parallel Execution Rules
 
-1. **All tasks in single message**: Launch ALL Task tool calls in ONE message
-2. **True parallelism**: Use `run_in_background: true`
+1. **All tasks in single message**: Launch ALL Task tool calls in ONE message. This is what
+   makes them parallel — it is not a formatting preference. Calls split across messages run
+   strictly one after another.
+2. **Blocking dispatch**: Use `run_in_background: false`, so this skill is still alive to
+   receive each result. A forked skill cannot outlive its own turn to collect them later.
 3. **Independent tasks only**: Batch should only contain tasks with no inter-dependencies
-4. **Resource awareness**: Respect `--max-parallel` limit from layer agent
+4. **Resource awareness**: Respect `--max-parallel` limit from layer agent. If the batch has
+   more tasks than that limit, send them in successive messages of at most `--max-parallel`
+   calls each — parallel within a message, sequential between them.
 
 ## Error Handling
 
-### Task Agent Timeout
+### Task Agent Returns Nothing Usable
 
-If TaskOutput times out:
-- Mark task as failed with timeout error
+A blocking dispatch always returns something, but it may be an error, an empty result, or
+prose instead of the expected `RESULT JSON`. Treat any of those the same way:
+- Mark task as failed, recording what came back
 - Include in retry queue for next batch
+
+Do not infer success from the absence of an error. A task counts as verified only when its
+result names a `commit_hash`.
 
 ### Task Agent Crash
 

@@ -249,6 +249,42 @@ def _():
                      "\n    " + "\n    ".join(bad))
 
 
+@check("no forked skill dispatches work in the background", finding="F17")
+def _():
+    # A forked skill ends when its turn ends. Dispatching with `run_in_background: true`
+    # and then intending to wait does not pause anything: the skill returns immediately
+    # with the work outstanding, its parent sees an unfinished batch and re-implements
+    # everything inline, and the agent's real result arrives after the context that asked
+    # for it is gone. Three end-to-end runs were lost to this before it was understood.
+    bad = []
+    for rel, text in instruction_text():
+        for i, line in enumerate(text.splitlines(), 1):
+            if re.search(r"run_in_background[\"']?\s*[:=>]\s*[\"']?true", line, re.I) or \
+               re.search(r"<run_in_background>\s*true", line, re.I):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, (
+        "dispatch work in the background from a skill that cannot outlive its own turn "
+        "to collect it:\n    " + "\n    ".join(bad))
+
+
+@check("no skill waits on background tasks it cannot outlive", finding="F17")
+def _():
+    # The companion to the check above. `TaskOutput` polling only makes sense for
+    # background tasks; with blocking dispatch there is no task id to poll, so a lingering
+    # instruction to poll is an invitation to re-create the failure. Mentioning the tool in
+    # order to forbid it is fine -- a "do not poll" line must not trip this.
+    bad = []
+    for rel, text in instruction_text():
+        for i, line in enumerate(text.splitlines(), 1):
+            if "TaskOutput" not in line:
+                continue
+            if re.search(r"\b(do not|don't|never|no)\b", line, re.I):
+                continue
+            bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("poll for background results that will never arrive in this "
+                     "context:\n    " + "\n    ".join(bad))
+
+
 @check("every `agent:` named by a skill exists in agents/", finding="F7")
 def _():
     known = {stem for stem, _p in agent_files()}
