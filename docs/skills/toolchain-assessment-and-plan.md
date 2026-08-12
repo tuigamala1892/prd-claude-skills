@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** Five end-to-end runs, and run 5 found the thing underneath all of it: **`execute-task/SKILL.md` has never once been loaded.** Task agents are dispatched with a *prompt* that says "using the /execute-task skill", which is text, not an invocation — so the file describing worktree creation, TDD and verification has never been read by anything, in any run (**F20**). The agent that does the work, `task-implementer.md`, is written on the assumption that its worktree already exists. That is why no fix aimed at the worktree command has ever changed the outcome. Previously: F1/F2/F13 fixed; F14 **withdrawn** (a harness artefact); **F17 fixed and verified** — synchronous dispatch restored the orchestration chain, and run 4 produced 18 task agents and one commit per task where run 3 produced one commit for all twenty. The fix exposed the next layer: **F18** (the `git worktree add` command is retyped from prose and drifts — 6 of 6 attempts dropped `-b`, making them always fatal) and **F19, blocking and destructive** (on failure the agents improvise upward and `git init` a repository *outside* `{project_path}`, swallowing the docs tree and recording the real project as a gitlink). F15 and F16 stand. Items 4.13 and 4.14 open
+**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 survives** — the state file still miscounts — and items 4.1–4.6, 4.9, 4.10 and 4.13 remain open.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -154,7 +154,15 @@ than XML — addressed by item **4.4** below.
 > child in the background, says it is waiting, and returns immediately — because ending its
 > turn *is* its return (F17). Three runs, three stories, and only the last one survives.
 
-#### F20 — `execute-task/SKILL.md` has never been loaded; the task agent assumes a worktree it never gets
+#### F20 — `execute-task/SKILL.md` has never been loaded — **RESOLVED, verified by run 6**
+
+> **Fixed by item 4.15 (`c915422`).** `execute-batch` now creates each worktree itself and
+> passes the path into the prompt; `skills/execute-task/` is deleted and its procedure lives in
+> `task-implementer.md` and `skills/execute-batch/references/`. Run 6: **19 script invocations,
+> 18 successful** (the extra correctly refused a duplicate branch), **zero** hand-written
+> `git worktree add`, and `execute-verify` invoked **18 times** — the first time independent
+> verification has ever run.
+
 
 Found by §5.2 run 5. **Blocking, and it supersedes the diagnosis behind F18, F19 and item
 4.14.** Everything below follows from one measurement:
@@ -240,7 +248,12 @@ in — which is exactly the world `task-implementer.md` is already written for. 
 be persuaded to call a script; `execute-batch` creates the worktree, then hands over. See item
 **4.15**.
 
-#### F19 — `/execute` creates a git repository outside `{project_path}`
+#### F19 — `/execute` creates a git repository outside `{project_path}` — **RESOLVED, verified by run 6**
+
+> **Fixed by items 4.14 and 4.15.** Zero `git init` invocations in run 6, and no repository at
+> the workspace root. The cause was never `git init` itself: agents ran it while improvising
+> around a failed worktree. Remove the need to improvise and the symptom goes with it.
+
 
 Found by §5.2 run 4. **Blocking, and the first finding in this document that damages
 something outside the target directory.**
@@ -284,7 +297,13 @@ it wanders.
 Addressed by item **4.14**, and this is the strongest argument yet for **4.13**: a guard that
 only exists as prose cannot stop an improvisation it never contemplated.
 
-#### F18 — the `git worktree add` command is retyped from prose, and drifts
+#### F18 — the `git worktree add` command is retyped from prose, and drifts — **RESOLVED, verified by run 6**
+
+> **Fixed by items 4.14 and 4.15.** The command exists in exactly one executable file and is
+> invoked by the caller. Run 6 ran it 19 times and hand-wrote it zero times. Note the ordering:
+> 4.14 bundled the script and changed nothing, because the file naming it was never read
+> (F20). The script only became load-bearing once 4.15 moved the call to `execute-batch`.
+
 
 Found by §5.2 run 4, and the direct cause of F19.
 
@@ -504,7 +523,24 @@ Two consequences worth stating plainly:
 
 Addressed by item **4.13**.
 
-#### F16 — `execute-state.json` is not a truthful record
+#### F16 — `execute-state.json` is not a truthful record — **still open, now the only liar left**
+
+> **Run 6 sharpens it.** With everything else working, the state file is measurably wrong in a
+> run that genuinely succeeded:
+>
+> | field | recorded | actual |
+> |---|---|---|
+> | `tasks_total` | 18 | 18 ✓ |
+> | `tasks_completed` | **23** | 18 |
+> | `completed[]` entries | **19** | 18 |
+> | `elapsed_seconds` | **4000** | 10476 |
+> | `merge_queue` | 18 `merged` | 18 ✓ |
+>
+> The parts derived from git are right; the counters the model maintains by hand are not. That
+> is the whole finding in miniature, and the argument for
+> [`resumable-execution-proposal.md`](resumable-execution-proposal.md): record SHAs, count by
+> asking git, never by incrementing.
+
 
 > A fix is designed in [`resumable-execution-proposal.md`](resumable-execution-proposal.md):
 > record a commit SHA per task, appended *after* the commit, and have `--resume` verify each
@@ -1247,7 +1283,9 @@ what item **4.13** is for.
 > skill *named in a prompt* is textually identical to a skill *invoked from a skill*, so no
 > static rule separates them in general.
 >
-> **Not yet verified behaviourally** — that needs run 6.
+> **Verified by run 6**: 18 merge commits for 18 tasks, one worktree per task created by the
+> caller, independent verification running for the first time, and 88 passing tests in the
+> produced application.
 
 **Addresses F20. Blocking, and it is the precondition for 4.8, 4.13 and 4.14 having any
 effect at all** — all three edited a file that is not in the execution path.
@@ -1325,7 +1363,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. One task got a hand-rolled worktree and merged; the rest wrote to the main tree, and one `git init` re-created the stray repository |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -1379,9 +1417,9 @@ bad = [p for p in files if not _parses(p)]
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
 | ~~4.12 step one~~ | ~~Synchronous dispatch~~ **DONE `d278c05`** — F17 fixed, verified by run 4 | ~~Blocking~~ | `execute-batch` |
-| **4.15** | **Create the worktree before dispatch; invoke skills rather than describing them** | **Blocking** | `execute-batch`, `task-implementer`, `execute-task` |
-| ~~4.14~~ | ~~Worktree creation as a script~~ **DONE but inert until 4.15** — the file it lives in is never loaded | ~~Blocking~~ | `execute-task`, `scripts/` |
-| **4.12** | **Consolidate git ownership under forked orchestration** *(structural half)* | **Blocking** | `execute-layer`, `execute-batch`, `execute-task` |
+| ~~4.15~~ | ~~Create the worktree before dispatch~~ **DONE `c915422`** — F20 resolved, verified by run 6 | ~~Blocking~~ | `execute-batch`, `task-implementer` |
+| ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
+| 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | 4.9 | Manifest completeness | Consistency | `breakdown` |
