@@ -338,6 +338,24 @@ def _():
     assert "ledger-status.sh" in ex, "execute never reconciles its state against git"
 
 
+@check("the manifest is built from task files, not from the plan", finding="F9")
+def _():
+    # The manifest used to be written from layer_plan.json and never reconciled with what
+    # generation produced. On the fixture that meant 20 declared against 18 files, with all
+    # six Layer 0 entries naming files that did not exist -- generation had consolidated six
+    # planned tasks into four and renamed every one. /execute faithfully reported 18 of 20.
+    script = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/build-manifest.py is missing"
+    body = open(script, encoding="utf-8").read()
+    assert "--verify" in body, "build-manifest.py has no verify mode"
+
+    sk = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "build-manifest.py" in sk, (
+        "breakdown does not call build-manifest.py, so the manifest is still hand-written")
+    assert "--verify" in sk, (
+        "breakdown never verifies the manifest against the files it generated")
+
+
 @check("resume is decided by verified commits, not by the state file", finding="F16")
 def _():
     # A resume that trusts execute-state.json skips work that was never done. That file once

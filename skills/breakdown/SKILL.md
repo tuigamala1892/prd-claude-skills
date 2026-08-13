@@ -173,15 +173,50 @@ For each layer in order:
 
 ### Phase 5: Finalize
 
-1. Generate `docs/tasks/{slug}/manifest.json` containing:
-   - PRD slug and name
-   - Generation timestamp
-   - Layer completion status
-   - Task inventory with IDs and file paths
-2. Report completion summary:
-   - Total tasks generated
+1. **Build `manifest.json` from the task files that exist**, using the bundled script:
+
+   ```bash
+   python {skill_dir}/scripts/build-manifest.py docs/tasks/{slug} --project-path {output_dir}
+   ```
+
+   `{skill_dir}` is the base directory given at the top of this skill — the one ending in
+   `skills/breakdown`. The script enumerates the generated `.xml` files, reads each task's
+   declared name, and writes `task_inventory`, `summary.total_tasks` and
+   `summary.tasks_per_layer` to match. Metadata already in the manifest (PRD slug and name,
+   tech stack, project type, output dir) is preserved.
+
+   It also records two fields the manifest previously lacked:
+
+   - **`prd.project_path`** — `/execute` documents a fallback to this when `--project-path` is
+     omitted, but the field was never in the manifest spec, so the fallback could never fire
+     and `--project-path` was mandatory in practice. Pass `--project-path` so it is recorded.
+   - **`toolchain_version`** — read from `.claude-plugin/plugin.json`, so a generated artefact
+     records which toolchain produced it.
+
+   **Do not write the inventory from `layer_plan.json`.** The plan is what you intended to
+   generate; the files are what you generated, and generation legitimately consolidates,
+   splits and renames tasks as it learns the shape of the work. On the reference fixture the
+   plan called for six Layer 0 tasks and generation produced four — with different names — and
+   the hand-written manifest kept the plan's version. `/execute` then reported "18 of 20" for
+   a run that had done everything there was to do, and the six file paths it named did not
+   exist.
+
+2. **Verify before reporting anything:**
+
+   ```bash
+   python {skill_dir}/scripts/build-manifest.py docs/tasks/{slug} --verify
+   ```
+
+   It exits non-zero and lists the discrepancies if the manifest and the files disagree. Treat
+   that as a generation failure, not a formatting nit: every downstream consumer sizes the work
+   from this file.
+
+3. Report completion summary:
+   - Total tasks generated — **the number the script reports**, not the number planned
    - Tasks per layer
    - Any review failures requiring attention
+   - If the count differs from `layer_plan.json`, say so and say why; a plan revised during
+     generation is the plan working, not failing
 
 ## Task File Format
 

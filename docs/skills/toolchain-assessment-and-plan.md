@@ -793,7 +793,15 @@ name that correctly reported absent.
 The remaining part of F8 — whether these should become skills with `model:` selectors — is
 still open under item 4.1.
 
-#### F9 — The documented `project_path` fallback is dead
+#### F9 — The documented `project_path` fallback is dead — **RESOLVED**
+
+> **Fixed by item 4.9.** `build-manifest.py` writes `prd.project_path`, and its `--verify` mode
+> fails when the field is absent, so the fallback `/execute` documents can now actually fire.
+>
+> The finding turned out to have a second half nobody had looked for: the manifest was written
+> from `layer_plan.json` rather than from the generated files, so it was wrong about *what
+> exists*, not merely incomplete. See item 4.9.
+
 
 `skills/execute/SKILL.md:77-79` resolves the project path as:
 
@@ -1136,7 +1144,7 @@ Also confirm the branch name is not hardcoded elsewhere — `execute-merge` refe
 several places (`SKILL.md:57,83,84`). Derive it from the repository's actual HEAD, or make it a
 documented parameter.
 
-### 4.9 Manifest completeness — *confirmed by run 7*
+### 4.9 Manifest completeness — **DONE**
 
 > **Now measured, not suspected.** `manifest.json` for the §5.1 fixture declares
 > `summary.total_tasks: 20` while 18 task XML files exist (`L0-001`–`L0-004`, `L1-001`–`L1-005`,
@@ -1144,12 +1152,35 @@ documented parameter.
 > frontend). `/execute` correctly reported 18 of 20 — the over-count originates in
 > `/breakdown`.
 
-**Addresses F9**
+**Addresses F9.**
 
-Add to `breakdown`'s `manifest.json` specification:
-
-- `prd.project_path` — so `/execute`'s documented fallback actually works
-- `toolchain_version` — per item 4.5
+> **Completed.** `skills/breakdown/scripts/build-manifest.py` builds the manifest from the
+> task files on disk and verifies it, and `/breakdown` Phase 5 calls it instead of writing the
+> inventory by hand.
+>
+> **The over-count was the smaller half.** The manifest was written from `layer_plan.json` — the
+> *plan* — and never reconciled with generation. On the fixture the plan called for six Layer 0
+> tasks; generation produced four, renaming all of them. The manifest kept the plan's version,
+> so it was not merely over-counting: **every Layer 0 path it named pointed at a file that did
+> not exist.** The other three layers matched only because generation happened to follow the
+> plan one-for-one there.
+>
+> | | plan / old manifest | on disk |
+> |---|---|---|
+> | Layer 0 | 6 tasks | **4** |
+> | Total | 20 | **18** |
+> | Layer 0 paths resolving | 0 of 6 | 4 of 4 |
+>
+> The task files are the deliverable, so the task files are the source of truth. A plan revised
+> during generation is the plan working, not failing — but the manifest has to follow.
+>
+> Also delivered: `prd.project_path` (F9 proper) and `toolchain_version` from `plugin.json`
+> (a down-payment on item **4.5**). `--verify` fails on a missing `project_path`, on a count
+> mismatch, and on any inventory entry naming a file that is not there.
+>
+> Tested against the fixture: the broken manifest was flagged with the six bad paths and the
+> count mismatch; the rebuild produced 18 tasks with correct per-layer counts, real task names
+> read from the XML, and preserved metadata; re-verification is clean.
 
 ### 4.10 Orphaned agent
 
@@ -1507,7 +1538,7 @@ bad = [p for p in files if not _parses(p)]
 | 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
 | **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
-| 4.9 | Manifest completeness | Consistency | `breakdown` |
+| ~~4.9~~ | ~~Manifest completeness~~ **DONE** — built from task files, not the plan; F9 resolved | ~~Consistency~~ | `breakdown`, `breakdown/scripts/` |
 | 4.10 | Orphaned agent | Structural | `agents/project-context-finalizer.md` |
 
 ---
