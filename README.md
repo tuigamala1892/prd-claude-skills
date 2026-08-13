@@ -14,15 +14,16 @@ tasks in parallel git worktrees, and handle change requests against the result.
 | `/crd` | Change Request Document workflow for changes against an existing codebase |
 | `/crd-context` | Build and incrementally maintain `PROJECT.md` codebase context |
 
-`/execute` is hierarchical: `execute` → `execute-layer` → `execute-batch` →
-`execute-task` → `execute-verify`, with `execute-merge` draining a sequential
-merge queue so parallel tasks cannot conflict on merge.
+`/execute` is hierarchical: `execute` → `execute-layer` → `execute-batch`, which creates
+each task's worktree and dispatches a `task-implementer` agent into it, then has
+`execute-verify` check the result independently. `execute-merge` drains a sequential merge
+queue, so parallel tasks cannot conflict on merge.
 
 ## Layout
 
 ```
 .claude-plugin/plugin.json   plugin manifest (name, version, author)
-skills/<name>/SKILL.md       15 skills, some with references/
+skills/<name>/SKILL.md       14 skills, some with references/ and scripts/
 agents/*.md                  8 subagent definitions
 commands/*.md                3 slash commands
 docs/skills/                 assessment and remediation notes
@@ -133,12 +134,21 @@ Fixed and verified under a real run:
   git, never incremented. `--resume` skips only tasks whose commits still exist.
 - ~~`manifest.json` was written from the plan, not from the generated files.~~ **Fixed**
   (4.9, F9), along with the `prd.project_path` fallback that could never fire.
+- ~~The preflight's refusals were prose, and were reasoned past.~~ **Fixed** (4.13, F15).
+  Every precondition is now one script whose exit status is the decision.
+- ~~`execute-state.json` was hand-assembled, and wrong in four consecutive runs.~~ **Fixed**
+  (4.17, F21). One script derives the whole file from the ledger and git.
 
-Still outstanding: prose guards are advisory rather than enforced (4.13, **F15**), model
-identifiers in the frontmatter are stale (4.2), and the `what-next.md` template that
-`/prd --resume` greps for does not match what `/prd` writes (4.3, 4.4).
+The through-line: six things that used to be described are now executed — `preflight`,
+`create-worktree`, `record-task`, `ledger-status`, `build-manifest` and `write-state`. Each
+became a script because the described version demonstrably failed, and each has been correct
+in every run since.
 
-`tests/test_toolchain.py` guards every fix above against regression — 28 checks, each
+Still outstanding: model identifiers in the frontmatter are stale (4.2), and the
+`what-next.md` template that `/prd --resume` greps for does not match what `/prd` writes
+(4.3, 4.4).
+
+`tests/test_toolchain.py` guards every fix above against regression — 29 checks, each
 verified to fail when its fix is reverted.
 
 ## Attribution and licensing
