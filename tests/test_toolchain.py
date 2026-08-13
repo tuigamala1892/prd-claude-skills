@@ -546,18 +546,92 @@ def _():
                      + "\n    ".join(bad))
 
 
-@check("`/execute` refuses to target the wrong repository", finding="F2")
+@check("`/execute` refuses to target the wrong repository -- by running the guard", finding="F15")
 def _():
-    # A mistyped --project-path makes /execute create branches and merge in the wrong
-    # repo. The preflight must rule out the paths that are never valid targets.
-    text = open(os.path.join(SKILLS, "execute", "SKILL.md"),
-                encoding="utf-8", errors="replace").read()
-    missing = [name for name, pat in (
-        ("docs/prd guard", r"docs/prd"),
-        ("toolchain guard", r"\.claude-plugin"),
-        ("REFUSED message", r"REFUSED"),
-    ) if not re.search(pat, text)]
-    assert not missing, ("execute preflight is missing: " + ", ".join(missing))
+    # This check used to assert that the guard *text* appeared in SKILL.md. F15 is what that
+    # was worth: the text was present, correct and ignored. So run the guard instead, against
+    # real directories, and assert what it does.
+    import shutil
+    import stat
+    import tempfile
+
+    pf = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+    assert os.path.isfile(pf), "skills/execute/scripts/preflight.sh is missing"
+
+    sk = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert "preflight.sh" in sk, "execute never calls preflight.sh, so nothing enforces it"
+
+    if not shutil.which("git") or not shutil.which("sh"):
+        return  # nothing to run the guard with; the static half above still applied
+
+    def run(tasks, project, base=None):
+        cmd = ["sh", pf, tasks, project] + ([base] if base else [])
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    root = tempfile.mkdtemp(prefix="preflight-check-")
+    try:
+        tasks = os.path.join(root, "tasks")
+        os.makedirs(tasks)
+        for f in ("manifest.json", "layer_plan.json"):
+            open(os.path.join(tasks, f), "w").write("{}")
+
+        def new_repo(name):
+            d = os.path.join(root, name)
+            os.makedirs(d, exist_ok=True)
+            for args in (["init", "-q", "-b", "main", "."],
+                         ["config", "user.email", "t@t.invalid"],
+                         ["config", "user.name", "T"]):
+                subprocess.run(["git", "-C", d] + args, capture_output=True, timeout=60)
+            open(os.path.join(d, "f.txt"), "w").write("x")
+            subprocess.run(["git", "-C", d, "add", "-A"], capture_output=True, timeout=60)
+            subprocess.run(["git", "-C", d, "commit", "-qm", "init"],
+                           capture_output=True, timeout=60)
+            return d
+
+        app = new_repo("app")
+
+        rc, out = run(tasks, app)
+        assert rc == 0, f"preflight refuses a valid target: {out.strip()[:200]}"
+        assert "main" in out, f"preflight did not resolve the base branch: {out.strip()[:200]}"
+
+        # The cases that must be refused. Each is a real failure this project has hit.
+        docs = new_repo("docsrepo")
+        os.makedirs(os.path.join(docs, "docs", "prd"), exist_ok=True)
+
+        plugin = new_repo("toolchain")
+        os.makedirs(os.path.join(plugin, ".claude-plugin"), exist_ok=True)
+        open(os.path.join(plugin, ".claude-plugin", "plugin.json"), "w").write("{}")
+
+        plain = os.path.join(root, "plain")
+        os.makedirs(plain)
+        sub = os.path.join(app, "sub")
+        os.makedirs(sub, exist_ok=True)
+
+        for label, args in (
+            ("a documentation tree (F15's exact case)", (tasks, docs)),
+            ("the toolchain repository", (tasks, plugin)),
+            ("a directory that is not a repository", (tasks, plain)),
+            ("a subdirectory of a repository (F19)", (tasks, sub)),
+            ("a nonexistent base branch", (tasks, app, "nosuchbranch")),
+        ):
+            rc, out = run(*args)
+            assert rc != 0, f"preflight ACCEPTED {label}"
+            assert "REFUSED" in out, f"refusal of {label} does not say REFUSED: {out[:160]}"
+
+        assert not os.path.isdir(os.path.join(plain, ".git")), (
+            "preflight created a repository -- /execute must never run `git init`")
+    finally:
+        rmtree(root)
 
 
 @check("no generated output committed under skills/", finding="F4")

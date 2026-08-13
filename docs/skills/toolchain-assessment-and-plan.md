@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1–4.6, 4.9, 4.10 and 4.13 remain open.
+**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1–4.6 and 4.10 remain open.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -493,7 +493,20 @@ it is not the thing being tested, and it cannot be resumed, parallelised, or aud
 dispatch children **synchronously** and not rely on background notifications, or the
 non-forked parent must own the dispatch loop outright. See item **4.12**.
 
-#### F15 — guards written as skill prose are advisory, not enforced
+#### F15 — guards written as skill prose are advisory, not enforced — **RESOLVED for the critical guards**
+
+> **Fixed by item 4.13.** Every `/execute` precondition now lives in
+> `skills/execute/scripts/preflight.sh`, one program whose exit status is the decision. There
+> is no sentence left to weigh.
+>
+> **Item 4.7's third part is delivered at last.** The wrong-repository refusal existed in prose
+> from 4.7 onward and never once fired; it now does, and the suite proves it by running it.
+>
+> The general principle stands — any prose instruction may be ignored — but the guards this
+> finding named are no longer prose. Five scripts now carry what used to be description:
+> `preflight.sh`, `create-worktree.sh`, `record-task.sh`, `ledger-status.sh` and
+> `build-manifest.py`. Each was written because the described version demonstrably failed.
+
 
 Found by §5.2 test 8. `/execute` was pointed at a path containing `docs/prd/` — the exact
 case item 4.7 added a refusal for — and did not refuse. It produced a full execution plan and
@@ -1279,7 +1292,30 @@ actually available to subagents and long enough to finish**. Asserting on a run 
 permitted to create a worktree, or was killed before it could, measures nothing. F17 is the
 concrete target: every layer must look like layer 2 did.
 
-### 4.13 Make the critical guards executable rather than advisory
+### 4.13 Make the critical guards executable rather than advisory — **DONE**
+
+**Addresses F15.** Option 2 was chosen, as anticipated.
+
+> **Completed.** `skills/execute/scripts/preflight.sh` performs every precondition and
+> **resolves the base branch**, printing it on stdout. That second half is deliberate: a guard
+> that only says no is a hoop, and hoops stop being jumped through. Running this one is the
+> cheapest way to get the base branch, so calling it is in the caller's interest.
+>
+> Exit 0 means proceed and here is your branch; non-zero means stderr begins `REFUSED:` and
+> `/execute` stops. Thirteen paths tested: two accepted, eleven refused — no `manifest.json`,
+> no `layer_plan.json`, a missing target, a target containing `docs/prd/`, a target containing
+> `.claude-plugin/plugin.json`, a target inside the tasks directory, a target that is not a
+> repository, a target that is a *subdirectory* of one, a nonexistent base branch, and a
+> detached HEAD. It creates nothing, and in particular never runs `git init`.
+>
+> **The regression check was rewritten as the item asked.** It used to assert the guard *text*
+> appeared in `SKILL.md` — which F15 showed is worth nothing, since the text was present,
+> correct and ignored. It now builds real repositories in a temp directory and *runs* the
+> guard against them. Proof it is worth having: disabling the `docs/prd` refusal inside the
+> script, while leaving every word of the surrounding documentation intact, now fails the
+> suite. The old check would have passed.
+
+<details><summary>Original proposal</summary>
 
 **Addresses F15**
 
@@ -1297,6 +1333,8 @@ is negotiable. Options, in increasing order of reliability:
 Option 2 is the smallest change that actually changes the guarantee. Note the regression suite
 currently checks only that the guard *text* exists (`F2` check in `tests/test_toolchain.py`);
 that check should assert the mechanism, not the wording, once one is chosen.
+
+</details>
 
 ### 4.14 Make worktree creation a script, and refuse to operate outside the target — **DONE**
 
@@ -1560,7 +1598,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
 | ~~4.16~~ | ~~Record completion as a SHA; derive counts from git~~ **DONE** — F16 fixed, run pending | ~~Correctness~~ | `execute-merge`, `execute`, `scripts/` |
 | 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
-| **4.13** | **Make critical guards executable rather than advisory** | **Correctness** | `execute`, `tests/test_toolchain.py` |
+| ~~4.13~~ | ~~Make critical guards executable~~ **DONE** — F15 resolved; the check now runs the guard | ~~Correctness~~ | `execute/scripts/`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | ~~4.9~~ | ~~Manifest completeness~~ **DONE** — built from task files, not the plan; F9 resolved | ~~Consistency~~ | `breakdown`, `breakdown/scripts/` |
 | 4.10 | Orphaned agent | Structural | `agents/project-context-finalizer.md` |

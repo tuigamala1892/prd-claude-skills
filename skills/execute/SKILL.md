@@ -81,52 +81,41 @@ Extract:
 2. Fall back to `manifest.prd.project_path` if exists
 3. Error if neither available
 
-### Step 3: Validate Inputs
+### Step 3: Preflight
 
-Check:
-- Tasks path exists
-- `manifest.json` exists
-- `layer_plan.json` exists
-- Project path exists — `{project_path}` must already be a git repository
-- `{project_path}` is not a repository that must never be written to
-- Base branch resolved
+Run the bundled script. It performs **every** precondition and resolves the base branch:
 
 ```bash
-test -d {tasks_path}
-test -f {tasks_path}/manifest.json
-test -f {tasks_path}/layer_plan.json
-test -d {project_path}
-test -d {project_path}/.git
+base_branch=$(sh {skill_dir}/scripts/preflight.sh {tasks_path} {project_path} [{--base-branch if given}])
 ```
 
-**Refuse to operate on the wrong repository.** `/execute` creates branches, merges,
-and removes worktrees inside `{project_path}`. A mistyped argument therefore does real
-damage, so rule out the paths that are never valid targets before doing anything:
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute`.
 
-```bash
-# Never target a documentation/PRD tree
-test -d {project_path}/docs/prd && \
-  echo "REFUSED: {project_path} contains docs/prd/ - this looks like a docs repository, not a target project" && exit 1
+- **Exit 0**: stdout is the resolved base branch. Use it, and thread it to `/execute-layer`,
+  `/execute-batch` and `/execute-merge`. It is never assumed to be `main`.
+- **Non-zero**: stderr begins `REFUSED:` and explains why. **Stop.** Report the message
+  verbatim and do nothing else — no plan, no dry run, no "this is expected because…".
 
-# Never target the toolchain itself
-test -f {project_path}/.claude-plugin/plugin.json && \
-  echo "REFUSED: {project_path} is a Claude Code plugin - this looks like the toolchain repository, not a target project" && exit 1
+What it refuses: a tasks path with no `manifest.json` or `layer_plan.json`; a target that does
+not exist, is not a git repository, or is a *subdirectory* of one; a target containing
+`docs/prd/` (a documentation tree); a target containing `.claude-plugin/plugin.json` (this
+toolchain); a target inside the tasks directory; a base branch that does not exist; and a
+detached HEAD, since there is then no branch to merge into.
 
-# Never target the tasks directory
-case "{project_path}" in
-  "{tasks_path}"|"{tasks_path}"/*) echo "REFUSED: {project_path} is inside the tasks directory" && exit 1 ;;
-esac
-```
+**Why a script and not the checklist that used to be here.** These were prose, and prose is
+weighed rather than obeyed. Pointed at a path containing `docs/prd/` — the exact case the prose
+refused — `/execute` produced a full execution plan, and talked itself past the missing
+repository as well:
 
-**Resolve the base branch.** Everything downstream branches from and merges into this,
-and it is threaded to `/execute-layer`, `/execute-batch` and `/execute-merge`. It is never assumed to be `main`:
+> *"The project path is not yet a git repository — which is expected since this is a greenfield
+> project where L0-002 initializes git."*
 
-```bash
-base_branch={--base-branch if provided, else $(git -C {project_path} symbolic-ref --short HEAD)}
-```
+That is finding **F15**. Every sentence of it is reasonable; none of it was true; and no
+rewording fixes a guard that can be reasoned with. An exit code cannot be reasoned with.
 
-Fail with a clear message if HEAD is detached, since there is then no branch to merge
-into and the operator must choose one explicitly with `--base-branch`.
+Note the script never creates anything — in particular it will not `git init` a target that
+is not a repository. `/execute` does not create repositories.
 
 ### Step 4: Handle State
 
