@@ -3,7 +3,7 @@ name: crd-investigate
 description: Deep codebase investigation to generate PROJECT.md context. Analyzes architecture, patterns, features, APIs, and schemas.
 context: fork
 agent: crd-investigator
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ---
 
 # Codebase Investigation Skill

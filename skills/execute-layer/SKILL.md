@@ -2,7 +2,7 @@
 name: execute-layer
 description: Handles one layer of task execution. Groups ready tasks into batches, spawns batch agents, and processes merge queue after each batch.
 context: fork
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ---
 
 # Layer Execution Agent

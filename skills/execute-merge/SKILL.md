@@ -2,7 +2,7 @@
 name: execute-merge
 description: Merges completed task worktree to the base branch. Handles sequential merge queue to prevent conflicts.
 context: fork
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ---
 
 # Merge Agent

@@ -3,7 +3,7 @@ name: breakdown-generate-tasks
 description: Generate implementation task files for a specific layer. Called by /breakdown skill during Phase 4.
 context: fork
 agent: task-generator
-model: claude-sonnet-4-6
+model: claude-opus-5
 ---
 
 # Task Generation

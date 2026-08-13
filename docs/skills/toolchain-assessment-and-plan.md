@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, and now reports itself honestly.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1–4.6 and 4.10 remain open.
+**Status:** **The pipeline works end to end, and now reports itself honestly.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1, 4.3–4.6 and 4.10 remain open, none of them blocking.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -124,12 +124,14 @@ than XML — addressed by item **4.4** below.
 
 ### 2.3 Current model assignments
 
+*Applied by item 4.2. Every identifier below is current, and every skill/agent pair agrees.*
+
 | File | Declared model |
 |---|---|
-| `commands/prd.md`, `crd.md`, `crd-context.md` | *none — no frontmatter at all* |
-| `skills/breakdown`, `breakdown-generate-tasks`, `crd`, `crd-investigate`, `execute`, `execute-batch`, `execute-layer`, `execute-merge`, `execute-task` | `claude-sonnet-4-6` |
-| `skills/breakdown-analyze-prd`, `breakdown-plan-layers`, `breakdown-review-tasks`, `crd-context-update`, `crd-impact-analysis`, `execute-verify` | `claude-haiku-4-5-20251001` |
-| `agents/task-generator`, `crd-investigator` | `claude-sonnet-4-5` |
+| `skills/breakdown`, `breakdown-generate-tasks` + `agents/task-generator` | `claude-opus-5` |
+| `skills/crd`, `crd-investigate`, `execute`, `execute-batch`, `execute-layer`, `execute-merge` + `agents/crd-investigator` | `claude-sonnet-5` |
+| `skills/breakdown-analyze-prd`, `breakdown-plan-layers`, `breakdown-review-tasks`, `crd-context-update`, `crd-impact-analysis`, `execute-verify` | `claude-haiku-4-5` |
+| `agents/task-implementer`, `task-reviewer`, `crd-context-updater`, `crd-impact-analyzer`, `verification-runner`, `project-context-finalizer` | `claude-haiku-4-5` |
 | `agents/task-implementer`, `task-reviewer`, `crd-context-updater`, `crd-impact-analyzer`, `verification-runner`, `project-context-finalizer` | `claude-haiku-4-5` |
 
 ---
@@ -779,7 +781,11 @@ Two consequences: generated artefacts silently pollute the toolchain repository,
 has no indication their output went somewhere unexpected. Currently gitignored via
 `skills/*/output/`, which contains the symptom but not the cause.
 
-#### F5 — Model versions are stale, and no Haiku 5 exists
+#### F5 — Model versions are stale, and no Haiku 5 exists — **RESOLVED**
+
+> Fixed by item 4.2. No stale identifier remains, and the check that forbids them is now a
+> permanent guard rather than an expected failure.
+
 
 Current model identifiers:
 
@@ -827,7 +833,12 @@ declared, that one is used; with neither, the fork inherits the session model.
 but the answer is currently masked by a more basic defect. Fix F13 first, then this
 precedence rule makes the tier decision in 4.2 enforceable.
 
-#### F7 — Agent models conflict with the skills that invoke them
+#### F7 — Agent models conflict with the skills that invoke them — **RESOLVED**
+
+> Fixed by item 4.2. Both conflicting pairs now agree, and the check is a permanent guard.
+> This mattered because of F6: the skill's `model:` wins, so the agent's line was the one
+> silently losing.
+
 
 Six skills delegate via an `agent:` key. Two disagree outright with the agent's own declaration:
 
@@ -1071,9 +1082,26 @@ Notes:
 - The former instruction to "apply the `allowed-tools` format decision across all skills" is
   superseded: there is no valid format. See item **4.11**.
 
-### 4.2 Model assignments across skills *and* agents
+### 4.2 Model assignments across skills *and* agents — **DONE**
 
-**Addresses F5, F6, F7** *(unblocked — 4.11 is done)*
+**Addresses F5, F6, F7.**
+
+> **Completed.** 16 declarations changed in one pass, so skills and agents could not drift
+> apart in the doing of it. Every stale identifier is gone (`claude-sonnet-4-6`,
+> `claude-sonnet-4-5`), Haiku-tier has one spelling (`claude-haiku-4-5`, not the dated alias),
+> and both skill/agent pairs that named different models now agree —
+> `breakdown-generate-tasks`/`task-generator` on Opus 5, `crd-investigate`/`crd-investigator`
+> on Sonnet 5.
+>
+> **The `task-implementer` question answered itself.** The plan agonised over it because
+> `execute-task`'s `model:` would override the agent's — but 4.15 deleted that skill, so the
+> agent's declaration is now the only one, and it governs directly. What was an emergent
+> default is now an explicit choice: `claude-haiku-4-5`, declared in one place, with nothing
+> silently overriding it. Runs 6–9 produced 88 passing tests on that tier.
+>
+> **The suite is fully green for the first time**: 31 passed, 0 failed, **0 known**. Both
+> `expect_fail="4.2"` markers were removed, converting those checks into permanent guards — one
+> forbidding stale identifiers, one requiring a skill and its agent to agree.
 
 **These rows now change real behaviour.** Before 4.11 they were string edits with no
 runtime effect. Skills fork today, so every `model:` here selects the model that
@@ -1705,7 +1733,7 @@ bad = [p for p in files if not _parses(p)]
 |---|---|---|---|
 | ~~4.11~~ | ~~Remove `allowed-tools` — restores forking~~ **DONE** | ~~Blocking~~ | all 15 `skills/*/SKILL.md` |
 | 4.1 | Command→skill conversion, frontmatter *(frontmatter done)* | Consistency | `commands/*.md` |
-| 4.2 | Model assignments, skills and agents *(gated on 4.11)* | Correctness | all skills, all agents |
+| ~~4.2~~ | ~~Model assignments, skills and agents~~ **DONE** — F5, F6, F7 resolved; suite fully green | ~~Correctness~~ | all skills, all agents |
 | 4.3 | Resume detection and overwrite guard | Correctness | `prd` |
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |

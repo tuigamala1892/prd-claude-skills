@@ -144,12 +144,16 @@ The through-line: six things that used to be described are now executed — `pre
 became a script because the described version demonstrably failed, and each has been correct
 in every run since.
 
-Still outstanding: model identifiers in the frontmatter are stale (4.2), and the
-`what-next.md` template that `/prd --resume` greps for does not match what `/prd` writes
-(4.3, 4.4).
+- ~~Model identifiers were stale, and skills disagreed with the agents they name.~~ **Fixed**
+  (4.2, F5/F6/F7). One pass over all 22 declarations, so they could not drift apart in the
+  doing of it.
 
-`tests/test_toolchain.py` guards every fix above against regression — 29 checks, each
-verified to fail when its fix is reverted.
+Still outstanding, none of it blocking: the `what-next.md` template that `/prd --resume`
+greps for does not match what `/prd` writes (4.3, 4.4), and a few consistency items
+(4.1, 4.5, 4.6, 4.10).
+
+`tests/test_toolchain.py` guards every fix above against regression — **31 checks, 0 known
+failures**, each verified to fail when its fix is reverted.
 
 ## Attribution and licensing
 

@@ -2,7 +2,7 @@
 name: crd
 description: Orchestrates Change Request Document workflow. Manages context, captures changes, analyzes impact, and generates CRD files.
 context: fork
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 user-invocable: true
 ---
 

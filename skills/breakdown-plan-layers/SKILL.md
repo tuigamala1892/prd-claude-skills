@@ -2,7 +2,7 @@
 name: breakdown-plan-layers
 description: Plan layer structure and task groupings from PRD analysis. Called by /breakdown skill during Phase 3.
 context: fork
-model: claude-haiku-4-5-20251001
+model: claude-haiku-4-5
 ---
 
 # Layer Planning

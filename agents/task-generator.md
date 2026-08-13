@@ -2,7 +2,7 @@
 name: task-generator
 description: Specialized agent for generating self-contained implementation tasks from PRD analysis. Creates XML task files optimized for small-context LLM execution.
 tools: Read Write Glob Grep
-model: claude-sonnet-4-5
+model: claude-opus-5
 ---
 
 # Task Generator Agent

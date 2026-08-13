@@ -499,7 +499,7 @@ def _():
     assert not bad, "\n    " + "\n    ".join(bad)
 
 
-@check("a skill and the agent it names declare the same model", finding="F7", expect_fail="4.2")
+@check("a skill and the agent it names declare the same model", finding="F7")
 def _():
     agents = {stem: parse_frontmatter(p)[0] for stem, p in agent_files()}
     bad = []
@@ -516,7 +516,7 @@ def _():
                      "silently ignored:\n    " + "\n    ".join(bad))
 
 
-@check("no stale or invalid model identifiers", finding="F5", expect_fail="4.2")
+@check("no stale or invalid model identifiers", finding="F5")
 def _():
     bad = []
     for label, items in (("skill", skill_files()), ("agent", agent_files()),

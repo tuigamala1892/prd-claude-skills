@@ -2,7 +2,7 @@
 name: execute
 description: Main entry point for hierarchical task execution. Orchestrates layer-by-layer implementation of PRD tasks with parallel worktree execution.
 context: fork
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 user-invocable: true
 ---
 

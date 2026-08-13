@@ -2,7 +2,7 @@
 name: crd-investigator
 description: Deep codebase analysis agent for generating PROJECT.md context. Analyzes architecture, patterns, features, APIs, and schemas.
 tools: Read Glob Grep Bash
-model: claude-sonnet-4-5
+model: claude-sonnet-5
 ---
 
 # CRD Investigator Agent

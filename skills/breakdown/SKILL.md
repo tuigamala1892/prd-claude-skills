@@ -2,7 +2,7 @@
 name: breakdown
 description: Break down a PRD or CRD into self-contained implementation tasks for LLM execution. Use when you have a PRD/CRD file and want to generate executable task files for autonomous implementation.
 context: fork
-model: claude-sonnet-4-6
+model: claude-opus-5
 ---
 
 # /breakdown - PRD/CRD Task Breakdown

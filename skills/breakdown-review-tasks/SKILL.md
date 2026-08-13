@@ -3,7 +3,7 @@ name: breakdown-review-tasks
 description: Review generated tasks for quality and completeness. Called by /breakdown skill after task generation.
 context: fork
 agent: task-reviewer
-model: claude-haiku-4-5-20251001
+model: claude-haiku-4-5
 ---
 
 # Task Review
