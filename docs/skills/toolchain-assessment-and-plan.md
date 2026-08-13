@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1–4.6 and 4.10 remain open.
+**Status:** **The pipeline works end to end, and now reports itself honestly.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1–4.6 and 4.10 remain open.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -248,7 +248,7 @@ in — which is exactly the world `task-implementer.md` is already written for. 
 be persuaded to call a script; `execute-batch` creates the worktree, then hands over. See item
 **4.15**.
 
-#### F21 — `execute-state.json` is written into the target repository, and still lies — **FIXED**
+#### F21 — `execute-state.json` is written into the target repository, and still lies — **RESOLVED, verified by run 9**
 
 > **Fixed by item 4.17.** `skills/execute/scripts/write-state.py` is now the only writer.
 > Every countable field is derived from the ledger and git; nothing is incremented. It refuses
@@ -258,8 +258,20 @@ be persuaded to call a script; `execute-batch` creates the worktree, then hands 
 > Run against run 8's own fixture, it produced `completed, 18/18` where the hand-written file
 > said `completed` at 4 of 18.
 >
-> **Verified in isolation, not yet by a full run** — the same caveat that preceded 4.14 being
-> inert. Run 9 is the test.
+> **Run 9 confirms it end to end.** `write-state.py` was invoked 38 times and
+> `execute-state.json` was hand-written **zero** times. The file it produced is the first
+> truthful one this project has seen:
+>
+> ```
+> schema_version   3.0
+> derived_from     ledger + git; no field in this file is maintained by hand
+> status           completed          tasks_completed  18 of 18
+> merge_queue      18                 missing_commits  []
+> layers           0-setup 4/4, 1-foundation 5/5, 2-backend 4/4, 4-integration 5/5
+> ```
+>
+> `git status` in the target was empty, no second copy of the file appeared, and no repository
+> was created outside the target. The produced application passes 88 tests.
 
 
 Found by §5.2 run 8. **The ledger is right and the state file is wrong — again, in a new way.**
@@ -1581,6 +1593,9 @@ its `--resume`.
 >
 > The guard flags *mutations* of the state file's fields, not reads, and was verified to fail
 > both on a reintroduced hand-write and on removing the script's pollution refusal.
+>
+> **Verified by run 9**: 38 invocations, zero hand-writes, and a state file that finally
+> agrees with git.
 
 Two defects, one cause: the file is assembled by hand. Options, in the order I would try them:
 
@@ -1643,7 +1658,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2`. **Run 8 PASS (2h 22m)** — third consecutive pass; `preflight.sh` invoked (**4.13 verified**), ledger exact again at 18/18, no stray repository. Exposed **F21**: `execute-state.json` was written into the *target* repo as well, and its metrics said `completed` at 4 of 18 while git held 18 merges |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2`. **Run 8 PASS (2h 22m)** — third consecutive pass; `preflight.sh` invoked (**4.13 verified**), ledger exact again at 18/18, no stray repository. Exposed **F21**: `execute-state.json` was written into the *target* repo as well, and its metrics said `completed` at 4 of 18 while git held 18 merges. **Run 9 PASS (1h 59m)** — fourth consecutive pass and the first with a *truthful* state file: `write-state.py` invoked 38 times, hand-written 0 times, `18 of 18`, `git status` clean, 88 tests passing → **F21 resolved** |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
@@ -1700,7 +1715,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.15~~ | ~~Create the worktree before dispatch~~ **DONE `c915422`** — F20 resolved, verified by run 6 | ~~Blocking~~ | `execute-batch`, `task-implementer` |
 | ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
 | ~~4.16~~ | ~~Record completion as a SHA; derive counts from git~~ **DONE** — F16 fixed, run pending | ~~Correctness~~ | `execute-merge`, `execute`, `scripts/` |
-| ~~4.17~~ | ~~Write `execute-state.json` from a script~~ **DONE** — F21 fixed, run 9 pending | ~~Correctness~~ | `execute/scripts/`, `execute-batch`, `execute-merge`, `execute-layer` |
+| ~~4.17~~ | ~~Write `execute-state.json` from a script~~ **DONE** — F21 resolved, verified by run 9 | ~~Correctness~~ | `execute/scripts/`, `execute-batch`, `execute-merge`, `execute-layer` |
 | 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
 | ~~4.13~~ | ~~Make critical guards executable~~ **DONE** — F15 resolved; the check now runs the guard | ~~Correctness~~ | `execute/scripts/`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |

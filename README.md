@@ -105,10 +105,12 @@ thing to check.
 
 ## Status
 
-**The pipeline works end to end.** Runs 6 and 7 of the §5.2 suite both passed on the
-reference fixture: 18 tasks, **18 merge commits — one per task**, every worktree created
-by the caller, independent verification running per task, and the produced application
-passing 88 of its own tests. See
+**The pipeline works end to end, and reports itself honestly.** Runs 6 through 9 of the
+§5.2 suite all passed on the reference fixture: 18 tasks, **18 merge commits — one per
+task**, every worktree created by the caller, independent verification running per task,
+and the produced application passing 88 of its own tests. Run 9 added the last piece —
+`execute-state.json` is now generated from the ledger and git, and agreed with both for
+the first time. See
 [`docs/skills/toolchain-assessment-and-plan.md`](docs/skills/toolchain-assessment-and-plan.md)
 for the full assessment, including the four runs before those that did not.
 
