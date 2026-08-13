@@ -59,20 +59,26 @@ Find tasks that are ready to execute:
 def build_ready_queue(layer, dependency_graph, state):
     ready = []
 
+    # `verified` comes from ledger-status.sh -- tasks whose commit exists right now.
+    # Do NOT read completion out of execute-state.json: it has been wrong in four
+    # consecutive runs, and the dangerous direction is over-reporting, which would let a
+    # task start before the dependency it builds on had actually landed.
+    verified = set(ledger_status()["verified_tasks"])
+
     for task in layer["tasks"]:
         task_id = task["id"]
 
-        # Skip completed
-        if task_id in state["completed"]:
+        # Skip work that git says is already done
+        if task_id in verified:
             continue
 
         # Skip abandoned
         if task_id in state["abandoned"]:
             continue
 
-        # Check dependencies
+        # Check dependencies -- satisfied only by a commit that exists
         deps = dependency_graph.get(task_id, [])
-        all_deps_complete = all(d in state["completed"] for d in deps)
+        all_deps_complete = all(d in verified for d in deps)
 
         if all_deps_complete:
             ready.append(task_id)
@@ -298,20 +304,15 @@ Merge Order (sequential by priority):
 }
 ```
 
-### Priority Assignment
+### Merge Order
 
-Assign priority when task is added to merge queue:
+Tasks are merged in the order they finish verifying, and you hold that order yourself for the
+duration of the batch — pass it to `/execute-merge` one task at a time. There is no queue to
+maintain in a file.
 
-```python
-def add_to_merge_queue(state, task_id):
-    # Priority is order of addition
-    next_priority = len(state["merge_queue"]) + 1
-    state["merge_queue"].append({
-        "task_id": task_id,
-        "priority": next_priority,
-        "status": "ready"
-    })
-```
+`execute-state.json` does contain a `merge_queue`, but it is **derived** from the ledger by
+`write-state.py` after the fact, as a record of what was merged and when. Do not append to it;
+an entry there means a merge commit exists, and writing one by hand would make that untrue.
 
 ## Error Handling
 

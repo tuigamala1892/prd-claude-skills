@@ -356,6 +356,39 @@ def _():
         "breakdown never verifies the manifest against the files it generated")
 
 
+@check("execute-state.json is written by a script, never by hand", finding="F21")
+def _():
+    # Four runs, four different wrong shapes, each produced by a different set of careful
+    # prose instructions: 23 of 18 complete; 19 entries for 18 tasks; "completed" alongside
+    # 2 remaining; "completed" alongside 4 of 18 while git held 18 merges -- plus a second
+    # copy written into the target repository. One script owns the file now.
+    ws = os.path.join(SKILLS, "execute", "scripts", "write-state.py")
+    assert os.path.isfile(ws), "skills/execute/scripts/write-state.py is missing"
+    body = open(ws, encoding="utf-8").read()
+    assert "cat-file" in body, "write-state.py trusts the ledger instead of verifying it"
+    assert "REFUSED" in body, (
+        "write-state.py does not refuse to write inside the target project (F21)")
+
+    # Nobody else may *mutate* it. Reading is fine and sometimes necessary; `rm -f` in
+    # --reset is fine. An assignment, an append or a delete into its fields is not -- that
+    # is the hand-maintenance this finding is about.
+    mutation = re.compile(
+        r'state\[["\'](tasks|metrics|completed|merge_queue|layers|abandoned|failed)["\']\]'
+        r'.*?(=(?!=)|\.append\(|\.pop\(|\.extend\()'
+        r'|^\s*del\s+state\[')
+    bad = []
+    for rel, text in instruction_text():
+        if not rel.endswith(".md"):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if "execute-state.json" in line and re.search(r">\s*\{?tasks_path", line):
+                bad.append(f"{rel}:{i}: redirect into the state file -- {line.strip()[:70]}")
+            elif mutation.search(line):
+                bad.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not bad, ("mutate execute-state.json by hand; call write-state.py "
+                     "instead:\n    " + "\n    ".join(bad))
+
+
 @check("resume is decided by verified commits, not by the state file", finding="F16")
 def _():
     # A resume that trusts execute-state.json skips work that was never done. That file once

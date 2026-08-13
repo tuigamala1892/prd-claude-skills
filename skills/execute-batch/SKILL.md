@@ -241,32 +241,23 @@ Combine each agent's RESULT JSON with its verification verdict:
 
 ### Step 8: Update State
 
-Read current state, update each task, write back:
+**Do not write `execute-state.json` yourself.** One script owns that file, and it derives
+every field from the ledger and git rather than accepting anything on trust:
 
-```python
-# For each task result:
-if result["status"] == "verified":
-    state["tasks"][task_id]["status"] = "verified"
-    state["tasks"][task_id]["completed_at"] = now()
-    state["merge_queue"].append({
-        "task_id": task_id,
-        "priority": next_priority,
-        "status": "ready"
-    })
-
-elif result["status"] == "failed":
-    state["tasks"][task_id]["status"] = "failed"
-    state["tasks"][task_id]["errors"].append(result["error"])
-
-elif result["status"] == "abandoned":
-    state["tasks"][task_id]["status"] = "abandoned"
-    state["abandoned"].append(task_id)
-```
-
-Write updated state:
 ```bash
-echo '{updated_state_json}' > {tasks_path}/execute-state.json
+python {execute_skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug} \
+    [--failed {ids}] [--abandoned {ids}]
 ```
+
+Pass `--failed` and `--abandoned` only for tasks in *this* batch that ended that way; a task
+whose commit exists is `merged` regardless of what any earlier attempt reported, so successes
+need no argument at all. Everything countable — totals, per-layer progress, the merge queue,
+what remains — comes from the ledger.
+
+Verified tasks need nothing recorded here: `/execute-merge` writes them to the ledger the
+moment their merge commit exists, and this file is regenerated from it. Reporting a task as
+verified before it is merged is how the state file came to disagree with git in four
+consecutive runs.
 
 ### Step 9: Report Batch Status
 

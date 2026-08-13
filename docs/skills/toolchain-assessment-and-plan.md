@@ -248,7 +248,19 @@ in — which is exactly the world `task-implementer.md` is already written for. 
 be persuaded to call a script; `execute-batch` creates the worktree, then hands over. See item
 **4.15**.
 
-#### F21 — `execute-state.json` is written into the target repository, and still lies
+#### F21 — `execute-state.json` is written into the target repository, and still lies — **FIXED**
+
+> **Fixed by item 4.17.** `skills/execute/scripts/write-state.py` is now the only writer.
+> Every countable field is derived from the ledger and git; nothing is incremented. It refuses
+> to write anywhere inside `{project_path}`, and warns if the stray copy from run 8 is still
+> lying there.
+>
+> Run against run 8's own fixture, it produced `completed, 18/18` where the hand-written file
+> said `completed` at 4 of 18.
+>
+> **Verified in isolation, not yet by a full run** — the same caveat that preceded 4.14 being
+> inert. Run 9 is the test.
+
 
 Found by §5.2 run 8. **The ledger is right and the state file is wrong — again, in a new way.**
 
@@ -1540,9 +1552,35 @@ its `--resume`.
 > two share a fate. A ledger in the tasks directory would survive a reset target and go on
 > describing work that no longer exists — F16 by another route.
 
-### 4.17 Write `execute-state.json` from a script, or stop writing it
+### 4.17 Write `execute-state.json` from a script — **DONE**
 
-**Addresses F21.**
+**Addresses F21.** Option 1 chosen: derive the whole file.
+
+> **Completed.** `write-state.py` reads the ledger, re-verifies each SHA with `git cat-file -e`,
+> and writes the complete file: per-task status with its commit, per-layer progress, the merge
+> queue, `completed`, `missing_commits`, and a metrics block computed with `len()`. `status` is
+> `completed` only when every task in the manifest has a commit that exists and nothing is
+> missing or abandoned. It carries forward only the two facts that cannot be derived — which
+> tasks were abandoned and which failed — and takes those as arguments rather than accumulating
+> them.
+>
+> Tested: 18/18 on run 8's real fixture (against the hand-written 4/18); a rewound repository
+> reported `in_progress 2/3` with `missing: ["L1-003"]` and that task back to `pending`;
+> `--abandoned` carried through to `tasks_abandoned`; and a tasks path inside the target
+> refused with exit 1, writing nothing.
+>
+> **Two further defects found while wiring it in**, both in `execute-layer`, both caught by the
+> new regression guard rather than by reading:
+>
+> - the ready-queue read completion and *dependency satisfaction* from
+>   `state["completed"]` — the field that has been wrong in four runs. Over-reporting there
+>   would let a task start before the dependency it builds on had landed. It now reads
+>   `verified_tasks` from the ledger.
+> - `add_to_merge_queue` appended to `state["merge_queue"]` by hand. The queue is now derived;
+>   an entry in it means a merge commit exists.
+>
+> The guard flags *mutations* of the state file's fields, not reads, and was verified to fail
+> both on a reintroduced hand-write and on removing the script's pollution refusal.
 
 Two defects, one cause: the file is assembled by hand. Options, in the order I would try them:
 
@@ -1662,6 +1700,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.15~~ | ~~Create the worktree before dispatch~~ **DONE `c915422`** — F20 resolved, verified by run 6 | ~~Blocking~~ | `execute-batch`, `task-implementer` |
 | ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
 | ~~4.16~~ | ~~Record completion as a SHA; derive counts from git~~ **DONE** — F16 fixed, run pending | ~~Correctness~~ | `execute-merge`, `execute`, `scripts/` |
+| ~~4.17~~ | ~~Write `execute-state.json` from a script~~ **DONE** — F21 fixed, run 9 pending | ~~Correctness~~ | `execute/scripts/`, `execute-batch`, `execute-merge`, `execute-layer` |
 | 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
 | ~~4.13~~ | ~~Make critical guards executable~~ **DONE** — F15 resolved; the check now runs the guard | ~~Correctness~~ | `execute/scripts/`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |

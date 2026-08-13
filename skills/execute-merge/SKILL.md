@@ -184,35 +184,22 @@ Order matters. Appending after the commit means a crash between the two *under*-
 progress, which a resume can recover from. Appending first over-reports, and over-reporting is
 how `execute-state.json` came to claim 23 of 18 tasks complete in a run that did 18.
 
-### Step 9: Update State
+### Step 9: Refresh State
 
-Update `execute-state.json`:
+Step 8 already recorded the fact. This step only regenerates the human-readable view of it:
 
-```python
-state["tasks"][task_id]["status"] = "completed"
-state["tasks"][task_id]["merged_at"] = now()
-state["tasks"][task_id]["merge_commit"] = merge_commit_sha   # the checkable field
-state["tasks"][task_id]["worktree_path"] = None
-state["tasks"][task_id]["branch"] = None
-
-# Update merge queue
-for item in state["merge_queue"]:
-    if item["task_id"] == task_id:
-        item["status"] = "merged"
-
-# Add to completed list -- only if absent. A retried task reaches here more than once,
-# and blind appends are why a run of 18 tasks recorded 19 entries.
-if task_id not in state["completed"]:
-    state["completed"].append(task_id)
-
-# Remove from worktrees
-del state["worktrees"][task_id]
+```bash
+python {execute_skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug}
 ```
 
-**Do not increment `metrics`.** Counters maintained by hand drift, and in run 6 every wrong
-number in the state file was one that had been incremented while every correct one was
-derived. `/execute` recomputes the metrics block from the ledger at the end of the run, by
-asking git. Leave it alone here.
+**Do not edit `execute-state.json` by hand — not one field.** The script derives every value
+from the ledger and git, which is the only reason it is ever right. Left to prose, this file
+has been wrong in four different ways across four runs: 23 of 18 complete, 19 entries for 18
+tasks, `completed` alongside 2 remaining, and `completed` alongside 4 of 18 while git held 18
+merges. A fifth set of careful instructions would produce a fifth shape of wrong.
+
+The script also refuses to write inside `{project_path}` — in run 8 a second copy of this file
+appeared in the target repository as untracked noise (**F21**).
 
 ### Step 10: Report Result
 

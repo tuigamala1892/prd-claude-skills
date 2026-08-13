@@ -142,16 +142,19 @@ if reset:
           f"branches and commits in {project_path} are NOT deleted")
     rm -f {tasks_path}/execute-state.json
     rm -rf {project_path}/.execute/{prd_slug}
-    state = init_state()
+    skip = set()
 
 elif status["verified"] > 0:
     print(f"[EXEC] Resuming: {status['verified']} task(s) already verified in git")
-    state = load_state_if_present() or init_state()
     skip = set(status["verified_tasks"])
 
 else:
-    state = load_state_if_present() or init_state()
     skip = set()
+
+# Then write the state file -- always from the script, never by hand:
+#   python {skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug} \
+#       --started-at {now}
+
 ```
 
 Note what `--reset` does **not** do: it never deletes commits, branches or worktrees. It
@@ -272,9 +275,15 @@ sh {skill_dir}/scripts/ledger-status.sh {project_path} {prd_slug} {total_tasks}
 {"recorded":18,"verified":18,"missing":[],"first_unverified":null,"expected":18}
 ```
 
-Write `verified` into `metrics.tasks_completed` and `expected - verified` into
-`tasks_remaining`. **These are the numbers you report.** Do not report a count that you
-incremented.
+Then regenerate the state file from the same evidence, so the file and your report cannot
+disagree:
+
+```bash
+python {skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug}
+```
+
+**Report the numbers it prints.** Do not report a count that you incremented, and do not
+edit the file it writes.
 
 **`status` may only be `completed` when `verified == expected` and `missing` is empty.**
 Otherwise it is `incomplete`, whatever else went right. Two separate conditions, because they
@@ -365,13 +374,16 @@ Skip context finalization silently (not a CRD-based project).
 
 ### Step 11: Complete
 
-Update state:
-```json
-{
-  "status": "completed",
-  "completed_at": "{now}"
-}
+Regenerate the state file one last time, so its `status` and `completed_at` reflect what git
+actually holds rather than what the run believes:
+
+```bash
+python {skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug}
 ```
+
+It sets `status: completed` only when every task in the manifest has a commit that exists and
+nothing is missing or abandoned. If it reports `in_progress`, the run did not finish — say so
+rather than overriding it.
 
 Output final summary including context update if performed:
 
@@ -391,44 +403,25 @@ Context Update:
 
 ## State Initialization
 
-```python
-def init_state(prd_slug, project_path, worktree_dir, tasks_path, options):
-    return {
-        "schema_version": "2.0",
-        "prd_slug": prd_slug,
-        "project_path": project_path,
-        "worktree_dir": worktree_dir,
-        "tasks_path": tasks_path,
-        "started_at": now(),
-        "updated_at": now(),
-        "completed_at": None,
-        "status": "in_progress",
-        "current_layer": None,
-        "current_batch": None,
-        "options": options,
-        "layers": {},
-        "tasks": {},
-        "worktrees": {},
-        "merge_queue": [],
-        "completed": [],
-        "failed": [],
-        "abandoned": [],
-        # Derived, never incremented. Recomputed from the ledger by Step 9; see below.
-        "metrics": {
-            "tasks_total": total_tasks,
-            "tasks_completed": 0,
-            "tasks_failed": 0,
-            "tasks_abandoned": 0,
-            "tasks_remaining": total_tasks,
-            "total_attempts": 0,
-            "total_retries": 0
-        }
-    }
+There is no `init_state`. `execute-state.json` is written by exactly one thing:
+
+```bash
+python {skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug}     --started-at {run_start_iso8601}
 ```
 
-**`elapsed_seconds` is deliberately absent.** It was previously written as a number nobody
-measured — run 6 recorded 4000 for a run that took 10476 seconds. If elapsed time is wanted,
-compute it at report time from `started_at`; do not carry a field that invites invention.
+Run it once at the start, after each merge (`/execute-merge` does this), and once at the end.
+It derives every field from the ledger and git — totals, per-task status, per-layer progress,
+the merge queue, what remains — and carries forward only the two things that genuinely cannot
+be derived: which tasks were abandoned and which failed.
+
+**No field in that file may be written or edited by hand.** Four runs produced four different
+wrong shapes when it was assembled from instructions: 23 of 18 complete; 19 entries for 18
+tasks; `completed` alongside 2 remaining; `completed` alongside 4 of 18 while git held 18
+merges — plus, in run 8, a second copy written into the target repository. The script refuses
+to write inside `{project_path}` and cannot count to 4 when git says 18.
+
+`elapsed_seconds` no longer exists. It was a number nobody measured — run 6 recorded 4000 for
+a run of 10476 seconds. Compute a duration at report time from `started_at` if one is wanted.
 
 ## Resume Behavior
 
