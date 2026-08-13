@@ -248,6 +248,45 @@ in — which is exactly the world `task-implementer.md` is already written for. 
 be persuaded to call a script; `execute-batch` creates the worktree, then hands over. See item
 **4.15**.
 
+#### F21 — `execute-state.json` is written into the target repository, and still lies
+
+Found by §5.2 run 8. **The ledger is right and the state file is wrong — again, in a new way.**
+
+Run 8 passed: 18 merge commits, 18 ledger entries, all 18 recorded SHAs are merge commits, no
+repository outside the target. `ledger-status.sh` was invoked 3 times. And yet:
+
+| | |
+|---|---|
+| `app/execute-state.json` | **written into the target repo**, untracked — `?? execute-state.json` |
+| its `status` | `completed` |
+| its `tasks_completed` | **4** |
+| its `tasks_remaining` | **14** |
+| merges actually in git | **18** |
+
+Two distinct defects:
+
+1. **State leaked into the product repository.** A `Write` went to
+   `{project_path}/execute-state.json` as well as the correct
+   `{tasks_path}/execute-state.json`, and the two hold *different halves* of the schema — the
+   target's copy has the metadata and metrics, the tasks directory's has `tasks`,
+   `merge_queue`, `completed` and `layers`. Neither is complete. The stray one shows up in the
+   operator's `git status`, which is exactly the pollution the ledger's self-ignoring
+   `.gitignore` was designed to avoid.
+2. **`status: completed` alongside `tasks_completed: 4` of 18.** This is the precise
+   contradiction the run-7 follow-up was written to prevent — `status` may only be `completed`
+   when `verified == expected`. The reconciliation step ran (`ledger-status.sh`, 3 calls) and
+   its answer was not used. The `4` is a hand-count that stopped early.
+
+**The pattern is now unmistakable.** Everything that became a script is correct and has stayed
+correct across three runs: `preflight.sh` (invoked, and 4.13 verified by this run),
+`create-worktree.sh` (34 calls), `record-task.sh` (35), `ledger-status.sh` (3). The one
+artefact still assembled by hand from prose instructions has been wrong in **two consecutive
+runs, in two different ways** — over-counting in run 7, under-counting and duplicated in run 8.
+
+Prose has now failed on this specific file four times. The remedy is not a fifth rewording.
+
+Addressed by item **4.17**.
+
 #### F19 — `/execute` creates a git repository outside `{project_path}` — **RESOLVED, verified by run 6**
 
 > **Fixed by items 4.14 and 4.15.** Zero `git init` invocations in run 6, and no repository at
@@ -1308,6 +1347,9 @@ concrete target: every layer must look like layer 2 did.
 > repository, a target that is a *subdirectory* of one, a nonexistent base branch, and a
 > detached HEAD. It creates nothing, and in particular never runs `git init`.
 >
+> **Verified by run 8**: `preflight.sh` was invoked, and the run proceeded on the base branch
+> it resolved.
+>
 > **The regression check was rewritten as the item asked.** It used to assert the guard *text*
 > appeared in `SKILL.md` — which F15 showed is worth nothing, since the text was present,
 > correct and ignored. It now builds real repositories in a temp directory and *runs* the
@@ -1498,6 +1540,29 @@ its `--resume`.
 > two share a fate. A ledger in the tasks directory would survive a reset target and go on
 > describing work that no longer exists — F16 by another route.
 
+### 4.17 Write `execute-state.json` from a script, or stop writing it
+
+**Addresses F21.**
+
+Two defects, one cause: the file is assembled by hand. Options, in the order I would try them:
+
+1. *(recommended)* **Derive the whole file.** A `write-state.sh` that takes the tasks path,
+   project path and slug, reads the ledger and the manifest, and writes the complete
+   `execute-state.json` — every field computed, none incremented, one fixed location. This is
+   what worked for the manifest (4.9), the worktree (4.14), the ledger (4.16) and the preflight
+   (4.13), and it fixes both halves of F21 at once: a script cannot write the file to a
+   second location by accident, and cannot count to 4 when git says 18.
+2. **Delete it.** The ledger already carries what resume needs, and `/execute` reports from
+   `ledger-status.sh`. The state file's remaining consumers are the §5.2 harness and human
+   curiosity. Simpler, but loses per-task retry history and the merge queue, which are
+   genuinely useful for diagnosing a stalled run.
+
+Whichever is chosen, `{project_path}` must never be written to except for commits, branches,
+worktrees, and the self-ignoring `.execute/` ledger directory.
+
+**Acceptance:** a run after which `git status` in the target is clean, and the state file's
+counts equal `ledger-status.sh`'s.
+
 ---
 
 ## 5. Test plan
@@ -1540,7 +1605,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2` |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2`. **Run 8 PASS (2h 22m)** — third consecutive pass; `preflight.sh` invoked (**4.13 verified**), ledger exact again at 18/18, no stray repository. Exposed **F21**: `execute-state.json` was written into the *target* repo as well, and its metrics said `completed` at 4 of 18 while git held 18 merges |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
