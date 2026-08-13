@@ -242,38 +242,70 @@ def make_tests(ws, app, prd_fresh):
             return False, (f"no commits merged (still {commits}); tasks did not complete:\n"
                            + r["text"][:400])
 
-        # "Some commits appeared" is far too weak. The architecture's whole claim is
-        # that each task is implemented in an isolated worktree and merged through a
-        # sequential queue. If tasks instead wrote straight into the main working
-        # tree, the run can look successful while the isolation guarantee is gone --
-        # which is exactly what happened the first time this test reported PASS.
+        # "Some commits appeared" is far too weak, and so was its first replacement.
+        # That one asked only for merge commits numbering at least half the tasks, which
+        # caught lost isolation but happily passed a run that stopped two thirds of the
+        # way through. Now that the ledger and the state file are derived from git and can
+        # be trusted (F16, F21), ask them directly.
+        ledger = os.path.join(app, ".execute", SLUG, "ledger.jsonl")
+        recorded = []
+        if os.path.isfile(ledger):
+            for line in open(ledger, encoding="utf-8"):
+                line = line.strip()
+                if line:
+                    try:
+                        recorded.append(json.loads(line))
+                    except Exception:
+                        pass
+        verified = [e for e in recorded if subprocess.run(
+            ["git", "cat-file", "-e", str(e.get("commit", "")) + "^{commit}"],
+            cwd=app, capture_output=True).returncode == 0]
+
         state_path = os.path.join(os.path.dirname(tasks_dir), SLUG, "execute-state.json")
-        n_tasks = n_merged = 0
+        st = {}
         if os.path.isfile(state_path):
             try:
                 st = json.load(open(state_path, encoding="utf-8"))
-                tasks = st.get("tasks") or {}
-                n_tasks = len(tasks)
-                n_merged = sum(1 for v in tasks.values()
-                               if isinstance(v, dict) and v.get("status") == "merged")
             except Exception:
                 pass
+        n_tasks = st.get("metrics", {}).get("tasks_total") or len(
+            [f for _r, _d, fs in os.walk(tasks_dir) for f in fs if f.endswith(".xml")])
         n_merge_commits = len([l for l in git(["log", "--oneline", "--merges"], app).splitlines() if l])
 
-        if n_tasks and n_merge_commits < max(2, n_tasks // 2):
+        # Isolation: every task that completed did so through its own worktree merge.
+        if verified and n_merge_commits < len(verified):
             return False, (
-                f"isolation failed: {n_tasks} tasks ran but only {n_merge_commits} merge "
-                f"commit(s) exist ({n_merged} marked merged in state). Tasks wrote into "
-                f"the main working tree instead of isolated worktrees")
+                f"isolation failed: {len(verified)} task(s) recorded but only "
+                f"{n_merge_commits} merge commit(s) exist. Tasks wrote into the main "
+                f"working tree instead of isolated worktrees")
 
-        stray = [d for d in ("api", "main.py") if os.path.exists(os.path.join(app, d))] \
-            if os.path.isdir(os.path.join(app, "app")) else []
+        stray = [d for d in ("api", "main.py") if os.path.exists(os.path.join(app, d))]             if os.path.isdir(os.path.join(app, "app")) else []
         if stray:
             return False, (f"duplicate implementations at the project root ({stray}) alongside "
                            "app/ - the signature of unisolated concurrent writes")
 
-        return True, (f"{merged} commit(s), {n_merge_commits} merge commit(s) for {n_tasks} "
-                      "tasks; .git intact and root commit preserved")
+        # Completeness is a separate question from correctness, and conflating them is how a
+        # run that stopped at 11 of 18 got reported as a pass. An interruption -- an API
+        # stall, a killed process -- is not a toolchain defect, so it is neither PASS nor
+        # FAIL. What matters is whether the record is *consistent* with git, because that is
+        # what makes the run resumable.
+        if len(verified) < n_tasks:
+            stalled = "stalled mid-stream" in r["text"] or "API Error" in r["text"]
+            consistent = st.get("status") == "in_progress" and not st.get("missing_commits")
+            why = (f"{len(verified)} of {n_tasks} tasks completed"
+                   + (" -- run interrupted (API error)" if stalled else "")
+                   + ("; state file agrees, record is consistent and resumable" if consistent
+                      else f"; STATE FILE DISAGREES: status={st.get('status')!r}, "
+                           f"missing={st.get('missing_commits')}"))
+            return (True, "INCOMPLETE: " + why) if consistent else (False, why)
+
+        if st and st.get("status") != "completed":
+            return False, (f"all {n_tasks} tasks verified but the state file says "
+                           f"{st.get('status')!r}")
+
+        return True, (f"{merged} commit(s), {n_merge_commits} merge commit(s), "
+                      f"{len(verified)}/{n_tasks} tasks verified in the ledger; "
+                      "state file agrees; .git intact and root commit preserved")
 
     return [
         dict(id=2, name="prd-fresh", desc="/prd on a fresh directory",
