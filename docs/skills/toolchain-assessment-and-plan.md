@@ -847,18 +847,42 @@ The original suspicion behind U1 and U2 was "the key is probably ignored". Both 
 to be wrong in a more useful way: the keys are not ignored, they are *the wrong keys*, and
 one of them does active harm.
 
-#### U1 — `allowed-tools`: not honoured, and actively harmful — **answered**
+#### U1 — `allowed-tools` in a skill: grants, never restricts, and disables forking — **answered**
 
-Two separate results:
+Three results, the third added later from an external report:
 
-1. **`allowed-tools` is a command key, not a skill key.** In a skill it does not restrict
-   anything, and its presence disables `context: fork`. Promoted to **F13**, blocking.
+1. **`allowed-tools` does not restrict anything in a skill**, and its presence disables
+   `context: fork`. Promoted to **F13**, blocking, and fixed by item 4.11.
 2. **`tools:` is the correct skill key, but it does not restrict either.** A forked skill
    declaring `tools: Read, Glob, Grep` still performed a `Write` in 3/3 runs. Both comma and
    space separation parse without breaking the fork.
+3. **`allowed-tools` *is* honoured — as a permission grant, and only on direct invocation.**
+   [anthropics/claude-code#67198](https://github.com/anthropics/claude-code/issues/67198)
+   reports that the listed tools are pre-approved when a user types `/skill-name`, but **not**
+   when the model reaches the same skill through the `Skill` tool, where every command still
+   prompts. Closed as a duplicate, so it is a known issue rather than a fix.
 
-Practical consequence: there is **no working per-skill tool sandbox** to standardise on.
-Item 4.1 should drop the tool-restriction goal rather than restate it in a different spelling.
+The three fit together: the key grants permissions rather than restricting them, that grant
+only fires on the direct path, and on any path it costs forking. My original heading —
+*"not honoured"* — was too strong, and this correction is why: it is honoured, for a purpose
+opposite to the one the toolchain appeared to intend.
+
+**What this means for item 4.11**, which deleted the key from all 15 skills:
+
+- For the twelve skills reached through the `Skill` tool, the grant never fired anyway. Pure
+  gain: they now fork, and lost nothing.
+- For `/execute`, `/prd` and the other directly-invoked entry points, the deletion **did**
+  give up a real permission pre-approval, in exchange for forking. That is the right trade —
+  a toolchain whose declared models and agents never apply is worse than one that prompts —
+  but it is a trade, not a free win, and it was not visible when 4.11 was written.
+- The durable place for those grants is the operator's `settings.json` `permissions.allow`,
+  not skill frontmatter: it works on both invocation paths and does not interact with forking.
+  §5.2 sidesteps the question by running under `bypassPermissions`, which is why no run has
+  ever surfaced it.
+
+Practical consequence, unchanged: there is **no working per-skill tool sandbox** to
+standardise on. Item 4.1 should drop the tool-restriction goal rather than restate it in a
+different spelling.
 
 #### U2 — `agent:` is honoured, but only together with `context: fork` — **answered**
 
