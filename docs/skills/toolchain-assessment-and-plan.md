@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1 and 4.6 remain open, neither blocking; 4.4 and 4.5 are deferred to a separate plan.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1 and 4.6 remain open, neither blocking; 4.4 and 4.5 are deferred to a separate plan. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -1826,6 +1826,57 @@ import xml.etree.ElementTree as ET, glob
 files = sorted(glob.glob('docs/prd/test-project/**/*.md', recursive=True))
 bad = [p for p in files if not _parses(p)]
 ```
+
+---
+
+### 5.3 CRD fixture — **BUILT, not yet run**
+
+Every finding this document records came from running the greenfield path against §5.1. The
+CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
+`/crd-context-update`, and `project-context-finalizer` — has had **static checks only**. Item
+4.10 wired an agent into a code path that has never executed.
+
+> **Built at [`tests/fixture/setup_crd_fixture.py`](../../tests/fixture/setup_crd_fixture.py).**
+> A working FastAPI application: 17 files, **5 commits**, no remote, 8 passing tests, and no
+> `PROJECT.md`.
+>
+> **The differences from §5.1 are the point.** Greenfield starts from an empty repository;
+> brownfield starts from code that already works, has history, and has a test asserting the
+> behaviour a careless change would break.
+>
+> Choices that matter, in the same spirit as §5.1:
+>
+> - **It passes its own tests on a fresh build**, and the setup script says so. A brownfield
+>   fixture with a broken baseline cannot tell you whether a change request broke anything.
+> - **Five commits, not one.** `/crd-investigate` may reasonably read git log, and a single
+>   "Initial commit" is not a brownfield project.
+> - **Delete is destructive and tested.** The change request asks for archiving *alongside*
+>   delete, so `test_delete_is_permanent` is the trap: a change that removes it did more than
+>   it was asked to.
+> - **Tags are a join table**, so impact analysis has to reason about `link_tags` rather than
+>   a column.
+> - **`app/api/__init__.py` re-exports the routers**, so any new endpoint edits a shared file
+>   that two modules import — where unisolated parallel work shows up first.
+> - **No `PROJECT.md`.** Producing it is `/crd-context`'s job and the first thing to test.
+> - **The change request is prose**, deliberately unstructured. Handing `/crd` something
+>   already structured would test nothing.
+>
+> `--verify` mirrors §5.1's F2 guard and is tested negatively: removing `app/.git` makes it
+> exit 1. The static suite validates the fixture definition — that every commit places a file,
+> that no commit index is out of range, and that each trap is still present — so drift fails
+> in seconds rather than partway through a CRD run.
+
+**Not yet run.** The sequence it enables, and which nothing has ever exercised:
+
+| # | Step | What it would establish |
+|---|---|---|
+| 1 | `/crd-context` on `app/` | `PROJECT.md` is produced at all, and is well-formed |
+| 2 | `/crd` on the change request | A structured CRD with impact analysis naming `link_tags` and the shared router file |
+| 3 | `/breakdown` on the CRD | Brownfield tasks reference existing code rather than creating it |
+| 4 | `/execute` | The change lands, **`test_delete_is_permanent` still passes**, and Step 10's finalizer updates `PROJECT.md` |
+
+Step 4 is the one that matters: it is the first execution of `project-context-finalizer`, and
+the first time the toolchain modifies code it did not write.
 
 ---
 

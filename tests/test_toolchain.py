@@ -356,6 +356,51 @@ def _():
         "breakdown never verifies the manifest against the files it generated")
 
 
+@check("the CRD fixture is buildable and self-consistent")
+def _():
+    # The greenfield fixture caught every finding this project fixed; the CRD half had no
+    # fixture at all. This checks the definition statically -- that the app is coherent and
+    # its traps are intact -- so drift fails here rather than three hours into a CRD run.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "crd_app_files", os.path.join(REPO, "tests", "fixture", "crd_app_files.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    paths = [rel for rel, _c, _n in mod.FILES]
+    assert len(paths) == len(set(paths)), "duplicate path in the CRD fixture file list"
+
+    # Every commit must place at least one file, or git rejects the empty commit at build.
+    for n, message in enumerate(mod.COMMITS):
+        assert any(cn == n for _r, _c, cn in mod.FILES), \
+            f"CRD fixture commit {n} ({message}) places no files"
+    highest = max(cn for _r, _c, cn in mod.FILES)
+    assert highest < len(mod.COMMITS), \
+        f"CRD fixture assigns a file to commit {highest} but only {len(mod.COMMITS)} exist"
+
+    # The traps are the fixture's whole value. Losing one silently would make a CRD run
+    # look successful while testing nothing interesting.
+    body = {rel: content for rel, content, _n in mod.FILES}
+    assert "app/models/link_tag.py" in body, \
+        "tags must stay a join table; a string column makes impact analysis trivial"
+    assert "link_tags" in body.get("app/models/link.py", ""), \
+        "Link no longer references the join table"
+    assert "delete_link" in body.get("app/api/links.py", ""), \
+        "delete must exist -- the change request asks for archiving *alongside* it"
+    assert "test_delete_is_permanent" in body.get("tests/test_links.py", ""), \
+        "the test that a careless change would break is missing"
+    assert "archived" in body.get("tests/test_models.py", ""), \
+        "nothing asserts the starting state the change request is expected to alter"
+    assert not any("PROJECT.md" in rel for rel in paths), \
+        "PROJECT.md must be absent -- producing it is /crd-context's job"
+
+    cr = os.path.join(REPO, "tests", "fixture", "crd", "change-request.md")
+    assert os.path.isfile(cr), "tests/fixture/crd/change-request.md is missing"
+    text = open(cr, encoding="utf-8").read()
+    assert "<" not in text.split("---", 2)[-1], \
+        "the change request has XML in it; it must be prose, or /crd is handed its own output"
+
+
 @check("no agent is orphaned -- every one is reachable", finding="F11")
 def _():
     # project-context-finalizer sat unreferenced for the life of the toolchain: 219 lines
