@@ -327,50 +327,62 @@ Retries: 3 (all succeeded)
 
 ### Step 10: Finalize Context (CRD Projects)
 
-If PROJECT.md exists in the project root, update it with implemented features.
+Only for projects carrying a `PROJECT.md` — greenfield runs skip this entirely and silently.
 
-**Check for PROJECT.md:**
 ```bash
 test -f {project_path}/PROJECT.md
 ```
 
-**If exists, update context:**
+**If it exists, dispatch the finalizer agent.** Do not do this work inline:
 
-1. Read all completed task XML files
-2. Extract `<exports>` sections from each task
-3. Map exports to PROJECT.md sections:
-   - `<api endpoint>` → `<api-registry>`
-   - `<interface type="react-component">` → `<features>`
-   - `<interface type="sqlalchemy-model">` → `<schema-registry>`
+```
+Task(
+  subagent_type: "project-context-finalizer",
+  run_in_background: false,
+  description: "Update PROJECT.md from completed task exports",
+  prompt: <the four inputs below>
+)
+```
 
-4. Update PROJECT.md:
-   - Add new features to `<features>` section
-   - Add new endpoints to `<api-registry>` section
-   - Add new models to `<schema-registry>` section
-   - Update `<last-context-hash>` to current HEAD
-   - Update `<last-updated>` timestamp
+The prompt must carry exactly what the agent's `## Input` section asks for, because a
+dispatched agent reads its own definition and nothing else — naming a skill or a document
+here would be inert text (**F20**):
 
-5. Commit the context update:
+```
+Update PROJECT.md to reflect what was implemented.
+
+Project root (PROJECT.md lives here): {project_path}
+Tasks directory:                      {tasks_path}
+CRD slug:                             {prd_slug}
+Completed task ids:                   {verified_tasks from ledger-status.sh}
+```
+
+Take the completed ids from the **ledger**, not from a running total — they are the tasks
+whose commits exist, which is the only list that has ever been reliable.
+
+**Then commit the result yourself.** The agent declares `tools: Read Write Glob` and has no
+`Bash`, so it can edit `PROJECT.md` but cannot commit it. That division is deliberate and
+matches the rest of the pipeline: the agent produces content, the caller owns git.
+
 ```bash
 git -C {project_path} add PROJECT.md
 git -C {project_path} commit -m "docs: Update PROJECT.md with features from {prd_slug}"
 ```
 
-6. Update state with context finalization:
-```json
-{
-  "context_update": {
-    "status": "completed",
-    "project_md_path": "{project_path}/PROJECT.md",
-    "features_added": ["feature-1", "feature-2"],
-    "endpoints_added": ["/api/new-endpoint"],
-    "models_added": ["NewModel"]
-  }
-}
-```
+Commit only if the agent actually changed something — it reports `{"skipped": true, ...}`
+when there are no task exports to add, and an empty commit says a context update happened
+when none did.
 
-**If no PROJECT.md:**
-Skip context finalization silently (not a CRD-based project).
+**Why an agent and not the six steps that used to be written out here.** The agent already
+specified this job in 219 lines — idempotent handling of entries that already exist, file
+tracking, skip conditions, quality checks — while this section carried a thinner summary of
+the same thing. Two descriptions of one job, with nothing deciding which runs, is exactly the
+shape of **F20**. Dispatching by `subagent_type` loads the agent definition by construction,
+so there is only one description now and it is the better one.
+
+**Note this path has never run.** `PROJECT.md` is CRD-only and every §5.2 run has been
+greenfield, so neither the old inline version nor this one has been exercised. Treat it as
+specified-but-unproven until a CRD fixture exists.
 
 ### Step 11: Complete
 

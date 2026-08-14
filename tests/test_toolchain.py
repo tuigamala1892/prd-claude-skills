@@ -356,6 +356,29 @@ def _():
         "breakdown never verifies the manifest against the files it generated")
 
 
+@check("no agent is orphaned -- every one is reachable", finding="F11")
+def _():
+    # project-context-finalizer sat unreferenced for the life of the toolchain: 219 lines
+    # specifying a job that /execute also described inline, with nothing deciding which ran.
+    # That is F20's shape, and the general fix is to notice when an agent has no caller.
+    #
+    # An agent is reachable two ways: a skill runs *as* it (`agent:` frontmatter), or a skill
+    # dispatches it (`subagent_type`). Both are real invocation mechanisms; being merely
+    # mentioned in prose is not, which is the distinction F20 was about.
+    referenced = set()
+    for _rel, text in instruction_text():
+        for m in re.finditer(r"^agent:[ \t]*([\w-]+)", text, re.M):
+            referenced.add(m.group(1))
+        for m in re.finditer(r"subagent_type[\"']?\s*[:=]\s*[\"']([\w:-]+)", text):
+            referenced.add(m.group(1).split(":")[-1])
+
+    orphans = [name for name, _p in agent_files() if name not in referenced]
+    assert not orphans, (
+        "agent(s) that nothing invokes -- wire them in or delete them; unreferenced "
+        "definitions rot, and a second description of a job nothing dispatches is how "
+        "F20 happened:\n    " + "\n    ".join(orphans))
+
+
 @check("`/prd` looks for existing PRDs before starting a new one", finding="F3")
 def _():
     # /prd with no arguments used to begin a fresh interview immediately, and Phase 8 then

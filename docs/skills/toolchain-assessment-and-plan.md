@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1, 4.3–4.6 and 4.10 remain open, none of them blocking.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1 and 4.6 remain open, neither blocking; 4.4 and 4.5 are deferred to a separate plan.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -923,7 +923,13 @@ an incompatibility.
 This matters more now that the toolchain is a separate, independently versioned repository
 intended for reuse across projects.
 
-#### F11 — Orphaned agent
+#### F11 — Orphaned agent — **RESOLVED**
+
+> **Fixed by item 4.10**, by wiring rather than deleting. `/execute` Step 10 now dispatches
+> `project-context-finalizer` via `subagent_type`, which loads the agent definition by
+> construction. A guard now fails the build on *any* unreferenced agent, so this cannot
+> recur with a different file.
+
 
 `agents/project-context-finalizer.md` (219 lines) is referenced by nothing in `.claude/`.
 Either wire it into `/execute`'s completion phase or delete it.
@@ -1385,12 +1391,33 @@ documented parameter.
 > count mismatch; the rebuild produced 18 tasks with correct per-layer counts, real task names
 > read from the XML, and preserved metadata; re-verification is clean.
 
-### 4.10 Orphaned agent
+### 4.10 Orphaned agent — **DONE**
 
-**Addresses F11**
+**Addresses F11.** Wired in, not deleted.
 
-Decide `agents/project-context-finalizer.md`: wire it into `/execute`'s completion phase, or
-delete it. Leaving 219 unreferenced lines in a reusable toolchain is a maintenance liability.
+> **The choice turned on which description was better.** `/execute` Step 10 already carried a
+> six-step summary of the same job, so this was **two descriptions of one job with nothing
+> deciding which ran** — precisely F20's shape, caught before it could cost a run. The agent's
+> version is the better one: 219 lines covering idempotent handling of entries that already
+> exist, file tracking, skip conditions and quality checks, none of which the summary had.
+>
+> Step 10 now dispatches it by `subagent_type`, which loads the agent definition by
+> construction — the same mechanism 4.15 used to fix F20. The inline procedure is gone, so
+> there is one description again.
+>
+> **The division of labour is forced by the agent's own frontmatter.** It declares
+> `tools: Read Write Glob` and has no `Bash`, so it edits `PROJECT.md` and cannot commit it.
+> `/execute` commits afterwards — and only if the agent reports it changed something, since
+> the agent returns `{"skipped": true, ...}` when there are no exports to add and an empty
+> commit would claim a context update that never happened. Agent produces content, caller owns
+> git: the same split as `execute-batch` and the worktree.
+>
+> Completed task ids are taken from the **ledger**, not a running total.
+>
+> **This path has never run.** `PROJECT.md` is CRD-only and every §5.2 run has been greenfield,
+> so neither the old inline version nor this one has been exercised. Specified but unproven,
+> and stated as such in the skill itself. **The whole CRD half of the toolchain is in that
+> position** — `/crd`, `/crd-context` and their four skills have no fixture at all.
 
 ### 4.11 Remove `allowed-tools` from all 15 skills — **DONE**
 
@@ -1823,7 +1850,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.13~~ | ~~Make critical guards executable~~ **DONE** — F15 resolved; the check now runs the guard | ~~Correctness~~ | `execute/scripts/`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | ~~4.9~~ | ~~Manifest completeness~~ **DONE** — built from task files, not the plan; F9 resolved | ~~Consistency~~ | `breakdown`, `breakdown/scripts/` |
-| 4.10 | Orphaned agent | Structural | `agents/project-context-finalizer.md` |
+| ~~4.10~~ | ~~Orphaned agent~~ **DONE** — wired into Step 10; F11 resolved, guard added | ~~Structural~~ | `execute`, `agents/project-context-finalizer.md` |
 
 ---
 
