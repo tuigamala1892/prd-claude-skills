@@ -1219,6 +1219,12 @@ verify→retry cycles cost more than a stronger model would have.
 > careful. The second matters because slug collisions arrive from a different direction:
 > two similarly-named projects produce the same slug, and the second would destroy the first.
 >
+> **Verified behaviourally by §5.2 test 3**, which is the only thing that could — the static
+> guard checks wording, and F15 is the standing reminder that wording is not behaviour. The
+> re-run reported **FIXED**: an existing PRD detected in 15 seconds, named with its status and
+> last-modified date, `index.md` byte-identical afterwards, and no interview started. Test 2
+> re-ran at 130s to confirm the new lookup does not disturb the fresh path.
+>
 > **4.4 is deferred and nothing here waits on it.** Part 2 was designed to work without it;
 > deferring 4.4 only means the dual lookup stays permanent rather than being simplified.
 
@@ -1748,8 +1754,8 @@ which captures each run's result JSON and transcript.
 | # | Test | Result |
 |---|---|---|
 | 1 | ~~Phase 0 probes (U1, U2, F6 precedence)~~ | **Done** — see §3.5 |
-| 2 | `/prd` on a fresh directory | **PASS** — PRD written, `what-next.md` valid XML with `<status>`. No `<toolchain-version>`: item 4.5 not done |
-| 3 | `/prd` again with no arguments | **KNOWN/4.3** — opened a fresh interview with a PRD already present. Confirms F3 |
+| 2 | `/prd` on a fresh directory | **PASS** — PRD written, `what-next.md` valid XML with `<status>`. Re-run after 4.3 (130s): the new unconditional lookup does not disturb the fresh path. No `<toolchain-version>`: item 4.5 deferred |
+| 3 | `/prd` again with no arguments | **FIXED** (was KNOWN/4.3) — detects the existing PRD in **15s** and leaves it untouched, naming it, its status and its last-modified date, then offering to extend it or start a new one alongside. `index.md` byte-identical afterwards. Marker removed; now a permanent guard |
 | 4 | `/prd --resume` | **PASS** — found the existing PRD |
 | 5 | `/breakdown` with a relative `--output-dir` | **KNOWN/4.6** — not rejected, and worse: generated Layer 0 tasks with the relative-derived path baked in, then timed out |
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |

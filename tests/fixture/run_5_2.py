@@ -364,7 +364,7 @@ def make_tests(ws, app, prd_fresh):
                     "questions - make reasonable assumptions, note them, and write the PRD "
                     "files now."),
         dict(id=3, name="prd-existing", desc="/prd again with no arguments",
-             cwd=prd_fresh, timeout=600, check=t3, expect_fail="4.3",
+             cwd=prd_fresh, timeout=600, check=t3,
              prompt=f"/{P}:prd"),
         dict(id=4, name="prd-resume", desc="/prd --resume",
              cwd=prd_fresh, timeout=600, check=t4, prompt=f"/{P}:prd --resume"),
