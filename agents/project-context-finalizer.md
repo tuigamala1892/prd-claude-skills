@@ -190,6 +190,28 @@ Add to relevant feature's files list.
 | No exports in task | Skip task, note in report |
 | Git hash unchanged | Update timestamp only |
 
+## Writing XML
+
+You are editing an XML block inside a markdown file. **Escape the five XML special characters
+in any text you write** — `&` becomes `&amp;`, `<` becomes `&lt;`, `>` becomes `&gt;`.
+
+The one that actually bites is `&`, because URLs and query strings are exactly what an
+API registry describes:
+
+```xml
+<!-- WRONG: the block stops parsing here -->
+<description>?tag=python&status=archived returns archived links with that tag</description>
+
+<!-- RIGHT -->
+<description>?tag=python&amp;status=archived returns archived links with that tag</description>
+```
+
+This is not hypothetical. On the first run of this agent, one bare `&` in one description
+made `PROJECT.md` unparseable — breaking `crd-impact-analysis`, which reads `<api-registry>`
+from it, and this agent's own next run, which has to parse the file to update it. The caller
+validates afterwards and will not commit a file that fails, so a mistake here costs the
+context update rather than corrupting the repository. Escaping as you write is cheaper.
+
 ## Quality Checks
 
 Before writing:

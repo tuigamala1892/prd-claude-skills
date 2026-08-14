@@ -369,6 +369,19 @@ git -C {project_path} add PROJECT.md
 git -C {project_path} commit -m "docs: Update PROJECT.md with features from {prd_slug}"
 ```
 
+**Validate before committing.** The agent writes XML by hand and can produce a file that no
+longer parses:
+
+```bash
+python {skill_dir}/scripts/check-project-md.py {project_path} --fix
+```
+
+On its first ever run the finalizer wrote `?tag=python&status=archived` into a
+`<description>`. A bare `&` is not valid XML, so the `<project-context>` block stopped
+parsing — silently breaking `crd-impact-analysis`, which reads `<api-registry>` from it, and
+the finalizer itself on the next run. The script escapes bare ampersands and refuses if the
+block is malformed for any other reason. **A non-zero exit means do not commit.**
+
 Commit only if the agent actually changed something — it reports `{"skipped": true, ...}`
 when there are no task exports to add, and an empty commit says a context update happened
 when none did.

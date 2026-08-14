@@ -1829,7 +1829,7 @@ bad = [p for p in files if not _parses(p)]
 
 ---
 
-### 5.3 CRD fixture — **BUILT; steps 1–3 RUN and PASSED**
+### 5.3 CRD fixture — **RUN END TO END**
 
 Every finding this document records came from running the greenfield path against §5.1. The
 CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
@@ -1970,14 +1970,67 @@ Verified against all three layouts: brownfield (tasks inside the project) writes
 root refuses; greenfield still writes. `preflight.sh` was already correct here — it *notes*
 that the tasks directory is inside the target rather than refusing.
 
-The rest of the sequence, still unexercised:
+**Step 4 passed, and the trap held.** Three tasks, three merge commits, ledger 3/3 verified,
+state file `completed`. The application went from **8 passing tests to 21** — and
+`test_delete_is_permanent` is one of them. The CRD made preserving hard delete a must-have,
+`/breakdown` carried it into a task, and the implementation honoured it. That is the whole
+chain working on the requirement most likely to be dropped.
+
+`project-context-finalizer` ran for the first time ever (item 4.10 wired it in; nothing had
+executed it). It committed `ab91256 docs: Update PROJECT.md with features from archive-links`
+and genuinely updated the registries — 5 features → 7, 5 endpoints → 7 with
+`POST /links/{link_id}/archive` and `/restore`, 3 schema entries → 4 with `archived_at`
+recorded.
+
+**F22's fix held**: `execute-state.json` was written into the tasks directory *inside* the
+project, which is the layout that would have been refused an hour earlier.
+
+#### F23 — the finalizer writes unescaped XML and corrupts the file it maintains
+
+Found by step 4. `project-context-finalizer`, on its first execution, wrote:
+
+```xml
+<description>… ?tag=python&status=archived returns only archived links …</description>
+```
+
+A bare `&` is not valid XML. The `<project-context>` block stopped parsing, which silently
+breaks every consumer — `crd-impact-analysis` reads `<api-registry>` from it, and the
+finalizer itself must parse the file to update it next time. **The run reported success.**
+
+Verified precisely: the block parsed after step 1, fails after step 4, contains exactly one
+bare ampersand, and escaping that one character makes it parse again. Nothing else is wrong
+with it.
+
+This is the defect this project *opened* with — 94 bare ampersands escaped so the PRD
+directory would parse — reintroduced by the one component whose job is writing XML.
+
+Fixed two ways, because one of them is prose:
+
+- `agents/project-context-finalizer.md` now states the escaping rule with the exact failing
+  example, and says the caller validates afterwards.
+- `skills/execute/scripts/check-project-md.py` parses the block, escapes bare ampersands with
+  `--fix`, and refuses if it is malformed for any other reason. Step 10 runs it **before
+  committing**, and a non-zero exit blocks the commit. Tested on the real corruption, on the
+  repair, and on a greenfield project with no `PROJECT.md` (not an error).
+
+**One cosmetic issue not worth a finding:** `last-context-hash` is written before the
+finalizer's own commit exists, so it names the previous HEAD. Every consumer uses it to detect
+staleness, and it is off by exactly one commit — always in the direction of "looks slightly
+stale", never "looks fresher than it is". Worth tidying when `/crd-context-update` is next
+touched.
+
+---
+
+**All four steps have now run.** The brownfield path works end to end, and found two defects
+doing so (**F22**, **F23**) — the first defects from a half of the toolchain that had only
+ever had static checks.
 
 | # | Step | Result |
 |---|---|---|
 | 1 | `/crd-context` on `app/` | **PASS** — see below |
 | 2 | `/crd` on the change request | **PASS** — see below |
 | 3 | `/breakdown` on the CRD | **PASS** — and it found **F22** |
-| 4 | `/execute` | The change lands, **`test_delete_is_permanent` still passes**, and Step 10's finalizer updates `PROJECT.md` |
+| 4 | `/execute` | **PASS** — the trap held; found **F23** |
 
 Step 4 is the one that matters: it is the first execution of `project-context-finalizer`, and
 the first time the toolchain modifies code it did not write.

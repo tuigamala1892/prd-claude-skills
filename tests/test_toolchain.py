@@ -356,6 +356,35 @@ def _():
         "breakdown never verifies the manifest against the files it generated")
 
 
+@check("PROJECT.md is validated after the finalizer rewrites it", finding="F23")
+def _():
+    # The finalizer writes XML by hand. On its first ever run it emitted
+    # `?tag=python&status=archived` into a <description>; a bare & is not valid XML, so the
+    # <project-context> block stopped parsing and every consumer broke silently. Escaping is
+    # a prose instruction to the agent; the check afterwards is not.
+    script = os.path.join(SKILLS, "execute", "scripts", "check-project-md.py")
+    assert os.path.isfile(script), "skills/execute/scripts/check-project-md.py is missing"
+    body = open(script, encoding="utf-8").read()
+    assert "amp;" in body, "check-project-md.py does not handle bare ampersands"
+    # Both, not either: an `or` here passes when half the mechanism is removed, which is how
+    # three earlier guards in this suite managed to survive their own bite tests.
+    assert "ET.fromstring(" in body, \
+        "check-project-md.py never parses the block, so it cannot know it is well-formed"
+    assert "ParseError" in body, (
+        "check-project-md.py does not handle a parse failure, so a malformed block crashes "
+        "it rather than being reported")
+
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    step10 = ex[ex.find("### Step 10"):ex.find("### Step 11")]
+    assert "check-project-md.py" in step10, \
+        "Step 10 does not validate PROJECT.md after the finalizer rewrites it"
+    assert re.search(r"do not commit", step10, re.I), \
+        "Step 10 does not say a failed validation blocks the commit"
+
+    agent = open(os.path.join(AGENTS, "project-context-finalizer.md"), encoding="utf-8").read()
+    assert "&amp;" in agent, "the finalizer is not told to escape ampersands"
+
+
 @check("the CRD fixture is buildable and self-consistent")
 def _():
     # The greenfield fixture caught every finding this project fixed; the CRD half had no
