@@ -1829,7 +1829,7 @@ bad = [p for p in files if not _parses(p)]
 
 ---
 
-### 5.3 CRD fixture — **BUILT, not yet run**
+### 5.3 CRD fixture — **BUILT; step 1 RUN and PASSED**
 
 Every finding this document records came from running the greenfield path against §5.1. The
 CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
@@ -1866,11 +1866,41 @@ CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
 > that no commit index is out of range, and that each trap is still present — so drift fails
 > in seconds rather than partway through a CRD run.
 
-**Not yet run.** The sequence it enables, and which nothing has ever exercised:
+**Step 1 has now run — the first execution of any CRD skill.** It passed cleanly.
 
-| # | Step | What it would establish |
+`/crd-context --project app/` invoked `crd-investigate` through the `Skill` tool (so not an
+F20 case) and wrote a 202-line `PROJECT.md`. The embedded block validates:
+
+```
+<project-context version="1.0">   parses
+  <meta>              3 entries, last-context-hash 59e7829412d6 == actual HEAD
+  <features>          5
+  <api-registry>      5   /health, /links, /links, /links/{link_id}, /links/{link_id}/tags
+  <schema-registry>   3   Link, Tag, link_tags
+```
+
+Every endpoint and model is right, including the join table, and the description of
+`delete-link` reads *"Intentionally has no archive/soft-delete alternative yet"* — the exact
+state the change request asks to change. The target was not otherwise touched: five commits
+intact, root commit reachable, `git status` showing only the new file.
+
+**A correction worth recording, because it nearly became a finding.** On first look I read
+`PROJECT.md` as "markdown, not the XML the consumers grep for" and started writing it up as a
+producer/consumer mismatch. That was wrong: `crd-investigate` specifies markdown *wrapping* a
+`<project-context>` XML block, so a root-level parse failure is the expected result, not a
+defect. I had checked the output against my assumption before checking the spec. The lesson is
+the same one this document keeps recording, pointed the other way — a plausible failure story
+is not evidence, and the cheap check (read the spec) comes first.
+
+**One open question, not a defect yet.** `PROJECT.md` is left untracked (`?? PROJECT.md`).
+Whether `/crd-context` should commit it is undecided; `/execute` Step 10 does commit its
+updates, so the two halves may disagree. Step 4 will settle it.
+
+The rest of the sequence, still unexercised:
+
+| # | Step | Result |
 |---|---|---|
-| 1 | `/crd-context` on `app/` | `PROJECT.md` is produced at all, and is well-formed |
+| 1 | `/crd-context` on `app/` | **PASS** — see below |
 | 2 | `/crd` on the change request | A structured CRD with impact analysis naming `link_tags` and the shared router file |
 | 3 | `/breakdown` on the CRD | Brownfield tasks reference existing code rather than creating it |
 | 4 | `/execute` | The change lands, **`test_delete_is_permanent` still passes**, and Step 10's finalizer updates `PROJECT.md` |
