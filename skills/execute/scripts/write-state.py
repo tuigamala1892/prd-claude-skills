@@ -95,14 +95,19 @@ def main():
         print(f"tasks path does not exist: {tasks_path}", file=sys.stderr)
         return 1
 
-    # F21: a copy of this file was written into the target repository, where it showed up as
-    # untracked noise in the operator's git status. There is exactly one correct location.
-    if os.path.commonpath([tasks_path, project_path]) == project_path:
-        print(f"REFUSED: tasks path {tasks_path} is inside the target project "
-              f"{project_path}; execute-state.json would pollute it", file=sys.stderr)
-        return 1
-
     state_path = os.path.join(tasks_path, "execute-state.json")
+
+    # F21 was a *second* copy of this file at the target's root, alongside the correct one in
+    # the tasks directory. The first version of this guard refused whenever the tasks path sat
+    # anywhere inside the project -- which also refuses the legitimate brownfield layout, where
+    # `/crd` and `/breakdown` write `docs/crd/` and `docs/tasks/` *into* the project on purpose,
+    # so a change request travels with the code it changes. That broke the CRD path entirely
+    # (F22). Refuse the actual mistake instead: writing to the project root.
+    if os.path.normcase(os.path.abspath(state_path)) == os.path.normcase(
+            os.path.join(os.path.abspath(project_path), "execute-state.json")):
+        print(f"REFUSED: that would write execute-state.json to the project root "
+              f"({project_path}). It belongs in the tasks directory.", file=sys.stderr)
+        return 1
     prev = {}
     if os.path.isfile(state_path):
         try:

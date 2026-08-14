@@ -1829,7 +1829,7 @@ bad = [p for p in files if not _parses(p)]
 
 ---
 
-### 5.3 CRD fixture — **BUILT; steps 1–2 RUN and PASSED**
+### 5.3 CRD fixture — **BUILT; steps 1–3 RUN and PASSED**
 
 Every finding this document records came from running the greenfield path against §5.1. The
 CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
@@ -1930,13 +1930,53 @@ The toolchain has earned scepticism over twenty findings, but scepticism applied
 cheap check is just noise, and it produces exactly the kind of confident wrong story that F14
 cost this project a day to unwind.
 
+**Step 3 passed on every criterion the skill sets for itself.** `/breakdown` produced **3
+tasks** where the greenfield PRD produced 18 — *"CRDs typically produce fewer tasks"* — with
+**no Layer 0**, as *"CRDs are always brownfield"* requires:
+
+```
+1-foundation/L1-001-add-archived-at-column.xml
+2-backend/L2-001-archive-restore-endpoints-and-status-filter.xml
+4-integration/L4-001-archive-acceptance-tests.xml
+```
+
+The tasks **modify existing code** rather than creating it — `app/models/link.py`,
+`app/api/links.py`, `app/schemas.py`, `tests/test_links.py`, all files that already exist —
+which is the brownfield behaviour nothing greenfield could test. Item 4.9's work shows up
+too: `manifest.json` records `total_tasks: 3` matching the files on disk, per-layer counts,
+`toolchain_version: 2.0.0`, and `prd.project_path`.
+
+#### F22 — the F21 guard forbids the brownfield layout
+
+Found by step 3, before it could cost a run. **`/execute` could not have started.**
+
+`/crd` and `/breakdown` write *into* the project — `app/docs/crd/{slug}.md` and
+`app/docs/tasks/{slug}/` — so a change request and its tasks travel with the code they change.
+That is deliberate and it is what both skills' specs say.
+
+`write-state.py`'s F21 guard refused whenever the tasks path sat anywhere inside the project:
+
+```
+REFUSED: tasks path .../app/docs/tasks/archive-links is inside the target project .../app
+```
+
+The guard was written against the greenfield topology, where the tasks tree lives outside the
+target, and I generalised from one layout to a rule. **F21 was never about that.** The actual
+mistake was a *second* copy of `execute-state.json` at the target's **root**, alongside the
+correct one — so the guard now refuses exactly that, and permits the tasks directory to sit
+inside the project.
+
+Verified against all three layouts: brownfield (tasks inside the project) writes; the project
+root refuses; greenfield still writes. `preflight.sh` was already correct here — it *notes*
+that the tasks directory is inside the target rather than refusing.
+
 The rest of the sequence, still unexercised:
 
 | # | Step | Result |
 |---|---|---|
 | 1 | `/crd-context` on `app/` | **PASS** — see below |
 | 2 | `/crd` on the change request | **PASS** — see below |
-| 3 | `/breakdown` on the CRD | Brownfield tasks reference existing code rather than creating it |
+| 3 | `/breakdown` on the CRD | **PASS** — and it found **F22** |
 | 4 | `/execute` | The change lands, **`test_delete_is_permanent` still passes**, and Step 10's finalizer updates `PROJECT.md` |
 
 Step 4 is the one that matters: it is the first execution of `project-context-finalizer`, and
