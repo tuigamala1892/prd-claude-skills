@@ -231,7 +231,7 @@ preference:
 | # | Step | Why here |
 |---|---|---|
 | ~~1~~ | ~~**Truthful ledger — SHA per task, appended after commit**~~ **DONE** (`f2049d2`, verified by run 7) | Fixed F16 |
-| ~~2~~ | ~~**`--resume` verifies SHAs against git**~~ **DONE** — resume is now driven by `verified_tasks`, and is the default when the ledger has entries | Interruption is now survivable |
+| ~~2~~ | ~~**`--resume` verifies SHAs against git**~~ **DONE and PROVEN** — an 18-task run was interrupted at 11/18 by an API stall and finished across two resumes with **zero tasks redone**; see §3.7 of the assessment | Interruption is survivable, demonstrated rather than argued |
 | 3 | **Wall-clock and cost guards** (`--max-runtime`, `--max-cost`) | No API dependency; works for every auth mode |
 | 4 | **Limit-error detection in the retry loop** | Stops five doomed retries against a closed window |
 | 5 | **Usage guard against the endpoint** | The precise signal, once stopping is already safe |

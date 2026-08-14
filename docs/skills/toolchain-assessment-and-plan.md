@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, and now reports itself honestly.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1, 4.3–4.6 and 4.10 remain open, none of them blocking.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1, 4.3–4.6 and 4.10 remain open, none of them blocking.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -1030,6 +1030,49 @@ Code build that produced them.
 
 ---
 
+### 3.7 Resume, verified by accident
+
+Run 10 is the most useful result in this document, and none of it was planned.
+
+The run stopped at **11 of 18** tasks with `API Error: Response stalled mid-stream` — an
+infrastructure failure, not a toolchain defect. It was then finished by resuming twice, and
+the ledger records the whole thing:
+
+| Session | Tasks added | Ended by |
+|---|---|---|
+| Original run | `L0-001` … `L2-002` (11) | API stall |
+| First resume | `L2-003` … `L4-004` (6) | 4-hour timeout, after the machine slept overnight |
+| Second resume | `L4-005` (1), in 9 minutes | **completed** |
+
+Final state: **18 ledger entries, 18 distinct task ids, zero duplicates, every entry
+`attempts=1`.** The state file says `completed`, 18 of 18, `missing: []`; `git status` in the
+target is clean; there is no repository outside it; and the produced application passes 88
+tests.
+
+**Not one task was redone.** Each resume read the ledger, verified each SHA against git, and
+started at the first task without one.
+
+Three things this validates that nothing else could:
+
+1. **`--resume` works on a real interruption**, not a constructed one. The synthetic test in
+   4.16 proved the arithmetic; this proves the behaviour under an unplanned failure with
+   partial state on disk.
+2. **The record survived a nine-hour suspension.** The machine slept from 23:24 to 08:13 with
+   the process suspended mid-run; on waking it merged the task it had been holding and carried
+   on. Nothing had to be reconciled by hand.
+3. **The harness graded the interruption honestly.** Both improvements made that morning
+   earned their place immediately: a killed run reported `INCONCLUSIVE` rather than `FAIL`,
+   and the new ledger-based criterion described the state precisely — *"17 of 18 tasks
+   completed; state file agrees, record is consistent and resumable."*
+
+Worth stating what would have happened a week earlier. `execute-state.json` was the only
+progress record, and in run 8 it claimed `completed` at 4 of 18 while git held 18 merges. A
+resume trusting it would have skipped fourteen tasks that were never done — or redone eleven
+that were. Both were live failure modes, and this run would have exposed neither, because
+before F16 nothing checked.
+
+---
+
 ## 4. Remediation plan
 
 Ordered so that blocking items and tests come first, and so that nothing later depends on an
@@ -1686,7 +1729,7 @@ which captures each run's result JSON and transcript.
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
-| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2`. **Run 8 PASS (2h 22m)** — third consecutive pass; `preflight.sh` invoked (**4.13 verified**), ledger exact again at 18/18, no stray repository. Exposed **F21**: `execute-state.json` was written into the *target* repo as well, and its metrics said `completed` at 4 of 18 while git held 18 merges. **Run 9 PASS (1h 59m)** — fourth consecutive pass and the first with a *truthful* state file: `write-state.py` invoked 38 times, hand-written 0 times, `18 of 18`, `git status` clean, 88 tests passing → **F21 resolved** |
+| 9 | Full `/execute` run on the fixture | **Run 1 VOID** — 83 min, reported success while 19 of 20 tasks bypassed isolation, but `--permission-mode acceptEdits` denied subagents `Bash`, so it measured the harness → **F14 withdrawn**. **Run 2 INCONCLUSIVE** — killed by the 90-minute timeout at 15/18 tasks; layer 2 isolated correctly (4 worktrees, 4 merges), layers 0–1 not at all. **Run 3 FAIL** — the first to complete: 20 tasks, **1 commit**, 0 worktrees, 0 branches, 0 merges, in 17 min → **F17**. `.git` intact and root commit preserved throughout (F2); state file fabricated its elapsed time (F16). **Run 4 FAIL** — the dispatch fix verified (18 task agents, one commit per task), but 0 of 6 `git worktree add` attempts included `-b` so all failed → **F18**, and the agents then `git init`-ed a repository at the workspace root containing the docs tree and a gitlink to `app/` → **F19**. **Run 5 FAIL** — 4.14's script invoked **0** times across 19 task agents, because not one of them ever loaded `execute-task` at all: it is *described* in an Agent prompt, not invoked → **F20**. **Run 6 PASS (2h 55m)** — 18 tasks, **18 merge commits**, 19 script invocations and 0 hand-written ones, `execute-verify` invoked 18 times, no repository outside the target, `.git` intact, and the produced application passes 88 tests. The first end-to-end success in six attempts. **Run 7 PASS (2h 36m)** — repeated it, and verified the ledger: 18 entries, exact correspondence with the 18 merge commits, `tasks_completed` 18 (was 23), no invented `elapsed_seconds` → **F16 resolved**. Exposed one gap in the fix, since closed: `status: completed` was written alongside `tasks_remaining: 2`. **Run 8 PASS (2h 22m)** — third consecutive pass; `preflight.sh` invoked (**4.13 verified**), ledger exact again at 18/18, no stray repository. Exposed **F21**: `execute-state.json` was written into the *target* repo as well, and its metrics said `completed` at 4 of 18 while git held 18 merges. **Run 10: interrupted at 11/18 by an API stall, then completed across two resumes with no task redone — see §3.7.** **Run 9 PASS (1h 59m)** — fourth consecutive pass and the first with a *truthful* state file: `write-state.py` invoked 38 times, hand-written 0 times, `18 of 18`, `git status` clean, 88 tests passing → **F21 resolved** |
 | 10 | Artefact version mismatch | Not run — depends on item 4.5 |
 
 Two results deserve emphasis because they are the opposite of what the summary line said.
