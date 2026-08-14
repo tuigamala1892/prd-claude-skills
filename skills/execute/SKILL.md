@@ -239,14 +239,14 @@ Wait for layer completion and parse `LAYER_RESULT`.
 
 ### Step 8: Handle Stop Condition
 
-If any layer returns `should_stop: true`:
+A layer returns `should_stop: true` for one of two reasons, and `stop_reason_kind` says which.
+**Report them differently**, because they ask different things of the operator.
 
-- A task was abandoned (5 failed attempts)
-- Update state to `stopped`
-- Output clear message with:
-  - Which task failed
-  - Path to preserved worktree
-  - How to resume
+In both cases: run `ledger-status.sh` first and take the completed count from it, then
+regenerate the state file with `write-state.py`. A stop is exactly when a hand-maintained
+count is most likely to be wrong and most likely to be believed.
+
+#### `stop_reason_kind: "abandoned"` — a task failed five times
 
 ```
 STOPPED: Task L2-006 abandoned after 5 attempts
@@ -259,6 +259,32 @@ Worktree preserved: {worktree_dir}/L2-006
 Review errors and fix issues, then run:
   /execute {tasks_path} --resume
 ```
+
+#### `stop_reason_kind: "usage_limit"` — the window closed
+
+Nothing failed. The run ran out of allowance and stopped on purpose, at a task boundary, with
+every completed task committed and recorded.
+
+```
+STOPPED: usage limit reached (resets at 17:30 UTC)
+
+Completed: 11/18 tasks, last verified commit 3b6632d (L2-001)
+Remaining: 7 tasks
+Nothing failed -- the run stopped to avoid burning the allowance a resume will need.
+
+Resume when the window reopens:
+  /execute {tasks_path} --project-path {project_path} --resume
+```
+
+Rules for this message, all of them things that have gone wrong in reports before:
+
+- **`resets at` is quoted from the error, never estimated.** The classifier prints a `reset:`
+  line only when the API actually said one. If there is no such line, omit the clause — do
+  not compute a plausible time.
+- **Do not call the stopped task failed, and do not list it as abandoned.** It has no commit,
+  so it is simply outstanding, and its attempt budget is untouched.
+- **`status` is `stopped`, never `completed`.** `write-state.py` will not write `completed`
+  while tasks remain; do not contradict it in the prose above it.
 
 ### Step 9: Reconcile State Against Git, Then Report
 

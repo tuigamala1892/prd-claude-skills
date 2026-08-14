@@ -801,6 +801,81 @@ def _():
         rmtree(root)
 
 
+@check("a usage limit stops the run instead of burning five retries", finding="F15")
+def _():
+    # `execute-task` retries five times. Against a closed subscription window that is five
+    # guaranteed failures spending the allowance the resume will need. The decision has to be
+    # an exit code: a usage limit reads like a transient error, and "try once more" reads like
+    # a reasonable response to one -- which is the F15 shape, a correct instruction reasoned
+    # past. So run the classifier and assert what it does, rather than that SKILL.md says so.
+    import shutil
+
+    script = os.path.join(SKILLS, "execute-batch", "scripts", "classify-failure.sh")
+    assert os.path.isfile(script), "skills/execute-batch/scripts/classify-failure.sh is missing"
+
+    # Wiring, asserted one piece at a time. An `A or B` guard here has passed three times in
+    # this project while half the mechanism was gone.
+    batch = open(os.path.join(SKILLS, "execute-batch", "SKILL.md"), encoding="utf-8").read()
+    assert "classify-failure.sh" in batch, (
+        "execute-batch never runs the classifier, so every failure still retries five times")
+    assert "usage_limit" in batch, "execute-batch does not report a usage-limit stop distinctly"
+
+    layer = open(os.path.join(SKILLS, "execute-layer", "SKILL.md"), encoding="utf-8").read()
+    assert "stop_reason_kind" in layer, (
+        "execute-layer flattens the two stop kinds, so /execute cannot tell them apart")
+
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert "usage_limit" in ex, "execute has no usage-limit branch in its stop message"
+
+    if not shutil.which("sh"):
+        return  # nothing to run the guard with; the static half above still applied
+
+    def classify(text):
+        p = subprocess.run(["sh", script], input=text, capture_output=True,
+                           text=True, timeout=60)
+        return p.returncode, (p.stdout or "").splitlines()
+
+    # Real error shapes. `limit` must stop (exit 3); everything else must retry (exit 0).
+    STOP = [
+        "Claude AI usage limit reached. Your limit will reset at 5pm.",
+        '{"error":{"message":"Your credit balance is too low to access the Anthropic API."}}',
+        "You have exceeded your monthly quota",
+        "5-hour limit reached",
+        "weekly limit reached for this account",
+    ]
+    # These read like limits and are not. Collapsing them into `limit` would halt healthy
+    # runs on a per-minute blip, which is a worse failure than the one being fixed.
+    GO = [
+        'API Error: 429 {"type":"rate_limit_error","message":"Number of requests exceeded"}',
+        'API Error: 529 {"type":"overloaded_error"}',
+        "Connection error: ECONNRESET",
+        "verification_failed: pytest tests/test_x.py -- 1 test failed",
+        "ModuleNotFoundError: no module named app.models",
+        "",                      # nothing recognisable must retry, i.e. behave as it does today
+        "some error nobody has seen before",
+    ]
+
+    for text in STOP:
+        rc, out = classify(text)
+        assert rc == 3, f"classifier lets the run continue on a usage limit: {text[:70]!r}"
+        assert out and out[0] == "limit", f"expected `limit`, got {out[:1]}: {text[:70]!r}"
+
+    for text in GO:
+        rc, out = classify(text)
+        assert rc == 0, f"classifier stops the whole run on a retryable failure: {text[:70]!r}"
+        assert out and out[0] in ("code", "transient"), (
+            f"expected `code`/`transient`, got {out[:1]}: {text[:70]!r}")
+
+    # The stop message is only actionable if it says when to come back, and the reset time
+    # must be quoted rather than estimated -- so it appears only when the error carried one.
+    rc, out = classify("Claude AI usage limit reached, resets at 2026-08-14T17:30:00Z")
+    assert any(l.startswith("reset:") for l in out), (
+        "classifier dropped the reset time the error supplied")
+    rc, out = classify("Claude AI usage limit reached")
+    assert not any(l.startswith("reset:") for l in out), (
+        "classifier invented a reset time the error did not contain")
+
+
 @check("no generated output committed under skills/", finding="F4")
 def _():
     bad = [rel for rel, _t in all_tracked_text()

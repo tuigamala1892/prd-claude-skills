@@ -192,9 +192,47 @@ A task is `verified` only when this passes; the agent's own `status` is a claim,
 
 If verification fails and `attempt < 5`, the task is `failed` and returns to the batch with the
 verification feedback as `retry_feedback` — Step 4's worktree is reused via `--worktree-path`,
-not re-created. At `attempt >= 5` it is `abandoned`.
+not re-created. At `attempt >= 5` it is `abandoned`. **Step 7 decides whether that retry is
+allowed to happen at all.**
 
-### Step 7: Collect Results
+### Step 7: Classify Every Failure Before Queuing a Retry
+
+A failed task does not go straight back into the retry queue. Run the classifier on its error
+text first, and let the exit status decide:
+
+```bash
+printf '%s' "{error_text}" | sh {skill_dir}/scripts/classify-failure.sh
+```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute-batch`. Pass the **error**: the agent's `error` object, or whatever the Task
+tool returned when the dispatch itself failed. Do not pipe a whole test log through it; a
+project whose own tests exercise rate limiting will contain these phrases as fixture data.
+
+| Exit | stdout | What you do |
+|------|--------|-------------|
+| 0 | `code` or `transient` | Queue the retry exactly as before. The attempt counts. |
+| 3 | `limit` | **Stop the run.** No retry, and the attempt does **not** count. |
+
+On exit 3, in this order:
+
+1. **Do not increment the task's attempt count.** It met a closed usage window, not a bug. A
+   resume must find its full five-attempt budget intact — spending attempts on the API being
+   shut is precisely the waste this step exists to prevent.
+2. **Dispatch nothing further** in this batch.
+3. **Merge whatever already verified.** Those tasks have commits, and the ledger has to record
+   them or the resume will redo work that is done. Stopping is not a reason to lose progress.
+4. Return `should_stop: true`, `stop_reason_kind: "usage_limit"`, and the classifier's own
+   output as `stop_reason` — including its `reset:` line when it found one, because that is
+   the only thing that tells the operator when to come back.
+
+**Do not read the error and decide for yourself.** The whole failure mode here is that a usage
+limit is a plausible-looking transient error, and five more attempts is a plausible-looking
+response to it — which is five guaranteed failures burning the allowance the resume needs.
+That is the F15 shape exactly: a correct instruction, weighed and reasoned past. The script
+exists so the decision is an exit code rather than a judgement.
+
+### Step 8: Collect Results
 
 Combine each agent's RESULT JSON with its verification verdict:
 
@@ -239,7 +277,7 @@ Combine each agent's RESULT JSON with its verification verdict:
 }
 ```
 
-### Step 8: Update State
+### Step 9: Update State
 
 **Do not write `execute-state.json` yourself.** One script owns that file, and it derives
 every field from the ledger and git rather than accepting anything on trust:
@@ -259,7 +297,7 @@ moment their merge commit exists, and this file is regenerated from it. Reportin
 verified before it is merged is how the state file came to disagree with git in four
 consecutive runs.
 
-### Step 9: Report Batch Status
+### Step 10: Report Batch Status
 
 Output batch completion summary:
 
@@ -272,7 +310,7 @@ Output batch completion summary:
 Merge queue: 2 tasks ready
 ```
 
-### Step 10: Return Batch Result
+### Step 11: Return Batch Result
 
 Output structured result for layer agent:
 
@@ -300,9 +338,34 @@ If any task is abandoned:
   "abandoned": ["L1-002"],
   "merge_queue_ready": 1,
   "should_stop": true,
+  "stop_reason_kind": "abandoned",
   "stop_reason": "Task L1-002 abandoned after 5 attempts"
 }
 ```
+
+If Step 7 classified a failure as `limit`:
+```json
+{
+  "batch_number": 2,
+  "layer": "2-backend",
+  "tasks_total": 3,
+  "verified": ["L2-004"],
+  "failed": [],
+  "abandoned": [],
+  "stopped_task": "L2-005",
+  "merge_queue_ready": 1,
+  "should_stop": true,
+  "stop_reason_kind": "usage_limit",
+  "stop_reason": "limit\nmatched: Claude AI usage limit\nreset: resets at 2026-08-14T17:30:00Z"
+}
+```
+
+`stop_reason_kind` is what separates the two, and they are genuinely different outcomes: an
+abandoned task needs an operator to look at code, whereas a usage limit needs nobody to do
+anything except resume later. Reporting them the same way sends the operator to debug a
+failure that never happened. `stopped_task` is `failed`-in-the-loose-sense only — it has no
+commit, so it is outstanding, and it is **not** listed in `failed`, whose members have spent
+an attempt.
 
 ## Parallel Execution Rules
 
@@ -328,12 +391,17 @@ prose instead of the expected `RESULT JSON`. Treat any of those the same way:
 Do not infer success from the absence of an error. A task counts as verified only when its
 result names a `commit_hash`.
 
+Whatever came back is the `error_text` Step 7 classifies. Prose instead of RESULT JSON is a
+common shape for a usage limit — the agent's turn was cut short — so this path in particular
+must not skip the classifier.
+
 ### Task Agent Crash
 
 If Task tool returns error:
 - Log the error
-- Mark task as failed
-- Include in retry queue
+- **Classify it (Step 7)** before deciding anything else
+- Mark task as failed and include in the retry queue — *unless* the classifier exited 3, in
+  which case the task is left untouched at its current attempt count and the batch stops
 
 ### State Write Failure
 

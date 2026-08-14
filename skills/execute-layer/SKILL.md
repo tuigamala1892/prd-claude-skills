@@ -148,9 +148,22 @@ Parse batch result:
 ```
 
 **If `should_stop: true`:**
-- A task was abandoned (max 5 retries)
-- Report to orchestrator immediately
-- Do NOT process more batches
+- Do NOT build another batch
+- **Still run 5d.** Verified tasks have commits, and the ledger only learns about them when
+  the merge happens. Skipping the merge queue on the way out loses work that succeeded, and
+  the resume then redoes it.
+- Report to the orchestrator immediately, passing `stop_reason_kind` and `stop_reason`
+  through **unchanged**
+
+`stop_reason_kind` distinguishes two outcomes that must not be summarised into one:
+
+| Kind | What happened | What the operator must do |
+|------|---------------|---------------------------|
+| `abandoned` | A task failed 5 times | Read the errors; fix something |
+| `usage_limit` | The subscription window closed mid-run | Nothing, until it resets |
+
+Do not paraphrase a `usage_limit` stop into "task failed". Nothing failed — the run ran out of
+allowance, and the only correct next action is to resume later.
 
 #### 5d. Process Merge Queue
 
@@ -226,9 +239,31 @@ Output structured result for orchestrator:
   "abandoned_task": "L2-006",
   "batches_executed": 2,
   "should_stop": true,
+  "stop_reason_kind": "abandoned",
   "stop_reason": "Task L2-006 abandoned after 5 attempts"
 }
 ```
+
+**If the run met a usage limit:**
+
+```json
+{
+  "layer": "2-backend",
+  "status": "stopped",
+  "tasks_total": 9,
+  "tasks_completed": 5,
+  "tasks_failed": 0,
+  "tasks_abandoned": 0,
+  "stopped_task": "L2-006",
+  "batches_executed": 2,
+  "should_stop": true,
+  "stop_reason_kind": "usage_limit",
+  "stop_reason": "limit\nmatched: Claude AI usage limit\nreset: resets at 17:30 UTC"
+}
+```
+
+Note `tasks_abandoned: 0` — nothing was abandoned, and `tasks_completed: 5` still counts the
+tasks that merged before the stop.
 
 ## Batch Construction Algorithm
 

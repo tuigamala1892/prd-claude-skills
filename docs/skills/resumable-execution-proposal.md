@@ -1,6 +1,6 @@
 # Resumable, Usage-Aware Execution — Feature Proposal
 
-**Status:** proposed, not implemented
+**Status:** steps 1, 2 and 4 implemented; 3, 5 and 6 outstanding
 **Date:** 2026-08-11
 **Subject:** `/execute` — safe interruption, checkpoint/resume, and subscription usage awareness
 **Depends on:** finding **F16** (`execute-state.json` is not a truthful record) — see
@@ -88,6 +88,25 @@ The endpoint is subscription-only and undocumented. Two independent guards cover
 | **Accumulated cost** | always | `total_cost_usd` in each `claude -p` result JSON, summed across tasks |
 
 Both are strictly worse than the real signal and strictly better than nothing.
+
+### 2.4 The cost guard has no signal in this architecture — correction to §2.3
+
+The table above sources accumulated cost from `total_cost_usd` **in each `claude -p` result
+JSON**. That field does not reach the orchestrator, because the pipeline does not use
+`claude -p`:
+
+- `claude -p` appears only in `docs/skills/probes/run_probes.py` and `tests/fixture/run_5_2.py`
+  — the *measurement harness*, which drives the toolchain from outside.
+- A real `/execute` runs its tasks as Task-tool subagents inside one Claude Code session. No
+  per-task result JSON is produced, so there is nothing to sum.
+
+Written as specified, `--max-cost` would be a documented flag feeding an accumulator that never
+accumulates — the §4.14 shape, a correct mechanism wired to something that never runs.
+
+Wall clock is unaffected, and is the better-matched guard anyway: the 5-hour window is
+*time*-based, so elapsed time is a proxy for the thing being guarded, where cost is a proxy for
+a proxy. **Open:** drop `--max-cost`, or find it a real source. Recording an estimate per task
+in the ledger would be an estimate dressed as a measurement, which this project has enough of.
 
 ---
 
@@ -232,13 +251,62 @@ preference:
 |---|---|---|
 | ~~1~~ | ~~**Truthful ledger — SHA per task, appended after commit**~~ **DONE** (`f2049d2`, verified by run 7) | Fixed F16 |
 | ~~2~~ | ~~**`--resume` verifies SHAs against git**~~ **DONE and PROVEN** — an 18-task run was interrupted at 11/18 by an API stall and finished across two resumes with **zero tasks redone**; see §3.7 of the assessment | Interruption is survivable, demonstrated rather than argued |
-| 3 | **Wall-clock and cost guards** (`--max-runtime`, `--max-cost`) | No API dependency; works for every auth mode |
-| 4 | **Limit-error detection in the retry loop** | Stops five doomed retries against a closed window |
+| 3 | **Wall-clock and cost guards** (`--max-runtime`, ~~`--max-cost`~~) | No API dependency; works for every auth mode. **`--max-cost` has no signal — see §2.4** |
+| ~~4~~ | ~~**Limit-error detection in the retry loop**~~ **DONE** — `skills/execute-batch/scripts/classify-failure.sh`; see §6.1 | Stops five doomed retries against a closed window |
 | 5 | **Usage guard against the endpoint** | The precise signal, once stopping is already safe |
 | 6 | **Stop message with `resets_at`** | Operator ergonomics |
 
 Steps 1 and 2 deliver most of the value: after them, *any* interruption is recoverable.
 Steps 3–6 change how gracefully the stop is chosen, not whether it is safe.
+
+### 6.1 Step 4 as built
+
+`skills/execute-batch/scripts/classify-failure.sh` reads the failure text and exits **0 to
+retry** or **3 to stop the run**. It is a script rather than a paragraph for the F15 reason: a
+usage limit reads like a transient error, "one more attempt" reads like a reasonable response
+to one, and an exit code cannot be reasoned with.
+
+**Three classes, not two.** §3.3 says "distinguish the two", but two would be wrong. A
+per-minute `429` and an overloaded `529` read textually like limits and are nothing of the
+kind — the window has not closed. They classify as `transient`, which retries exactly as today.
+The middle class exists so the *stop* stays precise; without it the guard would halt healthy
+runs on a blip, a worse failure than the one being fixed.
+
+**Which way it fails when unsure.** Anything unrecognised is `code`, which retries — today's
+behaviour. The guard can therefore only improve on current behaviour, never make it worse.
+
+**Two things propagate from the stop.** `stop_reason_kind` is `usage_limit` rather than
+`abandoned`, because they ask different things of the operator: an abandoned task needs someone
+to read errors and fix code, a closed window needs nobody to do anything except come back
+later. And the stopped task's **attempt count is not incremented** — it met a shut API, not a
+bug, so a resume finds its full five-attempt budget intact.
+
+Three details that are deliberate and easy to lose:
+
+- **The batch still drains its merge queue on the way out.** Verified tasks have commits, and
+  the ledger only learns about them at merge time. Stopping is not a reason to lose work that
+  succeeded.
+- **`reset:` is quoted from the error, never estimated.** The message says when to come back
+  only when the API said so, and omits the clause otherwise.
+- **Feed it the error, not the log.** A project whose own tests exercise rate limiting has
+  these phrases in its fixtures, and the classifier cannot tell a quoted error from a real one.
+
+**Verified by reverting it, seven ways.** The regression check fails when: the script is
+deleted; `execute-batch` stops calling it; `execute-layer` flattens the two stop kinds;
+`/execute` drops the usage-limit branch; the limit patterns are neutralised (so everything
+retries, i.e. today's behaviour); the patterns are widened to catch `rate_limit_error` (so a
+429 halts the run); and when it invents a reset time the error did not carry.
+
+Two of those seven initially reported *green* because the mutation silently failed to
+apply — one `sed` matched only the first of five `LIMIT=` lines, and a heredoc ate a backslash
+so a replacement anchor never matched. Both were caught by asserting the mutation landed before
+trusting its result. That is the same lesson as everywhere else here: **a green result is worth
+nothing until the mechanism is shown**, and it applies to the test of the test as much as to
+the test.
+
+Not covered: a limit that closes the window *between two tool calls inside* a task. That task
+is lost and re-runs — §4 already says so, and task granularity remains the checkpoint
+resolution.
 
 ---
 
