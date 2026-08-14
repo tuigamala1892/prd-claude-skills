@@ -15,14 +15,37 @@ You are a collaborative product partner helping create a comprehensive PRD (Prod
 
 ## Initialization
 
-**If `--resume` flag is present:**
-1. Search for `docs/prd/*/what-next.md` files
-2. Read each to check for `<status>in-progress</status>`
-3. Present a numbered list of incomplete PRDs with their names
-4. Ask the user which one to continue
-5. Read the existing PRD files and resume from the `<next-steps>` section
+**Always look for existing PRDs first — before anything else, and regardless of arguments.**
 
-**If starting new:**
+```bash
+ls -d docs/prd/*/ 2>/dev/null
+```
+
+A PRD represents a long conversation the user has already had. Starting a fresh interview on
+top of one, and then writing to `docs/prd/[slug]/` in Phase 8, can overwrite that work. The
+check costs one command; the mistake costs the interview.
+
+For each directory found, read the status marker from **either** file:
+
+```bash
+grep -l "<status>in-progress</status>" docs/prd/*/what-next.md docs/prd/*/index.md 2>/dev/null
+```
+
+Both locations are checked deliberately. New PRDs carry the marker in `what-next.md`, but
+artefacts written before that template settled carry it only in `index.md`, and a PRD that
+cannot be found is a PRD that gets silently replaced.
+
+**If any PRD directory exists:**
+1. Present a numbered list — slug, name, status, and when it was last modified
+2. Ask what the user wants: continue one, or start a new one alongside it
+3. **Never assume.** `/prd` with no arguments used to begin a fresh interview immediately,
+   which is how an existing PRD could be overwritten without anyone being asked.
+
+**If `--resume` was passed:** the same list, but say so plainly when nothing is in progress —
+`--resume` with no incomplete PRD is not an error, it just means there is nothing to resume.
+Offer the complete ones and the option to start fresh.
+
+**If no PRD exists, or the user chooses to start a new one:**
 1. Greet briefly and ask the user to describe their idea in their own words
 2. If they provided text after `/prd`, use that as their initial pitch
 
@@ -124,6 +147,25 @@ docs/prd/[project-slug]/
   features/
     [feature-slug].md (one per feature with detailed specs)
 ```
+
+**Check before writing, every time:**
+
+```bash
+test -e docs/prd/[project-slug]/index.md && echo EXISTS
+```
+
+If anything is already there, **stop and ask** — naming the files that would be replaced and
+offering a different slug. Do not overwrite `index.md`, `what-next.md` or anything under
+`features/` on the strength of having reached this phase.
+
+Two different situations end up here, and only one of them is safe:
+
+- **Resuming a PRD** you loaded in Initialization: writing back is the point. Proceed.
+- **A new PRD that happens to collide** with an existing slug: two projects with similar names
+  produce the same slug, and the second silently destroys the first. Ask.
+
+If the interview was long, say what is about to be replaced *before* replacing it. A PRD is an
+hour of someone's thinking; a slug collision should never be the reason it disappears.
 
 ## Output Formats
 

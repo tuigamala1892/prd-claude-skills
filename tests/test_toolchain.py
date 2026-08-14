@@ -356,6 +356,43 @@ def _():
         "breakdown never verifies the manifest against the files it generated")
 
 
+@check("`/prd` looks for existing PRDs before starting a new one", finding="F3")
+def _():
+    # /prd with no arguments used to begin a fresh interview immediately, and Phase 8 then
+    # writes to docs/prd/[slug]/ -- so an existing PRD could be overwritten without anyone
+    # being asked. 5.2 test 3 confirmed it: a fresh interview opened with a PRD present.
+    # NOTE ON WHAT THIS CAN AND CANNOT DO. A command file is prose, so this check verifies
+    # wording, and F15 is the standing reminder that wording is not behaviour. It anchors on
+    # the *commands* rather than the surrounding sentences, because a command is the part
+    # that would actually run -- and because an earlier version of this check asserted on
+    # prose with `|` alternatives, which the prose satisfied redundantly: every mutation of
+    # the guard left it green. Only §5.2 test 3 can confirm the behaviour.
+    text = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    init = text[text.find("## Initialization"):text.find("## Workflow Phases")]
+    assert init.strip(), "prd.md has no Initialization section"
+
+    # Unconditional: the look-up must not sit under an "if --resume" branch.
+    assert re.search(r"regardless of arguments", init, re.I), (
+        "Initialization does not state the existing-PRD check is unconditional, so the "
+        "no-argument path can still start a fresh interview over an existing PRD")
+    assert re.search(r"ls -d docs/prd/\*/", init), (
+        "Initialization has no command that enumerates existing PRD directories")
+
+    # Both marker locations in one command, so PRDs predating the template are still found.
+    marker = re.search(r"grep[^\n]*status[^\n]*\n?[^\n]*", init)
+    assert marker, "Initialization has no grep for the in-progress status marker"
+    assert "what-next.md" in marker.group(0) and "index.md" in marker.group(0), (
+        "the status-marker search does not cover both what-next.md and index.md; a PRD it "
+        "cannot find is a PRD it will silently replace")
+
+    # The write path must refuse on its own, not rely on care taken earlier.
+    phase8 = text[text.find("### Phase 8"):text.find("## Output Formats")]
+    assert re.search(r"test -e docs/prd/", phase8), (
+        "Phase 8 writes docs/prd/[slug]/ without a command that checks whether it exists")
+    assert re.search(r"\*\*stop and ask\*\*", phase8), (
+        "Phase 8 does not require stopping to ask before replacing an existing PRD")
+
+
 @check("execute-state.json is written by a script, never by hand", finding="F21")
 def _():
     # Four runs, four different wrong shapes, each produced by a different set of careful

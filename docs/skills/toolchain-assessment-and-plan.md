@@ -762,7 +762,14 @@ The `rm -rf` is the serious part: whatever `{project_path}` points at loses its 
 
 ### 3.2 Correctness
 
-#### F3 — `/prd --resume` cannot find this PRD
+#### F3 — `/prd --resume` cannot find this PRD — **RESOLVED**
+
+> **Fixed by item 4.3.** The half that mattered was never the `--resume` lookup: it was that
+> `/prd` with no arguments began a fresh interview immediately, and Phase 8 then wrote to
+> `docs/prd/[slug]/`. `/prd` now enumerates existing PRDs on entry *regardless of arguments*,
+> reads the status marker from `what-next.md` **or** `index.md`, and Phase 8 refuses to write
+> over an existing directory without asking.
+
 
 `commands/prd.md:14` searches `docs/prd/*/what-next.md` for `<status>in-progress</status>`.
 The status tag is present in `index.md`, not in `what-next.md`. Resume therefore finds nothing.
@@ -1192,9 +1199,28 @@ so a weak `<verification>` block is checked weakly. Consider per-layer model tie
 one global choice, and treat retry economics as part of the calculation: enough failed
 verify→retry cycles cost more than a stronger model would have.
 
-### 4.3 Resume detection
+### 4.3 Resume detection — **DONE**
 
-**Addresses F3**
+**Addresses F3.**
+
+> **Completed**, all three parts.
+>
+> **What the finding got right and wrong.** F3 led on `--resume` searching `what-next.md` for a
+> marker that lived in `index.md`. That is no longer true for new PRDs — `commands/prd.md`
+> already specifies `what-next.md` with `<status>`, and §5.2 test 2 confirmed a fresh `/prd`
+> writes it as valid XML. The lookup is now dual anyway, because artefacts written before that
+> template settled still carry the marker only in `index.md`, and a PRD that cannot be found is
+> a PRD that gets silently replaced.
+>
+> **The live danger was the second paragraph of the finding**, and §5.2 test 3 confirmed it:
+> `/prd` with no arguments opened a fresh interview with a PRD already present. Two guards
+> now stand between that and data loss — an unconditional enumeration on entry, and a
+> `test -e` in Phase 8 that stops and asks rather than trusting that Initialization was
+> careful. The second matters because slug collisions arrive from a different direction:
+> two similarly-named projects produce the same slug, and the second would destroy the first.
+>
+> **4.4 is deferred and nothing here waits on it.** Part 2 was designed to work without it;
+> deferring 4.4 only means the dual lookup stays permanent rather than being simplified.
 
 Three changes to the converted `prd` skill:
 
@@ -1777,7 +1803,7 @@ bad = [p for p in files if not _parses(p)]
 | ~~4.11~~ | ~~Remove `allowed-tools` — restores forking~~ **DONE** | ~~Blocking~~ | all 15 `skills/*/SKILL.md` |
 | 4.1 | Command→skill conversion, frontmatter *(frontmatter done)* | Consistency | `commands/*.md` |
 | ~~4.2~~ | ~~Model assignments, skills and agents~~ **DONE** — F5, F6, F7 resolved; suite fully green | ~~Correctness~~ | all skills, all agents |
-| 4.3 | Resume detection and overwrite guard | Correctness | `prd` |
+| ~~4.3~~ | ~~Resume detection and overwrite guard~~ **DONE** — F3 resolved | ~~Correctness~~ | `prd` |
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
 | 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
