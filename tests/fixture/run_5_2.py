@@ -115,6 +115,10 @@ class keep_awake:
     Deliberately *not* ES_DISPLAY_REQUIRED: the screen may sleep, only the system must
     stay up. SetThreadExecutionState is per-thread state and this harness is
     single-threaded, so setting it here covers the whole run.
+
+    Confirmed working at the OS level: `powercfg /requests` from an elevated prompt lists
+    python.exe under SYSTEM while a run is in progress. (That command needs administrator
+    rights, so the harness itself can only check the API's return value.)
     """
 
     ES_CONTINUOUS = 0x80000000
