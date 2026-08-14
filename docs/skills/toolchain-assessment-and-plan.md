@@ -1829,7 +1829,7 @@ bad = [p for p in files if not _parses(p)]
 
 ---
 
-### 5.3 CRD fixture — **BUILT; step 1 RUN and PASSED**
+### 5.3 CRD fixture — **BUILT; steps 1–2 RUN and PASSED**
 
 Every finding this document records came from running the greenfield path against §5.1. The
 CRD half — `/crd`, `/crd-context`, `/crd-investigate`, `/crd-impact-analysis`,
@@ -1896,12 +1896,46 @@ is not evidence, and the cheap check (read the spec) comes first.
 Whether `/crd-context` should commit it is undecided; `/execute` Step 10 does commit its
 updates, so the two halves may disagree. Step 4 will settle it.
 
+**Step 2 also passed**, and more convincingly than step 1 because it had to reason rather
+than describe. `/crd` produced a 222-line CRD at `app/docs/crd/archive-links.md` with every
+specified section — `meta`, `context`, `change-request`, `assumptions`, `impact-analysis`,
+`requirements`, `acceptance-criteria` — typed `feature-add` rather than `modify`.
+
+The judgements that matter:
+
+- **It caught the buried constraint.** The change request mentions keeping delete once, in a
+  casual aside in the last paragraph. The CRD makes it a *must-have*: *"`DELETE /links/{link_id}`
+  behavior is unchanged: immediate, unconditional hard delete."* Missing this would have been
+  the expensive failure, and it is exactly where a skimming reader drops a requirement.
+- **It reasoned about the join table**, not just the model: *"Archiving and restoring a link
+  never touches its tags — a restored link has exactly the same tags."*
+- **`breaking-changes`: none**, which is correct — delete is untouched and the new `status`
+  parameter defaults to `active`.
+- Affected files: `link.py`, `schemas.py`, `api/links.py`, and both test files. Five, and right.
+
+**Two defects found — both in the fixture, neither in the toolchain.**
+
+1. The fixture created `<workdir>/docs/crd/`. `/crd` writes to `{project_path}/docs/crd/{slug}.md`,
+   which is what its own spec says. The empty directory made a correct write look like a wrong
+   one. Removed.
+2. The `app/api/__init__.py` "shared file" trap was **mis-designed**. It assumed a new endpoint
+   must edit the re-export; in fact the new routes go into the *existing* `links.py` router,
+   which is already exported, so `__init__.py` correctly does not change. The CRD was right and
+   the trap was wrong. Kept as realistic structure, no longer described as a trap.
+
+**A note on method, since this is now a pattern.** Three times in this sequence I read an
+output as a defect before reading the specification it was written against — the markdown/XML
+question in step 1, the CRD's location, and the `__init__.py` omission. All three were mine.
+The toolchain has earned scepticism over twenty findings, but scepticism applied before the
+cheap check is just noise, and it produces exactly the kind of confident wrong story that F14
+cost this project a day to unwind.
+
 The rest of the sequence, still unexercised:
 
 | # | Step | Result |
 |---|---|---|
 | 1 | `/crd-context` on `app/` | **PASS** — see below |
-| 2 | `/crd` on the change request | A structured CRD with impact analysis naming `link_tags` and the shared router file |
+| 2 | `/crd` on the change request | **PASS** — see below |
 | 3 | `/breakdown` on the CRD | Brownfield tasks reference existing code rather than creating it |
 | 4 | `/execute` | The change lands, **`test_delete_is_permanent` still passes**, and Step 10's finalizer updates `PROJECT.md` |
 

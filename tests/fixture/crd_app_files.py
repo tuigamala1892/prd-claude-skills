@@ -14,9 +14,12 @@ Design notes, in the spirit of §5.1's "choices that matter":
   *without* removing delete, so the existing test is the thing that must survive.
 - **Tags are a join table**, so a change touching links has to reason about `link_tags`
   rather than a column. Impact analysis on a string column would be trivial.
-- **`app/api/__init__.py` re-exports the router.** Any new endpoint must edit a file that
-  already exists and that two other modules import -- a shared file, which is where
-  unisolated parallel work shows up first.
+- **`app/api/__init__.py` re-exports the routers.** This was planted as a "shared file"
+  trap on the assumption that a new endpoint must edit it. That assumption is wrong, and the
+  first CRD run proved it: new routes go into the *existing* `links.py` router, which is
+  already re-exported, so `__init__.py` correctly does not change. It is kept because it is
+  realistic structure, not because it traps anything. A change needing a genuinely new
+  router module would touch it.
 - **No PROJECT.md.** Producing it is `/crd-context`'s job and the first thing to test.
 """
 

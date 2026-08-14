@@ -14,8 +14,10 @@ What it makes, outside this repository:
     <workdir>/
       app/                  an existing FastAPI app: 17 files, 5 commits, NO remote,
                             8 passing tests, and no PROJECT.md
-      docs/crd/             where /crd writes
       change-request.md     prose from a stakeholder; turning it into a CRD is /crd's job
+
+`/crd` and `/crd-context` both write *inside* `app/` -- `docs/crd/{slug}.md` and
+`PROJECT.md` respectively -- so the workspace holds only the input.
 
 The differences from §5.1 are the whole point. Greenfield starts from an empty repository;
 brownfield starts from code that already works, has history, and has a test asserting the
@@ -88,7 +90,10 @@ def build(workdir):
 
     src = os.path.join(HERE, "crd", "change-request.md")
     shutil.copy2(src, os.path.join(workdir, "change-request.md"))
-    os.makedirs(os.path.join(workdir, "docs", "crd"))
+    # No docs/crd here: `/crd` writes to {project_path}/docs/crd/{slug}.md, inside the
+    # target repository. An empty one at the workspace root was this fixture's first bug --
+    # it looked like /crd had written to the wrong place when it had written to the right
+    # one.
 
     app = os.path.join(workdir, "app")
     os.makedirs(app)
