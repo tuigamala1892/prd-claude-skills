@@ -104,6 +104,51 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
             "timed_out": timed_out}
 
 
+class keep_awake:
+    """Stop the machine sleeping while a run is in progress (Windows; no-op elsewhere).
+
+    A run 10 resume was suspended from 23:24 to 08:13 because the machine slept overnight.
+    Nothing was lost -- the process resumed and the ledger stayed consistent -- but a
+    2-hour run occupied 10 hours of wall clock, and the harness's own timeout never fired,
+    because a suspended process gets no chance to act on a wall-clock deadline.
+
+    Deliberately *not* ES_DISPLAY_REQUIRED: the screen may sleep, only the system must
+    stay up. SetThreadExecutionState is per-thread state and this harness is
+    single-threaded, so setting it here covers the whole run.
+    """
+
+    ES_CONTINUOUS = 0x80000000
+    ES_SYSTEM_REQUIRED = 0x00000001
+
+    def __enter__(self):
+        self.held = False
+        if sys.platform != "win32":
+            return self
+        try:
+            import ctypes
+            self._k32 = ctypes.windll.kernel32
+            # Returns the previous state, or 0 on failure.
+            if self._k32.SetThreadExecutionState(self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED):
+                self.held = True
+                print("  (sleep inhibited for the duration of this run)", flush=True)
+            else:
+                print("  (WARNING: could not inhibit sleep; a long run may be suspended)",
+                      flush=True)
+        except Exception as e:
+            print(f"  (WARNING: could not inhibit sleep: {e})", flush=True)
+        return self
+
+    def __exit__(self, *_exc):
+        # Always release, including on Ctrl-C or an exception. Leaving the flag set would
+        # keep the machine awake indefinitely after the harness exits.
+        if self.held:
+            try:
+                self._k32.SetThreadExecutionState(self.ES_CONTINUOUS)
+            except Exception:
+                pass
+        return False
+
+
 def refused(text):
     """Did the model decline, rather than doing the thing?"""
     t = text.lower()
@@ -378,52 +423,57 @@ def main():
                 and (args.include_full or wanted is not None or not t.get("full"))]
 
     summary = []
-    for t in selected:
-        # State captured before the run, for checks that compare before/after.
-        before = {"commits": git(["rev-list", "--count", "HEAD"], app),
-                  "root": git(["rev-list", "--max-parents=0", "HEAD"], app),
-                  "repo_dirt": git(["status", "--porcelain"], REPO).splitlines()}
-        pdir = os.path.join(prd_fresh, "docs", "prd")
-        if os.path.isdir(pdir) and os.listdir(pdir):
-            slug = sorted(os.listdir(pdir))[0]
-            before["slug"] = slug
-            before["idx"] = sha(os.path.join(pdir, slug, "index.md"))
-        else:
-            before["slug"], before["idx"] = "", None
+    # Hold off system sleep for the duration. A suspended process cannot act on a
+    # wall-clock deadline, so a machine that sleeps mid-run overshoots its timeout by
+    # however long it slept -- run 10's resume took 9.3 hours of wall clock for 2
+    # hours of work, and its 4-hour timeout only fired once the machine woke.
+    with keep_awake():
+        for t in selected:
+            # State captured before the run, for checks that compare before/after.
+            before = {"commits": git(["rev-list", "--count", "HEAD"], app),
+                      "root": git(["rev-list", "--max-parents=0", "HEAD"], app),
+                      "repo_dirt": git(["status", "--porcelain"], REPO).splitlines()}
+            pdir = os.path.join(prd_fresh, "docs", "prd")
+            if os.path.isdir(pdir) and os.listdir(pdir):
+                slug = sorted(os.listdir(pdir))[0]
+                before["slug"] = slug
+                before["idx"] = sha(os.path.join(pdir, slug, "index.md"))
+            else:
+                before["slug"], before["idx"] = "", None
 
-        # /breakdown resumes from .done markers, so a stale tasks tree silently makes
-        # this a no-op that inherits the previous run's output. Clear it first or the
-        # test measures nothing.
-        if t.get("clean_tasks") and os.path.isdir(tasks_root):
-            shutil.rmtree(tasks_root, ignore_errors=True)
-            print(f"  (cleared {tasks_root})", flush=True)
+            # /breakdown resumes from .done markers, so a stale tasks tree silently makes
+            # this a no-op that inherits the previous run's output. Clear it first or the
+            # test measures nothing.
+            if t.get("clean_tasks") and os.path.isdir(tasks_root):
+                shutil.rmtree(tasks_root, ignore_errors=True)
+                print(f"  (cleared {tasks_root})", flush=True)
 
-        print(f"\n{'=' * 78}\n  TEST {t['id']}: {t['desc']}\n{'=' * 78}", flush=True)
-        print(f"  $ {t['prompt'][:150]}", flush=True)
-        r = claude(t["prompt"], t["cwd"], os.path.join(results, f"test-{t['id']}"),
-                   t["name"], t["timeout"])
-        try:
-            ok, why = t["check"](r, before)
-        except Exception as e:
-            ok, why = False, f"check raised {type(e).__name__}: {e}"
+            print(f"\n{'=' * 78}\n  TEST {t['id']}: {t['desc']}\n{'=' * 78}", flush=True)
+            print(f"  $ {t['prompt'][:150]}", flush=True)
+            r = claude(t["prompt"], t["cwd"], os.path.join(results, f"test-{t['id']}"),
+                       t["name"], t["timeout"])
+            try:
+                ok, why = t["check"](r, before)
+            except Exception as e:
+                ok, why = False, f"check raised {type(e).__name__}: {e}"
 
-        # A killed run has no behavioural verdict to give. Grading one as FAIL is how
-        # test 9 produced finding F14: the checker described a truncated run as if the
-        # toolchain had chosen to skip worktrees. Say "inconclusive" and mean it.
-        if r["timed_out"]:
-            status = "INCONCLUSIVE"
-            why = (f"run killed at {t['timeout']}s before finishing -- no verdict. "
-                   f"State at the cut: {why}")
-        elif ok and t.get("expect_fail"):
-            status = "FIXED"
-        elif ok:
-            status = "PASS"
-        elif t.get("expect_fail"):
-            status = f"KNOWN/{t['expect_fail']}"
-        else:
-            status = "FAIL"
-        print(f"\n  -> {status}  ({r['elapsed']}s)  {why}", flush=True)
-        summary.append((t["id"], t["desc"], status, why, r["elapsed"]))
+            # A killed run has no behavioural verdict to give. Grading one as FAIL is how
+            # test 9 produced finding F14: the checker described a truncated run as if the
+            # toolchain had chosen to skip worktrees. Say "inconclusive" and mean it.
+            if r["timed_out"]:
+                status = "INCONCLUSIVE"
+                why = (f"run killed at {t['timeout']}s before finishing -- no verdict. "
+                       f"State at the cut: {why}")
+            elif ok and t.get("expect_fail"):
+                status = "FIXED"
+            elif ok:
+                status = "PASS"
+            elif t.get("expect_fail"):
+                status = f"KNOWN/{t['expect_fail']}"
+            else:
+                status = "FAIL"
+            print(f"\n  -> {status}  ({r['elapsed']}s)  {why}", flush=True)
+            summary.append((t["id"], t["desc"], status, why, r["elapsed"]))
 
     print(f"\n\n{'=' * 78}\n  §5.2 SUMMARY\n{'=' * 78}")
     for tid, desc, status, why, el in summary:
