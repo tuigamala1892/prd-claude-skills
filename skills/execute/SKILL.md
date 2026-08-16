@@ -386,31 +386,46 @@ Completed task ids:                   {verified_tasks from ledger-status.sh}
 Take the completed ids from the **ledger**, not from a running total — they are the tasks
 whose commits exist, which is the only list that has ever been reliable.
 
-**Then commit the result yourself.** The agent declares `tools: Read Write Glob` and has no
-`Bash`, so it can edit `PROJECT.md` but cannot commit it. That division is deliberate and
-matches the rest of the pipeline: the agent produces content, the caller owns git.
+**Then finish the job yourself, in this order.** The agent declares `tools: Read Write Glob`
+and has no `Bash`, so it can edit `PROJECT.md` but can neither commit it nor read anything out
+of git. That division is deliberate and matches the rest of the pipeline: the agent produces
+content, the caller owns git.
+
+**First, validate and stamp — both before the commit, not after:**
+
+```bash
+python {skill_dir}/scripts/check-project-md.py {project_path} --fix --stamp-hash
+```
+
+**A non-zero exit means do not commit.**
+
+`--fix` escapes bare ampersands. On its first ever run the finalizer wrote
+`?tag=python&status=archived` into a `<description>`; a bare `&` is not valid XML, so the
+`<project-context>` block stopped parsing — silently breaking `crd-impact-analysis`, which
+reads `<api-registry>` from it, and the finalizer itself on the next run.
+
+`--stamp-hash` writes the real `git rev-parse HEAD` into `<last-context-hash>`, because the
+agent cannot. Its template used to ask for `{current git HEAD}`, and with no `Bash` it wrote
+the literal string **`current-HEAD`** — overwriting a valid hash, on the only CRD run that has
+ever happened. Every consumer then breaks: `git diff current-HEAD..HEAD` is
+`fatal: ambiguous argument`, and both update paths treat an unusable hash as "fall back to full
+investigation", so every later update silently takes the most expensive route there is. Asking
+a component for a value it has no way to compute is the F20 shape.
+
+**Stamp before committing, and do not try to correct for the commit.** The field records the
+commit whose *code* this context describes, which can never be the commit that carries the
+context — PROJECT.md is written first and committed second. `HEAD` at stamp time is therefore
+the right value rather than one short, and `--status` judges staleness by whether anything
+other than `PROJECT.md` has changed since.
+
+**Then commit**, and only if the agent actually changed something — it reports
+`{"skipped": true, ...}` when there are no task exports to add, and an empty commit claims a
+context update that never happened:
 
 ```bash
 git -C {project_path} add PROJECT.md
 git -C {project_path} commit -m "docs: Update PROJECT.md with features from {prd_slug}"
 ```
-
-**Validate before committing.** The agent writes XML by hand and can produce a file that no
-longer parses:
-
-```bash
-python {skill_dir}/scripts/check-project-md.py {project_path} --fix
-```
-
-On its first ever run the finalizer wrote `?tag=python&status=archived` into a
-`<description>`. A bare `&` is not valid XML, so the `<project-context>` block stopped
-parsing — silently breaking `crd-impact-analysis`, which reads `<api-registry>` from it, and
-the finalizer itself on the next run. The script escapes bare ampersands and refuses if the
-block is malformed for any other reason. **A non-zero exit means do not commit.**
-
-Commit only if the agent actually changed something — it reports `{"skipped": true, ...}`
-when there are no task exports to add, and an empty commit says a context update happened
-when none did.
 
 **Why an agent and not the six steps that used to be written out here.** The agent already
 specified this job in 219 lines — idempotent handling of entries that already exist, file

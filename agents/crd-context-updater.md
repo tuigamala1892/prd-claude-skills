@@ -22,6 +22,9 @@ The PROJECT.md contains a `last-context-hash` in its metadata. You:
 You receive:
 - Path to PROJECT.md
 - The stored `last-context-hash`
+- **PROJECT.md itself is excluded from that diff.** It is the context, not a change to the
+  code, and it is always one commit ahead of the code it describes -- so counting it would
+  make the context look stale the moment it was written.
 - Path to project root
 
 ## Update Process
@@ -29,7 +32,7 @@ You receive:
 ### Step 1: Get Changed Files
 
 ```bash
-git diff {last-context-hash}..HEAD --name-only
+git diff {last-context-hash}..HEAD --name-only -- . ':(exclude)PROJECT.md'
 ```
 
 This gives you all files modified, added, or deleted since last update.

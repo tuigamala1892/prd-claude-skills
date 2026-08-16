@@ -35,17 +35,28 @@ You orchestrate the Change Request Document workflow for brownfield projects. Yo
 Check for PROJECT.md at `{project_path}/PROJECT.md`:
 
 **If exists:**
+
+**Staleness is decided by the script, not by comparing the hash to HEAD:**
+
 ```bash
-# Read and extract last-context-hash
-cat {project_path}/PROJECT.md | grep -A1 "<last-context-hash>"
+python {execute_skill_dir}/scripts/check-project-md.py {project_path} --status
 ```
 
-Compare with current HEAD:
-```bash
-git -C {project_path} rev-parse HEAD
-```
+| Exit | Meaning |
+|------|---------|
+| 0 | `stale=no` — the context is current; do nothing |
+| 3 | `stale=yes` — it lists what changed; update the context |
+| 1 | The recorded hash is unusable; a full re-investigation is the only option |
 
-If different, invoke context update:
+**Do not compare `last-context-hash` to `git rev-parse HEAD` yourself.** They are *supposed* to
+differ by one commit: the hash records the commit whose code the context describes, and
+PROJECT.md is written first and committed second, so the commit carrying the context is always
+one ahead of the code it describes. A direct comparison therefore reports STALE immediately
+after every successful update — and a `--full` re-investigation is the most expensive operation
+in the CRD half of the toolchain. The script ignores changes to `PROJECT.md` itself, which is
+exactly the difference.
+
+Only on exit 3, invoke the context update:
 ```
 /crd-context-update --project {project_path}
 ```

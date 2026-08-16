@@ -42,11 +42,21 @@ Manage PROJECT.md context for CRD workflows. Use this to generate, update, or ch
 
 ### 2. Handle `--check` Flag
 
-If `--check` is present:
+If `--check` is present, ask the script rather than comparing hashes by hand:
 
-1. Read PROJECT.md and extract `last-context-hash`
-2. Get current `git rev-parse HEAD`
-3. Compare:
+```bash
+python <plugin>/skills/execute/scripts/check-project-md.py {project_path} --status
+```
+
+It prints `hash=`, `head=`, `changed=` and `stale=`, and exits 0 when current, 3 when stale,
+and 1 when the recorded hash is not a commit in this repository.
+
+**Why not just compare the hash to HEAD.** They are *supposed* to differ by one commit — the
+hash records the commit whose code the context describes, and PROJECT.md is written first and
+committed second — so a direct comparison reports STALE immediately after every successful
+update. The script ignores changes to `PROJECT.md` itself, which is exactly that difference.
+
+Report it as:
 
 **If same:**
 ```
@@ -73,9 +83,10 @@ Exit after check.
 
 If `--diff` is present:
 
-1. Read PROJECT.md and extract `last-context-hash`
-2. Run `git diff {last-context-hash}..HEAD --name-only`
-3. Categorize changes by impact area:
+1. Take `hash=` from `--status` above
+2. Run `git diff {hash}..HEAD --name-only`
+3. Drop `PROJECT.md` from the list — it is the context itself, not a change to the code
+4. Categorize the rest by impact area:
 
 ```
 Changes since last context update ({old_hash}..{new_hash}):

@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. 4.4 and 4.5 are deferred to a separate plan; every other remediation item is done. **F4 is resolved** by item 4.6 and verified by test 5. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. 4.4 and 4.5 are deferred to a separate plan; every other remediation item is done. **F4 is resolved** by item 4.6 and verified by test 5. **F24** — the finalizer wrote the literal string `current-HEAD` into `last-context-hash`, having no `Bash` to compute one with — is resolved; the caller stamps it now. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -2167,17 +2167,76 @@ Fixed two ways, because one of them is prose:
   committing**, and a non-zero exit blocks the commit. Tested on the real corruption, on the
   repair, and on a greenfield project with no `PROJECT.md` (not an error).
 
-**One cosmetic issue not worth a finding:** `last-context-hash` is written before the
-finalizer's own commit exists, so it names the previous HEAD. Every consumer uses it to detect
-staleness, and it is off by exactly one commit — always in the direction of "looks slightly
-stale", never "looks fresher than it is". Worth tidying when `/crd-context-update` is next
-touched.
+#### F24 — the finalizer writes a placeholder into `last-context-hash` — **RESOLVED**
+
+*This was recorded above as "one cosmetic issue not worth a finding: off by exactly one
+commit". Reading the artefact instead of reasoning about it gives a different answer.* The
+`PROJECT.md` the step-4 run actually committed contains:
+
+```xml
+<last-context-hash>current-HEAD</last-context-hash>
+```
+
+The literal placeholder, not a hash — and it **replaced a valid one**. The commit before it
+recorded `59e7829…`; the finalizer's commit (`ab91256`, which touched `PROJECT.md` and nothing
+else) overwrote that with `current-HEAD`.
+
+**Root cause, and it is structural.** `agents/project-context-finalizer.md` declares
+`tools: Read Write Glob` — no `Bash` — while its Step 5 template asked for
+`<last-context-hash>{current git HEAD}</last-context-hash>`. It cannot run `git rev-parse`, and
+never could. Asked for a value it had no way to compute, it wrote the placeholder. That is the
+**F20 shape**: a component instructed to do something it structurally cannot.
+
+**Measured consequence, not inferred.** `git diff current-HEAD..HEAD` is
+`fatal: ambiguous argument`. Both update paths already have a rule for that —
+`crd-context-updater`: *"Invalid last-context-hash → Fall back to full investigation"* — so
+every subsequent context update silently takes the most expensive operation in the CRD half of
+the toolchain, forever, and reports nothing amiss. The "always in the direction of looks
+slightly stale" reading was wrong twice over: the field is not off by one, it is not a hash.
+
+**The off-by-one is real too, and separate.** `59e7829…` is exactly the parent of `e7ab199`,
+the commit that recorded it. That is unavoidable rather than a bug: PROJECT.md is written
+first and committed second, so a hash naming its own commit cannot exist.
+
+Fixed by giving the field a definition under which the off-by-one disappears rather than
+needing correction. **It records the commit whose *code* the context describes**, so `HEAD` at
+stamp time — before the PROJECT.md commit — is exactly right. Staleness then means *commits
+since that hash touching anything other than `PROJECT.md`*, because the one commit always in
+between is the context write itself, and a documentation commit does not make the
+documentation out of date.
+
+Three changes:
+
+- **`check-project-md.py --stamp-hash`** writes the real `git rev-parse HEAD` into the field.
+  `/execute` Step 10 runs it **before** committing — a stamp applied afterwards is never
+  committed. That step's commit and validate blocks were also in the wrong order in the
+  document, which mattered more once stamping joined them.
+- **The finalizer no longer touches the field.** Its template says to copy the existing element
+  through unchanged, and says why: the caller has git and it does not. Agent produces content,
+  caller owns git — the same division as the commit itself.
+- **`--status` replaces hash-versus-HEAD comparison** in `/crd`, `/crd-context --check` and
+  `--diff`, and `crd-context-updater` excludes `PROJECT.md` from the diff it analyses. Exit 0
+  current, 3 stale with the changed files listed, 1 when the recorded hash is not a commit in
+  the repository.
+
+**Verified by reverting it, seven ways**, including against the real corrupted artefact: the
+script deleted; the finalizer told to fill the field from a placeholder again; `--stamp-hash`
+dropped from the command; stamping moved after the commit; an unusable hash accepted;
+`PROJECT.md` counted as a code change again (the off-by-one returning); and `--stamp-hash`
+writing a placeholder instead of `HEAD`.
+
+Two of those seven initially passed, because the check asserted `"--stamp-hash" in ex` — which
+was satisfied by the *paragraph explaining the flag* rather than by the command running it. It
+now matches the invocation line and its position relative to the commit. That is the third time
+in this project a substring check has passed while the mechanism it names was absent; the
+pattern is always the same, and so is the fix: **assert the command, not the prose about it.**
 
 ---
 
 **All four steps have now run.** The brownfield path works end to end, and found two defects
 doing so (**F22**, **F23**) — the first defects from a half of the toolchain that had only
-ever had static checks.
+ever had static checks. **F24** came later, from reading the `PROJECT.md` that run left
+behind rather than the report of it.
 
 | # | Step | Result |
 |---|---|---|

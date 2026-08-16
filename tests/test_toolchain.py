@@ -1030,6 +1030,135 @@ def _():
         rmtree(root)
 
 
+@check("last-context-hash is stamped by the caller, not invented by the agent", finding="F23")
+def _():
+    # The one CRD run that has ever happened left <last-context-hash>current-HEAD</...> in the
+    # fixture's PROJECT.md -- the literal placeholder, overwriting a valid hash. The finalizer
+    # declares `tools: Read Write Glob`, so it cannot run `git rev-parse` and never could.
+    # Downstream, `git diff current-HEAD..HEAD` is `fatal: ambiguous argument`, and both update
+    # paths treat an unusable hash as "fall back to full investigation" -- the most expensive
+    # operation in the CRD half, chosen silently, forever.
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "check-project-md.py")
+    assert os.path.isfile(script), "skills/execute/scripts/check-project-md.py is missing"
+
+    fin = open(os.path.join(AGENTS, "project-context-finalizer.md"), encoding="utf-8").read()
+    templated = [f"{i}: {l.strip()[:90]}"
+                 for i, l in enumerate(fin.splitlines(), 1)
+                 if "<last-context-hash>" in l and "{" in l]
+    assert not templated, (
+        "the finalizer is told to fill in <last-context-hash> from a placeholder, and it has "
+        "no Bash to compute one with -- that is how the literal string `current-HEAD` got "
+        "into PROJECT.md:\n    " + "\n    ".join(templated))
+
+    # Assert the COMMAND, not the prose about it. `"--stamp-hash" in ex` was true from the
+    # paragraph explaining the flag, so deleting it from the invocation slipped straight past
+    # -- the same weak-assertion shape as F15 and as the --prd-slug check in 4.12.
+    ex_lines = open(os.path.join(SKILLS, "execute", "SKILL.md"),
+                    encoding="utf-8").read().splitlines()
+    stamped_at = [i for i, l in enumerate(ex_lines)
+                  if "check-project-md.py" in l and "--stamp-hash" in l]
+    assert stamped_at, (
+        "no check-project-md.py invocation in execute passes --stamp-hash, so nothing ever "
+        "writes a real hash -- describing the flag is not running it")
+    committed_at = [i for i, l in enumerate(ex_lines)
+                    if 'commit -m "docs: Update PROJECT.md' in l]
+    assert committed_at, "execute no longer commits PROJECT.md"
+    assert stamped_at[0] < committed_at[0], (
+        "execute stamps the hash after committing PROJECT.md, so the stamp is never committed")
+
+    if not shutil.which("git"):
+        return
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    PROJECT_MD = """# Project
+
+<project-context>
+  <meta>
+    <name>demo</name>
+    <last-updated>2026-01-01T00:00:00Z</last-updated>
+    <last-context-hash>PLACEHOLDER</last-context-hash>
+  </meta>
+  <features><feature id="a"><name>A</name></feature></features>
+  <api-registry><endpoint path="/a"/></api-registry>
+  <schema-registry><model name="A"/></schema-registry>
+</project-context>
+"""
+
+    root = tempfile.mkdtemp(prefix="context-hash-check-")
+    try:
+        app = os.path.join(root, "app")
+        os.makedirs(app)
+
+        def g(*a):
+            return subprocess.run(["git", "-C", app, *a], capture_output=True,
+                                  text=True, timeout=60)
+
+        for a in (["init", "-q", "-b", "trunk", "."],
+                  ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            g(*a)
+        open(os.path.join(app, "code.py"), "w").write("x = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "code")
+
+        def run(*flags):
+            p = subprocess.run([sys.executable, script, app, *flags],
+                               capture_output=True, text=True, timeout=60)
+            return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+        def write(hash_value):
+            open(os.path.join(app, "PROJECT.md"), "w", encoding="utf-8").write(
+                PROJECT_MD.replace("PLACEHOLDER", hash_value))
+
+        # The exact string the real run produced must be rejected, not silently believed.
+        write("current-HEAD")
+        rc, out = run("--status")
+        assert rc == 1, f"a placeholder hash was accepted as usable (exit {rc}): {out[:200]}"
+        assert "UNUSABLE" in out, f"unusable hash not reported as such: {out[:200]}"
+
+        # Stamp, then commit PROJECT.md -- the real sequence. The hash is one behind HEAD by
+        # construction, and that must NOT read as stale.
+        rc, out = run("--fix", "--stamp-hash")
+        assert rc == 0, f"stamping failed: {out[:300]}"
+        stamped = subprocess.run(["git", "-C", app, "rev-parse", "HEAD"],
+                                 capture_output=True, text=True, timeout=60).stdout.strip()
+        assert stamped in open(os.path.join(app, "PROJECT.md"), encoding="utf-8").read(), (
+            "--stamp-hash did not write HEAD into the file")
+
+        g("add", "-A")
+        g("commit", "-qm", "docs: Update PROJECT.md")
+        head = subprocess.run(["git", "-C", app, "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=60).stdout.strip()
+        assert head != stamped, "the test did not actually advance HEAD; it proves nothing"
+
+        rc, out = run("--status")
+        assert rc == 0, (
+            "the context reads as STALE immediately after being written -- the off-by-one is "
+            f"back. A PROJECT.md-only commit is not a code change:\n{out[:300]}")
+        assert "stale=no" in out, f"expected stale=no, got: {out[:200]}"
+
+        # A real code change must still register.
+        open(os.path.join(app, "code.py"), "a").write("y = 2\n")
+        g("add", "-A")
+        g("commit", "-qm", "feat: change code")
+        rc, out = run("--status")
+        assert rc == 3, f"a real code change did not read as stale (exit {rc}): {out[:200]}"
+        assert "stale=yes" in out and "code.py" in out, f"unexpected status output: {out[:200]}"
+    finally:
+        rmtree(root)
+
+
 @check("no generated output committed under skills/", finding="F4")
 def _():
     bad = [rel for rel, _t in all_tracked_text()

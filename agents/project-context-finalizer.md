@@ -112,10 +112,21 @@ Add new entries to appropriate sections:
 ```xml
 <meta>
   <last-updated>{current ISO timestamp}</last-updated>
-  <last-context-hash>{current git HEAD}</last-context-hash>
+  <!-- leave <last-context-hash> EXACTLY as you found it -->
   <!-- preserve other meta fields -->
 </meta>
 ```
+
+**Do not touch `<last-context-hash>`.** You have `Read Write Glob` and no `Bash`, so you
+cannot run `git rev-parse HEAD` and have no way to know the value. This step used to ask for
+`{current git HEAD}`, and on the one run that has happened the literal string
+`current-HEAD` was written into the file, destroying a valid hash and breaking every consumer
+of it -- `git diff current-HEAD..HEAD` does not resolve.
+
+Copy the existing element through unchanged. The caller stamps the real hash with
+`check-project-md.py --stamp-hash` before committing, because the caller has git and you do
+not. Where you cannot compute something, leave it alone or say so -- never write a
+placeholder into a field that something else will read.
 
 ### Step 6: Write Updated PROJECT.md
 
