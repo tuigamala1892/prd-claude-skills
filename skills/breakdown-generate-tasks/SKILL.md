@@ -363,6 +363,17 @@ Write each task as a separate XML file:
 - Filename: `{task_id}-{slug}.xml` (e.g., `L1-001-project-model.xml`)
 - Location: `{output_dir}/{layer}/`
 
+**`{output_dir}` must be absolute. If it is not, stop and say so — do not resolve it yourself.**
+You run in a fork, so your working directory is not the caller's, and any path you resolve here
+is resolved against the wrong thing. That is finding F4: handed a relative directory, this skill
+wrote an entire run's output into `skills/breakdown-generate-tasks/output/`, and the caller was
+never told.
+
+This is a backstop, not the guard. `/breakdown` resolves both paths through
+`skills/breakdown/scripts/resolve-output.sh` in its Phase 1 and passes the absolute result down,
+so a relative path arriving here means the caller skipped that step — which is worth reporting
+rather than papering over.
+
 After writing all tasks, output a summary:
 ```
 Generated {N} tasks for layer {layer}:

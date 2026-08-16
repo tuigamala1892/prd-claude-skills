@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Items 4.1 and 4.6 remain open, neither blocking; 4.4 and 4.5 are deferred to a separate plan. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Item 4.1 remains open and is not blocking; 4.4 and 4.5 are deferred to a separate plan. **F4 is resolved** by item 4.6 and verified by test 5. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -777,7 +777,13 @@ The status tag is present in `index.md`, not in `what-next.md`. Resume therefore
 Worse, the no-arguments path starts a **new** PRD and Phase 8 writes to `docs/prd/[slug]/` —
 so an unguarded session can overwrite an existing `index.md` and `what-next.md`.
 
-#### F4 — Skill output can be written relative to the skill directory
+#### F4 — Skill output can be written relative to the skill directory — **RESOLVED**
+
+> **Fixed by item 4.6, and verified behaviourally by §5.2 test 5.** Both output paths are
+> resolved by `skills/breakdown/scripts/resolve-output.sh` before anything is created; a relative
+> `--output-dir` and any path inside a plugin are refused by exit code. The run's transcript shows
+> the forked `/breakdown` context **running** the script and stopping on its status — not reasoning
+> its way to the same answer, which is the distinction F15 made expensive.
 
 `.claude/skills/breakdown-generate-tasks/output/2-backend/LAYER_SUMMARY.md` exists on disk and
 contains generated tasks for an unrelated **"Voice PRD Generator"** project. The skill takes the
@@ -1294,9 +1300,63 @@ Making it XML also brings the PRD directory to 62/62 parsing.
 This is what makes independent versioning safe. Without it, a toolchain upgrade silently
 misreads artefacts produced by an earlier version, in any project.
 
-### 4.6 Absolute output path guard
+### 4.6 Absolute output path guard -- **DONE**
 
 **Addresses F4**
+
+> **Completed.** `skills/breakdown/scripts/resolve-output.sh` does all three parts, and does
+> them as a program rather than as prose -- which §3.1 had already insisted on for this exact
+> item: *"the same doubt applies to every other prose guard in the toolchain, including 4.6's
+> proposed absolute-path check."*
+>
+> Like `preflight.sh`, it **resolves as well as refuses**: running it is the cheapest way to
+> obtain the two paths, so calling it is in the caller's interest rather than a hoop.
+>
+> ```
+> resolve-output.sh <tasks-dir> [target-dir]
+>   -> tasks_dir=<absolute>
+>      target_dir=<absolute>
+> ```
+>
+> 1. **`--output-dir`/`--project-path` must be absolute.** Refused otherwise, quoting the path
+>    it would have resolved to, so the caller can see exactly what was ambiguous.
+> 2. **Neither path may resolve inside a Claude Code plugin.** That is F4 directly, and it is
+>    pointless as well as wrong: `preflight.sh` already refuses a plugin as an `/execute`
+>    target, so tasks generated there could never be run.
+> 3. **Both resolved paths are echoed before anything is written**, and `breakdown/SKILL.md`
+>    now uses `{tasks_dir}` throughout instead of the literal `docs/tasks/{slug}` -- resolution
+>    is worthless if the relative string is used afterwards anyway, so the regression check
+>    fails if any survives.
+>
+> The stray `skills/breakdown-generate-tasks/output/` tree is already gone; the check that no
+> generated output is committed under `skills/` remains as a separate permanent guard.
+>
+> **Asymmetry, deliberately.** The tasks directory *may* be relative -- `docs/tasks/<slug>` is
+> the documented default -- and is resolved here against the caller's working directory. The
+> target may not. They differ in whether a wrong answer is recoverable: mis-resolving the tasks
+> directory produces files in a visible place, whereas `--output-dir` names where an entire
+> codebase is built and where `/execute` later creates and merges branches.
+>
+> **A second F4 was found inside the fix.** The first version resolved
+> `C:\Users\Lee\AppData\Local\Temp\nope\app` to **`/tmp/nope/app`** -- silently, with exit 0. `dirname` and
+> `basename` treat a backslash as an ordinary character and MSYS mangles what is left. The
+> guard against writing to a directory nobody named was itself naming the wrong directory.
+> Fixed by normalising separators and replacing `dirname`/`basename` with parameter expansion;
+> paths are now emitted in the host's own form (`pwd -W` where it exists), because `/c/tmp/x`
+> cannot be opened by the Python and Write-tool consumers downstream.
+>
+> **The first version of the regression check did not catch it**, because it asserted that a
+> `target_dir=` line was *present* rather than what it *said*. That is the §5.2 test 9 mistake
+> in miniature: a weak assertion converts an unexamined failure into a green tick. It now
+> compares the resolved value against the path supplied, and fails when the normalisation is
+> reverted.
+>
+> **Verified by reverting it, eight ways**: script deleted; `breakdown` not calling it;
+> `breakdown` calling it and then using `docs/tasks/{slug}` anyway; the sub-skill backstop
+> weakened; `is_absolute` always true, so a relative target sails through; the plugin
+> containment check disabled; resolution made a no-op; and separator normalisation removed.
+
+<details><summary>Original proposal</summary>
 
 In `breakdown` and `breakdown-generate-tasks`:
 
@@ -1307,6 +1367,8 @@ In `breakdown` and `breakdown-generate-tasks`:
 
 Then delete the stray `skills/breakdown-generate-tasks/output/` tree, which is currently only
 gitignored.
+
+</details>
 
 ### 4.7 Layer 0 git contradictions — **DONE**
 
@@ -1784,7 +1846,7 @@ which captures each run's result JSON and transcript.
 | 2 | `/prd` on a fresh directory | **PASS** — PRD written, `what-next.md` valid XML with `<status>`. Re-run after 4.3 (130s): the new unconditional lookup does not disturb the fresh path. No `<toolchain-version>`: item 4.5 deferred |
 | 3 | `/prd` again with no arguments | **FIXED** (was KNOWN/4.3) — detects the existing PRD in **15s** and leaves it untouched, naming it, its status and its last-modified date, then offering to extend it or start a new one alongside. `index.md` byte-identical afterwards. Marker removed; now a permanent guard |
 | 4 | `/prd --resume` | **PASS** — found the existing PRD |
-| 5 | `/breakdown` with a relative `--output-dir` | **KNOWN/4.6** — not rejected, and worse: generated Layer 0 tasks with the relative-derived path baked in, then timed out |
+| 5 | `/breakdown` with a relative `--output-dir` | **FIXED** (was KNOWN/4.6) — refused in **63s**, `./relative-out` never created, nothing written to the toolchain tree. The transcript shows `resolve-output.sh` actually invoked, twice, in the forked context: the refusal is an exit code, not a judgement. Marker removed; now a permanent guard |
 | 6 | `/breakdown` with an absolute `--output-dir` | **PASS** — 29 files generated in 67 min; nothing written into the toolchain tree |
 | 7 | `/execute` against a repo with **no remote** | **PASS** — full plan produced, base branch resolved from HEAD. F1 fix confirmed under a real run |
 | 8 | `/execute` against a path containing `docs/prd/` | **FAIL** — not refused → **F15** |
@@ -2047,7 +2109,7 @@ the first time the toolchain modifies code it did not write.
 | ~~4.3~~ | ~~Resume detection and overwrite guard~~ **DONE** — F3 resolved | ~~Correctness~~ | `prd` |
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
 | 4.5 | Toolchain version stamping | Structural | `prd`, `breakdown`, `execute` |
-| 4.6 | Absolute output path guard | Correctness | `breakdown`, `breakdown-generate-tasks` |
+| ~~4.6~~ | ~~Absolute output path guard~~ **DONE** — F4 resolved, verified by §5.2 test 5 | ~~Correctness~~ | `breakdown`, `breakdown-generate-tasks` |
 | ~~4.7~~ | ~~Layer 0 git contradictions~~ **DONE** (guard part ineffective, see 4.13) | ~~Blocking~~ | `breakdown-generate-tasks`, `breakdown`, `execute` |
 | ~~4.12 step one~~ | ~~Synchronous dispatch~~ **DONE `d278c05`** — F17 fixed, verified by run 4 | ~~Blocking~~ | `execute-batch` |
 | ~~4.15~~ | ~~Create the worktree before dispatch~~ **DONE `c915422`** — F20 resolved, verified by run 6 | ~~Blocking~~ | `execute-batch`, `task-implementer` |

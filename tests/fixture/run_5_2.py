@@ -369,7 +369,7 @@ def make_tests(ws, app, prd_fresh):
         dict(id=4, name="prd-resume", desc="/prd --resume",
              cwd=prd_fresh, timeout=600, check=t4, prompt=f"/{P}:prd --resume"),
         dict(id=5, name="breakdown-relative", desc="/breakdown with a relative --output-dir",
-             cwd=ws, timeout=600, check=t5, expect_fail="4.6",
+             cwd=ws, timeout=600, check=t5,
              prompt=f"/{P}:breakdown docs/prd/{SLUG}/index.md --output-dir ./relative-out"),
         dict(id=6, name="breakdown-absolute", desc="/breakdown with an absolute --output-dir",
              cwd=ws, timeout=5400, check=t6, clean_tasks=True,

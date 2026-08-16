@@ -35,11 +35,22 @@ The skill automatically detects whether the input is a PRD or CRD:
 
 ## Output Location
 
-Tasks are written to: `docs/tasks/<prd-slug>/`
+Two different directories, and they are resolved by a script rather than assembled by hand:
+
+| | What | Default |
+|---|---|---|
+| `{tasks_dir}` | Where task XML is written | `docs/tasks/<prd-slug>/` |
+| `{target_dir}` | Where code will be built (`--output-dir` / `--project-path`) | none — must be given |
 
 For greenfield with `--output-dir`:
-- Layer 0 tasks reference the output-dir as target
-- Other layer tasks are still saved to docs/tasks/
+- Layer 0 tasks reference `{target_dir}` as target
+- Other layer tasks are still saved to `{tasks_dir}`
+
+**Both are absolute from Phase 1 onward, and nothing downstream may use a relative path.**
+`docs/tasks/<slug>` means nothing without saying what it is relative to, and every skill below
+this one forks — so it does *not* share this working directory. Finding F4 is what that costs:
+a whole run's output landed in `skills/breakdown-generate-tasks/output/`, because the sub-skill
+resolved the relative path it was handed against its own directory. The caller was never told.
 
 ## Workflow
 
@@ -51,8 +62,39 @@ Execute these phases in order:
 2. Detect format by checking root element (`<prd>` or `<crd>`)
 3. Verify valid XML structure
 4. Extract the slug from `<meta><slug>` tag
-5. Create output directory: `docs/tasks/{slug}/`
-6. If directory exists, check for existing `.done` markers to resume
+5. **Resolve both output paths, before creating anything:**
+
+   ```bash
+   sh {skill_dir}/scripts/resolve-output.sh docs/tasks/{slug} [{--output-dir or --project-path value}]
+   ```
+
+   `{skill_dir}` is the base directory given at the top of this skill — the one ending in
+   `skills/breakdown`.
+
+   - **Exit 0**: stdout is `tasks_dir=<absolute>` and, when a target was given,
+     `target_dir=<absolute>`. Use those two values everywhere below — in your own file writes,
+     in the paths you pass to sub-skills, and in the paths you bake into task XML. Never
+     re-derive either by joining strings.
+   - **Non-zero**: stderr begins `REFUSED:`. **Stop.** Report it verbatim and create nothing —
+     no directory, no analysis, no tasks. In particular do not "helpfully" convert the path
+     yourself and carry on; the refusal exists because the right answer was not knowable.
+
+   What it refuses: a relative `--output-dir`/`--project-path`, and either path resolving
+   inside a Claude Code plugin. The second is F4 directly, and is pointless as well as wrong —
+   `/execute` refuses a plugin as a target, so tasks generated there could never be run.
+
+6. **Echo both resolved paths** in your first line of output, before writing anything:
+
+   ```
+   Tasks:  /abs/path/docs/tasks/link-shelf
+   Target: /abs/path/link-shelf-app
+   ```
+
+   A wrong target is then visible immediately, rather than found later in someone else's
+   directory.
+
+7. Create `{tasks_dir}`
+8. If it exists, check for existing `.done` markers to resume
 
 **For CRD input:**
 - Require `--project-path` argument (CRDs always target existing projects)
@@ -86,7 +128,7 @@ Extract directly from CRD structure:
 
 The CRD already contains impact analysis, so less inference is needed.
 
-Save the analysis to `docs/tasks/{slug}/analysis.json`
+Save the analysis to `{tasks_dir}/analysis.json`
 
 ### Phase 3: Plan Layers
 
@@ -114,7 +156,7 @@ Layer planning is simpler based on `<impact-analysis>`:
 
 CRD typically produces 2-3 layers, not 5.
 
-Save the layer plan to `docs/tasks/{slug}/layer_plan.json`
+Save the layer plan to `{tasks_dir}/layer_plan.json`
 
 ### Phase 4: Generate Tasks (Per Layer)
 
@@ -127,7 +169,7 @@ For each layer in order:
 
 1. **Check completion**: If `{layer}/.done` exists, skip this layer
 
-2. **Create directory**: `docs/tasks/{slug}/{layer}/`
+2. **Create directory**: `{tasks_dir}/{layer}/`
 
 3. **Batch tasks**: Split layer tasks into batches of max 5 tasks each
    - If layer has ≤5 tasks: single batch
@@ -145,7 +187,7 @@ For each layer in order:
              - Task batch (subset of layer tasks)
              - PRD analysis
              - Template path (if any)
-             - Output directory: docs/tasks/{slug}/{layer}/
+             - Output directory: {tasks_dir}/{layer}/   # absolute, from Phase 1
              - Previous review feedback (if retry)
 
            # Review
@@ -176,7 +218,7 @@ For each layer in order:
 1. **Build `manifest.json` from the task files that exist**, using the bundled script:
 
    ```bash
-   python {skill_dir}/scripts/build-manifest.py docs/tasks/{slug} --project-path {output_dir}
+   python {skill_dir}/scripts/build-manifest.py {tasks_dir} --project-path {target_dir}
    ```
 
    `{skill_dir}` is the base directory given at the top of this skill — the one ending in
@@ -204,7 +246,7 @@ For each layer in order:
 2. **Verify before reporting anything:**
 
    ```bash
-   python {skill_dir}/scripts/build-manifest.py docs/tasks/{slug} --verify
+   python {skill_dir}/scripts/build-manifest.py {tasks_dir} --verify
    ```
 
    It exits non-zero and lists the discrepancies if the manifest and the files disagree. Treat

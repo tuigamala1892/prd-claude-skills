@@ -884,6 +884,111 @@ def _():
                      + "\n    ".join(bad))
 
 
+@check("`/breakdown` resolves its output paths rather than joining strings", finding="F4")
+def _():
+    # F4: a whole run's tasks landed in skills/breakdown-generate-tasks/output/, because the
+    # sub-skill was handed a relative directory and resolved it against its own. §3.1 says
+    # plainly that a prose absolute-path check would not fix this -- "writing more emphatic
+    # prose is not a fix" -- so run the guard and assert what it does.
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "resolve-output.sh")
+    assert os.path.isfile(script), "skills/breakdown/scripts/resolve-output.sh is missing"
+
+    sk = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "resolve-output.sh" in sk, (
+        "breakdown never calls resolve-output.sh, so nothing resolves anything")
+
+    # The point of resolving is that the resolved value is then *used*. A skill that runs the
+    # script and goes on to write `docs/tasks/{slug}` anyway has gained nothing.
+    stale = [f"{i}: {l.strip()[:90]}"
+             for i, l in enumerate(sk.splitlines(), 1)
+             if "docs/tasks/{slug}" in l and "resolve-output.sh" not in l]
+    assert not stale, ("breakdown still uses the relative path after resolving it:\n    "
+                       + "\n    ".join(stale))
+
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    assert "must be absolute" in gen, (
+        "breakdown-generate-tasks accepts a relative output dir -- the F4 path exactly")
+
+    if not shutil.which("sh"):
+        return  # nothing to run the guard with; the static half above still applied
+
+    def run(*args):
+        p = subprocess.run(["sh", script, *args], cwd=ws, capture_output=True,
+                           text=True, timeout=60)
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    root = tempfile.mkdtemp(prefix="resolve-output-check-")
+    try:
+        ws = os.path.join(root, "ws")
+        os.makedirs(ws)
+
+        # A relative tasks directory is allowed, and comes back absolute.
+        rc, out = run("docs/tasks/link-shelf")
+        assert rc == 0, f"refused a relative tasks dir, which is the documented default: {out[:200]}"
+        line = [l for l in out.splitlines() if l.startswith("tasks_dir=")]
+        assert line, f"no tasks_dir on stdout: {out[:200]}"
+        got = line[0].split("=", 1)[1]
+        # Not os.path.isabs: on Windows since 3.13 it calls `/tmp/x` rooted-but-not-absolute,
+        # which would fail this check against a path the script resolved perfectly well. The
+        # script emits POSIX paths under Git Bash whatever the host.
+        assert re.match(r"^(/|[A-Za-z]:)", got), (
+            f"tasks_dir came back relative, so nothing was resolved: {got}")
+
+        # An absolute target is allowed; a relative one is the §5.2 test 5 case.
+        #
+        # Assert the VALUE, not merely that a `target_dir=` line appeared. The first version of
+        # this check tested only presence, and passed while the script silently resolved
+        # `C:\Users\...\nope\app` to `/tmp/nope/app` -- backslashes are ordinary characters to
+        # `dirname`, and MSYS mangled the rest. A path nobody named, returned with exit 0.
+        def norm(p):
+            return p.replace("\\", "/").rstrip("/").lower()
+
+        for label, given in (("an existing parent", os.path.join(root, "app")),
+                             ("a path not created yet", os.path.join(root, "nope", "app"))):
+            rc, out = run("docs/tasks/link-shelf", given)
+            assert rc == 0, f"refused an absolute target ({label}): {out[:200]}"
+            got = [l for l in out.splitlines() if l.startswith("target_dir=")]
+            assert got, f"no target_dir echoed for {label}: {out[:200]}"
+            got = got[0].split("=", 1)[1]
+            assert norm(got) == norm(given), (
+                f"target_dir resolved to somewhere the caller did not name ({label}):\n"
+                f"    given: {given}\n    got:   {got}")
+
+        rc, out = run("docs/tasks/link-shelf", "./relative-out")
+        assert rc != 0, "a relative --output-dir was ACCEPTED (§5.2 test 5)"
+        assert "REFUSED" in out, f"refusal does not say REFUSED: {out[:200]}"
+        assert not os.path.isdir(os.path.join(ws, "relative-out")), (
+            "the guard created the directory it refused")
+
+        # F4 itself: output resolving inside a plugin, by either route.
+        plug = os.path.join(root, "plug")
+        os.makedirs(os.path.join(plug, ".claude-plugin"))
+        open(os.path.join(plug, ".claude-plugin", "plugin.json"), "w").write("{}")
+        for label, args in (
+            ("a tasks dir inside a plugin", (os.path.join(plug, "skills", "x", "output"),)),
+            ("a target inside a plugin", ("docs/tasks/link-shelf", os.path.join(plug, "app"))),
+        ):
+            rc, out = run(*args)
+            assert rc != 0, f"ACCEPTED {label} -- this is F4"
+            assert "REFUSED" in out, f"refusal of {label} does not say REFUSED: {out[:200]}"
+    finally:
+        rmtree(root)
+
+
 @check("the §5.1 fixture PRD is valid and self-consistent")
 def _():
     # The fixture is only useful if /breakdown can parse it. Validating here means a
