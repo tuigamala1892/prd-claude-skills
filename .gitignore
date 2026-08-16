@@ -12,3 +12,7 @@ desktop.ini
 .claude/staged-files.json
 .claude/session-pids.json
 .claude/hooks/log-attribution.sh
+
+# Python bytecode
+__pycache__/
+*.pyc

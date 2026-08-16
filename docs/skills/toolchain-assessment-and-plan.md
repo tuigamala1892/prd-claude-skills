@@ -1600,8 +1600,11 @@ mutating the caller's conversation state will change behaviour. `execute-batch` 
 > separately. That is the same weak-assertion shape as §5.2 test 9's original criterion.
 >
 > The behavioural half of the acceptance test -- `git log --merges` showing one merge per task
-> -- was already met by runs 6 through 10. The merge script is exercised against real
-> repositories by the regression suite, including the conflict path, which no run has produced.
+> -- was already met by runs 6 through 10. **The script itself has now run inside a real
+> `/execute`**: the §5.3 step 4 re-run invoked it 3 times, one per task, produced 3 merge
+> commits, and contains no hand-written `git worktree add` or `git merge --no-ff` in any of
+> its 18 transcripts. The conflict path is still exercised only by the regression suite --
+> no run has produced one, which is what sequential merging is for.
 
 <details><summary>Original proposal</summary>
 
@@ -2139,7 +2142,41 @@ recorded.
 **F22's fix held**: `execute-state.json` was written into the tasks directory *inside* the
 project, which is the layout that would have been refused an hour earlier.
 
-#### F23 — the finalizer writes unescaped XML and corrupts the file it maintains
+**Step 4 was re-run after F23, F24 and item 4.12 landed, and passed again — 794s, $3.12**
+(against 1034s and $4.27 first time; the merge being one script call rather than ten prose
+steps is the likely difference). Driven this time by
+[`tests/fixture/run_5_3.py`](../../tests/fixture/run_5_3.py), because a sequence driven by
+hand is not a sequence that can be re-run: the prompts lived in a terminal history and the
+pass criteria in someone's head.
+
+The app was reset to `e7ab199` — step 4's exact starting state, 8 passing tests, no ledger —
+so this is a genuine re-execution rather than a resume. The criteria were checked against that
+reset state first and correctly reported `0 of 3 tasks verified`; a check that cannot fail
+proves nothing, which is what §5.2 test 9 taught.
+
+**Verified against git and the transcripts, not the summary:**
+
+| | |
+|---|---|
+| 3 merge commits, one per task | `L1-001`, `L2-001`, `L4-001`, ledger 3/3 verified, nothing missing |
+| Application tests | 8 → **21 passing**, and `test_delete_is_permanent` is still among them — the trap held a second time |
+| `merge-task.sh` | invoked **3 times** — its first execution inside a real `/execute` |
+| `create-worktree.sh` | 3 times |
+| Hand-written `git worktree add` / `git merge --no-ff` | **none, anywhere** in 18 transcripts |
+| `record-task.sh` | 0 *direct* calls, and 3 ledger entries — it now runs from inside `merge-task.sh`, which is the consolidation working |
+| **F23** | `PROJECT.md` parses: `meta 3, features 7, api-registry 7, schema-registry 4`. No bare ampersand this time |
+| **F24** | `<last-context-hash>50d15fb…</last-context-hash>` — a real SHA, and exactly `HEAD^` |
+| Containment | no stray repository at the workspace root; the toolchain tree untouched |
+
+The stamped hash being `HEAD^` is the fix working rather than the bug persisting: `50d15fb` is
+the last *merge* commit, and `903235f` — the commit carrying `PROJECT.md` — is the one after
+it. `--status` accordingly reports `changed=0, stale=no`. It also proves the ordering: had the
+stamp run after the commit it would have recorded `903235f`.
+
+The finalizer genuinely updated the registries again — 5 → 7 features, 5 → 7 endpoints with
+`/links/{link_id}/archive` and `/restore`, 3 → 4 schema entries.
+
+#### F23 — the finalizer writes unescaped XML and corrupts the file it maintains — **RESOLVED, verified by the step 4 re-run**
 
 Found by step 4. `project-context-finalizer`, on its first execution, wrote:
 
@@ -2167,7 +2204,7 @@ Fixed two ways, because one of them is prose:
   committing**, and a non-zero exit blocks the commit. Tested on the real corruption, on the
   repair, and on a greenfield project with no `PROJECT.md` (not an error).
 
-#### F24 — the finalizer writes a placeholder into `last-context-hash` — **RESOLVED**
+#### F24 — the finalizer writes a placeholder into `last-context-hash` — **RESOLVED, verified by the step 4 re-run**
 
 *This was recorded above as "one cosmetic issue not worth a finding: off by exactly one
 commit". Reading the artefact instead of reasoning about it gives a different answer.* The
