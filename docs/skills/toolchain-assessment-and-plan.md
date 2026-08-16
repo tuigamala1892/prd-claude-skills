@@ -1,6 +1,6 @@
 # Claude Code Toolchain — Assessment and Remediation Plan
 
-**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. Item 4.1 remains open and is not blocking; 4.4 and 4.5 are deferred to a separate plan. **F4 is resolved** by item 4.6 and verified by test 5. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
+**Status:** **The pipeline works end to end, reports itself honestly, and survives interruption.** Run 6 of §5.2 test 9 passed: 18 tasks, **18 merge commits — one per task**, every worktree created by the caller via the bundled script, independent verification invoked for the first time in six runs, no repository created outside the target, and the resulting application passing 88 tests. F17, F18, F19 and F20 are resolved and behaviourally verified, alongside F1, F2 and F13. **F16 is resolved** by item 4.16 and verified by run 7 — the ledger and the merge commits correspond exactly, and the counts are finally correct. 4.4 and 4.5 are deferred to a separate plan; every other remediation item is done. **F4 is resolved** by item 4.6 and verified by test 5. A **CRD fixture now exists** (§5.3) but the brownfield path has still never run.
 **Date:** 2026-08-10
 **Subject:** the `prd` / `breakdown` / `execute` / `crd` skill toolchain
 **Toolchain location:** repository root of `prd-claude-skills`, packaged as a Claude Code plugin
@@ -872,7 +872,7 @@ the F6 precedence rule applies: the skill's `model:` wins, so the agent's declar
 what silently loses. That makes aligning the two more important after the fix than before
 it — the conflict is currently hidden, not absent.
 
-#### F8 — Commands carry no frontmatter
+#### F8 — Commands carry no frontmatter — **RESOLVED**
 
 `commands/prd.md`, `commands/crd.md` and `commands/crd-context.md` begin directly with a `#`
 heading. There is no `---` block, therefore:
@@ -891,7 +891,7 @@ name that correctly reported absent.
 
 `description` and `argument-hint` have been added to all three (`e0256cd`), restoring them.
 The remaining part of F8 — whether these should become skills with `model:` selectors — is
-still open under item 4.1.
+settled by item 4.1: **all three stay commands.** F8 is resolved.
 
 #### F9 — The documented `project_path` fallback is dead — **RESOLVED**
 
@@ -1109,7 +1109,7 @@ The single most important consequence was that **item 4.11 had to precede 4.1 an
 since until skills forked every `model:` and `agent:` edit was a no-op. 4.11 is now done,
 so those items change real behaviour and should be applied with that in mind.
 
-### 4.1 Frontmatter and command→skill conversion
+### 4.1 Frontmatter and command→skill conversion -- **DONE**
 
 **Addresses F8** *(revised after Phase 0)*
 
@@ -1133,8 +1133,43 @@ to the caller is not the same thing as an interview, and forking is the price of
 selector. Both therefore run on whatever model the user is already using — which is the correct
 trade for an interactive entry point, but should be a conscious one.
 
-Still to decide: `/crd-context`, which is closer to batch work than to an interview and so may
-be worth converting on the opposite reasoning.
+**Decision taken: `/crd-context` stays a command too, so all three do, and this item is
+closed.** It was left open on the reasoning that it is "closer to batch work than to an
+interview". Reading the file settles it the other way.
+
+`commands/crd-context.md` is a **thin router**. Both paths that cost anything delegate to
+skills that already fork and already carry their own selector:
+
+| Path | Delegates to | | |
+|---|---|---|---|
+| `--full`, or no `PROJECT.md` | `/crd-investigate` | `context: fork` | `model: claude-sonnet-5` |
+| context stale | `/crd-context-update` | `context: fork` | `model: claude-haiku-4-5` |
+
+What the command does itself is validate the path, read `last-context-hash`, compare it with
+`git rev-parse HEAD`, and — for `--diff` — run `git diff <hash>..HEAD --name-only` and
+categorise the result.
+
+So converting would buy a `model:` selector on a hash comparison, while costing the one thing
+`--check` and `--diff` exist for: printing status **in the user's context**. A forked skill
+returns a summary to its caller instead. That is the same argument that kept `/prd` and `/crd`
+as commands, and it applies here with more force rather than less, because there is no
+expensive reasoning to isolate in the first place.
+
+The general form is worth keeping: **fork to isolate expensive reasoning, not to obtain a
+`model:` selector.** Where the expensive reasoning has already been delegated to a forked
+skill, the caller has nothing left to isolate.
+
+Two things deliberately not done, so they do not read as loose ends:
+
+- **Model aliases are not adopted here.** The note below prefers `model: opus` over pinned
+  identifiers, and for most repositories that is right. This one pins deliberately: the fork
+  and model rules it depends on were established by measurement against specific models in
+  Phase 0 (§3.5), so a pinned identifier is the reproducible choice. The regression suite
+  accepts both forms and rejects stale ones, which is the property that actually matters.
+- **`/crd-context` has no guard script**, unlike `/execute` (`preflight.sh`) and `/breakdown`
+  (`resolve-output.sh`). It does validate its `--project` path before acting, but that
+  validation is prose, and F15 is what prose validation is worth. That is a separate and
+  smaller item than this one, and worth raising only if the brownfield path gets real use.
 
 Notes:
 
@@ -2161,7 +2196,7 @@ the first time the toolchain modifies code it did not write.
 | # | Item | Grade | Files |
 |---|---|---|---|
 | ~~4.11~~ | ~~Remove `allowed-tools` — restores forking~~ **DONE** | ~~Blocking~~ | all 15 `skills/*/SKILL.md` |
-| 4.1 | Command→skill conversion, frontmatter *(frontmatter done)* | Consistency | `commands/*.md` |
+| ~~4.1~~ | ~~Command→skill conversion, frontmatter~~ **DONE** -- F8 resolved; all three entry points stay commands | ~~Consistency~~ | `commands/*.md` |
 | ~~4.2~~ | ~~Model assignments, skills and agents~~ **DONE** — F5, F6, F7 resolved; suite fully green | ~~Correctness~~ | all skills, all agents |
 | ~~4.3~~ | ~~Resume detection and overwrite guard~~ **DONE** — F3 resolved | ~~Correctness~~ | `prd` |
 | 4.4 | `what-next.md` template | Correctness | `prd`, existing artefacts |
@@ -2195,7 +2230,7 @@ Decided since:
 
 | | Question | Decision |
 |---|---|---|
-| ~~4~~ | Should `/prd` and `/crd` become skills? | **No — they stay commands.** See 4.1 |
+| ~~4~~ | Should `/prd`, `/crd` or `/crd-context` become skills? | **No — all three stay commands.** Fork to isolate expensive reasoning, not to obtain a `model:`. See 4.1 |
 | ~~5~~ | Should the probe harness be committed? | **Yes** — [`probes/`](probes/) |
 
 Still open:
