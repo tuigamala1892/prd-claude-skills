@@ -876,6 +876,160 @@ def _():
         "classifier invented a reset time the error did not contain")
 
 
+@check("the merge is executed by one script, not described", finding="F17")
+def _():
+    # Item 4.12's structural half: git operations in one place with one owner. The merge was
+    # the last git sequence still spelled out in prose -- twelve commands across ten steps --
+    # and every other one became a script because the described version failed: `-b` dropped
+    # from `git worktree add` by six agents out of six (F18), a run that walked up out of the
+    # target and merged into a repository it had just created (F19).
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute-merge", "scripts", "merge-task.sh")
+    assert os.path.isfile(script), "skills/execute-merge/scripts/merge-task.sh is missing"
+
+    merge_md = os.path.join(SKILLS, "execute-merge", "SKILL.md")
+    md = open(merge_md, encoding="utf-8").read()
+    assert "merge-task.sh" in md, "execute-merge never calls the script, so the merge is prose again"
+
+    # The point is that the commands are no longer *here* to be retyped. A `git merge` or
+    # `git worktree remove` line in an instruction file is an invitation to run it by hand
+    # from whatever directory the model happens to be in, which is how F19 happened.
+    banned = re.compile(r"^\s*git\s+(merge|checkout|worktree|branch|commit|add)\b")
+    bad = [f"{i}: {l.strip()[:90]}"
+           for i, l in enumerate(md.splitlines(), 1) if banned.search(l)]
+    assert not bad, ("execute-merge spells out git commands again; call merge-task.sh:\n    "
+                     + "\n    ".join(bad))
+
+    # The ledger must be written by the merge script, and the slug it needs must actually be
+    # threaded to it. It was an undeclared input for four runs.
+    body = open(script, encoding="utf-8").read()
+    assert "record-task.sh" in body, (
+        "merge-task.sh does not record the merge, so a merged task stays invisible to resume")
+    assert body.index("record-task.sh") < body.index("worktree remove"), (
+        "merge-task.sh cleans up before recording; a cleanup failure would then lose a "
+        "completed task")
+
+    layer = open(os.path.join(SKILLS, "execute-layer", "SKILL.md"), encoding="utf-8").read()
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    def declares(text, flag):
+        return any(l.lstrip().startswith(f"| `{flag}") for l in text.splitlines())
+
+    def passes(text, skill, flag):
+        return any(f"/{skill} " in l and flag in l for l in text.splitlines())
+
+    assert declares(md, "--prd-slug"), "execute-merge does not declare --prd-slug"
+    assert declares(layer, "--prd-slug"), "execute-layer does not declare --prd-slug"
+    assert passes(layer, "execute-merge", "--prd-slug"), (
+        "execute-layer never passes --prd-slug on, so merge-task.sh cannot name the ledger")
+    assert passes(ex, "execute-layer", "--prd-slug"), (
+        "execute never passes --prd-slug down, so the ledger is unnamed")
+
+    if not shutil.which("git") or not shutil.which("sh"):
+        return  # nothing to run the guard with; the static half above still applied
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    create = os.path.join(SKILLS, "execute-batch", "scripts", "create-worktree.sh")
+    root = tempfile.mkdtemp(prefix="merge-task-check-")
+    try:
+        app = os.path.join(root, "app")
+        wt = os.path.join(root, "wt")
+        os.makedirs(app)
+
+        def g(*args, cwd=app):
+            return subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                                  text=True, timeout=60)
+
+        # Base branch is `trunk`, never `main` -- F1 is that assumption.
+        for args in (["init", "-q", "-b", "trunk", "."],
+                     ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            g(*args)
+        open(os.path.join(app, "README.md"), "w").write("base")
+        g("add", "-A")
+        g("commit", "-qm", "init")
+
+        taskfile = os.path.join(root, "L1-001.xml")
+        open(taskfile, "w").write(
+            "<task><meta><id>L1-001</id><name>Create enums</name>"
+            "<layer>1-foundation</layer></meta></task>")
+
+        def make_task(tid, fname, content):
+            subprocess.run(["sh", create, app, tid, wt, "trunk"],
+                           capture_output=True, text=True, timeout=60)
+            d = os.path.join(wt, tid)
+            open(os.path.join(d, fname), "w").write(content)
+            g("add", "-A", cwd=d)
+            g("commit", "-qm", f"[{tid}] work", cwd=d)
+            return d
+
+        def merge(tid, wtpath, tf=None, base="trunk"):
+            p = subprocess.run(["sh", script, app, "demo", tid, wtpath, tf or taskfile, base],
+                               capture_output=True, text=True, timeout=120)
+            return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+        d1 = make_task("L1-001", "one.txt", "one")
+        rc, out = merge("L1-001", d1)
+        assert rc == 0, f"merge of a clean task failed: {out[-300:]}"
+
+        merges = g("log", "--merges", "--oneline").stdout.strip().splitlines()
+        assert len(merges) == 1, f"expected exactly 1 merge commit, got {len(merges)}"
+        ledger = os.path.join(app, ".execute", "demo", "ledger.jsonl")
+        assert os.path.isfile(ledger), "the merge was not recorded in the ledger"
+        entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
+        assert len(entries) == 1, f"expected 1 ledger entry, got {len(entries)}"
+        assert g("rev-parse", "HEAD").stdout.strip() in entries[0], (
+            "the ledger records a SHA that is not the merge commit")
+        assert not os.path.isdir(d1), "the worktree was not cleaned up after a successful merge"
+
+        # A conflict must abort, preserve the worktree, and record NOTHING. Recording a
+        # conflicted merge would make resume skip a task that never landed.
+        d2 = make_task("L1-002", "clash.txt", "A")
+        d3 = make_task("L1-003", "clash.txt", "B")
+        rc, out = merge("L1-002", d2)
+        assert rc == 0, f"second clean merge failed: {out[-300:]}"
+        rc, out = merge("L1-003", d3)
+        assert rc == 3, f"a conflicting merge returned {rc}, expected 3: {out[-300:]}"
+        assert os.path.isdir(d3), "a conflicting merge destroyed the worktree holding the work"
+        assert not os.path.isfile(os.path.join(app, ".git", "MERGE_HEAD")), (
+            "a conflicting merge was left in progress rather than aborted")
+        entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
+        assert len(entries) == 2, (
+            f"a conflicted merge was recorded in the ledger ({len(entries)} entries) -- "
+            "resume would skip a task that never landed")
+
+        # Refusals: nothing merged, nothing recorded, HEAD untouched.
+        head = g("rev-parse", "HEAD").stdout.strip()
+        for label, args in (
+            ("a worktree that does not exist", ("L1-004", os.path.join(root, "nope"))),
+            ("a target that is not a repository", ("L1-003", d3)),
+        ):
+            if label.startswith("a target"):
+                p = subprocess.run(["sh", script, root, "demo", "L1-003", d3, taskfile, "trunk"],
+                                   capture_output=True, text=True, timeout=60)
+                rc, out = p.returncode, (p.stdout or "") + (p.stderr or "")
+            else:
+                rc, out = merge(*args)
+            assert rc == 1, f"expected refusal (1) for {label}, got {rc}: {out[:200]}"
+            assert "REFUSED" in out, f"refusal of {label} does not say REFUSED: {out[:200]}"
+
+        assert g("rev-parse", "HEAD").stdout.strip() == head, (
+            "a refused merge still moved HEAD")
+        entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
+        assert len(entries) == 2, "a refused merge still wrote to the ledger"
+    finally:
+        rmtree(root)
+
+
 @check("no generated output committed under skills/", finding="F4")
 def _():
     bad = [rel for rel, _t in all_tracked_text()

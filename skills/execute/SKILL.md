@@ -232,7 +232,7 @@ for layer in layers:
 For each layer, call `/execute-layer`:
 
 ```
-/execute-layer --tasks-path {tasks_path} --layer {layer} --project-path {project_path} --worktree-dir {worktree_dir} --max-parallel {max_parallel} --base-branch {base_branch}
+/execute-layer --tasks-path {tasks_path} --layer {layer} --project-path {project_path} --worktree-dir {worktree_dir} --max-parallel {max_parallel} --base-branch {base_branch} --prd-slug {prd_slug}
 ```
 
 Wait for layer completion and parse `LAYER_RESULT`.

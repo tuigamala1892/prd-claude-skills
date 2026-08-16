@@ -1513,7 +1513,62 @@ the caller's context will now run in a fork that returns a summary. Any skill th
 mutating the caller's conversation state will change behaviour. `execute-batch` and
 `execute-layer`, which orchestrate other skills, are the most likely to be affected.
 
-### 4.12 Consolidate git ownership under forked orchestration — *step one done; structural half open*
+### 4.12 Consolidate git ownership under forked orchestration -- **DONE**
+
+> **Structural half completed.** `skills/execute-merge/scripts/merge-task.sh` performs the whole
+> merge sequence as one program: resolve the base branch from the repository, assert the target
+> is the repository root, assert the base branch has no uncommitted tracked changes, assert the
+> worktree is on its own branch, clean, and at least one commit ahead, merge `--no-ff`, record
+> the merge commit in the ledger, and only then remove the worktree and delete the branch.
+>
+> `execute-merge/SKILL.md` went from 345 lines to 183, and no longer contains a single runnable
+> git command. That was the point. It was the **last git sequence in the toolchain still
+> described rather than executed** -- twelve commands across ten prose steps -- and every other
+> one became a script because the described version demonstrably failed: six agents retyped
+> `git worktree add` and not one kept `-b` (F18); a run walked up out of the target, ran
+> `git init`, and merged into the repository it had just created (F19). The merge is the step
+> that decides whether a task counts as complete, which makes it the last place to leave to
+> improvisation.
+>
+> **Two behaviour changes, both deliberate.**
+>
+> - **Record before cleanup**, which reverses the old step order. A crash between merge and
+>   record under-reports progress, and a resume recovers from that. Cleaning up first would put
+>   a failure mode -- a worktree that will not remove -- between the commit and the record of
+>   it, so a merged task could go unrecorded and be done twice. Cleanup failures are now
+>   warnings: tidying cannot decide whether work counts.
+> - **Uncommitted changes are refused, not committed.** The old step 3 auto-committed whatever
+>   it found in the worktree under a merge-agent byline. Committing work you did not write, to
+>   get past a state you did not expect, is the improvisation that produced F19.
+>
+> **A latent gap closed on the way.** The old step 8 already used `{prd_slug}` to name the
+> ledger, but `--prd-slug` was declared by nothing and passed by nobody -- `/execute` did not
+> send it to `/execute-layer`, which did not send it to `/execute-merge`. It is now declared and
+> threaded at all three levels, the same way `--base-branch` is.
+>
+> **What option 1 turned out to mean.** The item asks for git operations to move to "the
+> non-forked orchestrator". There is no such thing here: `/execute` declares `context: fork`
+> too, so every level of the chain forks. The achievable and actually valuable reading is
+> **one owner per git operation, and that owner is a program** -- `create-worktree.sh` for
+> creation (4.15), `merge-task.sh` for merging and cleanup, `record-task.sh` for the ledger.
+> The merge queue itself still lives in `execute-layer`, which is correct: sequencing is a
+> decision, and decisions are what the forked skills are for.
+>
+> **Verified by reverting it, ten ways**: script deleted; `execute-merge` not calling it;
+> `execute-merge` spelling out `git merge` again; the ledger record removed; cleanup moved
+> before the record; a conflict treated as success; and `--prd-slug` dropped from each of the
+> four places it is declared or passed.
+>
+> One of those ten did not bite at first, and the reason is worth keeping: the check asserted
+> `"--prd-slug" in layer`, which was satisfied by the invocation line alone, so deleting the
+> *declaration* slipped past. Declaring and passing are separate failures and are now asserted
+> separately. That is the same weak-assertion shape as §5.2 test 9's original criterion.
+>
+> The behavioural half of the acceptance test -- `git log --merges` showing one merge per task
+> -- was already met by runs 6 through 10. The merge script is exercised against real
+> repositories by the regression suite, including the conflict path, which no run has produced.
+
+<details><summary>Original proposal</summary>
 
 **Addresses F17 — step one DONE (`d278c05`), and it worked.** `execute-batch` now dispatches
 with `run_in_background: false`; the `TaskOutput` polling step is deleted; the single-message
@@ -1546,6 +1601,8 @@ implementations at the project root — both now asserted by §5.2 test 9, **run
 actually available to subagents and long enough to finish**. Asserting on a run that was not
 permitted to create a worktree, or was killed before it could, measures nothing. F17 is the
 concrete target: every layer must look like layer 2 did.
+
+</details>
 
 ### 4.13 Make the critical guards executable rather than advisory — **DONE**
 
@@ -2116,7 +2173,7 @@ the first time the toolchain modifies code it did not write.
 | ~~4.14~~ | ~~Worktree creation as a script~~ **DONE `b6a0a86`** — inert until 4.15 landed, then load-bearing | ~~Blocking~~ | `execute-batch/scripts/` |
 | ~~4.16~~ | ~~Record completion as a SHA; derive counts from git~~ **DONE** — F16 fixed, run pending | ~~Correctness~~ | `execute-merge`, `execute`, `scripts/` |
 | ~~4.17~~ | ~~Write `execute-state.json` from a script~~ **DONE** — F21 resolved, verified by run 9 | ~~Correctness~~ | `execute/scripts/`, `execute-batch`, `execute-merge`, `execute-layer` |
-| 4.12 | Consolidate git ownership *(structural half — largely delivered by 4.15)* | Structural | `execute-layer`, `execute-batch` |
+| ~~4.12~~ | ~~Consolidate git ownership~~ **DONE** -- the merge is a script; no git command left in `execute-merge` | ~~Structural~~ | `execute-merge`, `execute-layer`, `execute` |
 | ~~4.13~~ | ~~Make critical guards executable~~ **DONE** — F15 resolved; the check now runs the guard | ~~Correctness~~ | `execute/scripts/`, `tests/test_toolchain.py` |
 | ~~4.8~~ | ~~`git pull origin main` guard~~ **DONE** | ~~Blocking~~ | `execute-task`, `execute-merge`, `execute`, `execute-layer`, `execute-batch` |
 | ~~4.9~~ | ~~Manifest completeness~~ **DONE** — built from task files, not the plan; F9 resolved | ~~Consistency~~ | `breakdown`, `breakdown/scripts/` |

@@ -19,6 +19,7 @@ Parse these from the prompt:
 | `--layer <name>` | Yes | Layer to execute (e.g., "1-foundation") |
 | `--project-path <path>` | Yes | Main project directory |
 | `--worktree-dir <path>` | Yes | Directory for worktrees |
+| `--prd-slug <slug>` | Yes | PRD/CRD slug. Names the ledger merges are recorded in |
 | `--max-parallel <N>` | No | Max concurrent tasks (default: 3) |
 | `--base-branch <name>` | No | Branch to base worktrees on and merge into (default: repository HEAD) |
 
@@ -180,7 +181,7 @@ for item in merge_queue:
 Call `/execute-merge` for each ready task:
 
 ```
-/execute-merge --task-id {task_id} --project-path {project_path} --worktree-path {worktree_path} --task-file {task_file} --base-branch {base_branch}
+/execute-merge --task-id {task_id} --project-path {project_path} --worktree-path {worktree_path} --task-file {task_file} --tasks-path {tasks_path} --prd-slug {prd_slug} --base-branch {base_branch} --attempts {attempts}
 ```
 
 **IMPORTANT**: Merge tasks **sequentially** in priority order to avoid conflicts.
