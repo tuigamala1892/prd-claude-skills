@@ -991,21 +991,50 @@ def _():
             "the ledger records a SHA that is not the merge commit")
         assert not os.path.isdir(d1), "the worktree was not cleaned up after a successful merge"
 
+        # The merge QUEUE: two tasks branched from the same base, different files, merged one
+        # after the other. This is what a parallel batch produces, and it is the case the
+        # brownfield run could not reach -- every layer there held exactly one task, so
+        # merge-task.sh was only ever called once per batch. The second merge here starts from
+        # a base that the first has already moved.
+        base_before = g("rev-parse", "HEAD").stdout.strip()
+        q1 = make_task("L2-001", "alpha.txt", "alpha")
+        q2 = make_task("L2-002", "beta.txt", "beta")
+        assert g("rev-parse", "HEAD").stdout.strip() == base_before, (
+            "the test branched the second task from a moved base; it no longer models a batch")
+        rc, out = merge("L2-001", q1)
+        assert rc == 0, f"first merge of the queue failed: {out[-300:]}"
+        moved = g("rev-parse", "HEAD").stdout.strip()
+        assert moved != base_before, "the first merge did not move the base"
+        rc, out = merge("L2-002", q2)
+        assert rc == 0, (
+            "the second merge in the queue failed against a base the first had moved -- "
+            f"this is every batch of more than one task:\n{out[-300:]}")
+        for f in ("alpha.txt", "beta.txt"):
+            assert os.path.isfile(os.path.join(app, f)), (
+                f"{f} is missing after both merges; the queue lost a task's work")
+        entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
+        assert len(entries) == 3, f"expected 3 ledger entries after the queue, got {len(entries)}"
+
         # A conflict must abort, preserve the worktree, and record NOTHING. Recording a
         # conflicted merge would make resume skip a task that never landed.
         d2 = make_task("L1-002", "clash.txt", "A")
         d3 = make_task("L1-003", "clash.txt", "B")
         rc, out = merge("L1-002", d2)
         assert rc == 0, f"second clean merge failed: {out[-300:]}"
+
+        # Relative, not a hard-coded total: an absolute count here silently went stale the
+        # moment a case was inserted above it, and reported a defect that did not exist.
+        before_conflict = len(
+            [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()])
         rc, out = merge("L1-003", d3)
         assert rc == 3, f"a conflicting merge returned {rc}, expected 3: {out[-300:]}"
         assert os.path.isdir(d3), "a conflicting merge destroyed the worktree holding the work"
         assert not os.path.isfile(os.path.join(app, ".git", "MERGE_HEAD")), (
             "a conflicting merge was left in progress rather than aborted")
         entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
-        assert len(entries) == 2, (
-            f"a conflicted merge was recorded in the ledger ({len(entries)} entries) -- "
-            "resume would skip a task that never landed")
+        assert len(entries) == before_conflict, (
+            f"a conflicted merge was recorded in the ledger ({before_conflict} -> "
+            f"{len(entries)}) -- resume would skip a task that never landed")
 
         # Refusals: nothing merged, nothing recorded, HEAD untouched.
         head = g("rev-parse", "HEAD").stdout.strip()
@@ -1025,7 +1054,7 @@ def _():
         assert g("rev-parse", "HEAD").stdout.strip() == head, (
             "a refused merge still moved HEAD")
         entries = [l for l in open(ledger, encoding="utf-8").read().splitlines() if l.strip()]
-        assert len(entries) == 2, "a refused merge still wrote to the ledger"
+        assert len(entries) == before_conflict, "a refused merge still wrote to the ledger"
     finally:
         rmtree(root)
 
