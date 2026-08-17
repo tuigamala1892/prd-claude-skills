@@ -16,3 +16,6 @@ desktop.ini
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Sample data (never commit)
+data/sample/
