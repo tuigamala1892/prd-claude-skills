@@ -1,10 +1,10 @@
-# Plugin 2.0 — PRD Fidelity Plan
+# Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
 **Status:** Proposed. Nothing here is implemented yet.
 **Date:** 2026-08-17
-**Subject:** what `/prd` writes, and how much of it survives into `/breakdown` and `/execute`
+**Subject:** what `/prd` and `/crd` write, and how much of it survives into `/breakdown` and `/execute`
 **Supersedes:** items **4.4** and **4.5** of [`toolchain-assessment-and-plan.md`](toolchain-assessment-and-plan.md), which are folded in below as items 12 and 18.
-**Evidence base:** a sample PRD corpus of 64 feature files (~594 KB, ~165k tokens), measured rather than assumed.
+**Evidence base:** a sample PRD corpus of 64 feature files (~628 KB, ~174k tokens) plus a full reading of the CRD path, measured rather than assumed.
 
 ---
 
@@ -12,7 +12,12 @@
 
 The assessment plan fixed the toolchain's *mechanics* — forking, worktrees, merges, state, path
 resolution. All of that now works end to end. This plan is about **fidelity**: the assessment
-never asked whether the content a PRD carries actually reaches the code.
+never asked whether the content a requirements document carries actually reaches the code.
+
+It began as a PRD-only plan and was extended to the CRD path at item 44; §5 J holds the parity
+work, and opens with a ledger of which path is ahead on which concern. That ledger is worth reading
+before the rest, because the CRD path is ahead on five counts and the more common repair direction
+turns out to be CRD → PRD rather than the reverse.
 
 It does not. Measured against a real corpus, `/prd` writes four kinds of content and the
 pipeline consumes one of them:
@@ -27,7 +32,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P28** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P32** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -45,6 +50,17 @@ Their arrival changes one earlier item. Item 28 does **not** add a new file: ite
 proposes `architecture.md` as a prescriptive greenfield artefact, and it turns out to claim most
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
+
+**Extended 2026-08-24 to cover the `/crd` path.** Findings P29–P32 and items 44–50 (§5 J) come
+from reading the CRD command, its three sub-skills, its four agents and both of its format
+references against this plan. The plan was PRD-only until then, which was a scoping choice that had
+stopped being defensible: most of P1–P28 apply to both paths, the two paths define overlapping
+schemas independently, and **the CRD path is ahead of the PRD path on five counts** — §5 J opens
+with the ledger of who is ahead where, because that is what "best of both" has to be built from.
+
+This is an extension rather than a counterpart document, deliberately. Two plans specifying one
+shared schema is the producer/consumer drift this plan exists to describe (P10, item 22), and it
+would duplicate items 33, 34, 40, 41 and 43 immediately.
 
 **Re-measured 2026-08-24 against an updated corpus.** Every figure in §2 was re-taken; the
 material changes are recorded there and in P9, P23 and P24. Two of them matter beyond the
@@ -479,6 +495,64 @@ contradicts the feature citing it.
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
 
+**P29 — `status` means three unrelated things, and two of the vocabularies overlap.**
+*Verification: static, exhaustive.*
+
+| Tag | Values | What it records |
+|---|---|---|
+| PRD feature `<status>` | `tbd`, `in-progress`, `defined`, `excluded`, `superseded` | definition completeness (§4.2) |
+| CRD `<meta><status>` | `draft`, `ready`, `in-progress`, `complete`, `abandoned` | workflow position |
+| PROJECT.md `<feature status=>` | `complete`, `partial`, `planned` | build completeness |
+
+Three artefacts, one word, three meanings — and `in-progress` and `complete` appear in more than
+one of them meaning different things. §4.2 already warns that *"`in-progress` reads as build
+progress to every developer who sees it, and `/execute` has its own `in-progress` meaning exactly
+that"*. The collision is not hypothetical or future: **it exists across the two paths today.**
+
+A reader cannot tell which `status` they are looking at without knowing which file they are in, and
+neither can a script. Any shared schema (item 44) has to settle this before anything else, because
+every other shared element hangs off knowing what a feature's state is.
+
+**P30 — The two paths define overlapping schemas independently, and neither cites the other.**
+*Verification: static, exhaustive.*
+`<criterion>` with `<given>/<when>/<then>` is defined twice — in `commands/prd.md` and in
+`crd-format.md` — with no shared definition and no reference between them. So is priority, in two
+different vocabularies. So is the notion of a feature: PRD features carry slugs, PROJECT.md
+features carry `id` attributes, and nothing states whether they are the same namespace even though
+PROJECT.md records a `prd-path` pointing at the document the other set lives in.
+
+The PRD templates are inline in a **command file**; the CRD schema is a **reference file** under a
+skill; the task schema is a third reference file. There is no shared core, so every change in this
+plan to `<criterion>`, `<gaps>`, priority or traceability has to be made two or three times and
+kept in step by hand. That is the condition item 22 exists to detect after the fact, present here
+by construction.
+
+**P31 — CRD requirements and acceptance criteria are unlinked, and the criteria carry no priority.**
+*Verification: static.*
+A CRD has `<requirements>` with `id` and `priority`, and a separate document-level
+`<acceptance-criteria>` with its own `id` sequence. **Nothing connects the two.** Criterion 3 does
+not say which requirement it verifies, and requirement 3 does not say which criteria discharge it,
+so a CRD with five requirements and four criteria cannot be checked for coverage — the same defect
+as P20, inside a single document.
+
+The criteria also carry no priority, while the requirements do. Filtering a CRD by priority
+therefore selects requirements and leaves every criterion in scope, which is the mirror image of
+the PRD path's problem, where criteria are all that exist.
+
+**P32 — The CRD path has no deferral mechanism and no resume.**
+*Verification: static.*
+`/crd` Phase 5 asks *"Should we define acceptance criteria for this now, or mark it for later?"* —
+the same question `/prd` Phase 3 asks. On the PRD path "later" has somewhere to go: `what-next.md`,
+and now `<gaps>`. **On the CRD path it has nowhere.** There is no `what-next` equivalent, no gaps
+element, and no `tbd` state for a requirement, so a deferred criterion is simply absent and
+indistinguishable from one nobody thought of.
+
+`skills/crd/SKILL.md` also records that *"CRD workflow is stateless per invocation"* and that no
+resume tracking is needed. `/prd` has `--resume` and an entire initialization phase built around
+not overwriting an interview in progress (F3). A CRD interview that is interrupted is lost, and a
+second `/crd` run on the same change writes over the first with no equivalent of `/prd`'s
+pre-write existence check.
+
 **P28 — One version where two are needed, and the one schema version there is, is wrong.**
 *Verification: measured.*
 
@@ -598,7 +672,7 @@ The five values, defined — and the definitions go **in the template**, where t
 | Status | Meaning | Required content |
 |---|---|---|
 | `tbd` | No criteria written. A name and an intent. | — |
-| `in-progress` | Criteria exist, but the feature declares a shortfall in its own specification. | ≥1 criterion + a `<gap kind="specification">` |
+| `in-progress` | Criteria exist; the feature is deliberately being held short of `defined`. | ≥1 criterion |
 | `defined` | Criteria cover the edge cases — *measured* as EARS pattern coverage, not asserted; notes carry the data model and relationships. | ≥1 `unwanted-behaviour` criterion + structured notes |
 | `excluded` | Won't-have. Deliberately not built. | `<rationale>` (adopts P13) |
 | `superseded` | Merged into another feature; file retained as a pointer. | successor link; **removed from `index.md`** |
@@ -607,12 +681,18 @@ The five values, defined — and the definitions go **in the template**, where t
 be said explicitly, because `in-progress` reads as build progress to every developer who sees
 it, and because `/execute` has its own `in-progress` meaning exactly that.
 
-**`in-progress` now has a mechanical test, and the corpus supplied it.** A feature is
-`in-progress` exactly when it carries a `<gap kind="specification">`; a `defined` feature may carry
-gaps of every other kind, because *being specified* and *being unblocked* are different things.
-That replaces the prose test — "some scope is carried by the description alone" — which item 3
-could never evaluate and which is why its ambiguous band existed at all. The author declares the
-shortfall; the checker reads the declaration.
+**`defined` now has a mechanical test, and the corpus supplied it — but it runs in one direction
+only.** A `defined` feature **must not** carry a `<gap kind="specification">`; it may carry gaps of
+every other kind, because *being specified* and *being unblocked* are different things.
+
+The converse is deliberately **not** asserted. Absence of a specification gap does not make a
+feature `defined`, because an author may hold something at `in-progress` for reasons the file
+cannot express — a review not yet done, a boundary they expect to move, a judgement that the
+criteria read thinner than they look. `in-progress` stays a **declared** state, not a derived one.
+
+What that buys is a guard with no false positives: *a feature cannot claim to be fully specified
+while declaring that its specification is incomplete.* That contradiction is checkable and worth
+stopping. Everything softer than it stays with the author.
 
 **"Cover the edge cases" needed a definition, and P23 is what happens without one.** Seven
 features carry `defined` while having no criterion that mentions a failure at all. Item 33's
@@ -711,12 +791,15 @@ The rule, in order:
 The structured-notes marker was the decisive signal: present in 28 of 34 `defined` files and in
 **none** of the other 30. Zero false positives.
 
-**The ambiguous band is now closed by declaration rather than by inference.** A
-`<gap kind="specification">` means `in-progress`; its absence, with criteria present, means the
-author is claiming the specification is complete. The single corpus file this rule escalated at
-first review is exactly the kind of case a declaration settles and a heuristic cannot. Keep the
-escalation path for files written before `<gaps>` existed — which, during the migration in item
-41, is all of them.
+**One half of the ambiguous band closes by declaration; the other half stays open on purpose.** A
+`<gap kind="specification">` bars `defined` outright — that is a contradiction, and the derivation
+should report it as one rather than escalate it. But the absence of such a gap proves nothing, so
+a feature the author has marked `in-progress` is **never** contradicted upward to `defined`; the
+derivation may only ever report *at most* what the content supports.
+
+So the rule becomes: derive a **ceiling**, not a value. Report where the declared status exceeds
+the ceiling; stay silent where it sits below. The escalation path survives for the band between,
+and during item 41's migration that band is every file written before `<gaps>` existed.
 
 **Item 33 adds the signal this rule is missing.** Every test above reads the notes or counts
 criteria; none reads what the criteria *say*. Once criteria carry a `pattern` attribute, add:
@@ -1176,7 +1259,7 @@ substance of this item:
 
 | Kind | Blocks definition? | Blocks execution? |
 |---|---|---|
-| `specification` | **yes** — this is what makes a feature `in-progress` (§4.2) | yes |
+| `specification` | **yes** — it bars `defined` outright (§4.2) | yes |
 | `dependency` | no | yes, until named and available |
 | `decision` | no | yes — an undecided question built anyway is an invented one |
 | `ownership` | no | warn: the boundary may move under the task |
@@ -1656,6 +1739,176 @@ the existing one, and the suite stays green throughout.
 The older fixture is not decoration under these rules: it is the *input* to the migration test and
 to item 24's comparison, so it is exercised on every run rather than merely stored.
 
+### J. Parity between the two paths
+
+Seven items, from reading the `/crd` command, its three sub-skills, its four agents and both format
+references against everything above. The goal is **parity of capability and a shared schema wherever
+the two paths overlap** — not one path absorbing the other.
+
+#### Who is ahead where
+
+This is the ledger "best of both" has to be built from. The PRD path is not the better of the two;
+it is the more thoroughly examined one, which is a different thing.
+
+| Concern | PRD path | CRD path | Take from |
+|---|---|---|---|
+| Acceptance criteria have a consumer | **no** (P2) | **yes** — `breakdown` reads them | **CRD** |
+| Architecture / structure context | none (P17) | `PROJECT.md`, generated and maintained | **CRD** |
+| Change size recorded | none (P21) | `<scope>`, with a stated rubric | **CRD** |
+| Uncertainty recorded | none (P19) | `<confidence>`, required | **CRD** |
+| Priority stored once | duplicated (P8) | single, on the requirement | **CRD** |
+| Status values documented | undefined (P7) | a transitions table | **CRD** |
+| Data model / rationale | `<notes>` (unread, P4) | **nowhere at all** | **PRD** |
+| Deferral of unfinished work | `what-next.md`, `<gaps>` | **nothing** (P32) | **PRD** |
+| Resume of an interrupted interview | `--resume`, pre-write guard (F3) | **stateless, none** (P32) | **PRD** |
+| Requirement-level granularity | criteria only | requirements **and** criteria (P31) | *see item 46* |
+| Design step | none (P25) | `<impact-analysis>` — a partial one | **CRD** |
+
+Five of the six things this plan spent its first forty items building for the PRD path already
+exist on the CRD path in some form. **Anything below that reads as "add X to CRD" should be checked
+against this table first**, because the more common direction is the other one.
+
+**44. One schema core, included by both paths.**
+*Addresses P30. Precondition for 45–50, and for items 33, 34 and 29 landing on both paths.*
+
+Extract the elements both paths use into a single reference that each cites rather than restates:
+`<criterion>` (item 33's EARS shape, with `pattern` and `priority`), `<gaps>` (item 29), the status
+vocabularies (item 45), traceability identifiers (items 16, 30), and `<scope>` and `<confidence>`
+(item 49).
+
+Three consequences worth stating:
+
+- **`/prd`'s templates stop living inside a command file.** They are schema, and schema in a
+  command cannot be cited by a skill. This is the same mistake in a different register as `<notes>`
+  having no reader: a definition nobody can reference gets copied instead.
+- **The task schema cites the core too**, so `<satisfies-criteria>` means the same thing whether the
+  task came from a feature or from a change request.
+- **The core carries the `schema_version`** (item 43), so both paths version together. Two paths
+  versioning independently would need a compatibility matrix, and there is no appetite for one.
+
+**45. Three status vocabularies, three distinct names.**
+*Addresses P29. The first decision, because everything else hangs off it.*
+
+The three tags record genuinely different things, so they should not be merged — they should stop
+sharing a word:
+
+| Now | Becomes | Records | Values |
+|---|---|---|---|
+| PRD feature `<status>` | `<definition>` | how completely specified | `tbd`, `in-progress`, `defined`, `excluded`, `superseded` |
+| CRD `<meta><status>` | `<workflow>` | where in the process | `draft`, `ready`, `in-progress`, `complete`, `abandoned` |
+| PROJECT.md `<feature status=>` | `built=` | how much exists in code | `complete`, `partial`, `planned` |
+
+Renaming is cheap now and expensive later, and it removes the class of bug where a script reads the
+right tag from the wrong file. §4.2's warning that `in-progress` reads as build progress stops
+being a warning once the tag is called `<definition>`.
+
+**`in-progress` stays. Decided.** Retiring it was considered, on the grounds that item 29 makes it
+derivable from the presence of a `<gap kind="specification">`. It is not derivable, and the reason
+is the useful one: **an author may want to hold a feature short of `defined` for reasons the file
+cannot express** — a review not yet run, a boundary they expect to move, a sense that the criteria
+read thinner than they count. Removing the value would remove the ability to say so.
+
+The guard survives without the biconditional, and runs one way: a `defined` feature must not carry
+a `specification` gap. That catches the contradiction — claiming to be fully specified while
+declaring an incomplete specification — and leaves every softer judgement with the author. §4.2
+carries the same rule; item 3 implements it as a ceiling rather than an equality.
+
+**46. EARS collapses the CRD's requirement/criterion split.**
+*Addresses P31. Depends on item 33.*
+
+A CRD carries `<requirements>` *and* `<acceptance-criteria>` as separate, unlinked lists. The PRD
+path carries only criteria. The split exists because Given/When/Then is a **scenario** format that
+cannot state a requirement — so a second list was needed to hold the requirements themselves.
+
+Item 33 removes the reason for the split. An EARS criterion **is** a requirement: *"When the user
+toggles the theme, the system shall persist the preference."* So:
+
+- CRD `<requirements>` is retired, its entries becoming EARS criteria in the shared core (item 44)
+- criteria gain `priority` (item 47) — the attribute requirements had and criteria lacked, which is
+  what made priority filtering select nothing on the CRD path
+- the unlinkable pair becomes one list with one id space, so P31's coverage question — *which
+  criteria discharge requirement 3?* — stops being unanswerable by becoming meaningless
+
+**The one genuine structural incompatibility, and it is decided in EARS's favour.** The resolution
+deletes a CRD concept rather than adding a PRD one. The alternative — giving PRD features a
+`<requirements>` layer above their criteria — was considered and rejected: it adds a level to 64
+features to accommodate a split that exists only because of a format both paths are leaving.
+
+Recorded rather than buried, because this is the item most likely to be questioned later by someone
+who reads the CRD schema first and sees a layer being removed. The answer is that the layer was
+never carrying meaning of its own — it was carrying the requirements that Given/When/Then had no
+way to state.
+
+**47. Requirement-level priority is `P0|P1|P2`, on both paths.**
+*Extends item 34 to the CRD path. Decided.*
+
+Item 34 chose `P0|P1|P2` for criterion priority on the PRD path specifically so it would not share a
+vocabulary with feature-level MoSCoW. The CRD path already has requirement-level priority **in
+MoSCoW**, so landing item 34 unchanged would give the toolchain two vocabularies for one concept —
+exactly what item 29 refused when it retired `<needs-clarification>` rather than run it beside
+`<gaps>`.
+
+**Resolution: `P0|P1|P2` everywhere a requirement is prioritised, on both paths.** CRD requirement
+priorities migrate from MoSCoW under item 41. MoSCoW survives only where it is a *portfolio*
+judgement across items — which on the PRD path is the feature, per §4.1.
+
+**A CRD carries a document-level MoSCoW. Decided.** Change requests compete for attention the way
+features compete for a release, and `--list` already exists to survey them — a listing that cannot
+show tiers is a worse listing. So `<meta>` gains a MoSCoW `<priority>`, giving the CRD path the
+same two-level shape as the PRD path: MoSCoW for *which work*, `P0|P1|P2` for *which parts of it*.
+
+**This is §4.1's rule, not an exception to it.** The rule is that feature-level planning belongs to
+the index — and for change requests **the document is the unit and there is no index**, so the
+document carries it. `--list` is the survey view, derived by scanning, which is what an index would
+otherwise have been. The test §4.1 actually applies is *"anything finer than the planning unit
+belongs where the thing itself is"*, and here the planning unit and the thing are the same object.
+
+It also makes `/breakdown`'s `--priority` threshold (item 14) mean something on the CRD path, where
+today it means nothing: a filter can now decline to break down a could-have change request.
+
+**48. The CRD path gains the PRD's deferral and resume machinery.**
+*Addresses P32. Depends on 29 and 44.*
+
+- **`<gaps>` in the CRD**, in the shared shape from item 44. A deferred criterion becomes a
+  `<gap kind="specification">` rather than an absence, which also gives the CRD's `<workflow>` tag
+  a mechanical test for `draft` versus `ready` — the same move item 29 made for `<definition>`.
+- **`--resume`, and a pre-write existence check.** `/crd` is documented as stateless and writes
+  `docs/crd/{slug}.md` with no equivalent of `/prd`'s check. F3 was exactly this defect on the PRD
+  path, and it cost an interview before it was fixed. The CRD path has the same hole and has not
+  been caught by it yet.
+- **No `what-next.md` equivalent.** A CRD is a single document about a single change; the deferral
+  belongs in `<gaps>` inside it and the next-command line in `<meta>`. *Recorded because the
+  symmetric answer — a `what-next` per CRD — is the wrong one.*
+
+**49. The PRD path gains `<scope>` and `<confidence>`.**
+*Addresses P19 and P21 from the other direction. Depends on 44.*
+
+Both already exist on the CRD path, both are required fields, and **neither has a reader** — which
+is why items 29 and 31 were written as if from nothing. They should be lifted into the shared core
+and given consumers on both paths:
+
+- `<scope>` with its existing rubric (`small` = 1–3 files) is item 31's routing input. On the PRD
+  path there is no impact analysis to compute it, so it is derived from the feature's task count
+  after breakdown rather than declared at authoring time — *an asymmetry that is real and should
+  not be papered over*.
+- `<confidence>` is item 29's whole-analysis counterpart to a per-item `<gap>`, and item 38's gate
+  reads both.
+
+**50. Parity as a check, not an aspiration.**
+*Addresses P30. Extends item 23.*
+
+Both paths drift apart the moment nothing measures the distance. Add to the regression suite:
+
+- every element in the shared core is cited, not restated, by both paths — the `<criterion>`
+  double definition is the case that motivates it
+- the three status vocabularies are disjoint (item 45), so no value appears in two of them
+- both paths produce artefacts carrying the same `schema_version` (item 43)
+- a capability present on one path and absent on the other is listed, with a reason — **the ledger
+  above becomes a test rather than a paragraph that goes stale**
+
+The last one is the point. Five of the asymmetries this section resolves existed because nobody had
+read the two paths side by side, and the plan itself was PRD-only for forty-three items.
+
 ---
 
 ## 6. Summary
@@ -1705,6 +1958,13 @@ to item 24's comparison, so it is exercised on every run rather than merely stor
 | 41 | A migration guide an agent can execute | (all schema items) | **Blocking** |
 | 42 | A rename operation with a checkable postcondition | **P27** | Correctness |
 | 43 | A fixture per schema version; schema version ≠ plugin version | **P28** | **Blocking** |
+| 44 | One schema core, cited by both paths | **P30** | **Blocking** |
+| 45 | Three status vocabularies, three distinct names | **P29** | **Correctness** |
+| 46 | EARS collapses the CRD requirement/criterion split | **P31** | **Correctness** |
+| 47 | `P0\|P1\|P2` on both paths | P1, **P31** | Consistency |
+| 48 | CRD gains gaps, `--resume` and a pre-write guard | **P32** | **Correctness** |
+| 49 | PRD gains `<scope>` and `<confidence>` | P19, P21 | Structural |
+| 50 | Parity as a regression check | **P30** | — |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -1735,6 +1995,12 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**44 and 45 come before every schema item, with 43.** A shared core defined after the elements it
+is meant to share is a merge rather than an extraction, and 45's renaming is cheap now and
+expensive once three vocabularies have consumers. 46 and 47 follow 33 and 34 immediately — they are
+the same change reaching the other path, and letting them lag is how the two vocabularies get
+consumers. 48, 49 and 50 can come with the rest of their concerns.
 
 **43 comes before every schema item, including 41.** The regression suite validates the fixture
 against the current schema, so item 1 breaks it unless a second fixture exists to land beside the
@@ -1806,12 +2072,13 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
    ordering and let MoSCoW select roots rather than members. **This needs deciding before item
    14 is built, not after** — and distinguishing a genuine dependency from a cross-reference is
    itself work the schema does not currently support, since both are plain markdown links.
-5. **What is `blocking`'s default in item 29, and who sets it?** A `<needs-clarification>` that
-   defaults to blocking makes an overnight run stop on the first open question — the failure mode
-   `/execute` exists to avoid. Defaulting to non-blocking makes the element decorative. The likely
-   answer is that `/prd` derives it from whether the criterion it hangs off belongs to a
-   must-have, but that is a guess, and it should be measured against the corpus before being
-   written into the template.
+5. **Resolved — see item 29.** *(Was: what is `blocking`'s default, and who sets it?)* The
+   question presupposed a boolean on a `<needs-clarification>` element that no longer exists.
+   `<gaps>` carries `kind` instead, and the kind decides: `specification` and `decision` stop a
+   run, `dependency` stops it until the dependency is available, and `ownership` and `evidence`
+   warn. Nobody sets a default, because there is no boolean to default — which is the better
+   answer to the overnight-run objection that prompted the question, since three of the five kinds
+   warn rather than halt.
 6. **Does item 31's threshold belong to the change or to the project?** Three files is a
    reasonable default and a poor universal — the right number for a monorepo with generated
    clients is not the right number for a library. Item 31 says it should be a `<rules>` value,
