@@ -27,7 +27,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P22** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P25** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -45,6 +45,14 @@ Their arrival changes one earlier item. Item 28 does **not** add a new file: ite
 proposes `architecture.md` as a prescriptive greenfield artefact, and it turns out to claim most
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
+
+**Amended again 2026-08-24, after a study of Kiro's open-source spec formats.** P23–P25 and
+items 33–39 (§5 I) come from that study and from the conventions of the project the sample corpus
+was taken from. Three of them are format decisions rather than additions — EARS replaces
+Given/When/Then (item 33), priority gains a second level (item 34), and the ADR template is
+adopted wholesale from the corpus project rather than invented here (item 36). Nothing numbered
+1–32 or P1–P22 moved. See [`sdd-comparison.md`](sdd-comparison.md) §11 for the comparative
+argument.
 
 **Re-verified after the fold, same day.** The folded claims were re-checked against the files
 rather than against the comparison document, and three needed narrowing: P19 overstated the
@@ -353,6 +361,71 @@ it. And the volume claim is a **projection** from §2's corpus measurements, not
 generated task set — no PRD of this size has been broken down, because P5 stops it first. Item 21
 is the earliest point at which it could be measured.
 
+**P23 — The criterion format cannot express most of what a requirement needs to say.**
+*Verification: measured.*
+All 519 criteria in the corpus are Given/When/Then. GWT is a **scenario** format: it renders one
+event and its outcome. Mapped onto the six EARS patterns, four of them have no natural rendering
+in it at all:
+
+| EARS pattern | Template | Expressible as GWT? | In the corpus |
+|---|---|---|---|
+| Event-driven | `When <trigger>, the system shall <response>` | naturally | essentially all 519 |
+| Unwanted behaviour | `If <trigger>, then the system shall <response>` | awkwardly | 80 (15.4%) |
+| State-driven | `While <precondition>, the system shall <response>` | awkwardly | rare |
+| Ubiquitous | `The system shall <response>` | no natural form | — |
+| Optional feature | `Where <feature> exists, the system shall <response>` | no natural form | **0** |
+| Complex | combination of the above | no | — |
+
+**84.6% of criteria touch no failure path** — no failure, invalid state, conflict, expiry,
+refusal or absence anywhere in the block. And **7 of the 34 features labelled `defined` have none
+at all.**
+
+The last figure is the one that matters, because §4.2 defines `defined` as *"criteria cover the
+edge cases"*. Those seven do not satisfy the definition they are labelled under. **Item 3's
+derivation did not catch it**: it keys on the structured-notes marker, so it validates the notes
+half of the definition and never looks at the criteria. Its 63/64 agreement means the rule and
+the labels agree — which is not evidence that either is right.
+
+*Method, stated so the numbers are not over-read.* Failure paths were counted by keyword search
+across the whole criterion block. It over-counts a criterion that mentions an error in passing
+and under-counts one that describes a failure without any of the keywords. Read 15.4% as an order
+of magnitude. The zero for optional-feature is structural rather than statistical: the shape has
+no GWT rendering, so its absence is a property of the format, not of the authors.
+
+**P24 — The PRD cites three artefact classes the toolchain cannot see.**
+*Verification: measured.*
+
+| Artefact class | Distinct items | Mentions | Corpus files citing one |
+|---|---|---|---|
+| Architecture decision records | 16 | 113 | 25 of 67 |
+| Open questions register | 19 | 40 | — |
+| Product principles | — | 4 | — |
+
+**157 references, none validated and none followed.** `analyze-prd` receives PRD XML and nothing
+else, so a feature whose scope is settled by a decision record is broken down without it. Nothing
+detects a reference to a record that does not exist, one that has been superseded, or one that
+contradicts the feature citing it.
+
+This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
+larger, because a dangling reference is wrong rather than merely unread.
+
+**P25 — There is no design step, and no way to say which requirements would need one.**
+*Verification: static, corroborated by the corpus author.*
+The pipeline is requirements → tasks with nothing in between. Every comparable tool has three
+phases with a design artefact and an approval gate between each (see `sdd-comparison.md`).
+
+The evidence that this is a real gap rather than a theoretical one is the corpus itself. The
+`<architecture>` block in the index (P11) and the data-model blocks in feature notes were produced
+by the author **forcing architecture conversations the workflow does not provide**, and the 16
+decision records were created the same way and then kept outside the PRD because nothing linked
+them to `/prd`. The compensation worked. That it was necessary, and that its output had nowhere
+schema-defined to land, is the finding.
+
+There is also no notion of **architectural significance** — the established idea that a subset of
+requirements measurably affects the architecture and merits separate treatment. Without it a
+design step cannot be afforded: it would run across all 64 features rather than the handful that
+warrant it. Item 35 is what makes item 38 affordable.
+
 ---
 
 ## 4. Two design decisions that resolve most of the above
@@ -374,6 +447,12 @@ This settles P8 by choosing, not by synchronising. The reasoning is not aestheti
 
 **Change:** delete `<priority>` from the feature template. Keep `priority=` on the index entry.
 
+**One exception, stated so it does not look like a violation.** Item 34 puts a second priority on
+each *criterion*. That is a planning judgement, which the rule above would place in the index —
+but the index does not know criteria exist, and cannot without duplicating them. So criterion
+priority lives with the criterion. The rule holds at the granularity it was written for: **feature
+-level planning belongs to the index; anything finer belongs where the thing itself is.**
+
 ### 4.2 Status records definition completeness, not build progress
 
 The five values, defined — and the definitions go **in the template**, where the writer sees them:
@@ -382,13 +461,19 @@ The five values, defined — and the definitions go **in the template**, where t
 |---|---|---|
 | `tbd` | No criteria written. A name and an intent. | — |
 | `in-progress` | Criteria exist, but some scope is carried by the description alone. | ≥1 criterion |
-| `defined` | Criteria cover the edge cases; notes carry the data model and relationships. | criteria + structured notes |
+| `defined` | Criteria cover the edge cases — *measured* as EARS pattern coverage, not asserted; notes carry the data model and relationships. | ≥1 `unwanted-behaviour` criterion + structured notes |
 | `excluded` | Won't-have. Deliberately not built. | `<rationale>` (adopts P13) |
 | `superseded` | Merged into another feature; file retained as a pointer. | successor link; **removed from `index.md`** |
 
 **The tag records how completely the feature is *defined*, not how far it is *built*.** This must
 be said explicitly, because `in-progress` reads as build progress to every developer who sees
 it, and because `/execute` has its own `in-progress` meaning exactly that.
+
+**"Cover the edge cases" needed a definition, and P23 is what happens without one.** Seven
+features carry `defined` while having no criterion that mentions a failure at all. Item 33's
+`pattern` attribute makes the test mechanical: a feature whose criteria are entirely
+`event-driven` has not covered its edge cases, whatever its notes say. That is a deterministic
+attribute count, not a judgement, and it is the half of this definition item 3 has never checked.
 
 Two consequences worth stating plainly:
 
@@ -475,6 +560,12 @@ The rule, in order:
 The structured-notes marker was the decisive signal: present in 28 of 34 `defined` files and in
 **none** of the other 30. Zero false positives.
 
+**Item 33 adds the signal this rule is missing.** Every test above reads the notes or counts
+criteria; none reads what the criteria *say*. Once criteria carry a `pattern` attribute, add:
+a feature whose criteria are entirely `event-driven` is at most `in-progress`, however rich its
+notes. On the corpus that single rule reclassifies seven features the current rule scores as
+agreeing — see P23, which is the measurement this item's 63/64 concealed.
+
 > **Read this honestly.** The rule was tuned on the same corpus it was scored against, so 63/64
 > is an in-sample figure and not evidence it generalises. What does generalise is the shape:
 > **zero contradictions and a one-file escalation band.** The design is safe because it refuses
@@ -507,6 +598,13 @@ Today Phase 6 asks the model four prose questions about the tech stack. It gains
   and any feature file still carrying a `<priority>`
 - criterion `id` uniqueness within a feature; `phase` references that exist in `<phases>`
 - `excluded` without `<rationale>`; `superseded` without a successor or still present in the index
+- **EARS pattern coverage** per feature (item 33): report any `defined` feature with no
+  `unwanted-behaviour` criterion, and any criterion whose `pattern` attribute is missing
+- **unassigned criterion priority** (item 34), as a count — a corpus where everything is `P0`
+  carries no information, and neither does one where nothing is set
+- **architecturally-significant candidates** (item 35), screened by the published ASR heuristics
+  and reported as candidates only, never applied
+- **external references resolve** (item 39) — every `ADR-NNN`, `OQ-NNN` and principle citation
 
 Mismatches are **reported, not auto-corrected**. A wrong status is often a signal that the
 *content* is wrong, and silently relabelling hides that.
@@ -527,6 +625,10 @@ does not think to add. A same-persona agent would deepen the bias; an adversaria
   criteria only, never a rewritten file.
 - Persona: a QA lead trying to find the case the author missed — edge cases, empty and error
   states, the negative assertion, the thing that must *not* happen.
+- **Its checklist is the six EARS patterns** (item 33), which turns a vague brief into a specific
+  question: which patterns are unrepresented here? A feature with fifteen `event-driven` criteria
+  and no `unwanted-behaviour` one has a named gap rather than a hunch, and P23 says that describes
+  most of the corpus.
 - It also proposes the `<data-model>` note, since `defined` requires it (§4.2).
 
 > **Keep it opt-in, per feature.** Run unattended across 21 `tbd` features it would produce
@@ -614,6 +716,9 @@ Correctness, not preference. No flag, no override.
 `could-have`** — that preserves today's behaviour minus item 13, so the flag adds capability
 without silently changing what an existing invocation builds.
 
+**Item 34 adds a second, finer filter** — `--requirement-level <P0|P1|P2>`, applied after this
+one. The two compose: this flag selects *features*, that one selects *criteria within them*.
+
 > **A filtered set is not automatically a buildable set.** 9 of the corpus's 13 must-have
 > features reference lower-tier features, 49 times in total. Resolve open question 4 before
 > building this item — the flag is easy, but what it should do about a must-have that points at
@@ -635,10 +740,17 @@ In `task-format-spec.md` `<meta>`, **not** as `<priority>` (P3):
   <id>L2-003</id>
   <priority>1</priority>                    <!-- UNCHANGED: integer, merge order -->
   <source-feature>{{feature-slug}}</source-feature>   <!-- P15 -->
-  <moscow>must-have</moscow>                          <!-- P1 -->
+  <moscow>must-have</moscow>                          <!-- P1, feature level -->
+  <satisfies-criteria>1,4,7</satisfies-criteria>      <!-- item 34, criterion level -->
+  <requirement-level>P0</requirement-level>           <!-- highest among those criteria -->
   <feature-phase>1</feature-phase>                    <!-- P12, optional -->
 </meta>
 ```
+
+`<satisfies-criteria>` is the finer traceability Kiro's spec asks for and its own samples fail to
+keep — their workflow specifies `_Requirements: 1.2_` and the sample degrades to
+`_Requirements: 1_`. Fine-grained traceability survives only where something checks it, which is
+item 30's job and the reason the two items are paired in the ordering below.
 
 **17. Carry the criteria and the data model, structurally.**
 `<prd-excerpt>` as free prose is how P2 and P4 happen. Add to the task format:
@@ -646,7 +758,10 @@ In `task-format-spec.md` `<meta>`, **not** as `<priority>` (P3):
 - `<acceptance-criteria>` — the source criteria, **verbatim with their original ids**, so a task
   cites `criterion 7` and coverage is reportable
 - the feature's `<data-model>` note carried into `<context>` rather than re-inferred
-- `<test-requirements>` **derived from** the criteria, with each test naming the criterion it covers
+- `<test-requirements>` **derived from** the criteria, with each test naming the criterion it covers.
+  Item 33 improves this concretely: an `unwanted-behaviour` criterion states its negative case
+  explicitly, so the failing test is read off rather than invented — which is what the toolchain
+  currently does, and what P19 says it cannot be trusted to do
 
 This is where the pipeline stops discarding the document.
 
@@ -688,6 +803,9 @@ against the declared schema, invoked in three places:
 - in `tests/test_toolchain.py`, against a fixture
 
 A producer/consumer mismatch should fail at the boundary, not silently degrade three skills later.
+
+**Item 39 extends this outward**, to the 157 references that leave the PRD entirely (P24). Same
+script, same boundary, one more class of thing that is currently asserted and never checked.
 
 **23. Extend the regression suite.**
 New checks in the existing `@check(name, finding=...)` style: no `<priority>` in the feature
@@ -886,6 +1004,10 @@ One script, three assertions, run at the end of `/breakdown` and again in `/exec
 
 - every feature above the `--priority` threshold has ≥1 task naming it in `<source-feature>`
 - every task's `<source-feature>` resolves to a feature that exists and was not skipped
+- every **criterion** above the `--requirement-level` threshold is named by some task's
+  `<satisfies-criteria>` (item 34), and every id named resolves to a criterion that exists
+- every **architecturally-significant** feature is named by a decision record's `**Drives:**`
+  field, or carries an explicit no-decision-needed (items 35 and 36, when the design track is on)
 - no task exists whose `<source-feature>` is `wont-have`, `excluded` or `superseded` (item 13's
   runtime backstop, and the thing item 21 is being written to measure)
 
@@ -938,6 +1060,205 @@ The general point is that every other item in this plan adds fidelity — more c
 more faithfully — and the review burden scales with it. A summary view is the cheapest thing that
 keeps a human able to check the result at all.
 
+### I. Requirement format, design, and decisions
+
+Seven items from the study of Kiro's open-source spec formats and from the conventions of the
+project the sample corpus came from. Items 33 and 34 change the criterion schema and everything
+in A–H that touches criteria inherits from them; 35–38 are a design track that is **off by
+default**; 39 stands alone and is worth doing regardless.
+
+**33. Adopt EARS as the criterion format, replacing Given/When/Then.**
+*Addresses P23.*
+
+```xml
+<criterion id="1" pattern="event-driven" priority="P0">
+  When a user submits a response, the system shall persist it and return a confirmation.
+</criterion>
+```
+
+`pattern` is one of the six EARS patterns: `ubiquitous`, `state-driven`, `event-driven`,
+`optional-feature`, `unwanted-behaviour`, `complex`. `priority` is item 34.
+
+**Replace rather than measure against.** The alternative considered was keeping GWT and scoring it
+against the EARS taxonomy. That is incoherent: the checker would flag the absence of patterns the
+format cannot express, and P23 shows the corpus has zero `optional-feature` criteria for exactly
+that reason. If EARS is the right taxonomy for judging coverage, it is the right format for
+writing it.
+
+Three further reasons, in descending order of weight:
+
+- **The `pattern` attribute makes §4.2's definition mechanical.** "Covers the edge cases" becomes
+  an attribute count rather than a judgement or a keyword heuristic. This is the single thing item
+  3 has never been able to check.
+- **The schema is being rewritten anyway** by items 1, 2, 5, 16, 17 and 35. Migrating once, now,
+  is cheaper than migrating later against more content.
+- **It is less verbose than a GWT triple**, which is a small credit against P22.
+
+**Migration is the risky part, and it gets its own rules.** 519 criteria rewritten by a model is
+exactly the shape of change that loses meaning quietly.
+
+- Per feature, never per corpus. Reviewed as a diff, feature by feature.
+- Criterion count in equals criterion count out. Each migrated criterion carries
+  `derived-from="{{old id}}"` until the migration is signed off.
+- `pattern` is **assigned by the migrator**, not inferred afterwards by a checker. A pattern
+  attribute derived by the same heuristics it is meant to replace would be circular.
+- Every existing criterion is event-shaped by construction, so the mechanical part is large and
+  the judgement is concentrated: the work is finding requirements that are *actually* ubiquitous
+  or state-driven and were forced into an event shape. **A count cannot find those** — which is
+  the argument for a per-feature human diff rather than a bulk pass.
+
+**34. Priority on every requirement, and a threshold to select by.**
+*Addresses P1's residue. Closes open question 4.*
+
+Two levels, deliberately in different vocabularies so that no flag, report line or conversation
+is ambiguous about which one it means:
+
+| Level | Where | Vocabulary | Selects |
+|---|---|---|---|
+| Feature | `priority=` on the index entry (§4.1) | MoSCoW | which features are in scope |
+| Requirement | `priority=` on the criterion | `P0` / `P1` / `P2` | which criteria within them are built |
+
+`/breakdown` gains `--requirement-level <P0|P1|P2>`, applied **after** item 14's `--priority`.
+Default `P2` — everything — so no existing invocation changes behaviour. Unassigned criteria
+default to `P1`, and item 6 reports the unassigned count: a corpus where everything is `P0` says
+nothing, and neither does one where nothing is set.
+
+**Why this closes open question 4.** We measured 9 of 13 must-have features carrying cross-tier
+references, 49 in total, which made a `--priority must-have` set open rather than closed.
+Criterion-level priority changes what closure costs: a must-have that depends on a could-have
+pulls in **that feature's `P0` criteria**, not the whole feature. The tier boundary stops
+collapsing under its own dependencies, and "what does this filter actually build" becomes a
+computation rather than a guess.
+
+The residual cost is real: someone assigns a level to 519 criteria. Item 33's migration is the
+moment to do it, and item 8's agent can propose while a human accepts.
+
+**35. `<architecturally-significant>` — the flag that makes a design step affordable.**
+*Addresses P25. Prerequisite for 36 and 38.*
+
+```xml
+<architecturally-significant
+    because="quality-attribute|risk|first-of-a-kind|cross-cutting|external-dependency|constraint"
+    criteria="3,7"/>          <!-- optional: which criteria drive the significance -->
+```
+
+In the feature file's `<meta>`, because significance is a property of the requirement's nature
+rather than of its place in the plan.
+
+The literature's non-obvious point is the one to encode: **not all non-functional requirements are
+architecturally significant, and some functional requirements are.** So this cannot be derived
+from a `<non-functional>` section or from any structural property — it is a judgement, which is
+why it is a declared flag rather than a query.
+
+Item 6 screens for candidates using the published heuristics — requirements specifying quality
+attributes, defining core features, imposing constraints, or describing operational environments —
+and reports them as candidates, three-valued like item 3, **never applied automatically**.
+
+Without this flag a design step is unaffordable, because it would run across all 64 features
+rather than the handful that warrant one. That is the whole reason item 38 is tractable.
+
+**36. The decision record: adopt the corpus project's template and conventions wholesale.**
+*Addresses P24 and P25.*
+
+The project the corpus came from already has 16 of these and a settled house style. **It is
+adopted as-is rather than redesigned**, and the check reads the convention that exists rather than
+asking for a migration: `**Status:**` and `**Date:**` are already regular bolded fields, and links
+to features and other records are already regular markdown.
+
+Sections, in order: **Context** (what exists, with links; what has accumulated against it, one
+bolded lead-in per pressure) → *The Problem* (optional) → **Options Considered** (each with Pros
+where they exist, Cons, and a **Verdict**) → **Decision** (a single bolded sentence, then the
+mechanics) → *Scope Boundary* (optional) → **Rationale** (prose, not a summary of the Cons) →
+**Consequences** (what changes in `index.md` or a feature file, concretely enough to act on).
+Titles state a claim, not a topic.
+
+Three conventions come with it, and each earns its place:
+
+- **`Status: Accepted` on every current record.** Supersession amends the old record's status
+  line and never rewrites its decision. This is the same principle as §4.2's `superseded` feature
+  status, arrived at independently — which is a good sign for §4.2.
+- **Resolved questions are annotated in place**, as a heading naming what resolved them and when.
+  This is also the answer to a question item 29 leaves open: a resolved `<needs-clarification>`
+  should be annotated, not deleted.
+- **No rejected alternatives means it is not a decision record** — it is a principle. See item 37.
+
+**One addition to the template: a `**Drives:**` field.**
+
+```
+**Drives:** [Feature Name](../../prd/{{slug}}/features/{{feature-slug}}.md), [Another](...)
+```
+
+A third bolded field in the style of the two that already exist. It is what lets item 30 and item
+38 assert something real — *every architecturally-significant feature is named by some record, or
+explicitly needs no decision*. That is derivable today from the Context links, but those are
+load-bearing by accident rather than by declaration, and they will drift. A declared field is the
+difference between a check that holds and one that erodes.
+
+**Where the template lives.** The plugin ships it as a default reference; `architecture.md`'s
+`<rules>` may point at a project's own. Shipping ours as unoverridable would be a sixth vendored
+opinion (P18) — and this template came from a project rather than from the plugin, which rather
+makes the point.
+
+**Off by default**, with the rest of the design track:
+
+```xml
+<design-track enabled="false" adr-dir="../../architecture/decisions"/>
+```
+
+`adr-dir` points outside the PRD deliberately. Decision records outlive the PRD that prompted
+them, which is why the corpus keeps them in a project-wide directory and why item 25 already
+said ADRs stay where they are and are cited by pointer.
+
+**37. Decision, principle, constraint — a test for which one you are writing.**
+*Sharpens items 25 and 28. Addresses P16's boundary.*
+
+| Kind | Test | Home | Enforced? |
+|---|---|---|---|
+| **Decision** | has rejected alternatives to record | a decision record (item 36) | no — it is a record |
+| **Principle** | a rule, with no alternatives weighed | the project's principles file | no — it is guidance |
+| **Constraint** | the toolchain must obey it | `<rules>` in `architecture.md` (item 28) | **yes — exit code** |
+
+The test in the first column comes from the corpus project's own conventions. Items 25 and 28
+currently blur the second and third rows, and that blur is dangerous in exactly the way P16
+describes: something written as a principle when it needed to be a constraint will be weighed
+rather than obeyed, while the operator believes it is in force. That is item 28's own stated
+failure mode for a silently-ignored rule file, arriving one level earlier.
+
+It is also where this toolchain is ahead of the field by design rather than by accident: Kiro's
+steering collapses all three kinds into one undifferentiated prose channel.
+
+**38. A gate between `/breakdown` and `/execute`.**
+*Addresses P25. Depends on 30, 35 and 36.*
+
+**Placed at that boundary and nowhere else.** Not inside `/execute`, which is the unattended
+overnight case P19 correctly refuses to block. `/breakdown` and `/execute` are already separate
+invocations, so an approval between them costs nothing at 2am — and item 30's coverage check
+already runs exactly there, which makes the gate a report-and-confirm over work that is happening
+anyway rather than a new phase.
+
+It asserts, and reports by name:
+
+- every feature above both thresholds has at least one task (item 30)
+- every architecturally-significant feature is named by a record's `**Drives:**`, or carries an
+  explicit no-decision-needed (items 35, 36)
+- no blocking `<needs-clarification>` remains (item 29)
+
+With `<design-track enabled="false">` it prints the report and returns. With it enabled, it
+requires confirmation. **The report is the valuable half** — the confirmation only matters if
+somebody is there, but the three assertions are worth running either way.
+
+**39. Validate the references that leave the PRD.**
+*Addresses P24. Extends item 22.*
+
+Every `ADR-NNN`, `OQ-NNN` and principle citation resolves to a file that exists; a citation of a
+superseded record is reported together with its successor; every `**Drives:**` link resolves to a
+feature that exists.
+
+Cheap, and **157 references currently go unchecked**. This is also the minimum that makes the
+decision-record track useful even if 35, 36 and 38 are never switched on: a dangling reference in
+a feature that `/breakdown` is about to turn into tasks is a defect whether or not the design
+track is enabled.
+
 ---
 
 ## 6. Summary
@@ -976,6 +1297,13 @@ keeps a human able to check the result at all.
 | 30 | Coverage check between `/breakdown` and `/execute` | **P20** | **Correctness** |
 | 31 | `--small` path that skips layering (consumes existing `<scope>`) | **P21** | Structural |
 | 32 | A rendered view over the task set | **P22** | Structural |
+| 33 | Adopt EARS; retire Given/When/Then | **P23** | **Correctness** |
+| 34 | Priority per requirement + `--requirement-level` | **P1** | **Correctness** |
+| 35 | `<architecturally-significant>` flag | **P25** | Structural |
+| 36 | Decision-record template, conventions, `**Drives:**` | **P24, P25** | Structural |
+| 37 | Decision / principle / constraint discriminator | P16 | Consistency |
+| 38 | Gate between `/breakdown` and `/execute` | **P25** | Structural |
+| 39 | Validate references that leave the PRD | **P24** | **Correctness** |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -997,6 +1325,20 @@ be correct before it is bypassed — though its CRD half is now small enough to 
 one consumer for a field that already exists. **32** wants to be early rather than late: it is an
 output format over a traversal that already runs, and every item before it makes the task set
 bigger. 22 and 23 last, to hold the result in place.
+
+**Where the new items go.** **33 and 34 belong with the schema block**, and 33 belongs at the
+front of it: it changes the criterion element that items 1, 5, 16, 17 and 35 all build on, and
+every day it waits is more content to migrate. Do 34 in the same pass — the criterion is being
+touched anyway, and assigning a level while a human is already reviewing each feature's diff is
+far cheaper than a second sweep.
+
+**39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
+reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**35, 36 and 38 are one piece of work**, after the schema block and after 30. They are also the
+one block that can be deferred wholesale: with `<design-track enabled="false">` none of them
+changes behaviour, so they can land late without blocking anything. **37 is the exception** — it
+is a paragraph of definition in items 25 and 28, costs nothing, and should land with them.
 
 ---
 
@@ -1026,7 +1368,13 @@ bigger. 22 and 23 last, to hold the result in place.
    separates "needs this to exist first" from "mentions this", which is what items 14 and 27
    require; whether layer assignment needs a finer distinction will not be knowable until
    `plan-layers` consumes it.
-4. **Does `--priority must-have` produce a coherent build?** *Measured, and the answer is
+4. **Resolved — see item 34.** *(Was: does `--priority must-have` produce a coherent build?)*
+   Criterion-level priority dissolves the closure problem rather than working around it: a
+   must-have that depends on a could-have pulls in **that feature's `P0` criteria**, not the whole
+   feature, so the tier boundary stops collapsing and the cost of closure becomes computable. The
+   measurement that made this urgent is kept below, because it is what item 34 has to answer for.
+
+   *Measured, and the answer under feature-level filtering alone was
    probably no.* Filtering yields a buildable slice only if must-haves are closed under their
    dependencies. In the corpus, **9 of the 13 must-have features carry cross-tier references —
    49 of them in total** — to should-, could- and won't-have features.

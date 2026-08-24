@@ -477,10 +477,121 @@ are documentation work, they are independent of everything else, and they can go
   https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html
 - GitHub spec-kit, `spec-driven.md` — https://github.com/github/spec-kit/blob/main/spec-driven.md
 - GitHub spec-kit, README (current `/speckit.*` command set) — https://github.com/github/spec-kit
-- Kiro — https://kiro.dev/ and https://kiro.dev/docs/specs/
+- Kiro — https://kiro.dev/ , https://kiro.dev/docs/specs/ and https://kiro.dev/docs/steering/
+- KiroCrew, `spec-workflow` skill —
+  https://github.com/kirodotdev/KiroCrew/blob/main/src/kiro_crew/apps/builtins/spec_builder/skills/spec-workflow/SKILL.md
+- Kiro sample spec (`requirements.md`, `design.md`, `tasks.md`) —
+  https://github.com/Inflectra/kiro-sample-project-adam/tree/main/.kiro/specs/online-survey-tool
+- Kiro sample steering (`product.md`, `tech.md`, `structure.md`) —
+  https://github.com/cH6noota/kiro-sample/tree/main/spec-app/.kiro/steering
+- AWS `prd-guide.md` steering, with a `requirements.md` template —
+  https://github.com/aws-samples/sample-kiro-cli-prompts-for-product-teams
+- Alistair Mavin, EARS (Easy Approach to Requirements Syntax) — https://alistairmavin.com/ears/
+- DoiT, *Spec-driven development with Kiro* (ADR generation via steering) —
+  https://www.doit.com/blog/spec-driven-development-with-kiro-ai-code-ownership
+- Architecturally significant requirements —
+  https://en.wikipedia.org/wiki/Architecturally_significant_requirements
 - Tessl — https://tessl.io/ , https://docs.tessl.io/ , and
   https://tessl.io/blog/tessl-launches-spec-driven-framework-and-registry
 
 Retrieved 2026-08-22. Tessl Framework details are from its launch material and Böckeler's account
 of the private beta; the Framework's own documentation is not public, and every Framework claim
 here should be treated as second-hand.
+
+---
+
+## 11. Appendix — Kiro's open-source formats, read in detail
+
+Retrieved 2026-08-24, from the sources added to §10. §5 places Kiro as a comparator; this section
+records what its published artefacts actually look like, because four of them changed decisions in
+[`plugin-2.0-plan.md`](plugin-2.0-plan.md).
+
+### 11.1 Three phases, three artefacts, three gates
+
+`requirements.md` → `design.md` → `tasks.md`, each written only after the previous one is
+**approved by the user**. Requirements are user stories with EARS acceptance criteria; design
+carries Overview, Architecture, Components and Interfaces, Data Models, Error Handling, Testing
+Strategy; tasks are a checkbox list, each referencing the requirements it serves.
+
+Ours is requirements → tasks, with no artefact and no gate between them. That is **P25**, and the
+plan's answer is items 35–38: not a third document — items 25 and 2 already hold that content —
+but the trigger, the decision record and the gate that were missing around it.
+
+### 11.2 EARS
+
+Six patterns, each a constrained sentence: Ubiquitous, State-Driven (`While…`), Event-Driven
+(`When…`), Optional Feature (`Where…`), Unwanted Behaviour (`If… then…`), and Complex. The value
+is not the prose style but that the taxonomy makes coverage **checkable**.
+
+Measuring our corpus against it produced **P23**, the sharpest finding of this comparison: all 519
+criteria are Given/When/Then, which is a scenario format that can express two of the six patterns
+awkwardly and four not at all. 84.6% of criteria touch no failure path, there are zero
+optional-feature shapes, and seven features labelled `defined` have no edge-case criterion at all
+— under a definition that requires them. Item 33 adopts EARS outright rather than scoring GWT
+against it, because a checker that flags absences the format makes impossible is not a checker.
+
+### 11.3 Traceability by convention
+
+Every task ends `_Requirements: 1, 2, 3_`. That is our items 16 and 30, solved with a markdown
+convention — and the workflow specifies finer granularity than the samples keep: `_Requirements:
+1.2_` in the spec, `_Requirements: 1_` in practice. **The caution is more useful than the
+technique.** Fine-grained traceability survives only where something checks it, which is why item
+16's `<satisfies-criteria>` and item 30's coverage assertion are paired in the plan's ordering.
+
+Their `design.md` traces to nothing, so the chain runs requirements → tasks with the middle
+disconnected.
+
+### 11.4 Steering, and the four inclusion modes
+
+Three foundation files, always loaded: `product.md` (purpose, users, features), `tech.md`
+(frameworks, versions, commands), `structure.md` (file organisation, naming conventions, import
+patterns). Custom files add more, with YAML frontmatter selecting when they load: `always`,
+`fileMatch` with a glob, `manual` via `#filename`, or `auto` matched against a description.
+
+Mapping the three onto ours is what sharpened **P17**: `product.md` is our `<overview>` and
+`tech.md` is our `<tech-stack>` — both of which we have — while **nothing on our side corresponds
+to `structure.md`**. So the gap named by P17 and P18 is more specific than "architecture": it is
+*structure*, and its absence is why `analyze-prd` infers component and endpoint layouts it has no
+source for.
+
+`fileMatch` is the mechanism worth taking. Item 28's `<rules>` is all-or-nothing; a test policy
+that applies to test files and a banned pattern that applies to one directory are obviously right
+and cost a glob attribute.
+
+### 11.5 Decisions as a steering side-effect
+
+The DoiT account shows a steering file instructing that generating `design.md` also generates
+decision records, with options rejected recorded alongside the choice. It is item 28's ambition
+expressed as **arbitrary prose** rather than a fixed schema — unbounded, and needing no schema
+change per new rule.
+
+It is also, exactly, a prose guard. S3 is this repository's hardest-won finding, so the plan takes
+the mechanism and refuses the encoding: item 37 splits **decision** (has rejected alternatives),
+**principle** (a rule, no alternatives weighed) and **constraint** (the toolchain must obey it),
+and only the third gets an exit code. Kiro's steering collapses all three into one prose channel.
+That split is one of the few places this toolchain is ahead of the field by design rather than by
+accident.
+
+### 11.6 Requirement-level priority
+
+The AWS `prd-guide.md` template carries `Priority: P0 | P1 | P2` on each requirement, and typed
+identifiers — `US-`, `FR-`, `NFR-`, `DR-`, `IR-` — rather than per-feature scoping.
+
+Priority per requirement is what **closed the plan's open question 4**. We had measured 9 of 13
+must-have features carrying cross-tier references, which made a feature-level filter produce an
+open set; with priority on the criterion, a must-have that depends on a could-have pulls in that
+feature's `P0` criteria rather than the whole feature. Item 34 adopts the second level while
+keeping MoSCoW at the first, in a deliberately different vocabulary.
+
+### 11.7 What not to copy
+
+- **`tasks.md` checkboxes are the state.** Hand-maintained progress in markdown is precisely
+  **F16**, which is why this repository has a git-derived ledger. Adopting it would be a
+  regression, and a well-understood one.
+- **`design.md` does not trace to requirements** (§11.3).
+- **Format drift inside their own ecosystem.** Three published sources give three different
+  `requirements.md` shapes: numbered `Requirement N` in the workflow skill; `Requirement N` mixing
+  EARS with GIVEN/WHEN/THEN in the sample spec; `US-001` / `FR-001` / `NFR-001` prefixes in the
+  AWS guide. That is **our P10**, in a mature product with a paid team. It is evidence that
+  producer/consumer drift is unsolved across the field, which is an argument for item 22 rather
+  than an occasion for satisfaction.
