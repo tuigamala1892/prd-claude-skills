@@ -50,8 +50,11 @@ the note there.
 material changes are recorded there and in P9, P23 and P24. Two of them matter beyond the
 arithmetic. The corpus has begun using a `<gaps>` element the plan had not anticipated, which
 **replaces item 29's proposed `<needs-clarification>`** rather than sitting beside it — see item
-29. And the corpus now contains a live instance of P9 — though not the one first recorded here. The
-cause is a **rename**, not a dropped feature, and the corrected reading is in P9 and P27.
+29. **P9 has no live instance after all, and the retraction is recorded rather than quietly removed.**
+An unindexed feature file was read here first as a dropped must-have, then as a rename residue. It
+is neither: the sample was refreshed by overwriting the folder without clearing it, so the file is
+a leftover from the previous copy of the corpus and never existed in the PRD. P9 is a predicted
+failure again. What survives is P27 and the §2 method note.
 
 Items **40 and 41** were added at the same time: a definition gate drawn from a policy written for
 another project built with the original commands, and the migration guide that everything in
@@ -82,18 +85,16 @@ Figures re-taken 2026-08-24; the first-review value is shown where it moved.
 
 | Measure | Value | First review |
 |---|---|---|
-| Feature files | **65** | 64 |
+| Feature files | 64 | 64 |
 | Feature entries in `index.md` | 62 | 62 |
-| Unindexed feature files | **3** | 2 |
-| Total corpus size | **~629 KB ≈ 174k tokens** | ~594 KB ≈ 165k |
+| Unindexed feature files | 2, both `superseded` | 2 |
+| Total corpus size | **~628 KB ≈ 174k tokens** | ~594 KB ≈ 165k |
 | Largest single feature file | **52 KB** | 38 KB |
 | `index.md` alone | 49 KB ≈ 13k tokens | 48 KB |
-| Features carrying `<acceptance-criteria>` | **56** | 55 |
-| Features carrying `<notes>` | **56** | 55 |
 | Features carrying `<gaps>` | **3** (6 gaps) | — |
-| Total criteria | **552** | 519 |
-| Declared statuses | `defined` 34, `tbd` 21, `excluded` 7, `superseded` 2, **`in-progress` 1** | no `in-progress` |
-| Declared priorities | must **14**, should 25, could 19, wont 7 | must 13 |
+| Total criteria | **550** | 519 |
+| Declared statuses | `defined` 34, `tbd` **20**, `excluded` 7, `superseded` 2, **`in-progress` 1** | no `in-progress` |
+| Declared priorities | must 13, should 25, could 19, wont 7 | unchanged |
 | Decision records referenced | **19 distinct, 136 mentions** | 16 / 113 |
 | Open questions referenced | **22 distinct, 44 mentions** | 19 / 40 |
 
@@ -107,15 +108,26 @@ the obvious pair (P6). The template is now wrong about three of the five values 
 It is a better answer than item 29's proposed `<needs-clarification>` and replaces it outright;
 see item 29 and item 40.
 
-**65 files against 62 index entries is now partly real drift.** Two of the three unindexed files
-are the `superseded` pointers, as before. The third is the residue of a **rename** (P27): the
-feature was re-slugged, every consumer was swept and the index updated, and the original file was
-left behind still declaring `tbd` and `must-have`.
+**The feature count did not move; the depth did.** Still 64 features and still 13 must-haves,
+against 519 → 550 criteria, +34 KB, `<gaps>` appearing and `in-progress` entering use. The corpus
+is not growing outward, it is being specified more deeply — which is the growth that matters for
+P5, since `analyze-prd` is handed all of it.
 
-*So one of the 65 is not a feature.* The file counts above — and the `tbd` and must-have tallies
-with them — each include one stale file. That is the defect describing itself: every count in this
-table is taken by globbing `features/*.md`, which is exactly what the toolchain does, and exactly
-why the residue is invisible.
+> **How these figures were taken, because the first attempt was wrong.** The sample directory had
+> been refreshed by overwriting it without clearing it first, leaving one file from the previous
+> copy that never existed in the PRD. Read naively it inflated the file count, the `tbd` tally,
+> the must-have tally and the criteria total, and it was initially written up here as a P9
+> instance.
+>
+> The contamination is bounded, and provably so: `index.md` was overwritten too, so it describes
+> the current PRD, and a feature deleted upstream cannot appear in it. Every stale file is
+> therefore unindexed. There are two unindexed files besides the leftover and both declare
+> `superseded`, so **62 indexed + 2 pointers = 64 reconciles exactly** and the leftover is the
+> only one. The figures above exclude it.
+>
+> The lesson generalises past this corpus and is the reason it is written down: **a measurement
+> taken by globbing a directory inherits every defect of how that directory was populated.** It is
+> also what the toolchain does at every step.
 
 **The corpus is growing faster than the plan is shrinking it.** 165k → 174k tokens in a fortnight
 makes item 18 more urgent, not less: `analyze-prd` is handed the whole of it, on Haiku.
@@ -259,34 +271,28 @@ field `/execute` depends on for merge sequencing. This is the single most likely
 implement items 14–16 wrongly.
 
 **P9 — Nothing reconciles the index against the feature directory.**
-*Verification: measured. Upgraded from a predicted failure to an observed one on 2026-08-24.*
-Orphans, dangling links and priority mismatches are all silently possible. Two of the corpus's
-three unindexed files are legitimate — P6's `superseded` convention — so the check must
-*understand* that convention rather than flag every orphan.
+*Verification: static. Still a predicted failure, not an observed one — see the retraction below.*
+Orphans, dangling links and priority mismatches are all silently possible. The corpus's two
+unindexed files are legitimate — P6's `superseded` convention — so the check must *understand*
+that convention rather than flag every orphan.
 
-**The third is a rename residue** (P27), and it is worth being precise about the harm, because
-the first write-up of this finding overstated it. The capability is *not* missing: it exists under
-a new slug, is indexed, is `defined`, and carries 14 criteria against the old file's 2. Every one
-of the 20 inbound references points at the new slug, and **nothing anywhere references the old
-one**. The rename was done well. What was left behind is the original file, still declaring `tbd`
-and `must-have`.
-
-The harm is therefore narrower and still real: **the file set and the index disagree, and the file
-set is what the checks in this plan read.** Item 3 would derive a status for a feature that does
-not exist; item 30 would ask whether a phantom has a task; §2's own tallies counted it. Nothing
-detects it, and it survived a fortnight of active editing.
-
-> **A discriminator that looked obvious, and does not work.** The superseded pointers exist, in
-> their own words, "so existing references do not dangle" — so *unindexed but referenced* ought to
-> mean legitimate, and *unindexed and unreferenced* ought to mean residue. Measured, **all three
-> unindexed files have zero inbound references**, including both pointers. The rule separates
-> nothing.
+> **Retracted, and left visible on purpose.** A third unindexed file was written up here twice:
+> first as a must-have silently dropped from the index, then as a rename residue. It was neither.
+> The sample directory had been refreshed by overwriting without clearing, and the file was a
+> leftover from the previous copy that never existed in the PRD (§2). **P9 has no live instance.**
 >
-> Two things follow. The only discriminator that works is the **declared `<status>`** — legitimate
-> means somebody said `superseded`, and no derivation substitutes for that. And the pointers have
-> reached their own stated exit condition — both say *"Safe to delete once nothing links here"*,
-> and nothing links there — which nothing evaluates. Item 6 should report a `superseded` pointer
-> whose references have all gone, rather than leaving a convention with an exit nobody checks.
+> The episode is worth keeping because the error was not in the measurement but in the inference
+> from it, twice over — a file present on disk was read as a fact about the document rather than
+> as a fact about how the directory came to be. That is the same mistake the toolchain makes
+> structurally: every step globs a directory and trusts what it finds.
+
+**Two things the investigation established that do survive.** The only discriminator that works
+between a legitimate orphan and a defective one is the **declared `<status>`**: a rule based on
+whether anything still references the file separates nothing, because **both `superseded` pointers
+have zero inbound references** — measured. And that same measurement shows both have reached the
+exit condition they state for themselves — *"Safe to delete once nothing links here"*, and nothing
+links there — which nothing evaluates. Item 6 should report a `superseded` pointer whose references
+have all gone, rather than leaving a convention with an exit nobody checks.
 
 **P10 — `what-next.md` is prose markdown where the spec says XML.**
 *(This is assessment finding F3/F10; carried forward as item 12.)* The divergence produced a
@@ -421,15 +427,15 @@ is the earliest point at which it could be measured.
 
 **P23 — The criterion format cannot express most of what a requirement needs to say.**
 *Verification: measured.*
-All 552 criteria in the corpus are Given/When/Then — still all of them, after a fortnight of
+All 550 criteria in the corpus are Given/When/Then — still all of them, after a fortnight of
 editing that added 33 more. GWT is a **scenario** format: it renders one
 event and its outcome. Mapped onto the six EARS patterns, four of them have no natural rendering
 in it at all:
 
 | EARS pattern | Template | Expressible as GWT? | In the corpus |
 |---|---|---|---|
-| Event-driven | `When <trigger>, the system shall <response>` | naturally | essentially all 552 |
-| Unwanted behaviour | `If <trigger>, then the system shall <response>` | awkwardly | 85 (15.4%) |
+| Event-driven | `When <trigger>, the system shall <response>` | naturally | essentially all 550 |
+| Unwanted behaviour | `If <trigger>, then the system shall <response>` | awkwardly | 85 (15.5%) |
 | State-driven | `While <precondition>, the system shall <response>` | awkwardly | rare |
 | Ubiquitous | `The system shall <response>` | no natural form | — |
 | Optional feature | `Where <feature> exists, the system shall <response>` | no natural form | **0** |
@@ -439,7 +445,7 @@ in it at all:
 refusal or absence anywhere in the block. And **8 of the 34 features labelled `defined` have none
 at all.**
 
-*Re-measured 2026-08-24.* The share was 15.4% at 519 criteria and is 15.4% at 552 — the ratio did
+*Re-measured 2026-08-24.* The share was 15.4% at 519 criteria and is 15.5% at 550 — the ratio did
 not move while a tenth of the corpus was rewritten, which is stronger evidence than the original
 snapshot. The count of `defined` features with no edge case rose from 7 to 8.
 
@@ -474,18 +480,21 @@ This is P4's shape at document scale — content the PRD depends on, with no rea
 larger, because a dangling reference is wrong rather than merely unread.
 
 **P27 — There is no rename operation, and a slug lives in five places.**
-*Verification: measured.*
+*Verification: measured — as cost and exposure, not as an observed failure. The rename that
+prompted this finding was carried out correctly.*
 Renaming a feature means changing: the filename, `<slug>` inside it, the index entry's `file=`
 attribute, the index entry's own content, and **every inbound cross-reference in every other
-feature**. In the observed case that was 20 references across 8 files. All of them were updated
-correctly, by hand. The one step that was missed is the one no reference points at — deleting the
-original file — which is precisely the step nothing could remind anyone about.
+feature**. A rename in the corpus touched **20 references across 8 files**, and every one of them
+is right — the old slug appears nowhere, the new one resolves everywhere. The finding is not that
+it went wrong. It is that nothing made it go right except care, and nothing would have said so
+either way.
 
-The corpus makes the scale plain: **231 inter-feature reference edges** (P26), so a rename is a
-multi-file refactor whose blast radius is unbounded by anything except how popular the feature is.
-The most-referenced feature carries 19 inbound consumers. There is no command for this, no check
-after it, and no record that it happened — a renamed feature's history is a new file with no
-relationship to the old one.
+The corpus makes the exposure plain: **231 inter-feature reference edges** (P26), so a rename is a
+multi-file refactor whose blast radius is bounded only by how popular the feature is — the
+most-referenced one carries 19 inbound consumers. There is no command for it, no check after it,
+and no record that it happened: a renamed feature's history is a new file with no stated
+relationship to the old one, and its accumulated criteria, gaps and decisions are re-anchored
+silently.
 
 This also makes rename a **miniature of item 41's migration**: a mechanical transformation across
 many files, with preconditions, an invariant (no reference to the old slug survives), and a
@@ -495,7 +504,7 @@ this, and a rename is the cheapest possible test of it.
 **P26 — Nothing checks that a feature discharges what other features expect of it.**
 *Verification: measured.*
 Features reference each other constantly: **231 inter-feature reference edges** across the corpus,
-with 51 of 65 features referenced by at least one other and the most-referenced carrying **19
+with 51 of 64 features referenced by at least one other and the most-referenced carrying **19
 inbound consumers**. **93 of those edges (40%) are one-way** — a feature names another that never
 names it back.
 
@@ -1496,7 +1505,7 @@ different project, which is the best evidence available that the split is right.
 §5 I can land without it.*
 
 Every schema decision in this plan implies rewriting artefacts that already exist — on this corpus,
-65 feature files, 552 criteria, an index and a `what-next.md`. That work will be done by an agent,
+64 feature files, 550 criteria, an index and a `what-next.md`. That work will be done by an agent,
 so the guide is not prose for a human to follow: it is **a specification with a consumer**, and it
 is subject to the same discipline this plan applies to every other producer/consumer pair.
 
@@ -1540,14 +1549,16 @@ embarrassing possible outcome.
 the index entry's `file=` attribute, the index entry's content, and every inbound cross-reference
 in every other feature file.
 
-**The postcondition is the whole point**, because the observed failure was not a botched edit — all
-20 references were swept correctly by hand — but a step nothing could remind anyone about:
+**The postcondition is the whole point.** The rename that prompted this item was done correctly,
+across 20 references in 8 files, and produced no evidence of that fact — which is the actual
+problem. A refactor that is right by care and unverifiable by construction is one distraction away
+from being wrong and silent:
 
 - no reference anywhere resolves to the old slug
 - no file exists under the old slug
 - the new slug appears in exactly one index entry and one file
 
-Assert those three and the residue is impossible. Item 6 runs the same assertions over the whole
+Assert those three and a residue becomes impossible rather than merely unlikely. Item 6 runs the same assertions over the whole
 PRD, so a rename done by hand is caught even when the command was not used — which matters,
 because the command will not always be used.
 
