@@ -27,7 +27,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P26** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P27** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -50,8 +50,8 @@ the note there.
 material changes are recorded there and in P9, P23 and P24. Two of them matter beyond the
 arithmetic. The corpus has begun using a `<gaps>` element the plan had not anticipated, which
 **replaces item 29's proposed `<needs-clarification>`** rather than sitting beside it — see item
-29. And the corpus now contains a live instance of P9: a **must-have** feature silently dropped
-from the index, which the plan had until now only predicted.
+29. And the corpus now contains a live instance of P9 — though not the one first recorded here. The
+cause is a **rename**, not a dropped feature, and the corrected reading is in P9 and P27.
 
 Items **40 and 41** were added at the same time: a definition gate drawn from a policy written for
 another project built with the original commands, and the migration guide that everything in
@@ -108,9 +108,14 @@ It is a better answer than item 29's proposed `<needs-clarification>` and replac
 see item 29 and item 40.
 
 **65 files against 62 index entries is now partly real drift.** Two of the three unindexed files
-are the `superseded` pointers, as before. The third is a **`tbd` must-have** whose index entry was
-removed when a `defined` replacement was added, without the original being marked `superseded`.
-That is P9 firing, on a must-have, in a live document.
+are the `superseded` pointers, as before. The third is the residue of a **rename** (P27): the
+feature was re-slugged, every consumer was swept and the index updated, and the original file was
+left behind still declaring `tbd` and `must-have`.
+
+*So one of the 65 is not a feature.* The file counts above — and the `tbd` and must-have tallies
+with them — each include one stale file. That is the defect describing itself: every count in this
+table is taken by globbing `features/*.md`, which is exactly what the toolchain does, and exactly
+why the residue is invisible.
 
 **The corpus is growing faster than the plan is shrinking it.** 165k → 174k tokens in a fortnight
 makes item 18 more urgent, not less: `analyze-prd` is handed the whole of it, on Haiku.
@@ -259,16 +264,29 @@ Orphans, dangling links and priority mismatches are all silently possible. Two o
 three unindexed files are legitimate — P6's `superseded` convention — so the check must
 *understand* that convention rather than flag every orphan.
 
-**The third is the failure this finding predicted.** A `tbd` **must-have** feature had its index
-entry removed when a `defined` replacement was added under a new slug, and its own file was never
-marked `superseded`. The result is a must-have that is in no plan, points at nothing, and is
-pointed at by nothing — invisible to `/breakdown`, which reads the index, and invisible to a
-reader, who sees a normal `tbd` file. Nothing in the toolchain detects it, and it survived a
-fortnight of active editing.
+**The third is a rename residue** (P27), and it is worth being precise about the harm, because
+the first write-up of this finding overstated it. The capability is *not* missing: it exists under
+a new slug, is indexed, is `defined`, and carries 14 criteria against the old file's 2. Every one
+of the 20 inbound references points at the new slug, and **nothing anywhere references the old
+one**. The rename was done well. What was left behind is the original file, still declaring `tbd`
+and `must-have`.
 
-It is also the exact case that makes item 6's check non-trivial: the legitimate orphans and the
-drifting one are distinguished only by a `<status>` value, so a check that flags all orphans is
-wrong twice and a check that ignores them is wrong once.
+The harm is therefore narrower and still real: **the file set and the index disagree, and the file
+set is what the checks in this plan read.** Item 3 would derive a status for a feature that does
+not exist; item 30 would ask whether a phantom has a task; §2's own tallies counted it. Nothing
+detects it, and it survived a fortnight of active editing.
+
+> **A discriminator that looked obvious, and does not work.** The superseded pointers exist, in
+> their own words, "so existing references do not dangle" — so *unindexed but referenced* ought to
+> mean legitimate, and *unindexed and unreferenced* ought to mean residue. Measured, **all three
+> unindexed files have zero inbound references**, including both pointers. The rule separates
+> nothing.
+>
+> Two things follow. The only discriminator that works is the **declared `<status>`** — legitimate
+> means somebody said `superseded`, and no derivation substitutes for that. And the pointers have
+> reached their own stated exit condition — both say *"Safe to delete once nothing links here"*,
+> and nothing links there — which nothing evaluates. Item 6 should report a `superseded` pointer
+> whose references have all gone, rather than leaving a convention with an exit nobody checks.
 
 **P10 — `what-next.md` is prose markdown where the spec says XML.**
 *(This is assessment finding F3/F10; carried forward as item 12.)* The divergence produced a
@@ -454,6 +472,25 @@ contradicts the feature citing it.
 
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
+
+**P27 — There is no rename operation, and a slug lives in five places.**
+*Verification: measured.*
+Renaming a feature means changing: the filename, `<slug>` inside it, the index entry's `file=`
+attribute, the index entry's own content, and **every inbound cross-reference in every other
+feature**. In the observed case that was 20 references across 8 files. All of them were updated
+correctly, by hand. The one step that was missed is the one no reference points at — deleting the
+original file — which is precisely the step nothing could remind anyone about.
+
+The corpus makes the scale plain: **231 inter-feature reference edges** (P26), so a rename is a
+multi-file refactor whose blast radius is unbounded by anything except how popular the feature is.
+The most-referenced feature carries 19 inbound consumers. There is no command for this, no check
+after it, and no record that it happened — a renamed feature's history is a new file with no
+relationship to the old one.
+
+This also makes rename a **miniature of item 41's migration**: a mechanical transformation across
+many files, with preconditions, an invariant (no reference to the old slug survives), and a
+postcondition nobody currently asserts. Whatever machinery item 41 builds should be able to do
+this, and a rename is the cheapest possible test of it.
 
 **P26 — Nothing checks that a feature discharges what other features expect of it.**
 *Verification: measured.*
@@ -682,7 +719,13 @@ Today Phase 6 asks the model four prose questions about the tech stack. It gains
 
 - derive status for **every** feature; report each mismatch as `declared X, derived Y, because Z`
 - reconcile index against `features/` — orphans that are not `superseded`, dangling entries,
-  and any feature file still carrying a `<priority>`
+  and any feature file still carrying a `<priority>`. **Three causes, one test:** a `superseded`
+  file may be unindexed, and anything else unindexed is a defect — a rename residue (P27) or real
+  drift. Do not try to tell those two apart by counting references; P9 records why that fails
+- a `superseded` pointer that **nothing references any more**, which has reached the exit condition
+  the convention states and nobody evaluates
+- **no reference anywhere to a slug that has no file**, which is the postcondition a rename has to
+  satisfy and currently does not (P27)
 - criterion `id` uniqueness within a feature; `phase` references that exist in `<phases>`
 - `excluded` without `<rationale>`; `superseded` without a successor or still present in the index
 - **EARS pattern coverage** per feature (item 33): report any `defined` feature with no
@@ -1490,6 +1533,30 @@ and asserts the postconditions above. Writing a migration spec with no verifier,
 central finding is that this repository ships producers without readers, would be the most
 embarrassing possible outcome.
 
+**42. A rename operation, and the postcondition that proves it finished.**
+*Addresses P27. Small, and the cheapest possible test of item 41's machinery.*
+
+`/prd --rename <old-slug> <new-slug>`, doing all five edits a slug requires: the filename, `<slug>`,
+the index entry's `file=` attribute, the index entry's content, and every inbound cross-reference
+in every other feature file.
+
+**The postcondition is the whole point**, because the observed failure was not a botched edit — all
+20 references were swept correctly by hand — but a step nothing could remind anyone about:
+
+- no reference anywhere resolves to the old slug
+- no file exists under the old slug
+- the new slug appears in exactly one index entry and one file
+
+Assert those three and the residue is impossible. Item 6 runs the same assertions over the whole
+PRD, so a rename done by hand is caught even when the command was not used — which matters,
+because the command will not always be used.
+
+Two things to carry rather than lose. A rename should leave a record: the decision to re-slug a
+feature is a decision, and where the rename accompanies a change of scope it is a decision record
+(item 36), not a silent file move. And a rename is not a supersession — §4.2's `superseded` status
+is for a feature *merged into another*, and using it for a rename would claim two features existed
+where there was always one.
+
 ---
 
 ## 6. Summary
@@ -1537,6 +1604,7 @@ embarrassing possible outcome.
 | 39 | Validate references that leave the PRD | **P24** | **Correctness** |
 | 40 | The well-defined bar, as a gate on `defined` | **P26** | **Correctness** |
 | 41 | A migration guide an agent can execute | (all schema items) | **Blocking** |
+| 42 | A rename operation with a checkable postcondition | **P27** | Correctness |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -1571,6 +1639,11 @@ reference check over files that already exist, and 157 unchecked citations is a 
 **41 is a precondition, not a follow-up.** Items 1, 2, 5, 11, 33, 34 and 35 all rewrite artefacts
 that exist; none of them can land until the migration they imply is specified and verifiable. Write
 it with the first schema item, not after the last.
+
+**42 is small and can go whenever**, but it is worth doing before item 41 rather than after: it is
+the same shape of problem across a handful of files instead of sixty-five, and getting the
+postcondition-assertion pattern right on a rename is much cheaper than getting it wrong on a
+migration.
 
 **40 belongs with 6 and 8**, whose machinery it uses — the mechanical tests are exit codes in one
 and the judgement tests are a second mode of the other. Its contract-rule script can go earlier
