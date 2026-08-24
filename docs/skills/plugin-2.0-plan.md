@@ -2152,9 +2152,43 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
    vendored in the plugin where no project can change it, and so is the layer graph — both are
    rows for P18's table. Demoting `<scope>` to a cross-check means nothing routes on it, so the
    rubric being wrong for a given project is now a reporting nuisance rather than a wrong build.
-7. **Is P18 the point at which this stops being a PRD toolchain?** Item 28 makes the layer graph,
-   test policy and scaffold project-owned. At that point `/breakdown` is a generic
-   requirements-to-tasks compiler configured by a rule file, and the five-layer web-application
-   assumption survives only as a default. That is the right direction on the evidence, and it is a
-   larger change of identity than any other item here. Worth deciding deliberately rather than
-   arriving at.
+7. **Reframed: is the layer graph load-bearing for quality, or only for convention?**
+   *(Was: is P18 the point at which this stops being a PRD toolchain?)* The identity framing was
+   the wrong one, and it made the question unanswerable. `/breakdown` knows three separable things
+   and item 28 touches only the first:
+
+   | | Touched by item 28? |
+   |---|---|
+   | **Domain opinion** — five tiers encoding a template-built CRUD web app | **yes**, becomes a parameter |
+   | **Process** — batching, generate → review → retry, self-containment, interface contracts, task sizing | no |
+   | **Mechanics** — path resolution, manifest from files that exist, worktrees, ledger, merge queue | no |
+
+   The process and the mechanics are the bulk of what the tool knows, and neither is
+   architecture-specific. So the tool does not hollow out. **Three real losses remain**, and they
+   are what the question should be about:
+
+   - **Free dependency ordering.** *Models before endpoints before UI* is a genuine dependency
+     truth for that app class. Item 27 replaces it with declared `<depends-on>` edges — and on the
+     corpus, inter-feature references are 40% one-way and ambiguous between *depends on* and *see
+     also*. A known-good default traded for user-declared edges can be a downgrade.
+   - **A guardrail on a small model.** `breakdown-plan-layers` runs on Haiku. A fixed graph is a
+     strong prior that stops it inventing a bad decomposition. Removing the prior asks a small
+     model to invent an architecture — which is what P18 says the toolchain should not do, but the
+     toolchain at least does it *consistently*.
+   - **The failure mode moves and gets quieter.** From *"the toolchain's opinion was wrong for my
+     project"* — visible, and P18's complaint — to *"my rule file was wrong and the toolchain
+     obeyed it"*, which is silent and hard to attribute.
+
+   **Two things narrow the question further.** Item 31 already makes layer *selection*
+   content-derived on correctness grounds, so part of the domain opinion is leaving regardless of
+   how this resolves. And the one piece that genuinely does not generalise is
+   `layer0-templates.md` — python/go/tanstack scaffolding is dead weight for a CLI tool or a
+   library. That is a reference file, not the pipeline.
+
+   **So the answer is mitigations rather than a decision, and one experiment.** Ship the five-tier
+   graph as the *default* rather than requiring a rule file; validate any supplied `<layers>`
+   (acyclic, every layer reachable, no task stranded); report which graph was used, so a bad rule
+   file is attributable. Then answer the real question by experiment once item 43 exists: **run the
+   fixture through the default graph and through a deliberately poor one, and compare the task
+   sets.** If quality tracks the graph, it is load-bearing and the default must be protected. If it
+   does not, the graph was convention and P18 costs nothing.
