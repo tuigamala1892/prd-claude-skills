@@ -38,34 +38,52 @@ The key innovation demonstrated is **context fork** - skills that run in isolate
 
 ## Key Directories
 
-```
-.claude/
-├── commands/         # User-invocable commands
-│   ├── prd.md        # /prd - PRD creation
-│   ├── crd.md        # /crd - CRD creation
-│   └── crd-context.md # /crd-context - Context management
-├── skills/           # Skills with SKILL.md definitions
-│   ├── breakdown/    # Main breakdown skill (PRD + CRD)
-│   ├── execute/      # Main execute skill
-│   ├── crd/          # CRD orchestration
-│   ├── crd-investigate/    # Deep codebase analysis
-│   ├── crd-context-update/ # Incremental context update
-│   ├── crd-impact-analysis/ # Change impact analysis
-│   └── ...           # Sub-skills
-└── agents/           # Agent definitions for Task tool
-    ├── crd-investigator.md     # PROJECT.md generation
-    ├── crd-context-updater.md  # Incremental updates
-    ├── crd-impact-analyzer.md  # Impact analysis
-    └── project-context-finalizer.md # Post-execute updates
+All three live at the **repository root**, not under `.claude/` — see the note at the top.
 
-docs/
-├── IMPLEMENTATION_GUIDE.md  # Guide for creating documentation
-├── introduction/            # Conceptual documentation
-├── quickstart/              # Getting started guides
-├── skills/                  # Skill reference documentation
-├── concepts/                # Core concept explanations
-├── examples/                # Full walkthroughs
-└── reference/               # Technical reference
+```
+commands/                     # User-invocable commands (all three entry points)
+├── prd.md                    # /prd
+├── crd.md                    # /crd
+└── crd-context.md            # /crd-context
+
+skills/                       # Skills, each a directory holding SKILL.md
+├── breakdown/                # PRD or CRD → tasks (orchestrator)
+│   ├── references/           # layer-definitions, task-format-spec, review-criteria, layer0-templates
+│   └── scripts/              # resolve-output.sh, build-manifest.py
+├── breakdown-analyze-prd/    # ┐
+├── breakdown-plan-layers/    # ├ breakdown sub-skills, in phase order
+├── breakdown-generate-tasks/ # │
+├── breakdown-review-tasks/   # ┘
+├── execute/                  # Task execution (orchestrator)
+│   ├── references/           # options, state-schema
+│   └── scripts/              # preflight.sh, write-state.py, ledger-status.sh, check-project-md.py
+├── execute-layer/            # One layer: dispatches batches, then merges
+├── execute-batch/            # One batch: worktrees + task agents
+├── execute-verify/           # Independent verification
+├── execute-merge/            # Merges one verified task
+├── crd/                      # CRD orchestration
+├── crd-investigate/          # Deep codebase analysis
+├── crd-context-update/       # Incremental context update
+└── crd-impact-analysis/      # Change impact analysis
+
+agents/                       # Agent definitions for the Task tool
+├── task-implementer.md       # Implements one task inside its worktree
+├── task-generator.md
+├── task-reviewer.md
+├── verification-runner.md
+├── crd-investigator.md            # PROJECT.md generation
+├── crd-context-updater.md         # Incremental updates
+├── crd-impact-analyzer.md         # Impact analysis
+└── project-context-finalizer.md   # Post-execute updates
+
+docs/skills/                  # The only docs directory that exists
+├── toolchain-assessment-and-plan.md
+├── plugin-2.0-plan.md
+├── sdd-comparison.md
+├── resumable-execution-proposal.md
+└── probes/                   # Phase 0 measurement harness
+
+tests/                        # Regression suite; run before and after any skill change
 ```
 
 ---
@@ -78,11 +96,15 @@ Skills declare their context mode in SKILL.md frontmatter:
 
 ```yaml
 ---
-name: execute-task
-context: fork        # ← Runs in isolated context
-model: sonnet
+name: execute-batch
+context: fork              # ← Runs in isolated context
+model: claude-sonnet-5
 ---
 ```
+
+**Do not add `allowed-tools:` to a skill.** It is a *command* key; in a skill it restricts nothing
+and silently disables `context: fork` (F13). `tests/test_toolchain.py` fails if any skill
+declares it.
 
 - **`context: fork`** - Isolated context, no parent visibility
 - **Default** - Shares context with parent
@@ -93,12 +115,17 @@ model: sonnet
 ```
 /execute (fork)
     └─► execute-layer (fork)
-            └─► execute-batch (fork)
-                    ├─► execute-task (fork)
-                    │       └─► execute-verify (fork)
-                    └─► execute-merge (fork)
-    └─► project-context-finalizer (CRD only)
+            ├─► execute-batch (fork)
+            │       ├─► task-implementer (agent, one per task, in its own worktree)
+            │       └─► execute-verify (fork)
+            └─► execute-merge (fork)   ← sequential, one task at a time
+    └─► project-context-finalizer (agent, only when PROJECT.md already exists)
 ```
+
+**There is no `execute-task` skill.** The implementer is the `task-implementer` *agent*,
+dispatched by `execute-batch` into a worktree the caller has already created (item 4.15). And
+`execute-merge` is called by `execute-layer`, not by `execute-batch` — the merge is sequential
+while batches are parallel, which is why it sits a level up.
 
 **CRD Workflow:**
 ```
@@ -194,6 +221,11 @@ When editing documentation:
 
 ## Common Tasks
 
+> **The three subsections below describe a documentation structure that does not exist.**
+> `docs/IMPLEMENTATION_GUIDE.md`, `docs/examples/` and the other `docs/` subdirectories have
+> never been created; `docs/skills/` is the only one. Treat them as intent, not as instructions
+> to follow.
+
 ### Adding Documentation
 
 1. Follow structure in `docs/IMPLEMENTATION_GUIDE.md`
@@ -218,6 +250,10 @@ When a skill changes:
 ---
 
 ## GitHub Pages Website
+
+> **No `gh-pages` branch exists**, locally or on `origin` — the only branch is `main`. This
+> section describes an intended site, not a live one, and nothing below it can be carried out
+> as written.
 
 This project has a documentation website on the `gh-pages` branch.
 
@@ -273,7 +309,9 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
 
 - This repo demonstrates Claude Code features
 - The context fork pattern is the key innovation
-- All skills use explicit tool allowlists
+- **No skill declares `allowed-tools`** — it is a command key that silently disables
+  `context: fork`, and the regression suite enforces its absence (F13, item 4.11)
 - State management enables resume capability
-- TDD is mandatory in execute-task
-- **Keep gh-pages in sync when docs/ changes**
+- TDD is mandatory: `<test-requirements>` is a required section in `task-format-spec.md` and a
+  critical criterion in `review-criteria.md`; `execute-batch` runs the red/green cycle
+- Run `tests/test_toolchain.py` before and after any change to skill frontmatter or git commands
