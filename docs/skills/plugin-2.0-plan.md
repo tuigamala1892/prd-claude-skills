@@ -27,7 +27,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P25** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P26** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -45,6 +45,17 @@ Their arrival changes one earlier item. Item 28 does **not** add a new file: ite
 proposes `architecture.md` as a prescriptive greenfield artefact, and it turns out to claim most
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
+
+**Re-measured 2026-08-24 against an updated corpus.** Every figure in §2 was re-taken; the
+material changes are recorded there and in P9, P23 and P24. Two of them matter beyond the
+arithmetic. The corpus has begun using a `<gaps>` element the plan had not anticipated, which
+**replaces item 29's proposed `<needs-clarification>`** rather than sitting beside it — see item
+29. And the corpus now contains a live instance of P9: a **must-have** feature silently dropped
+from the index, which the plan had until now only predicted.
+
+Items **40 and 41** were added at the same time: a definition gate drawn from a policy written for
+another project built with the original commands, and the migration guide that everything in
+§5 A and §5 I now requires.
 
 **Amended again 2026-08-24, after a study of Kiro's open-source spec formats.** P23–P25 and
 items 33–39 (§5 I) come from that study and from the conventions of the project the sample corpus
@@ -67,25 +78,42 @@ gap the first fold dropped.
 
 Aggregate figures only; the corpus itself stays out of version control.
 
-| Measure | Value |
-|---|---|
-| Feature files | 64 |
-| Feature entries in `index.md` | 62 |
-| Total corpus size | ~594 KB ≈ **165k tokens** |
-| Largest single feature file | 38 KB |
-| `index.md` alone | 48 KB ≈ 13k tokens |
-| Features carrying `<acceptance-criteria>` | 55 |
-| Features carrying `<notes>` | 55 |
-| Criteria in the richest feature | 36 |
-| Median criteria among fully-defined features | 15 |
-| Declared statuses | `defined` 34, `tbd` 21, `excluded` 7, `superseded` 2 |
-| Declared priorities | must 13, should 25, could 19, wont 7 |
+Figures re-taken 2026-08-24; the first-review value is shown where it moved.
 
-Two of those rows are the whole story. **`excluded` and `superseded` are not in the template's
-enum** — the corpus invented them because it had to. And **64 files against 62 index entries**
-is not drift: the two unindexed files are exactly the two `superseded` ones. Removing a merged
-feature from the index while keeping its file as a pointer is a real convention that the
-toolchain neither documents nor validates.
+| Measure | Value | First review |
+|---|---|---|
+| Feature files | **65** | 64 |
+| Feature entries in `index.md` | 62 | 62 |
+| Unindexed feature files | **3** | 2 |
+| Total corpus size | **~629 KB ≈ 174k tokens** | ~594 KB ≈ 165k |
+| Largest single feature file | **52 KB** | 38 KB |
+| `index.md` alone | 49 KB ≈ 13k tokens | 48 KB |
+| Features carrying `<acceptance-criteria>` | **56** | 55 |
+| Features carrying `<notes>` | **56** | 55 |
+| Features carrying `<gaps>` | **3** (6 gaps) | — |
+| Total criteria | **552** | 519 |
+| Declared statuses | `defined` 34, `tbd` 21, `excluded` 7, `superseded` 2, **`in-progress` 1** | no `in-progress` |
+| Declared priorities | must **14**, should 25, could 19, wont 7 | must 13 |
+| Decision records referenced | **19 distinct, 136 mentions** | 16 / 113 |
+| Open questions referenced | **22 distinct, 44 mentions** | 19 / 40 |
+
+Four rows carry the story.
+
+**`excluded` and `superseded` are still not in the template's enum**, and **`in-progress` is now
+in use** — the plan previously recorded zero uses of the one status the template does offer beyond
+the obvious pair (P6). The template is now wrong about three of the five values in play.
+
+**A `<gaps>` element has appeared that the plan did not anticipate**, in 3 files carrying 6 gaps.
+It is a better answer than item 29's proposed `<needs-clarification>` and replaces it outright;
+see item 29 and item 40.
+
+**65 files against 62 index entries is now partly real drift.** Two of the three unindexed files
+are the `superseded` pointers, as before. The third is a **`tbd` must-have** whose index entry was
+removed when a `defined` replacement was added, without the original being marked `superseded`.
+That is P9 firing, on a must-have, in a live document.
+
+**The corpus is growing faster than the plan is shrinking it.** 165k → 174k tokens in a fortnight
+makes item 18 more urgent, not less: `analyze-prd` is handed the whole of it, on Haiku.
 
 ---
 
@@ -132,7 +160,7 @@ inference on a small model, what the document already says.
 **P5 — The first step of `/breakdown` does not fit in its model's context.**
 *Verification: measured.*
 `breakdown/SKILL.md` Phase 2 says: *"Invoke the `breakdown-analyze-prd` skill with the full PRD
-content."* For this corpus that is **~165k tokens**, sent in one prompt to a skill declaring
+content."* For this corpus that is **~174k tokens** and rising, sent in one prompt to a skill declaring
 `model: claude-haiku-4-5` (200k window). It nominally fits and practically cannot work: it
 leaves ~35k for a structured extraction of 64 features, against an explicit instruction not to
 "truncate or summarize features". There is no chunking, no per-feature pass, and no size check.
@@ -226,9 +254,21 @@ field `/execute` depends on for merge sequencing. This is the single most likely
 implement items 14–16 wrongly.
 
 **P9 — Nothing reconciles the index against the feature directory.**
-Orphans, dangling links and priority mismatches are all silently possible. The corpus's two
-orphans are legitimate (P6's `superseded` convention); the check must therefore *understand*
-that convention rather than flag every orphan.
+*Verification: measured. Upgraded from a predicted failure to an observed one on 2026-08-24.*
+Orphans, dangling links and priority mismatches are all silently possible. Two of the corpus's
+three unindexed files are legitimate — P6's `superseded` convention — so the check must
+*understand* that convention rather than flag every orphan.
+
+**The third is the failure this finding predicted.** A `tbd` **must-have** feature had its index
+entry removed when a `defined` replacement was added under a new slug, and its own file was never
+marked `superseded`. The result is a must-have that is in no plan, points at nothing, and is
+pointed at by nothing — invisible to `/breakdown`, which reads the index, and invisible to a
+reader, who sees a normal `tbd` file. Nothing in the toolchain detects it, and it survived a
+fortnight of active editing.
+
+It is also the exact case that makes item 6's check non-trivial: the legitimate orphans and the
+drifting one are distinguished only by a `<status>` value, so a check that flags all orphans is
+wrong twice and a check that ignores them is wrong once.
 
 **P10 — `what-next.md` is prose markdown where the spec says XML.**
 *(This is assessment finding F3/F10; carried forward as item 12.)* The divergence produced a
@@ -363,22 +403,27 @@ is the earliest point at which it could be measured.
 
 **P23 — The criterion format cannot express most of what a requirement needs to say.**
 *Verification: measured.*
-All 519 criteria in the corpus are Given/When/Then. GWT is a **scenario** format: it renders one
+All 552 criteria in the corpus are Given/When/Then — still all of them, after a fortnight of
+editing that added 33 more. GWT is a **scenario** format: it renders one
 event and its outcome. Mapped onto the six EARS patterns, four of them have no natural rendering
 in it at all:
 
 | EARS pattern | Template | Expressible as GWT? | In the corpus |
 |---|---|---|---|
-| Event-driven | `When <trigger>, the system shall <response>` | naturally | essentially all 519 |
-| Unwanted behaviour | `If <trigger>, then the system shall <response>` | awkwardly | 80 (15.4%) |
+| Event-driven | `When <trigger>, the system shall <response>` | naturally | essentially all 552 |
+| Unwanted behaviour | `If <trigger>, then the system shall <response>` | awkwardly | 85 (15.4%) |
 | State-driven | `While <precondition>, the system shall <response>` | awkwardly | rare |
 | Ubiquitous | `The system shall <response>` | no natural form | — |
 | Optional feature | `Where <feature> exists, the system shall <response>` | no natural form | **0** |
 | Complex | combination of the above | no | — |
 
 **84.6% of criteria touch no failure path** — no failure, invalid state, conflict, expiry,
-refusal or absence anywhere in the block. And **7 of the 34 features labelled `defined` have none
+refusal or absence anywhere in the block. And **8 of the 34 features labelled `defined` have none
 at all.**
+
+*Re-measured 2026-08-24.* The share was 15.4% at 519 criteria and is 15.4% at 552 — the ratio did
+not move while a tenth of the corpus was rewritten, which is stronger evidence than the original
+snapshot. The count of `defined` features with no edge case rose from 7 to 8.
 
 The last figure is the one that matters, because §4.2 defines `defined` as *"criteria cover the
 edge cases"*. Those seven do not satisfy the definition they are labelled under. **Item 3's
@@ -397,17 +442,39 @@ no GWT rendering, so its absence is a property of the format, not of the authors
 
 | Artefact class | Distinct items | Mentions | Corpus files citing one |
 |---|---|---|---|
-| Architecture decision records | 16 | 113 | 25 of 67 |
-| Open questions register | 19 | 40 | — |
+| Architecture decision records | **19** | **136** | 25 of 68 |
+| Open questions register | **22** | **44** | — |
 | Product principles | — | 4 | — |
 
-**157 references, none validated and none followed.** `analyze-prd` receives PRD XML and nothing
+**184 references, none validated and none followed** — up from 157 a fortnight earlier, which is
+the point: this class of reference is the fastest-growing thing in the corpus. `analyze-prd` receives PRD XML and nothing
 else, so a feature whose scope is settled by a decision record is broken down without it. Nothing
 detects a reference to a record that does not exist, one that has been superseded, or one that
 contradicts the feature citing it.
 
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
+
+**P26 — Nothing checks that a feature discharges what other features expect of it.**
+*Verification: measured.*
+Features reference each other constantly: **231 inter-feature reference edges** across the corpus,
+with 51 of 65 features referenced by at least one other and the most-referenced carrying **19
+inbound consumers**. **93 of those edges (40%) are one-way** — a feature names another that never
+names it back.
+
+A one-way edge is not a defect on its own; plenty are "see also". But it is exactly the population
+a contract review has to read, and nothing reads it. Two failure shapes recur, both silent because
+neither file is wrong on its own terms:
+
+- **A consumer reading an interface that was never specified** — one feature describes reading
+  another's query; the owning feature has never mentioned that query exists.
+- **An orchestrator invoking a capability that never said it was invocable** — one feature
+  schedules another and evaluates what it emits; the scheduled feature says nothing about running
+  unattended.
+
+This is P20's shape one level earlier and one level cheaper. P20 is that nothing reconciles tasks
+against the PRD; P26 is that nothing reconciles the PRD against itself, and a contract gap found
+here costs a paragraph rather than a rebuilt task.
 
 **P25 — There is no design step, and no way to say which requirements would need one.**
 *Verification: static, corroborated by the corpus author.*
@@ -460,7 +527,7 @@ The five values, defined — and the definitions go **in the template**, where t
 | Status | Meaning | Required content |
 |---|---|---|
 | `tbd` | No criteria written. A name and an intent. | — |
-| `in-progress` | Criteria exist, but some scope is carried by the description alone. | ≥1 criterion |
+| `in-progress` | Criteria exist, but the feature declares a shortfall in its own specification. | ≥1 criterion + a `<gap kind="specification">` |
 | `defined` | Criteria cover the edge cases — *measured* as EARS pattern coverage, not asserted; notes carry the data model and relationships. | ≥1 `unwanted-behaviour` criterion + structured notes |
 | `excluded` | Won't-have. Deliberately not built. | `<rationale>` (adopts P13) |
 | `superseded` | Merged into another feature; file retained as a pointer. | successor link; **removed from `index.md`** |
@@ -468,6 +535,13 @@ The five values, defined — and the definitions go **in the template**, where t
 **The tag records how completely the feature is *defined*, not how far it is *built*.** This must
 be said explicitly, because `in-progress` reads as build progress to every developer who sees
 it, and because `/execute` has its own `in-progress` meaning exactly that.
+
+**`in-progress` now has a mechanical test, and the corpus supplied it.** A feature is
+`in-progress` exactly when it carries a `<gap kind="specification">`; a `defined` feature may carry
+gaps of every other kind, because *being specified* and *being unblocked* are different things.
+That replaces the prose test — "some scope is carried by the description alone" — which item 3
+could never evaluate and which is why its ambiguous band existed at all. The author declares the
+shortfall; the checker reads the declaration.
 
 **"Cover the edge cases" needed a definition, and P23 is what happens without one.** Seven
 features carry `defined` while having no criterion that mentions a failure at all. Item 33's
@@ -508,10 +582,16 @@ Two consequences worth stating plainly:
   </phases>
 
   <acceptance-criteria>
-    <criterion id="1" phase="1">            <!-- phase optional -->
-      <given/><when/><then/>
+    <criterion id="1" pattern="event-driven" priority="P0" phase="1">   <!-- items 33, 34 -->
+      When <trigger>, the system shall <response>.
     </criterion>
   </acceptance-criteria>
+
+  <gaps>                                    <!-- what this feature knows it is missing -->
+    <gap id="1" kind="dependency" raised="2026-08-18">
+    Markdown, including links, exactly as elsewhere.
+    </gap>
+  </gaps>
 
   <notes>
     <data-model>...</data-model>            <!-- item 2 -->
@@ -560,6 +640,13 @@ The rule, in order:
 The structured-notes marker was the decisive signal: present in 28 of 34 `defined` files and in
 **none** of the other 30. Zero false positives.
 
+**The ambiguous band is now closed by declaration rather than by inference.** A
+`<gap kind="specification">` means `in-progress`; its absence, with criteria present, means the
+author is claiming the specification is complete. The single corpus file this rule escalated at
+first review is exactly the kind of case a declaration settles and a heuristic cannot. Keep the
+escalation path for files written before `<gaps>` existed — which, during the migration in item
+41, is all of them.
+
 **Item 33 adds the signal this rule is missing.** Every test above reads the notes or counts
 criteria; none reads what the criteria *say*. Once criteria carry a `pattern` attribute, add:
 a feature whose criteria are entirely `event-driven` is at most `in-progress`, however rich its
@@ -605,6 +692,11 @@ Today Phase 6 asks the model four prose questions about the tech stack. It gains
 - **architecturally-significant candidates** (item 35), screened by the published ASR heuristics
   and reported as candidates only, never applied
 - **external references resolve** (item 39) — every `ADR-NNN`, `OQ-NNN` and principle citation
+- **`<gaps>` well-formed**: unique stable `id`, a `kind` from the enum, an ISO `raised` date; and
+  the status rule — `defined` with a `specification` gap, or `in-progress` without one, is a
+  contradiction
+- **gap age**, reported rather than judged. A gap raised months ago is a different object from one
+  raised yesterday, and only the date shows it
 
 Mismatches are **reported, not auto-corrected**. A wrong status is often a signal that the
 *content* is wrong, and silently relabelling hides that.
@@ -666,10 +758,12 @@ lists and the file needs both.**
     <toolchain-version>2.0.0</toolchain-version>
   </meta>
 
-  <!-- DERIVED by item 6. Never hand-maintained. -->
+  <!-- DERIVED by item 6. Never hand-maintained. Aggregates the feature files' own
+       <gaps> blocks rather than re-deriving a shortfall from status. -->
   <authoring-gaps>
-    <summary defined="34" in-progress="0" tbd="21" excluded="7" superseded="2"/>
-    <gap slug="..." status="tbd" blocking="true">Missing acceptance criteria</gap>
+    <summary defined="34" in-progress="1" tbd="21" excluded="7" superseded="2"/>
+    <gap slug="..." id="2" kind="dependency" raised="2026-08-18"/>   <!-- carried, not restated -->
+    <feature slug="..." status="tbd">no criteria written</feature>   <!-- no <gaps> to carry -->
   </authoring-gaps>
 
   <!-- HUMAN-AUTHORED. Post-PRD work. Markdown bodies. -->
@@ -727,7 +821,12 @@ one. The two compose: this flag selects *features*, that one selects *criteria w
 **15. Refuse to break down features that are not defined enough — loudly.**
 A `tbd` feature has a name and roughly one criterion. Breaking it down does not produce a thin
 task; it produces an **invented** one, and TDD then locks the invention in as passing tests.
-Skip `tbd` unless `--include-tbd`. In the corpus this would skip 21 features — **including 5
+Skip `tbd` unless `--include-tbd`. **Once `<gaps>` exists the rule gets finer and better**: refuse
+any feature carrying a `<gap kind="specification">`, whatever its status, and *warn* on
+`dependency`, `decision`, `evidence` and `ownership` gaps rather than refusing — those say the
+feature is specified but not yet buildable, which is a scheduling fact rather than a definition
+defect. A status is a summary; the gap block is the detail, and the detail is what should drive
+the decision. In the corpus this would skip 21 features — **including 5
 must-haves**, which is exactly the point: the report must name them, because "5 must-have
 features are not defined enough to break down" is the single most useful sentence `/breakdown`
 could say about that PRD. Silent omission would be worse than the current behaviour.
@@ -965,14 +1064,36 @@ force. Absent is fine and means defaults; present-and-broken must stop the run.
 **29. Give uncertainty a channel that survives the handoff.**
 *Addresses P19.*
 
-An element `/prd` may emit, `analysis.json` must carry, task files must preserve, and `/execute`
-must refuse to start on:
+**Superseded in its own proposal: use `<gaps>`.** This item originally invented a
+`<needs-clarification>` element. The corpus has since grown one of its own, and it is better in
+every respect — stable ids that survive citation from a commit or a review, a `kind` taxonomy
+instead of a boolean, and a `raised` date, without which an open item and a stale one look
+identical. Adopt it rather than adding a second element for the same idea; two mechanisms for one
+concept is exactly the drift item 22 exists to catch.
 
 ```xml
-<needs-clarification id="3" blocking="true">
+<gaps>
+  <gap id="3" kind="specification" raised="2026-08-18">
   Retention period for archived links is unspecified.
-</needs-clarification>
+  </gap>
+</gaps>
 ```
+
+`kind` replaces `blocking=` with something more useful than a boolean, and the mapping is the
+substance of this item:
+
+| Kind | Blocks definition? | Blocks execution? |
+|---|---|---|
+| `specification` | **yes** — this is what makes a feature `in-progress` (§4.2) | yes |
+| `dependency` | no | yes, until named and available |
+| `decision` | no | yes — an undecided question built anyway is an invented one |
+| `ownership` | no | warn: the boundary may move under the task |
+| `evidence` | no | warn |
+
+`analysis.json` must carry gaps, task files must preserve them, and item 38's gate reads them.
+The overnight-run objection that motivated `blocking="false"` is answered better here: three of
+the five kinds warn rather than stop, so a run is halted by a genuine unknown rather than by every
+open item.
 
 **Extend the vocabulary that already exists rather than inventing a second one.** P19 records
 that the CRD path already carries `<confidence>high|medium|low</confidence>` as a required field,
@@ -1259,6 +1380,116 @@ decision-record track useful even if 35, 36 and 38 are never switched on: a dang
 a feature that `/breakdown` is about to turn into tasks is a defect whether or not the design
 track is enabled.
 
+**40. The well-defined bar, as a gate on the `defined` label.**
+*Addresses P26, and gives §4.2 the review it has always implied. Adapted from a policy written for
+a separate project built with the original commands — so it is tested against real use, not
+designed here.*
+
+§4.2 says what `defined` means in a sentence. This is that sentence as **seven tests that can be
+applied one at a time**, split by what a script can settle and what needs a reader.
+
+| # | Test | Mechanical? |
+|---|---|---|
+| 1 | Scope states what the feature owns **and what it does not**, naming the feature that holds each excluded part | no |
+| 2 | Each distinct failure mode has its own criterion — and each pair of states that must stay distinguishable | **yes**, via item 33's `pattern` |
+| 3 | Strike out every criterion that exists only to serve another feature; what remains still describes this one | no |
+| 4 | A data model, including **what is deliberately absent** and where it lives instead | partly — presence only |
+| 5 | External dependencies as providers with roles, not brand names; and what they gate | partly — presence only |
+| 6 | Cited decision records are **discharged**, not merely cited: their obligations appear as criteria | partly — citation vs criteria |
+| 7 | A relationships list **in both directions** — outbound and inbound | **yes** |
+
+Test 7's inbound half is the one that gets skipped and the one that catches contract gaps, which
+is why it is mechanical and why it is worth running first.
+
+**The contract rule is the highest-yield check, and it is a script.** *Every expectation another
+feature places on this one must be discharged by something in this one.* Grep the feature's slug
+and display name across the PRD, read each hit as a claim someone is relying on, and report the
+ones this feature does not answer. On the corpus that is 93 one-way edges to triage rather than
+231 to read. **When it finds a gap, the fix belongs in the owning feature** — weakening the
+consumer's claim to match an under-specified owner loses a requirement that had a reason.
+
+**Two tiers, matching the plan's existing machinery.** The mechanical tests go into item 6, as
+exit codes. The judgement tests go to item 8's agent, which gains a second mode: it already needs
+the feature, its neighbours and its decision records loaded to propose criteria, and that is
+exactly the context a definition review needs. One agent, two modes — `propose-criteria` and
+`review-definition` — rather than two agents loading the same thing twice.
+
+**The gate itself:** a feature cannot be *labelled* `defined` until the mechanical tests pass and
+a review has been recorded. Item 6 reports; the label is the author's to set. This is deliberately
+weaker than refusing the label, because §4.2's own principle is that a wrong status usually signals
+wrong *content*, and a gate that blocks the label invites relabelling rather than fixing.
+
+**Three conventions come with the bar**, and each closes a hole the plan had left:
+
+- **Unknowns are not under-definition.** A feature need not have every answer; it must know which
+  answers it lacks and record each in the place that makes it findable — a spike where
+  investigation settles it, the open-questions register where the question binds more than one
+  feature, or a `<gap>` where this feature owns it and can close it alone. *Prose in one feature is
+  not a place other features can be expected to look.*
+- **What does not belong in a feature file**, all three checkable by item 6: priority argument
+  (features do not settle their own priority, or each other's), restated status (the tag is the
+  single source and prose about it drifts), and task lists (a bounded pointer to work in flight is
+  legitimate, and is removed by the commit that completes it).
+- **Moving a boundary has an order**: decide it in a decision record *before* writing the feature,
+  write the feature against it, then sweep every consumer in one pass, and split the commits by
+  concern in that order. The record is committed first and the forward reference stated, because a
+  feature whose rationale rests on nothing is worse than a decision whose link resolves one commit
+  later. An ADR is owed only where the boundary is **contested or moving** — the signal is having a
+  rejected alternative worth recording, which is item 37's test arriving from the other direction.
+
+**The anti-patterns are the review's checklist**, each observed rather than imagined:
+neighbour-authored criteria; ownership asserted rather than drawn; a decision record discharged by
+citation; a consumer without a counterpart; providers named as websites; a data model living in
+the neighbour that uses the entity; status frozen at birth; uncertainty parked in prose.
+
+**One thing the bar deliberately does not do: touch priority.** Definition completeness and MoSCoW
+are orthogonal — a could-have can be fully defined and a must-have can be a sketch, and the corpus
+contains both. A feature is never promoted because it is well written, nor elaborated only as far
+as its priority seems to justify. That is §4.1 and §4.2's separation, arrived at independently by a
+different project, which is the best evidence available that the split is right.
+
+**41. A migration guide an agent can execute.**
+*Required by items 1, 2, 5, 11, 33, 34, 35 and the `<gaps>` adoption in 29. Nothing in §5 A or
+§5 I can land without it.*
+
+Every schema decision in this plan implies rewriting artefacts that already exist — on this corpus,
+65 feature files, 552 criteria, an index and a `what-next.md`. That work will be done by an agent,
+so the guide is not prose for a human to follow: it is **a specification with a consumer**, and it
+is subject to the same discipline this plan applies to every other producer/consumer pair.
+
+What it must contain, per schema change:
+
+- **Preconditions** — what must be true of a file before the transformation applies, so a partly
+  migrated tree is safe to re-enter.
+- **The transformation**, stated as a rule over the old shape rather than an example of the new
+  one. `<priority>` is deleted only after the index entry is confirmed to carry it (item 1);
+  `<notes>` prose becomes `<data-model>` / `<relationships>` / `<considerations>` with
+  **unrecognised content going to `<considerations>` verbatim, never dropped** (item 2).
+- **Postconditions and invariants**, checkable without judgement. Criterion count in equals count
+  out (item 33). Every migrated criterion carries `derived-from`. No feature gains or loses a
+  status. `<gaps>` lands between `</acceptance-criteria>` and `<notes>`.
+- **What must not be migrated mechanically**, named explicitly: assigning item 33's `pattern`,
+  assigning item 34's `priority`, and deciding item 35's significance flag are all judgements. The
+  guide's job is to stop an agent guessing them, not to help it.
+- **Escalation** — what to do when a file does not match any precondition, which is *stop and
+  report this file*, never *transform it anyway*.
+
+Three properties the guide itself must have:
+
+- **Idempotent and resumable.** A 65-file migration will be interrupted. Re-running must be safe,
+  and the marker of "already migrated" must be in the file rather than in a side-car that can drift
+  from it.
+- **Per-file, reviewed as a diff.** Never a bulk pass. This is item 33's rule generalised, for the
+  same reason: a silent semantic loss across dozens of files is the failure mode, and only a diff
+  catches it.
+- **Versioned against `toolchain_version`** (item 24), so an artefact stamped by an older toolchain
+  selects the right migration rather than the newest one.
+
+**And it needs a checker**, or it becomes P10 in a new place: a script that reads a migrated tree
+and asserts the postconditions above. Writing a migration spec with no verifier, in a plan whose
+central finding is that this repository ships producers without readers, would be the most
+embarrassing possible outcome.
+
 ---
 
 ## 6. Summary
@@ -1304,6 +1535,8 @@ track is enabled.
 | 37 | Decision / principle / constraint discriminator | P16 | Consistency |
 | 38 | Gate between `/breakdown` and `/execute` | **P25** | Structural |
 | 39 | Validate references that leave the PRD | **P24** | **Correctness** |
+| 40 | The well-defined bar, as a gate on `defined` | **P26** | **Correctness** |
+| 41 | A migration guide an agent can execute | (all schema items) | **Blocking** |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -1334,6 +1567,14 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**41 is a precondition, not a follow-up.** Items 1, 2, 5, 11, 33, 34 and 35 all rewrite artefacts
+that exist; none of them can land until the migration they imply is specified and verifiable. Write
+it with the first schema item, not after the last.
+
+**40 belongs with 6 and 8**, whose machinery it uses — the mechanical tests are exit codes in one
+and the judgement tests are a second mode of the other. Its contract-rule script can go earlier
+still: it needs nothing from this plan and has 93 one-way edges to triage today.
 
 **35, 36 and 38 are one piece of work**, after the schema block and after 30. They are also the
 one block that can be deferred wholesale: with `<design-track enabled="false">` none of them
