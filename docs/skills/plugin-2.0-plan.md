@@ -27,12 +27,24 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P17** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P21** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
 script was run against the corpus and its output is reproduced. Two items are explicitly
 **unverified** and carry a probe to run rather than a fix to apply.
+
+**Amended 2026-08-24.** P18–P21 and items 28–31 (§5 H) were folded in from
+[`sdd-comparison.md`](sdd-comparison.md), which compares this toolchain against spec-kit, Kiro,
+Tessl and Böckeler's taxonomy. They are recorded here rather than there because they are changes
+to *this* toolchain, and the comparison document should hold the comparison. Each carries its
+C-number from that document. Nothing numbered 1–27 or P1–P17 moved, so every existing
+cross-reference still holds.
+
+Their arrival changes one earlier item. Item 28 does **not** add a new file: item 25 already
+proposes `architecture.md` as a prescriptive greenfield artefact, and it turns out to claim most
+of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
+the note there.
 
 ---
 
@@ -111,6 +123,43 @@ leaves ~35k for a structured extraction of 64 features, against an explicit inst
 "truncate or summarize features". There is no chunking, no per-feature pass, and no size check.
 This is graded **Blocking** for any PRD of realistic size — it is the first thing `/breakdown`
 does.
+
+**P19 — Ambiguity has no channel, and the design actively suppresses it.**
+*Verification: static, exhaustive. From `sdd-comparison.md` C3.*
+Three facts that are individually defensible and jointly produce invention:
+
+- `breakdown-analyze-prd` is *instructed* to infer — data models "inferred from feature
+  descriptions", endpoints inferred, components inferred, under the guidance *"Infer carefully:
+  data models and APIs should be reasonable inferences, not guesses."*
+- `review-criteria.md` makes `TBD`, `TODO`, `[to be determined]`, `appropriate`, `suitable`,
+  `as needed` and *"necessary (without specifics)"* **critical** failures. One critical issue
+  fails the batch and forces regeneration.
+- Grepping `breakdown/SKILL.md` and `execute/SKILL.md` for user-confirmation points returns
+  **nothing**. Neither skill asks a human anything, by design — `/execute` is the unattended
+  overnight case.
+
+So the toolchain requires inference, forbids the marking of it, and provides nowhere to escalate.
+The only output satisfying all three is confident invention — and a reviewer reading a task file
+whose entire design goal is self-containment cannot distinguish an invented field name from a
+specified one. The retry loop makes it worse rather than better: attempt two runs with the
+reviewer's complaint attached, under more pressure to *sound* specific than attempt one.
+
+This is P2's mechanism seen from the other end. P2 says the criteria never arrive; P19 says that
+when they do not, nothing is allowed to say so. Item 15 refuses `tbd` *features*, which is the
+same instinct applied at the wrong granularity — a `defined` feature can still have one
+undefined field.
+
+**P20 — Nothing reconciles the task set against the PRD.**
+*Verification: static, exhaustive. From `sdd-comparison.md` C4.*
+`breakdown-review-tasks` reviews each task **in isolation** — completeness, self-containment,
+interface contracts, requirement specificity, test requirements, verification steps, file scope.
+Two questions are asked nowhere: *is every must-have feature covered by at least one task?* and
+*does any task implement something the PRD did not ask for?* With P1 unfixed the second is not
+hypothetical, since won't-have features are built.
+
+This is P9 one level up. P9 is that nothing reconciles the index against the feature directory;
+P20 is that nothing reconciles the task set against either. Same absent check, later boundary,
+and the later one is the expensive one — it is discovered after `/execute` has run.
 
 ### 3.2 Consistency
 
@@ -211,6 +260,49 @@ Items 4.6, 4.12, 4.13, 4.14 and 4.17 all converted prose instructions into progr
 because the prose guard was documented and ignored. `/prd` is now the largest remaining
 concentration of prose guards: the pre-write existence check, the consistency checks, and the
 status marker are all instructions to a model rather than exit codes.
+
+**P18 — The toolchain's architectural opinions are vendored into the plugin, and no project can
+override them.**
+*Verification: static, exhaustive. From `sdd-comparison.md` C2.* This is P17 generalised: P17 is
+that architecture has no channel *in*; P18 is that architecture is only one of five things with
+that problem.
+
+| Opinion | Where it lives | Overridable? |
+|---|---|---|
+| Five layers, `setup → foundation → backend → frontend → integration` | `layer-definitions.md` | No |
+| TDD is mandatory | `tdd-workflow.md` | No |
+| Max 3 files per task | `task-format-spec.md` | No |
+| Templates are `python` / `go` / `tanstack` | `layer-definitions.md` | No |
+| Verification is runnable shell commands | task format | No |
+
+Searching `skills/`, `agents/` and `commands/` for *constitution*, *steering*, *coding standard*
+or *conventions* returns two files — `crd-investigate/SKILL.md` and `crd-investigator.md` — and
+both only **infer** conventions from existing code. Nothing anywhere lets a project *declare*
+them. Every one of the five opinions is defensible; none is universal; and disagreeing with any
+of them currently means forking the plugin.
+
+The comparison document grades this the largest gap against the field, because both comparable
+tools have solved it — spec-kit with `memory/constitution.md` enforced as gates, Kiro with
+steering files. It is also where Böckeler's model-driven-development parallel lands: her charge
+is that LLM-based SDD risks combining MDD's inflexibility with the LLM's non-determinism, and a
+hardcoded five-tier DAG that encodes one architecture — a CRUD web application built from a
+template — as though it were the shape of software is exactly the inflexibility she means. A CLI
+tool, a library, a data pipeline or anything event-driven does not decompose that way. The
+finding is not that the layers are wrong. It is that they are not the project's to change.
+
+**P21 — There is no path for a change too small to be worth the ceremony.**
+*Verification: static. From `sdd-comparison.md` C9.*
+Böckeler's scale critique — Kiro bloating a bug fix with user stories, spec-kit over-engineering
+moderate features — applies here with the greenfield path being the worse of the two: eight
+interview phases, five layers, batched generate → review → retry at up to three attempts per
+batch of five.
+
+`/crd` is the intended concession and the instinct is right — CRDs skip Layer 0, scope generation
+from `<impact-analysis>`, and typically produce two or three layers. But a three-file change
+still costs a `PROJECT.md` investigation or incremental update, eight CRD phases, an
+impact-analysis sub-skill, layer planning, generation, review, and the full
+worktree/verify/merge machinery. The impact analysis computes the size of the change and nothing
+consumes that number as a routing decision.
 
 ---
 
@@ -573,7 +665,9 @@ an artefact written by 2.0 and read by 2.1 must not be misread silently.
 ### G. Architecture
 
 **25. Give architecture an artefact, and make it the greenfield counterpart of PROJECT.md.**
-*Addresses P11, P17.*
+*Addresses P11, P17. **Widened by item 28**, which carries the other four vendored opinions
+(layers, test policy, file limits, scaffold) in the same file rather than a new one — read them
+together.*
 
 Architecture divides cleanly by scope, and the two halves belong in different places:
 
@@ -644,6 +738,115 @@ from recollection.
 `<next-steps>` then keeps the *rationale* — why a spike matters, what it must measure — and
 drops the sequence.
 
+### H. Rules the project owns, and scale
+
+Four items folded in from [`sdd-comparison.md`](sdd-comparison.md) on 2026-08-24, numbered 28–31
+so that 1–27 keep their cross-references. They span components rather than belonging to one, which
+is why they are a section rather than additions to A–G.
+
+**28. Widen `architecture.md` into the project's rule file.**
+*Addresses P18. Extends item 25 — read that first.*
+
+Item 25 already establishes the right artefact in the right place: a prescriptive, machine-readable
+file at `docs/prd/{slug}/architecture.md`, sharing PROJECT.md's schema, with a reader in
+`analyze-prd` and a carrier into `<context>`. It scopes that artefact to *architecture*. P18 is
+that architecture is one of five vendored opinions, and the other four need the same channel.
+
+**So this is not a second file.** Adding `PRINCIPLES.md` alongside `architecture.md` and
+PROJECT.md would make three files describing one project, which open question 2 is already
+uneasy about at two. Widen the one item 25 defines:
+
+```xml
+<rules>
+  <layers>                                  <!-- replaces the hardcoded five-tier DAG -->
+    <layer id="1" name="foundation" depends-on=""/>
+    <layer id="2" name="backend"    depends-on="1"/>
+  </layers>
+  <testing policy="tdd|tests-after|none" runner="pytest"/>
+  <task-limits max-files="3"/>
+  <banned><pattern reason="...">...</pattern></banned>
+  <scaffold template="python|go|tanstack|none" path="..."/>
+</rules>
+```
+
+Three consequences, and the first is the one that makes this the largest item in the plan:
+
+- **`layer-definitions.md` stops being the layer graph and becomes its default.**
+  `breakdown-plan-layers` reads the graph from `<layers>` when present. This is what actually
+  answers Böckeler; every other change here is a refinement of a fixed pipeline, and this one
+  makes the pipeline a parameter. It also composes with item 27: `<depends-on>` supplies
+  feature-level edges, `<layers>` supplies the tiers those edges are grouped into, and ordering
+  is derived from both rather than recalled from either.
+- **TDD becomes a default, not a law.** `execute-batch` reads `<testing policy>`. The current
+  mandate is right for most projects and wrong for a spike, and the toolchain should be able to
+  say which it is running.
+- **The template list stops being an enum in a reference file.** `<scaffold>` names a path.
+
+**Guard it the way this repository has learned to (S3 / P16):** a script parses `<rules>`, and
+`/breakdown` refuses in the `resolve-output.sh` idiom if a rule file is present and unparseable.
+A silently-ignored rule file is worse than none, because the operator believes the rule is in
+force. Absent is fine and means defaults; present-and-broken must stop the run.
+
+**29. Give uncertainty a channel that survives the handoff.**
+*Addresses P19.*
+
+An element `/prd` may emit, `analysis.json` must carry, task files must preserve, and `/execute`
+must refuse to start on:
+
+```xml
+<needs-clarification id="3" blocking="true">
+  Retention period for archived links is unspecified.
+</needs-clarification>
+```
+
+The corollary is the part that matters, and it is a change to `review-criteria.md`: **the
+placeholder ban must apply to unmarked vagueness only.** Banning `TBD` outright is precisely what
+makes invention the compliant answer (P19). Marked uncertainty should *pass* review and *block*
+execution; unmarked vagueness should keep failing review exactly as it does now.
+
+Two boundaries to respect. `/prd`'s eight-phase interview is a better resolution mechanism than
+anything downstream, because a human is answering — this item is for what the interview *failed*
+to resolve, not a licence to stop asking. And `blocking="false"` must exist, or every open
+question stops an overnight run; non-blocking items belong in the report, alongside item 15's
+named skips.
+
+This item applies the discipline of the ledger to knowledge. `/execute` already refuses to
+report completion it cannot verify against git; it should equally refuse to build a requirement
+that admits it is not one.
+
+**30. A coverage check between `/breakdown` and `/execute`.**
+*Addresses P20. Depends on item 16.*
+
+One script, three assertions, run at the end of `/breakdown` and again in `/execute`'s preflight:
+
+- every feature above the `--priority` threshold has ≥1 task naming it in `<source-feature>`
+- every task's `<source-feature>` resolves to a feature that exists and was not skipped
+- no task exists whose `<source-feature>` is `wont-have`, `excluded` or `superseded` (item 13's
+  runtime backstop, and the thing item 21 is being written to measure)
+
+Cheap, because `build-manifest.py` already enumerates the generated files and already refuses on
+a manifest that disagrees with them — this is the same check extended from *do the files match
+the manifest* to *do the tasks match the PRD*. It is also the general form of item 23's closing
+observation: a check that a producer has a reader. Here it is a check that every requirement has
+an implementer.
+
+Report the shortfall by name. "4 must-have features have no task" is the sentence, in the idiom
+of item 15.
+
+**31. A `--small` path that skips layering.**
+*Addresses P21.*
+
+Below a threshold — three affected files, taken from the impact analysis that already computes
+it — `/breakdown` emits **one task** and no layer plan, and `/execute` runs it as a single-task
+batch. Keep the whole execution substrate: worktree, independent verification, merge, ledger
+entry. Those are cheap per-task and they are the strongest thing the toolchain has.
+
+What is being skipped is planning ceremony, not rigour: layer planning, batching, the
+generate → review → retry loop across batches, and the five-tier DAG that a three-file change has
+no use for. The threshold should be a `<rules>` value (item 28), not a constant, and the routing
+decision should be reported rather than silent — an operator who expected four tasks and got one
+must be told why.
+
 ---
 
 ## 6. Summary
@@ -677,12 +880,28 @@ drops the sequence.
 | 25 | `architecture.md`, in PROJECT.md's schema, with a reader | **P11, P17** | **Correctness** |
 | 26 | Seed PROJECT.md on greenfield | **P17** | **Correctness** |
 | 27 | `<depends-on>`; derive ordering rather than authoring it | P1, P11 | Structural |
+| 28 | Widen `architecture.md` into the project's rule file | **P18** | **Structural** |
+| 29 | `<needs-clarification>`, and narrow the placeholder ban | **P19** | **Correctness** |
+| 30 | Coverage check between `/breakdown` and `/execute` | **P20** | **Correctness** |
+| 31 | `--small` path that skips layering | **P21** | Structural |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
-tested end to end on a realistic PRD until analysis fits in context. Then the schema block
-(1–5, 25, 27) and its migration, because 13–17 depend on the shapes it defines — and because 27
-is what makes item 14 decidable. Then the `/breakdown` and `/execute` items, which are small
-once the schema carries the data. 22 and 23 last, to hold the result in place.
+tested end to end on a realistic PRD until analysis fits in context.
+
+Then the schema block (1–5, 25, **28**, 27) and its migration, because 13–17 depend on the shapes
+it defines, because 27 is what makes item 14 decidable, and because **28 is now the largest thing
+in that block** — it is the only item that turns the fixed pipeline into a parameter, and 31's
+threshold and 30's priority filter both want to read values it defines. Do 25 and 28 as one piece
+of work; splitting them means designing the same file twice.
+
+Then 29, before the `/breakdown` items rather than after: every later item is worth more once a
+task can admit what it does not know, and 15 and 30 both get less blunt when partial uncertainty
+has somewhere to go.
+
+Then the `/breakdown` and `/execute` items (13–17, 19, 20), which are small once the schema
+carries the data, with **30** immediately after 16 — it has nothing to check until
+`<source-feature>` exists. **31** after those, since it is a bypass around machinery that should
+be correct before it is bypassed. 22 and 23 last, to hold the result in place.
 
 ---
 
@@ -698,6 +917,12 @@ once the schema carries the data. 22 and 23 last, to hold the result in place.
    exists — and `crd-context-update` compares PROJECT.md against a git hash it would not yet
    have. Two files with a defined seeding step is the safer default; one file is worth
    revisiting if the seeding proves lossy.
+
+   **Item 28 settles this, in the direction of two files.** Once `architecture.md` also carries
+   layer definitions, test policy and banned patterns, it is unambiguously the *prescriptive*
+   artefact and PROJECT.md is unambiguously the *descriptive* one. Merging them would produce one
+   file where half the content is hash-stamped against a commit and half must be read before any
+   commit exists. Item 26's seeding step stays the join between them.
 3. **Resolved — see item 27.** *(Was: should `/breakdown` consume the task-generation order?)*
    No. The order was model-deduced during `/prd`, not human-authored, so consuming it means
    preferring one model's unvalidated inference to another's — while duplicating
@@ -719,3 +944,20 @@ once the schema carries the data. 22 and 23 last, to hold the result in place.
    ordering and let MoSCoW select roots rather than members. **This needs deciding before item
    14 is built, not after** — and distinguishing a genuine dependency from a cross-reference is
    itself work the schema does not currently support, since both are plain markdown links.
+5. **What is `blocking`'s default in item 29, and who sets it?** A `<needs-clarification>` that
+   defaults to blocking makes an overnight run stop on the first open question — the failure mode
+   `/execute` exists to avoid. Defaulting to non-blocking makes the element decorative. The likely
+   answer is that `/prd` derives it from whether the criterion it hangs off belongs to a
+   must-have, but that is a guess, and it should be measured against the corpus before being
+   written into the template.
+6. **Does item 31's threshold belong to the change or to the project?** Three files is a
+   reasonable default and a poor universal — the right number for a monorepo with generated
+   clients is not the right number for a library. Item 31 says it should be a `<rules>` value,
+   which is correct and incomplete: a per-invocation override is probably also needed, and the
+   interaction between the two is unspecified.
+7. **Is P18 the point at which this stops being a PRD toolchain?** Item 28 makes the layer graph,
+   test policy and scaffold project-owned. At that point `/breakdown` is a generic
+   requirements-to-tasks compiler configured by a rule file, and the five-layer web-application
+   assumption survives only as a default. That is the right direction on the evidence, and it is a
+   larger change of identity than any other item here. Worth deciding deliberately rather than
+   arriving at.

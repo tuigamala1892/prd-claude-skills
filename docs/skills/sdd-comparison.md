@@ -348,49 +348,52 @@ subject of both this document and `plugin-2.0-plan.md`.
 
 ## 8. Remediation items
 
-Ordered by what each unblocks, not by size. Items that duplicate `plugin-2.0-plan.md` are marked
-and not restated.
+Every item here now has a home in `plugin-2.0-plan.md`, marked inline. None is restated.
 
-### 1. A project-owned constitution — `PRINCIPLES.md` in the target *(C2, C9, and the MDD parallel)*
+> **All six items below were folded into
+> [`plugin-2.0-plan.md`](plugin-2.0-plan.md) on 2026-08-24** as items 28–31 and findings P18–P21,
+> which is where the implementation detail now lives. This section is kept as the comparative
+> argument for each — *why the field's answer is better than ours* — and states the destination
+> rather than restating the design. One thing changed in the folding, noted under item 1.
 
-One file in the target project, read by `/breakdown` and enforced by `/execute`, declaring:
-architecture style and layer definitions (replacing the fixed five), test policy (making TDD a
-default rather than a law), file-scope limits, banned patterns, and the template or scaffold to
-build from. This is the highest-leverage item in the document because it simultaneously resolves
-C2, defuses the MDD critique, removes the hardcoded template list, and makes the layer model a
-parameter instead of an axiom.
+### 1. Project-owned rules *(C2, C9, and the MDD parallel; = item 28, finding P18)*
 
-It should follow S3, not the prose it replaces: a script validates the file and exits non-zero if
-`/breakdown` is about to proceed against a constitution it did not parse.
+The highest-leverage change available, because it is the only one that turns the fixed pipeline
+into a parameter: layer definitions, test policy, file-scope limits, banned patterns and the
+scaffold all become the target project's to declare. It resolves C2, defuses the MDD critique,
+and removes the hardcoded template list in one artefact.
 
-### 2. A clarification channel that survives the handoff *(C3)*
+**What changed in the folding.** This section originally proposed a new file, `PRINCIPLES.md`.
+The plan already had item 25 — `architecture.md`, prescriptive, in PROJECT.md's schema, with a
+reader in `analyze-prd` — which claims most of the same ground. A second file would have made
+three artefacts describing one project, so item 28 **widens item 25** instead. The comparative
+point is unaffected; the file count is one lower than proposed here.
 
-A `<needs-clarification>` element that `/prd` may emit, `analysis.json` must carry, task files must
-preserve, and `review-criteria.md` **requires rather than forbids** — with `/execute` refusing to
-start on any task that still has one unresolved. The current design applies the honesty discipline
-of S2 rigorously to *state* and not at all to *knowledge*; this is that discipline extended one
-step.
+### 2. A clarification channel that survives the handoff *(C3; = item 29, finding P19)*
 
-The corollary is a change to `review-criteria.md`: the placeholder ban must apply to *unmarked*
-vagueness only. Banning `TBD` outright is what makes invention the compliant answer.
+The toolchain applies the honesty discipline of S2 rigorously to *state* and not at all to
+*knowledge*: `/execute` refuses to report completion it cannot verify against git, and will
+happily build a requirement that nobody ever specified. spec-kit's `[NEEDS CLARIFICATION]` marker
+is the cheaper half of the answer; the expensive half is that `review-criteria.md` must stop
+treating an admission of uncertainty as a defect.
 
-### 3. A consistency pass between `/breakdown` and `/execute` *(C4)*
+### 3. A coverage pass between `/breakdown` and `/execute` *(C4; = item 30, finding P20)*
 
-The `/speckit.analyze` equivalent, and cheap because `manifest.json` already exists and is already
-built from the files rather than the plan. Three assertions: every must-have feature has at least
-one task; every task names a source feature; no task exists without a requirement behind it. A
-script, exit code, non-zero blocks.
+The `/speckit.analyze` equivalent, and cheap because `build-manifest.py` already refuses on a
+manifest that disagrees with the files on disk — the same check, extended from *do the files match
+the manifest* to *do the tasks match the PRD*.
 
 ### 4. `source-feature` on every task *(C5; = item 16 of `plugin-2.0-plan.md`)*
 
 Not restated. Noted here because the ledger already stores a commit per task, so this one field
 completes a requirement → task → commit chain that is otherwise two thirds built.
 
-### 5. A `--small` path *(C9)*
+### 5. A `--small` path *(C9; = item 31, finding P21)*
 
-Below a threshold — say three files, from the impact analysis that already computes it — skip layer
-planning entirely: one task, one worktree, one verification, one merge. The execution substrate
-(S1) is worth keeping at any size; the planning ceremony is not.
+Böckeler's scale critique is the one none of the three tools answers, and it is answerable here
+precisely because of S1: the execution substrate is cheap per task and worth keeping at any size.
+It is the *planning* ceremony that a three-file change has no use for. Skipping one while keeping
+the other is a distinction spec-kit and Kiro cannot easily draw, because neither separates them.
 
 ### 6. Artefact schema validation in the test suite *(C6; = item 22 of `plugin-2.0-plan.md`)*
 
@@ -421,11 +424,10 @@ as its worked example.
   also a one-off measurement script. Deciding whether it becomes a permanent capability is worth
   doing deliberately.
 
-**Suggested order.** 1 first — it is the largest, and items 3 and 5 both become easier once layers
-are declared rather than assumed. Then 2, because every later item is more valuable once tasks can
-admit what they do not know. Then 3 and 4 together, since the consistency pass needs
-`source-feature` to check anything interesting. Then 5, 6, 7. Items 8 and 9 are independent and can
-go at any time.
+**Order.** See `plugin-2.0-plan.md` §6, which sequences these against the other 27 items rather
+than among themselves — the ordering that matters is the combined one, and two of the six (28 and
+30) have dependencies that only exist over there. Items 8 and 9 above are the exceptions: they are
+documentation work, they are independent of everything else, and they can go at any time.
 
 ---
 
