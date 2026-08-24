@@ -27,14 +27,14 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P21** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P22** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
 script was run against the corpus and its output is reproduced. Two items are explicitly
 **unverified** and carry a probe to run rather than a fix to apply.
 
-**Amended 2026-08-24.** P18–P21 and items 28–31 (§5 H) were folded in from
+**Amended 2026-08-24.** P18–P22 and items 28–32 (§5 H) were folded in from
 [`sdd-comparison.md`](sdd-comparison.md), which compares this toolchain against spec-kit, Kiro,
 Tessl and Böckeler's taxonomy. They are recorded here rather than there because they are changes
 to *this* toolchain, and the comparison document should hold the comparison. Each carries its
@@ -45,6 +45,13 @@ Their arrival changes one earlier item. Item 28 does **not** add a new file: ite
 proposes `architecture.md` as a prescriptive greenfield artefact, and it turns out to claim most
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
+
+**Re-verified after the fold, same day.** The folded claims were re-checked against the files
+rather than against the comparison document, and three needed narrowing: P19 overstated the
+absence of an uncertainty channel, P18's table misattributed two of its five rows, and items 28
+and 31 both mis-costed themselves — 28 downwards, 31 upwards. Those corrections are in place
+below. **P22 and item 32 were added at the same time**, because the comparison's C10 was the one
+gap the first fold dropped.
 
 ---
 
@@ -124,7 +131,7 @@ leaves ~35k for a structured extraction of 64 features, against an explicit inst
 This is graded **Blocking** for any PRD of realistic size — it is the first thing `/breakdown`
 does.
 
-**P19 — Ambiguity has no channel, and the design actively suppresses it.**
+**P19 — On the PRD path, ambiguity has no channel — and the design actively suppresses it.**
 *Verification: static, exhaustive. From `sdd-comparison.md` C3.*
 Three facts that are individually defensible and jointly produce invention:
 
@@ -144,6 +151,15 @@ whose entire design goal is self-containment cannot distinguish an invented fiel
 specified one. The retry loop makes it worse rather than better: attempt two runs with the
 reviewer's complaint attached, under more pressure to *sound* specific than attempt one.
 
+**One channel does exist, on the other path, and nothing reads it.**
+`<confidence>high|medium|low</confidence>` is a **required** field of the CRD format, and
+`crd-impact-analysis` ties it directly to ambiguity: *"Ambiguous matches | List all possibilities,
+note medium confidence"* and *"Incomplete context | Note low confidence, suggest investigation"*.
+No skill consumes it. So the precise claim is not that the toolchain cannot express uncertainty —
+it is that it expresses it on one path, at whole-analysis granularity, to no reader. That is the
+producer-without-a-reader shape of P1, P2 and P4, and the same PRD/CRD asymmetry P2 records for
+acceptance criteria. Item 29 should extend that vocabulary rather than invent a second one.
+
 This is P2's mechanism seen from the other end. P2 says the criteria never arrive; P19 says that
 when they do not, nothing is allowed to say so. Item 15 refuses `tbd` *features*, which is the
 same instinct applied at the wrong granularity — a `defined` feature can still have one
@@ -153,6 +169,9 @@ undefined field.
 *Verification: static, exhaustive. From `sdd-comparison.md` C4.*
 `breakdown-review-tasks` reviews each task **in isolation** — completeness, self-containment,
 interface contracts, requirement specificity, test requirements, verification steps, file scope.
+Its declared `## Input` is two things: a path to the generated task files, and the layer name. It
+never receives the PRD, the feature files or `analysis.json`, so it **cannot** check coverage
+rather than merely omitting to — which makes item 30 a new consumer, not a new criterion.
 Two questions are asked nowhere: *is every must-have feature covered by at least one task?* and
 *does any task implement something the PRD did not ask for?* With P1 unfixed the second is not
 hypothetical, since won't-have features are built.
@@ -270,10 +289,20 @@ that problem.
 | Opinion | Where it lives | Overridable? |
 |---|---|---|
 | Five layers, `setup → foundation → backend → frontend → integration` | `layer-definitions.md` | No |
-| TDD is mandatory | `tdd-workflow.md` | No |
+| TDD is mandatory | enforced by `task-format-spec.md` + `review-criteria.md`; only *described* in `tdd-workflow.md` | No |
 | Max 3 files per task | `task-format-spec.md` | No |
-| Templates are `python` / `go` / `tanstack` | `layer-definitions.md` | No |
+| Templates are `python` / `go` / `tanstack` | `breakdown-analyze-prd/SKILL.md` (detection) and `layer0-templates.md` | No |
 | Verification is runnable shell commands | task format | No |
+
+**Two of those rows resist a single pointer, and that matters for item 28.** TDD is not enforced
+where it is described: `tdd-workflow.md` carries the Red/Green/Refactor procedure and mandates
+nothing, while the requirement is imposed upstream by `task-format-spec.md`, which marks
+`<test-requirements>` a required section, and by `review-criteria.md`, which makes it critical
+twice — once in criterion 1, which names the section among the required elements, and again in
+criterion 5, which sets its quality bar. The template enum likewise lives in the detection table
+in `breakdown-analyze-prd/SKILL.md` and in `layer0-templates.md`; `layer-definitions.md` only
+names one of the three, in a commands table. **An opinion enforced in more places than it is
+documented is harder to make overridable, not easier.**
 
 Searching `skills/`, `agents/` and `commands/` for *constitution*, *steering*, *coding standard*
 or *conventions* returns two files — `crd-investigate/SKILL.md` and `crd-investigator.md` — and
@@ -303,6 +332,26 @@ still costs a `PROJECT.md` investigation or incremental update, eight CRD phases
 impact-analysis sub-skill, layer planning, generation, review, and the full
 worktree/verify/merge machinery. The impact analysis computes the size of the change and nothing
 consumes that number as a routing decision.
+
+**P22 — Self-containment makes the task set harder to review than the PRD it came from.**
+*Verification: static, with one projection labelled as such. From `sdd-comparison.md` C10, which
+the first fold omitted.*
+Duplication between task files is not incidental here, it is **mandated**: every task inlines its
+PRD excerpt, tech stack, project structure, and complete interface contracts with imports for
+every dependency. `review-criteria.md` makes the alternative a critical failure — *"As described
+in the PRD" → Copy relevant PRD text inline*.
+
+That is correct for the consumer and expensive for the human. Self-containment is what makes a
+small model a viable implementer, and **item 17 deliberately increases it**, carrying criteria and
+data models in as well. The cost lands on the review pass: the task set grows toward exceeding the
+PRD in volume while containing nothing the PRD did not already have, in a format chosen for
+machines — XML, spread across 18 to 48 files, with no rendered view of the set.
+
+Two clarifications, because this is easy to misread as an argument against self-containment. It is
+not: the mandate is right, and P22 is the price of a correct decision rather than evidence against
+it. And the volume claim is a **projection** from §2's corpus measurements, not a measurement of a
+generated task set — no PRD of this size has been broken down, because P5 stops it first. Item 21
+is the earliest point at which it could be measured.
 
 ---
 
@@ -740,9 +789,10 @@ drops the sequence.
 
 ### H. Rules the project owns, and scale
 
-Four items folded in from [`sdd-comparison.md`](sdd-comparison.md) on 2026-08-24, numbered 28–31
+Five items folded in from [`sdd-comparison.md`](sdd-comparison.md) on 2026-08-24, numbered 28–32
 so that 1–27 keep their cross-references. They span components rather than belonging to one, which
-is why they are a section rather than additions to A–G.
+is why they are a section rather than additions to A–G. Item 32 is the late one: it answers the
+comparison's C10, which the first fold dropped and the re-verification pass put back.
 
 **28. Widen `architecture.md` into the project's rule file.**
 *Addresses P18. Extends item 25 — read that first.*
@@ -777,9 +827,16 @@ Three consequences, and the first is the one that makes this the largest item in
   makes the pipeline a parameter. It also composes with item 27: `<depends-on>` supplies
   feature-level edges, `<layers>` supplies the tiers those edges are grouped into, and ordering
   is derived from both rather than recalled from either.
-- **TDD becomes a default, not a law.** `execute-batch` reads `<testing policy>`. The current
-  mandate is right for most projects and wrong for a spike, and the toolchain should be able to
-  say which it is running.
+- **TDD becomes a default, not a law — and this is a three-reader change, not a one-line read.**
+  The mandate does not live in `tdd-workflow.md`, which only describes Red/Green/Refactor (P18).
+  It is imposed upstream: `<test-requirements>` is a *required* section in `task-format-spec.md`,
+  and `review-criteria.md` makes it critical twice over. A project declaring `policy="none"`
+  would therefore have every task fail batch review at `/breakdown` time and never reach
+  `execute-batch` at all. So `<testing policy>` has to be read in three places — by
+  `generate-tasks` (whether to emit the section), by `review-tasks` (whether to require it), and
+  by `execute-batch` (whether to run the tests first) — and `task-format-spec.md` has to stop
+  marking the section unconditionally required. The current mandate is right for most projects
+  and wrong for a spike, and the toolchain should be able to say which it is running.
 - **The template list stops being an enum in a reference file.** `<scaffold>` names a path.
 
 **Guard it the way this repository has learned to (S3 / P16):** a script parses `<rules>`, and
@@ -798,6 +855,14 @@ must refuse to start on:
   Retention period for archived links is unspecified.
 </needs-clarification>
 ```
+
+**Extend the vocabulary that already exists rather than inventing a second one.** P19 records
+that the CRD path already carries `<confidence>high|medium|low</confidence>` as a required field,
+tied explicitly to ambiguous matches and incomplete context, with no reader. Two mechanisms for
+one idea would be one too many: `<needs-clarification>` marks a *specific* unresolved point while
+`<confidence>` grades a *whole analysis*, and both should end up feeding the same gate in item
+30's script and the same line in the run report. Giving `<confidence>` its first consumer is the
+smaller half of this item and can land first.
 
 The corollary is the part that matters, and it is a change to `review-criteria.md`: **the
 placeholder ban must apply to unmarked vagueness only.** Banning `TBD` outright is precisely what
@@ -836,16 +901,42 @@ of item 15.
 **31. A `--small` path that skips layering.**
 *Addresses P21.*
 
-Below a threshold — three affected files, taken from the impact analysis that already computes
-it — `/breakdown` emits **one task** and no layer plan, and `/execute` runs it as a single-task
-batch. Keep the whole execution substrate: worktree, independent verification, merge, ledger
-entry. Those are cheap per-task and they are the strongest thing the toolchain has.
+Below a threshold, `/breakdown` emits **one task** and no layer plan, and `/execute` runs it as a
+single-task batch. Keep the whole execution substrate: worktree, independent verification, merge,
+ledger entry. Those are cheap per-task and they are the strongest thing the toolchain has.
+
+**The threshold already exists, and it already has the value this item wants.**
+`crd-impact-analysis` Step 6 emits `<scope>small|medium|large</scope>`, with `small` *defined* as
+1–3 files — and, exactly like `<confidence>` beside it, no skill reads it. So on the CRD path
+this item is not "compute a size and compare it"; it is `<scope>` acquiring its first consumer,
+which makes it one of the cheapest items in the plan. Only the greenfield half is genuinely open,
+where no impact analysis runs and the routing input would have to come from the feature count
+instead.
 
 What is being skipped is planning ceremony, not rigour: layer planning, batching, the
 generate → review → retry loop across batches, and the five-tier DAG that a three-file change has
-no use for. The threshold should be a `<rules>` value (item 28), not a constant, and the routing
-decision should be reported rather than silent — an operator who expected four tasks and got one
-must be told why.
+no use for. The band boundaries should become an overridable `<rules>` value (item 28) rather than
+staying fixed in the plugin — see open question 6 — and the routing decision should be reported
+rather than silent: an operator who expected four tasks and got one must be told why.
+
+**32. Make the task set reviewable without reading every task.**
+*Addresses P22. Cheap, and worth doing early.*
+
+Nothing here changes the task format — self-containment stays, because it is right for the
+consumer. What is missing is a view *over* it:
+
+- **A rendered summary generated alongside the task files**: one row per task with its
+  `<source-feature>`, `<moscow>`, objective and file list. `build-manifest.py` already walks every
+  generated file and already reads each task's declared name, so this is an output format on a
+  traversal that exists, not a new pass.
+- **Diff the derived content, not the whole file.** What a reviewer actually needs to check is
+  whether the criteria a task carries match the feature they came from; item 17's verbatim
+  criterion ids turn that from a read-through into a set comparison, which item 30's script can
+  do mechanically.
+
+The general point is that every other item in this plan adds fidelity — more content carried,
+more faithfully — and the review burden scales with it. A summary view is the cheapest thing that
+keeps a human able to check the result at all.
 
 ---
 
@@ -883,7 +974,8 @@ must be told why.
 | 28 | Widen `architecture.md` into the project's rule file | **P18** | **Structural** |
 | 29 | `<needs-clarification>`, and narrow the placeholder ban | **P19** | **Correctness** |
 | 30 | Coverage check between `/breakdown` and `/execute` | **P20** | **Correctness** |
-| 31 | `--small` path that skips layering | **P21** | Structural |
+| 31 | `--small` path that skips layering (consumes existing `<scope>`) | **P21** | Structural |
+| 32 | A rendered view over the task set | **P22** | Structural |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -901,7 +993,10 @@ has somewhere to go.
 Then the `/breakdown` and `/execute` items (13–17, 19, 20), which are small once the schema
 carries the data, with **30** immediately after 16 — it has nothing to check until
 `<source-feature>` exists. **31** after those, since it is a bypass around machinery that should
-be correct before it is bypassed. 22 and 23 last, to hold the result in place.
+be correct before it is bypassed — though its CRD half is now small enough to land with 30, being
+one consumer for a field that already exists. **32** wants to be early rather than late: it is an
+output format over a traversal that already runs, and every item before it makes the task set
+bigger. 22 and 23 last, to hold the result in place.
 
 ---
 
@@ -955,6 +1050,10 @@ be correct before it is bypassed. 22 and 23 last, to hold the result in place.
    clients is not the right number for a library. Item 31 says it should be a `<rules>` value,
    which is correct and incomplete: a per-invocation override is probably also needed, and the
    interaction between the two is unspecified.
+
+   Note that the rubric is **already vendored**, which makes this a sixth row for P18's table
+   rather than a new constant to place: `crd-impact-analysis` fixes `small` at 1–3 files, `medium`
+   at 4–8 and `large` at 9+, inside the plugin, where no project can change them.
 7. **Is P18 the point at which this stops being a PRD toolchain?** Item 28 makes the layer graph,
    test policy and scaffold project-owned. At that point `/breakdown` is a generic
    requirements-to-tasks compiler configured by a rule file, and the five-layer web-application
