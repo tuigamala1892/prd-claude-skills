@@ -292,8 +292,8 @@ for what the impact analysis itself estimated at three files.
 There is no path in this repository for a change small enough that the ceremony costs more than the
 change.
 
-**C10 — Self-containment amplifies the review burden that the field already has.** *Structural.
-Measured.*
+**C10 — Self-containment amplifies the review burden that the field already has.** *Structural,
+with the volume claim a projection rather than a measurement. **= finding P22, item 32.***
 
 Böckeler's complaint was repetitive verbose markdown, tedious to review, possibly worse than
 reviewing the code. Here the duplication is not incidental, it is **mandated**: every task inlines
@@ -350,11 +350,15 @@ subject of both this document and `plugin-2.0-plan.md`.
 
 Every item here now has a home in `plugin-2.0-plan.md`, marked inline. None is restated.
 
-> **All six items below were folded into
-> [`plugin-2.0-plan.md`](plugin-2.0-plan.md) on 2026-08-24** as items 28–31 and findings P18–P21,
+> **Items 1–6 and 10 below were folded into
+> [`plugin-2.0-plan.md`](plugin-2.0-plan.md) on 2026-08-24** as items 28–32 and findings P18–P22,
 > which is where the implementation detail now lives. This section is kept as the comparative
 > argument for each — *why the field's answer is better than ours* — and states the destination
 > rather than restating the design. One thing changed in the folding, noted under item 1.
+>
+> **Item 10 is late.** C10 had no remediation item when this section was written, so the first
+> fold had nothing to carry across and the gap went with it. A re-verification pass against the
+> plan found the omission and put it back as P22 / item 32.
 
 ### 1. Project-owned rules *(C2, C9, and the MDD parallel; = item 28, finding P18)*
 
@@ -424,10 +428,23 @@ as its worked example.
   also a one-off measurement script. Deciding whether it becomes a permanent capability is worth
   doing deliberately.
 
+### 10. A rendered view over the task set *(C10; = item 32, finding P22)*
+
+The field has not solved this and Böckeler names it as one of the two costs that persist across
+every tool she reviewed — verbose generated markdown that is tedious to review and may be worse
+than reading the code. Here it is sharper than in spec-kit or Kiro, because the duplication is not
+a habit of the generator but a **mandated** property of the format: `review-criteria.md` makes
+"as described in the PRD" a critical failure.
+
+The comparative point is that self-containment buys something the others do not have — it is what
+makes a small model a viable implementer, and it is upstream of S1 and S4 both. So the answer is
+not to copy the field, which has no answer, but to keep the format and add a view over it. The
+design is item 32.
+
 **Order.** See `plugin-2.0-plan.md` §6, which sequences these against the other 27 items rather
-than among themselves — the ordering that matters is the combined one, and two of the six (28 and
-30) have dependencies that only exist over there. Items 8 and 9 above are the exceptions: they are
-documentation work, they are independent of everything else, and they can go at any time.
+than among themselves — the ordering that matters is the combined one, and two of the seven (28
+and 30) have dependencies that only exist over there. Items 8 and 9 above are the exceptions: they
+are documentation work, they are independent of everything else, and they can go at any time.
 
 ---
 
