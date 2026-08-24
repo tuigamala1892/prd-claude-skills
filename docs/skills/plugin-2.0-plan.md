@@ -891,12 +891,16 @@ does not think to add. A same-persona agent would deepen the bias; an adversaria
 **9. Make `/prd`'s prose guards executable (P16).**
 The Phase 8 pre-write existence check, the status marker, and item 6's checks all become scripts.
 
-> **Unverified mechanism — probe before committing to it.** Every bundled script in this
-> repository is invoked from a *skill*, via `{skill_dir}`. **No command invokes one today**, and
-> nothing uses `${CLAUDE_PLUGIN_ROOT}`. Since item 4.1 deliberately kept all three entry points
-> as commands, the path a command uses to reach a bundled script is unestablished. Probe it in
-> `docs/skills/probes/` first. If a command cannot reliably locate one, the fallback is a thin
-> `prd-check` skill that the command invokes — not prose.
+> **Measured, 2026-08-24 — the mechanism exists and the fallback is not needed.** A command
+> reaches a bundled script as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>`, expanded by the harness
+> before the model sees the command body. Open question 1 has the evidence;
+> [`probes/README.md`](probes/) has the method.
+>
+> Two rules follow for every script this item adds. **Pass the plugin path as an argument rather
+> than reading `CLAUDE_PLUGIN_ROOT` inside the script** — it is not exported to the shell. And
+> **never write a bare relative path**: the working directory is the target project, so
+> `scripts/foo.sh` resolves against the wrong tree and fails with a bare *No such file or
+> directory* that reads like a missing file rather than a wrong assumption.
 
 **10. Feature files are read per feature, never as one blob.**
 `/prd` writing 64 files in one context is the same P5 problem at the authoring end.
@@ -2029,7 +2033,21 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
 
 ## 7. Open questions
 
-1. **Can a command invoke a bundled script?** Blocks item 9 and shapes 3, 6 and 22. Probe first.
+1. **Resolved by spike, 2026-08-24 — yes, via `${CLAUDE_PLUGIN_ROOT}`.** *(Was: can a command
+   invoke a bundled script? Probe first.)* Measured against a throwaway plugin loaded with
+   `--plugin-dir`; method and full results in [`probes/README.md`](probes/). The variable is
+   expanded **by the harness at command-expansion time** — the transcript shows the user-role
+   message already carrying the absolute path — so it is a harness feature rather than model
+   inference, which is what item 9 needed.
+
+   **One caveat that changes how scripts are written.** `CLAUDE_PLUGIN_ROOT` is *not* exported to
+   the spawned shell: the probe script read it as unset while running from an absolute plugin path.
+   Text substitution in a command body works; a script reading the variable from its own
+   environment gets nothing. **Pass the path as an argument.**
+
+   A bare relative path fails (cwd is the project), and a command that names no path leaves the
+   model to brute-force it — the control took eight tool calls including a `find /`. Neither is a
+   mechanism; the variable is mandatory.
 2. **Resolved — see items 25 and 26.** *(Was: where does the index's `<architecture>` block
    belong?)* Feature-local architecture goes to `<notes><data-model>`; cross-cutting
    architecture goes to a new `architecture.md` sharing PROJECT.md's schema. The residual
