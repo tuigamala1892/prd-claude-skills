@@ -32,7 +32,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P32** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P33** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -494,6 +494,30 @@ contradicts the feature citing it.
 
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
+
+**P33 — Layer selection is derived on one path, hardcoded on the other, and wrong on both.**
+*Verification: static, exhaustive.*
+
+`/breakdown` Phase 4 selects layers like this:
+
+- **PRD greenfield**: `[0-setup, 1-foundation, 2-backend, 3-frontend, 4-integration]` —
+  **unconditional**. A PRD with no frontend still gets a frontend layer.
+- **PRD brownfield**: the same list minus Layer 0. Also unconditional.
+- **CRD**: derived from content — *"if `<affected-schemas>` has changes: include Layer 1; if
+  `<affected-apis>`: Layer 2; if frontend files in `<affected-files>`: Layer 3"*.
+
+So the CRD path already asks the question that matters — **does this change span tiers?** — and
+answers it from what the change touches. The PRD path does not ask it at all.
+
+**And the CRD derivation ends with a line that undoes it:** *"Always include Layer 4 (integration)
+for wiring changes together."* A change confined to one tier is given a second tier
+unconditionally, so the minimum possible plan is two layers, two batches, and two rounds of
+generate → review → retry, for a change that might be one edit to one file. There is nothing to
+integrate when only one tier moved.
+
+This is P21's ceremony complaint with a located cause, and it is a better one than P21 had. The
+cost is not that the workflow lacks a small path — it is that **the derivation which would have
+produced one is overridden by a hardcoded line on one path and absent on the other.**
 
 **P29 — `status` means three unrelated things, and two of the vocabularies overlap.**
 *Verification: static, exhaustive.*
@@ -1320,26 +1344,43 @@ an implementer.
 Report the shortfall by name. "4 must-have features have no task" is the sentence, in the idiom
 of item 15.
 
-**31. A `--small` path that skips layering.**
-*Addresses P21.*
+**31. Derive the layer set from content, on both paths. No threshold.**
+*Addresses P21 and P33. Rewritten: the earlier version proposed a `--small` flag with a file-count
+threshold, and the threshold was the wrong instrument.*
 
-Below a threshold, `/breakdown` emits **one task** and no layer plan, and `/execute` runs it as a
-single-task batch. Keep the whole execution substrate: worktree, independent verification, merge,
-ledger entry. Those are cheap per-task and they are the strongest thing the toolchain has.
+**A file count is a proxy for effort, and a bad one.** Three files across three unrelated
+subsystems is not a small change; twelve files that are one regenerated client is. And effort is
+not even the question layering answers. Layering answers **does this change span dependency
+tiers** — is there a model that must exist before an endpoint, before a screen? That is a question
+about *what the change touches*, and the CRD path already answers it from exactly that (P33).
 
-**The threshold already exists, and it already has the value this item wants.**
-`crd-impact-analysis` Step 6 emits `<scope>small|medium|large</scope>`, with `small` *defined* as
-1–3 files — and, exactly like `<confidence>` beside it, no skill reads it. So on the CRD path
-this item is not "compute a size and compare it"; it is `<scope>` acquiring its first consumer,
-which makes it one of the cheapest items in the plan. Only the greenfield half is genuinely open,
-where no impact analysis runs and the routing input would have to come from the feature count
-instead.
+So there is no threshold to set, and nothing to own. Three changes:
 
-What is being skipped is planning ceremony, not rigour: layer planning, batching, the
-generate → review → retry loop across batches, and the five-tier DAG that a three-file change has
-no use for. The band boundaries should become an overridable `<rules>` value (item 28) rather than
-staying fixed in the plugin — see open question 6 — and the routing decision should be reported
-rather than silent: an operator who expected four tasks and got one must be told why.
+- **Extend the CRD derivation to the PRD path.** A layer appears when the work requires it: a
+  foundation layer when there are schema changes, a backend layer when there are endpoints, a
+  frontend layer when there are components. The PRD path currently takes all five unconditionally,
+  so a PRD with no frontend gets a frontend layer and a batch that generates nothing worth having.
+  Item 28 supplies the layer graph; item 27's `<depends-on>` supplies the edges; this supplies the
+  rule that a tier with no work in it is not a tier.
+- **Delete "always include Layer 4."** Integration exists to wire tiers together, so it earns its
+  place when **more than one tier is present**, or when a requirement is explicitly cross-cutting.
+  A single-tier change has nothing to integrate, and forcing the layer on it is what makes the
+  minimum plan two layers instead of one.
+- **Collapse the degenerate case.** When the derivation yields **one layer holding one task**,
+  there is no plan to make: run the task. This is the "skip layering" the earlier version tried to
+  buy with a flag, arriving instead as a consequence of asking the right question.
+
+**Two different decisions, kept apart.** *Skip layering* when the change spans one tier. *Skip
+batching* when a layer holds few enough tasks. Twenty endpoints in one tier is a large change that
+needs no layering and still wants batching, and a threshold on files would have got it backwards.
+
+**`<scope>` is demoted from routing input to a reported cross-check.** It keeps its value without
+being authoritative: *"impact analysis said `small`, breakdown produced 14 tasks"* is worth
+flagging as a sign that the analysis or the generation is wrong. It is not worth *routing* on,
+because the derivation above already knows more than a band boundary does.
+
+The routing decision is still reported rather than silent — an operator who expected four tasks
+and got one must be told why. That was right in the earlier version and survives the rewrite.
 
 **32. Make the task set reviewable without reading every task.**
 *Addresses P22. Cheap, and worth doing early.*
@@ -1767,6 +1808,7 @@ it is the more thoroughly examined one, which is a different thing.
 | Resume of an interrupted interview | `--resume`, pre-write guard (F3) | **stateless, none** (P32) | **PRD** |
 | Requirement-level granularity | criteria only | requirements **and** criteria (P31) | *see item 46* |
 | Design step | none (P25) | `<impact-analysis>` — a partial one | **CRD** |
+| Layer set chosen by content | no — all five, unconditional | yes, from impact (P33) | **CRD** |
 
 Five of the six things this plan spent its first forty items building for the PRD path already
 exist on the CRD path in some form. **Anything below that reads as "add X to CRD" should be checked
@@ -1891,10 +1933,10 @@ Both already exist on the CRD path, both are required fields, and **neither has 
 is why items 29 and 31 were written as if from nothing. They should be lifted into the shared core
 and given consumers on both paths:
 
-- `<scope>` with its existing rubric (`small` = 1–3 files) is item 31's routing input. On the PRD
-  path there is no impact analysis to compute it, so it is derived from the feature's task count
-  after breakdown rather than declared at authoring time — *an asymmetry that is real and should
-  not be papered over*.
+- `<scope>` is a **cross-check, not a routing input** (item 31). Carried onto the PRD path it is
+  derived from the feature's task count after breakdown rather than declared at authoring time, and
+  its job on both paths is the same: to disagree loudly when the analysis and the generation
+  produce different pictures of how big the work is.
 - `<confidence>` is item 29's whole-analysis counterpart to a per-item `<gap>`, and item 38's gate
   reads both.
 
@@ -1949,7 +1991,7 @@ read the two paths side by side, and the plan itself was PRD-only for forty-thre
 | 28 | Widen `architecture.md` into the project's rule file | **P18** | **Structural** |
 | 29 | `<needs-clarification>`, and narrow the placeholder ban | **P19** | **Correctness** |
 | 30 | Coverage check between `/breakdown` and `/execute` | **P20** | **Correctness** |
-| 31 | `--small` path that skips layering (consumes existing `<scope>`) | **P21** | Structural |
+| 31 | Derive the layer set from content, both paths; no threshold | **P21, P33** | **Correctness** |
 | 32 | A rendered view over the task set | **P22** | Structural |
 | 33 | Adopt EARS; retire Given/When/Then | **P23** | **Correctness** |
 | 34 | Priority per requirement + `--requirement-level` | **P1** | **Correctness** |
@@ -1975,8 +2017,8 @@ tested end to end on a realistic PRD until analysis fits in context.
 
 Then the schema block (1–5, 25, **28**, 27) and its migration, because 13–17 depend on the shapes
 it defines, because 27 is what makes item 14 decidable, and because **28 is now the largest thing
-in that block** — it is the only item that turns the fixed pipeline into a parameter, and 31's
-threshold and 30's priority filter both want to read values it defines. Do 25 and 28 as one piece
+in that block** — it is the only item that turns the fixed pipeline into a parameter, and both 31's
+layer derivation and 30's priority filter want to read values it defines. Do 25 and 28 as one piece
 of work; splitting them means designing the same file twice.
 
 Then 29, before the `/breakdown` items rather than after: every later item is worth more once a
@@ -1985,9 +2027,10 @@ has somewhere to go.
 
 Then the `/breakdown` and `/execute` items (13–17, 19, 20), which are small once the schema
 carries the data, with **30** immediately after 16 — it has nothing to check until
-`<source-feature>` exists. **31** after those, since it is a bypass around machinery that should
-be correct before it is bypassed — though its CRD half is now small enough to land with 30, being
-one consumer for a field that already exists. **32** wants to be early rather than late: it is an
+`<source-feature>` exists. **31** belongs with 28 rather than after the rest: it makes the layer set a function of content,
+which is the same change 28 makes to the layer *graph*, and the two are one design decision seen
+from two sides. It is no longer a bypass around the pipeline — it is the pipeline asking what the
+work needs. **32** wants to be early rather than late: it is an
 output format over a traversal that already runs, and every item before it makes the task set
 bigger. 22 and 23 last, to hold the result in place.
 
@@ -2097,15 +2140,18 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
    warn. Nobody sets a default, because there is no boolean to default — which is the better
    answer to the overnight-run objection that prompted the question, since three of the five kinds
    warn rather than halt.
-6. **Does item 31's threshold belong to the change or to the project?** Three files is a
-   reasonable default and a poor universal — the right number for a monorepo with generated
-   clients is not the right number for a library. Item 31 says it should be a `<rules>` value,
-   which is correct and incomplete: a per-invocation override is probably also needed, and the
-   interaction between the two is unspecified.
+6. **Dissolved — see item 31 and P33.** *(Was: does item 31's threshold belong to the change or
+   to the project?)* The question presupposed a threshold, and item 31 no longer has one. Layering
+   answers *does this change span dependency tiers*, which is decided by what the change touches;
+   a file count was a proxy for effort, which is a different quantity and a worse one. The CRD path
+   already derives tiers from `<impact-analysis>`; the fix is to extend that to the PRD path, drop
+   the unconditional integration layer, and let the single-tier single-task case collapse on its
+   own.
 
-   Note that the rubric is **already vendored**, which makes this a sixth row for P18's table
-   rather than a new constant to place: `crd-impact-analysis` fixes `small` at 1–3 files, `medium`
-   at 4–8 and `large` at 9+, inside the plugin, where no project can change them.
+   *What the question got right, and it is worth keeping:* the `small` = 1–3 files rubric **is**
+   vendored in the plugin where no project can change it, and so is the layer graph — both are
+   rows for P18's table. Demoting `<scope>` to a cross-check means nothing routes on it, so the
+   rubric being wrong for a given project is now a reporting nuisance rather than a wrong build.
 7. **Is P18 the point at which this stops being a PRD toolchain?** Item 28 makes the layer graph,
    test policy and scaffold project-owned. At that point `/breakdown` is a generic
    requirements-to-tasks compiler configured by a rule file, and the five-layer web-application
