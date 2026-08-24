@@ -27,7 +27,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P27** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P28** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -478,6 +478,31 @@ contradicts the feature citing it.
 
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
+
+**P28 — One version where two are needed, and the one schema version there is, is wrong.**
+*Verification: measured.*
+
+The toolchain has a single version concept: `.claude-plugin/plugin.json` declares `2.0.0`, and
+`build-manifest.py` stamps it into the manifest as `toolchain_version`. That conflates two
+different questions — *what produced this artefact* and *how should this artefact be read*. A
+patch release changes the stamp without changing any schema; a schema change need not bump the
+plugin version at all. Item 24 proposes comparing recorded against running and refusing on a known
+incompatibility, which cannot be decided from a provenance stamp.
+
+**The pattern already exists, applied to exactly one artefact.** `execute-state.json` carries a
+`schema_version`, separate from the plugin version, for precisely this reason — so the concept
+does not need inventing, only generalising to the artefacts this plan rewrites.
+
+**And that one schema version is already out of step with itself.**
+`skills/execute/references/state-schema.md` says *"Current version: `2.0`"* and shows
+`"schema_version": "2.0"` in both of its examples;
+`skills/execute/scripts/write-state.py` writes `"schema_version": "3.0"`. The script is the
+producer and the reference is the spec, so the spec is wrong — **P10's exact shape, in the one
+place the toolchain versions a schema at all**, and it is live in the repository now.
+
+Two things follow. A declared version that nothing tests drifts from what is written, which is the
+argument for item 43 rather than for a stamp alone. And item 22's schema check is currently scoped
+to PRD artefacts; the state file needs it too, or this recurs where it has already happened once.
 
 **P27 — There is no rename operation, and a slug lives in five places.**
 *Verification: measured — as cost and exposure, not as an observed failure. The rename that
@@ -965,6 +990,12 @@ implements; task-format-spec declares `source-feature` and `moscow`; `<acceptanc
 a non-comment consumer on the PRD path; the derivation script scores 0 contradictions against a
 committed fixture.
 
+**Three checks come from item 43 and P28**, and the first is a live defect rather than a
+regression guard: `execute-state.json`'s documented `schema_version` must equal what
+`write-state.py` writes — today they are `2.0` and `3.0`. Then: each fixture validates against
+**its own** schema rather than the current one, and exactly one schema is marked current, since
+the end-to-end checks must run against that one.
+
 That last one matters most. **P2 and P4 were both invisible to a test suite that reads the
 files, because the failure is an absent consumer rather than a wrong string.** A check that a
 producer has a reader is the general form of this whole plan.
@@ -976,6 +1007,15 @@ Mostly delivered: `plugin.json` declares `2.0.0` and `build-manifest.py` writes
 - `/prd` writes `<toolchain-version>` into `what-next.md` (item 11's `<meta>`)
 - `/execute` compares the manifest's recorded version against the running plugin and warns on a
   mismatch, refusing on a known-incompatible one
+
+**Two versions, not one** (P28). `toolchain_version` records *what produced* an artefact;
+`schema_version` records *how to read* it, and it is the one the compatibility decision reads. A
+patch release moves the first and not the second, which is why a provenance stamp cannot answer a
+compatibility question. The concept already exists for `execute-state.json` — generalise it rather
+than invent it, and fix it there while passing: the reference says `2.0` and the script writes
+`3.0`.
+
+Item 43 supplies the artefacts without which none of this can be tested.
 
 The schema changes in this plan are exactly the kind of break that makes this worth finishing:
 an artefact written by 2.0 and read by 2.1 must not be misread silently.
@@ -1538,7 +1578,11 @@ Three properties the guide itself must have:
   selects the right migration rather than the newest one.
 
 **And it needs a checker**, or it becomes P10 in a new place: a script that reads a migrated tree
-and asserts the postconditions above. Writing a migration spec with no verifier, in a plan whose
+and asserts the postconditions above. **Item 43 supplies a stronger one** — a golden pair of
+fixtures, the same project in the old schema and the new, so the migration is verified by
+*comparison* rather than by a list of properties somebody remembered to assert. Keep the
+postcondition script for the real corpus, where there is no golden output to compare against, and
+use the pair to test the script itself. Writing a migration spec with no verifier, in a plan whose
 central finding is that this repository ships producers without readers, would be the most
 embarrassing possible outcome.
 
@@ -1567,6 +1611,50 @@ feature is a decision, and where the rename accompanies a change of scope it is 
 (item 36), not a silent file move. And a rename is not a supersession — §4.2's `superseded` status
 is for a feature *merged into another*, and using it for a rename would claim two features existed
 where there was always one.
+
+**43. A fixture per schema version, and the golden pair it creates.**
+*Addresses P28. Unblocks item 1, and gives items 24 and 41 the tests they currently cannot have.*
+
+`tests/fixture/prd/` gains a directory per schema version — `schema-1/link-shelf/`,
+`schema-2/link-shelf/` — **the same project, the same three features, expressed in each schema.**
+Keeping the project identical across versions is the entire point; the difference between two
+fixtures must be the schema and nothing else.
+
+**Introduce an artefact schema version distinct from the plugin version** (P28). Artefacts stamp
+both: `toolchain_version` for provenance, `schema_version` for compatibility. Item 24's comparison
+reads the second. The first cannot answer the question it is being asked, because a patch release
+changes it without changing anything about how an artefact should be read.
+
+**Three things become testable that are not testable today:**
+
+- **Item 41's migration gets a golden test.** Run the migration over `schema-1`, assert the result
+  equals `schema-2`. That is a far stronger check than the postcondition list item 41 specifies,
+  because it catches losses nobody thought to assert — and item 41's own closing line is that
+  shipping a migration with no verifier would be the worst possible outcome.
+- **Item 24 becomes exercisable at all.** "Warn on mismatch, refuse on a known incompatibility"
+  cannot be tested without an artefact of an older schema, and no such artefact exists anywhere in
+  the repository. As specified, item 24 is currently unfalsifiable.
+- **Backward-read behaviour gets pinned.** Whatever `/breakdown` should do when handed an older
+  PRD — migrate it, refuse it, or read it — becomes a decision with a test rather than an
+  assumption.
+
+**It also removes a sequencing blocker nobody had noticed.** The regression suite asserts that the
+fixture PRD is valid and self-consistent, and the fixture is written in the current schema. Without
+this item, **item 1 cannot land without breaking the suite in the same commit**, and the same is
+true of items 2, 5, 11, 33, 34 and 35. With it, each lands by *adding* a `schema-2` fixture beside
+the existing one, and the suite stays green throughout.
+
+**Bound the set, or it rots.** Two rules:
+
+- **One fixture per schema version the toolchain still claims to accept.** Dropping read support
+  drops the fixture. Without this the directory grows for ever and most of it is decoration.
+- **A non-current fixture is frozen.** It changes only when the migration's expected output
+  changes. If the fixture project needs a fourth feature to exercise something new, that is a
+  reason to touch the current schema only — otherwise the same project is being maintained twice,
+  which is the cost that makes people abandon versioned fixtures.
+
+The older fixture is not decoration under these rules: it is the *input* to the migration test and
+to item 24's comparison, so it is exercised on every run rather than merely stored.
 
 ---
 
@@ -1616,6 +1704,7 @@ where there was always one.
 | 40 | The well-defined bar, as a gate on `defined` | **P26** | **Correctness** |
 | 41 | A migration guide an agent can execute | (all schema items) | **Blocking** |
 | 42 | A rename operation with a checkable postcondition | **P27** | Correctness |
+| 43 | A fixture per schema version; schema version ≠ plugin version | **P28** | **Blocking** |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -1646,6 +1735,11 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**43 comes before every schema item, including 41.** The regression suite validates the fixture
+against the current schema, so item 1 breaks it unless a second fixture exists to land beside the
+first. It is also what makes 41 and 24 testable rather than merely specified. Nothing else in the
+plan is a precondition for this many items.
 
 **41 is a precondition, not a follow-up.** Items 1, 2, 5, 11, 33, 34 and 35 all rewrite artefacts
 that exist; none of them can land until the migration they imply is specified and verifiable. Write
