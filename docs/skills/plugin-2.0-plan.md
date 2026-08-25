@@ -1470,7 +1470,9 @@ uneasy about at two. Widen the one item 25 defines:
   </task-limits>
   <repo-structure>single|monorepo|multi-repo</repo-structure>   <!-- item 53 -->
   <banned>                                       <!-- every rule carries a kind: item 56 -->
-    <rule kind="import|edge|change|content|judgement" reason="..." .../>
+    <rule kind="import|edge|change|content|judgement" reason="..." ...>
+      <except match="..." reason="..."/>         <!-- exceptions belong to the rule, not the task -->
+    </rule>
   </banned>
   <scaffold template="python|go|tanstack|none" path="..."/>
 </rules>
@@ -2243,10 +2245,22 @@ Both already exist on the CRD path, both are required fields, and **neither has 
 is why items 29 and 31 were written as if from nothing. They should be lifted into the shared core
 and given consumers on both paths:
 
-- `<scope>` is a **cross-check, not a routing input** (item 31). Carried onto the PRD path it is
-  derived from the feature's task count after breakdown rather than declared at authoring time, and
-  its job on both paths is the same: to disagree loudly when the analysis and the generation
-  produce different pictures of how big the work is.
+- `<scope>` is a **cross-check, not a routing input** (item 31), and a cross-check needs *two*
+  pictures. On the CRD path both exist: impact analysis declares a scope, breakdown produces a task
+  count. **On the PRD path there was no declared picture at all** — an earlier draft derived
+  `<scope>` from the task count *after* breakdown, which is not a prediction to disagree with, and
+  which would have had `/breakdown` writing back into the PRD, a mutation nothing else in this plan
+  contemplates and §4.1 has no rule for (A5).
+
+  **So `analyze-prd` predicts it, per feature, beside the `<confidence>` it already emits.** Two
+  signals from the analyser — *how big* and *how sure* — and the cross-check then works the same way
+  on both paths: *"analysis called this small; generation produced 14 tasks"* flags a feature that
+  is under-specified or a generator that ran away. Nothing is written back to the PRD; the
+  prediction lives in `analysis.json` and the observation in `manifest.json`.
+
+  *A size estimate from a model is soft, and that is tolerable precisely because it routes nothing.*
+  It fires on gross disagreement, which is the only kind worth reporting — and item 31 demoted
+  `<scope>` from routing for exactly this reason.
 - `<confidence>` is item 29's whole-analysis counterpart to a per-item `<gap>`, and item 38's gate
   reads both. **On the PRD path `analyze-prd` produces it, per feature** — it is the component
   doing the analysing, exactly as `crd-impact-analysis` is on the other path, and a per-feature
@@ -2436,10 +2450,36 @@ become readers of `<task-limits>`, honouring the scoped overrides. This is the s
 shape item 28 found for `<testing>`: a rule is only overridable if every place that
 currently hardcodes it learns to ask.
 
-**A false positive must be answerable.** A banned-pattern check that cannot be overridden becomes a
-reason to stop declaring patterns. An explicit, reasoned exemption in the task
-(`<exempt pattern="…" reason="…"/>`) is reported in the run summary rather than silently allowed —
-visible, attributable, and not a fight with the tool.
+**A false positive must be answerable — but the answer belongs to the rule, not the instance
+(A5).** An earlier draft of this item put an `<exempt pattern= reason=>` in the *task*, and never
+said who wrote it. Every candidate producer inside the pipeline is disqualified by the same
+argument: **a component that can exempt itself makes the check advisory with extra steps.**
+`generate-tasks` would pre-authorise its own violation at authoring time, before anyone knows the
+implementation needs it; the implementer would do the same one stage later, in a worktree diff
+rather than in a reviewed task. That is exactly what this item exists to prevent, so `<exempt>` is
+**dropped**.
+
+Exceptions are declared on the rule:
+
+```xml
+<rule kind="import" match="contexts/**" symbol="httpx|requests|grpc" reason="ADR-004: …">
+  <except match="contexts/*/adapters/outbound/**"
+          reason="third-party APIs are called over HTTP by definition"/>
+</rule>
+```
+
+*"This rule does not apply to outbound adapters"* is reviewed once, lives in `architecture.md`
+where a reader can see it, applies consistently, and composes with the `match=` scoping already
+here. *"This task is special"* is unreviewable and accumulates.
+
+**The genuine one-off keeps a route, and it is deliberately the slow one.** A human at item 38's
+gate edits the rule. If the rule truly should not apply to that case, editing it is the correct
+change; if it should apply, the task is wrong. There is no third answer worth automating.
+
+Two things make this cheaper than it sounds. `judgement` rules report rather than refuse, so
+**exemptions concern only the four refusing kinds**. And a one-off is rare by construction — the
+rules that generate false positives repeatedly are the ones whose `match=` is wrong, which is a
+rule edit either way.
 
 **57. Generalise impact analysis from APIs to contracts.**
 *Addresses A3/D3. Depends on item 25's open registry set; without it the open set is an input
@@ -2794,7 +2834,10 @@ than merely narrow.
 </task-limits>
 <banned>
   <rule kind="import" match="contexts/**" symbol="httpx|requests|grpc"
-        reason="ADR-004: contexts communicate by event, never by call"/>
+        reason="ADR-004: contexts communicate by event, never by call">
+    <except match="contexts/*/adapters/outbound/**"
+            reason="third-party APIs are called over HTTP by definition"/>
+  </rule>
   <rule kind="change" path="contracts/**" action="modify"
         reason="published events are immutable; add a version, never edit"/>
   <rule kind="judgement"
