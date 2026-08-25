@@ -34,7 +34,7 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | **23a** — `schema_version` mismatch | **Landed** 2026-08-25 | `78b8104` |
 | **60** — `execute-layer` hand-maintains a derived file | **Landed** 2026-08-25 | `e00c3ae` |
 | **39** — validate references leaving the PRD | **Landed** 2026-08-25, *narrowed* | `e112ec8` |
-| **54** — a working directory for verification | Not started | — |
+| **54** — a working directory for verification | **Landed** 2026-08-25 | `fce02c9` |
 | **55** — the ledger states what it verified | Not started | — |
 | **42** — rename with a checkable postcondition | Not started | — |
 | **21** — runtime test for P1, and the authoring baseline | Not started | — |
@@ -42,7 +42,7 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks passing at branch point → **40** after 23a → **42** after 39.
+**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54).
 
 ---
 
@@ -259,3 +259,69 @@ The first run reported `ADR-7` for a citation written `ADR-007` — leading zero
 stripped for matching and then reused for display, sending a reader looking for a string that is
 not in the file. Fixed by keeping the as-written form beside the match key; there is now an
 assertion for it.
+
+---
+
+## 54 — verification ran from the repository root and nowhere else
+
+**Commit:** `fce02c9` · **Addresses:** P36 (monorepo half) · **Files:**
+`skills/breakdown/references/task-format-spec.md`, `skills/execute-verify/SKILL.md`,
+`agents/task-implementer.md`, `skills/breakdown-generate-tasks/SKILL.md`,
+`tests/test_toolchain.py`
+
+### What was built
+
+`<meta><cwd>`, optional, relative to the worktree root. **Absent, everything runs at the root
+exactly as before** — no existing task changes behaviour. Present, `execute-verify` and the
+implementer run commands from there, and the task writes `pytest tests/test_invoices.py` rather
+than `cd packages/billing && pytest tests/test_invoices.py`.
+
+### Three things the plan did not specify, and why each was needed
+
+**A guard.** The item says "relative to the worktree root" as a comment in an XML sample.
+Enforced by prose, that is P16's failure mode exactly. An absolute path, a drive letter or any
+`..` is now refused — including `packages/../packages/billing`, which *would* resolve back
+inside. Conservative on purpose: nothing is lost by making an author write the path they meant,
+and a verification that passes outside the worktree has proved something about files no merge
+will carry.
+
+**A producer.** The item names two readers and no writer, so the element would have shipped
+read-only — the exact defect this plan exists to describe. `breakdown-generate-tasks` emits it
+when the source names a component, and is explicitly told **not** to infer it from
+`<files-to-create>`: two files sharing a parent directory is not evidence that the parent is where
+the test runner lives, and a wrong `<cwd>` fails verification in a way that looks like broken
+code. Item 53's `<repo-structure>monorepo</repo-structure>` is what will make it systematic.
+
+**`cwd` in the verification result.** A passing run now says where it ran. A step that fails in
+the wrong directory looks exactly like a step that fails in the right one.
+
+### Verification
+
+The check **extracts the guard from `execute-verify/SKILL.md` and runs it under `sh`** against
+seven inputs, so what is tested is the text that shipped rather than a copy of it. `sh` is already
+a hard dependency of the toolchain — `preflight.sh`, `create-worktree.sh` and `merge-task.sh` are
+how `/execute` works — so a box without it cannot run the pipeline either.
+
+It also asserts the element has a producer *and* readers, in both directions. That is item 23's
+rule applied at the moment of writing rather than in an audit afterwards.
+
+### The check's first version was wrong, and it passed
+
+Removing the escape branch from the guard **did not fail the test**. The escaping case was
+`../../etc`, which does not exist under a temp worktree, so `cd` failed on its own and the
+fallback refusal — *"does not exist"* — satisfied an assertion that only looked for `REFUSED`.
+The test could not tell a guard from a coincidence.
+
+Fixed by placing a real `outside/` directory beside the worktree and pointing the escaping case at
+it, and by asserting the **specific** refusal reason rather than the word `REFUSED`. Both mutants
+now fail, and the escape one reports `LANDED:/tmp/.../outside` — the escape it was supposed to
+prevent, printed.
+
+*This is the second false pass in this phase from the same cause: a green result whose mechanism
+had not been shown. The first was a `git stash` that silently did nothing (item 60).*
+
+### A process note worth keeping
+
+Mutation-testing an **uncommitted** file must not be undone with `git checkout -- <file>`. Doing
+that here reverted `execute-verify/SKILL.md` to HEAD and discarded the item's real edits along
+with the mutation; they had to be rewritten. Copy the file aside and copy it back.
