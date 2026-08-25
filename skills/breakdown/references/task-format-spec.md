@@ -23,6 +23,7 @@ Task identification and classification.
   <layer>1-foundation</layer>         <!-- Layer identifier -->
   <priority>1</priority>              <!-- Execution order within layer (1 = first) -->
   <estimated-files>2</estimated-files> <!-- Number of files to create/modify -->
+  <cwd>packages/billing</cwd>         <!-- Optional; where commands run. See below -->
 </meta>
 ```
 
@@ -31,6 +32,42 @@ Task identification and classification.
 - `layer`: One of: `1-foundation`, `2-backend`, `3-frontend`, `4-integration`
 - `priority`: Integer 1-99
 - `estimated-files`: Integer 1-3 (max 3 files per task)
+- `cwd`: Optional. **Relative to the worktree root**, and must stay inside it
+
+#### `<cwd>` — where this task's commands run
+
+**Omit it and everything runs at the worktree root, which is what every task did before this
+element existed.** It is only needed when a repository holds more than one component.
+
+Without it, a task in a monorepo package has to hand-write the directory into every command it
+declares — `cd packages/billing && pytest` in each of five steps, in a file whose other paths are
+all relative to the repository. The commands then work in `execute-verify` and nowhere else,
+because the `cd` is inside the string rather than around it.
+
+```xml
+<meta>
+  <cwd>packages/billing</cwd>
+</meta>
+<verification>
+  <step>Run: `pytest tests/test_invoices.py -v` - all tests pass</step>
+</verification>
+```
+
+Both readers honour it: `execute-verify` runs every `<step>` from there, and the implementer runs
+its build and test commands from there. **Neither changes where the commit happens** — that is the
+worktree, always, and git does not care which subdirectory you are standing in.
+
+**It must be relative and it must not escape the worktree.** An absolute path, a drive letter or
+any `..` segment is refused rather than resolved: the worktree is the isolation boundary the whole
+pipeline depends on, and a task that verifies outside it is verifying something no merge will
+carry. `<files-to-create>` paths stay relative to the **worktree root**, not to `<cwd>` — they
+describe what the task produces, and only commands have a working directory.
+
+**Who writes it.** `breakdown-generate-tasks` emits it when the source names the component a
+feature belongs to; otherwise a task author adds it by hand. It is not inferred from
+`<files-to-create>`: two files sharing a parent directory is not evidence that the parent is where
+the test runner lives. Item 53's `<repo-structure>monorepo</repo-structure>` is what will let the
+generator produce it systematically.
 
 ### 2. Context (Required)
 

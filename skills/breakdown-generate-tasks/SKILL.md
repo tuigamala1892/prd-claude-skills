@@ -80,6 +80,7 @@ Generate XML files following this exact structure:
     <layer>1-foundation</layer>
     <priority>1</priority>
     <estimated-files>2</estimated-files>
+    <!-- <cwd>packages/billing</cwd>  only when the source names a component; see below -->
   </meta>
 
   <context>
@@ -254,6 +255,17 @@ For each task in the layer plan:
 4. **Write test requirements** with concrete test cases
 5. **Define verification steps** with runnable commands
 6. **Define exports** for downstream tasks
+
+**`<meta><cwd>`, only when the source names a component.** If the feature this task comes from
+declares which package, service or app it belongs to, emit that path as `<cwd>` and write every
+verification command **as if standing in it** — `pytest tests/test_invoices.py`, never
+`cd packages/billing && pytest tests/test_invoices.py`. A `cd` inside a command string works in
+one runner and nowhere else.
+
+**Do not infer it from `<files-to-create>`.** Two files sharing a parent directory is not evidence
+that the parent is where the test runner lives, and a wrong `<cwd>` fails verification in a way
+that looks like broken code. No declared component means no `<cwd>`, which means the worktree
+root — the behaviour every task had before the element existed.
 
 ## Layer 0 Task Format
 

@@ -528,6 +528,86 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("`<cwd>` has a producer, two readers, and a guard that runs", finding="P36")
+def _():
+    # Item 54. Verification used to run at the worktree root and nowhere else, so a monorepo
+    # task had to write `cd packages/billing && pytest` inside each command string -- which
+    # works in one runner and nowhere else.
+    #
+    # The element is checked in both directions, which is item 23's rule: a reader with no
+    # producer is as broken as a producer with no reader, and `<cwd>` would have shipped with
+    # two readers and nothing writing it if nobody looked.
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    verify = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"), encoding="utf-8").read()
+    implementer = open(os.path.join(AGENTS, "task-implementer.md"), encoding="utf-8").read()
+    generator = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                     encoding="utf-8").read()
+
+    assert "<cwd>" in spec, "task-format-spec.md does not declare <cwd>"
+    assert "cwd" in verify, "execute-verify does not read <cwd>"
+    assert "cwd" in implementer, "the implementer does not read <cwd>"
+    assert "cwd" in generator, "nothing produces <cwd> -- it would ship read-only"
+
+    # The spec has to say the two things that make it safe, or the readers are guessing.
+    assert re.search(r"relative to the worktree", spec, re.I), (
+        "the spec does not say <cwd> is relative to the worktree root")
+    assert re.search(r"files-to-create.*worktree root|worktree root.*files-to-create",
+                     spec, re.I | re.S), (
+        "the spec does not say whether <files-to-create> is relative to <cwd>")
+
+    # And the guard is EXECUTED, not read. `sh` is already a hard dependency of this toolchain
+    # -- preflight.sh, create-worktree.sh and merge-task.sh are how /execute works -- so a box
+    # without it cannot run the pipeline either.
+    import shutil
+    import tempfile
+    sh = shutil.which("sh")
+    assert sh, "sh is not on PATH; the execute pipeline's own scripts could not run either"
+
+    block = None
+    for candidate in re.findall(r"```bash\s*\n(.*?)\n```", verify, re.S):
+        if "REFUSED: <cwd>" in candidate and "case " in candidate:
+            block = candidate
+            break
+    assert block, "execute-verify states no runnable guard for <cwd>"
+
+    # Substitute the skill's placeholders for shell variables. Nothing else is changed: the
+    # lines under test are the lines a model is told to run.
+    script = block.replace("{worktree_path}", '$WT').replace("{cwd}", '$CWD')
+    script += '\necho "LANDED:$(pwd)"\n'
+
+    root = tempfile.mkdtemp(prefix="prd-cwd-")
+    try:
+        # The worktree is a level down, and `outside/` is a real directory beside it. That
+        # matters: an escaping <cwd> has to point somewhere that EXISTS, or removing the
+        # escape branch still produces a refusal -- from `cd` failing -- and the check passes
+        # against a guard that no longer guards. That false pass happened once here.
+        wt = os.path.join(root, "wt")
+        os.makedirs(os.path.join(wt, "packages", "billing"))
+        os.makedirs(os.path.join(root, "outside"))
+
+        cases = [
+            ("", "LANDED", "an absent <cwd> must land at the worktree root"),
+            ("packages/billing", "LANDED", "a plain relative <cwd> must be accepted"),
+            ("/etc", "must be relative", "an absolute <cwd> must be refused"),
+            ("C:/Windows", "must be relative", "a drive-letter <cwd> must be refused"),
+            ("../outside", "must not escape", "a <cwd> escaping to a real directory must be "
+                                              "refused by the guard, not by cd failing"),
+            ("packages/../packages/billing", "must not escape",
+             "a `..` that resolves back inside must still be refused, not normalised"),
+            ("packages/nope", "does not exist", "a <cwd> that does not exist must be refused"),
+        ]
+        for value, expected, why in cases:
+            env = dict(os.environ, WT=wt.replace("\\", "/"), CWD=value)
+            p = subprocess.run([sh, "-c", script], capture_output=True, text=True, env=env)
+            got = (p.stdout + p.stderr).strip()
+            assert expected in got, f"{why}; <cwd>={value!r} gave: {got[:160]}"
+            if expected != "LANDED":
+                assert p.returncode != 0, f"{why}; it refused but exited 0"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("dangling ADR / OQ citations are refused, and named", finding="P24")
 def _():
     # Item 39. The suite is otherwise static, and this one runs a script -- which is safe in a
