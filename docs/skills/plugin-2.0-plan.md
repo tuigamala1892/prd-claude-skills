@@ -1469,7 +1469,9 @@ uneasy about at two. Widen the one item 25 defines:
     <limit match="contracts/**" max-files="5"/>
   </task-limits>
   <repo-structure>single|monorepo|multi-repo</repo-structure>   <!-- item 53 -->
-  <banned><pattern reason="...">...</pattern></banned>
+  <banned>                                       <!-- every rule carries a kind: item 56 -->
+    <rule kind="import|edge|change|content|judgement" reason="..." .../>
+  </banned>
   <scaffold template="python|go|tanstack|none" path="..."/>
 </rules>
 ```
@@ -1809,6 +1811,11 @@ said ADRs stay where they are and are cited by pointer.
 | **Decision** | has rejected alternatives to record | a decision record (item 36) | no — it is a record |
 | **Principle** | a rule, with no alternatives weighed | a `<principles>` section of `architecture.md` | no — it is guidance |
 | **Constraint** | the toolchain must obey it | `<rules>` in `architecture.md` (item 28) | **yes — exit code** |
+| **Advisory** | stated, checked, but not decidable by comparison | `<rule kind="judgement">` (item 56) | reports, never refuses |
+
+The fourth row is the one A4 added. It exists because `<banned>` turned out to carry rules of both
+kinds, and collapsing them would have meant either dropping the undecidable ones or claiming
+enforcement the toolchain cannot deliver — P16's failure mode, chosen deliberately.
 
 **Principles live inside `architecture.md`, not in a file of their own.** Item 28 already rejected
 a separate `PRINCIPLES.md` — three files describing one project — and an earlier draft of this
@@ -2385,17 +2392,39 @@ never asserted"*; this is the same rule applied to the claim rather than to the 
 *The enforcers item 28 assumed and never named. Item 37 puts `<rules>` in the exit-code column;
 these two rows had nothing behind them.*
 
-**`<banned>` is checked twice, deliberately.**
+**`<banned>` was four mechanisms sharing one element name, which is why "is it an exit code?" had
+no single answer (A4).** Every rule now carries a **required `kind`**, and the kind decides both
+what detects it and whether it can refuse:
 
-| Where | Catches | Cost of a miss |
-|---|---|---|
-| `review-tasks`, per generated task | a task that *specifies* a banned pattern | none — no code exists yet |
-| `execute-verify`, per implemented task | code that contains one anyway | a rejected task, before merge |
+| `kind` | Detected by | Refuses? | Fires in |
+|---|---|---|---|
+| `import` | forbidden symbol × path glob | **yes** | review *and* verify |
+| `edge` | dependency graph — module under X importing from Y | **yes** | verify |
+| `change` | **the diff against the base branch** | **yes** | verify |
+| `content` | regex over file contents at a path | **yes** | review *and* verify |
+| `judgement` | a model reading the code | **no — reports** | verify |
 
-Review is primary because it is free: a task saying *"call the billing service over HTTP"* under a
-rule banning cross-context calls is wrong before anybody writes a line. Verification is the
-backstop, because a task can be innocently worded and implemented badly, and because a pattern
-matched against real code catches what a pattern matched against a description cannot.
+**`change` is the kind that made the rest legible.** *"Modifying a published event schema in
+place"* is not a property of the code at all — it is a property of the **diff**, and `/execute`
+already holds both the base branch and the worktree. It is fully mechanical and it looked
+unenforceable only because it was being read as a pattern match.
+
+**`judgement` is a prose guard and is labelled as one.** S3 says prose guards get weighed rather
+than obeyed, so these report and never block a merge. A rule that reports is useful; a rule that
+claims to enforce and does not is exactly what P16 is about. Item 37's table gains a fourth row for
+them.
+
+**Two checkpoints, and the kind decides which apply.**
+
+| Where | Kinds | Catches | Cost of a miss |
+|---|---|---|---|
+| `review-tasks`, per generated task | `import`, `content` | a task that *specifies* a banned thing | none — no code exists yet |
+| `execute-verify`, per implemented task | all five | code that does it anyway | a rejected task, before merge |
+
+Review is primary where it applies, because it is free: a task saying *"call the billing service
+over HTTP"* under a rule banning cross-context calls is wrong before anybody writes a line.
+`edge` and `change` cannot fire there — there is no dependency graph and no diff until something is
+implemented.
 
 **Both report the `reason` verbatim**, which is why item 28 made `reason` mandatory. *"Banned:
 HTTP client to another context's service — ADR-004: contexts communicate by event, never by call"*
@@ -2504,7 +2533,7 @@ from an impact analysis.
 | 53 | Declare `<repo-structure>`; refuse `multi-repo` early | **P36** | **Correctness** |
 | 54 | A working directory for verification | P36 | Correctness |
 | 55 | The ledger states what it verified | **P37** | Consistency |
-| 56 | Enforce `<banned>` and `<task-limits>` at both ends | P16, **P35** | **Correctness** |
+| 56 | Typed `<banned>` kinds + `<task-limits>`, enforced at both ends | P16, **P35** | **Correctness** |
 | 57 | Impact analysis reports contracts, not just APIs | **P35**, P30 | Correctness |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
@@ -2764,15 +2793,14 @@ than merely narrow.
   <limit match="contracts/**" max-files="5"/>   <!-- schema + producer + consumer + projection + test -->
 </task-limits>
 <banned>
-  <pattern reason="ADR-004: contexts communicate by event, never by call">
-    HTTP or gRPC client targeting another context's service
-  </pattern>
-  <pattern reason="published events are immutable; add a version, never edit">
-    modifying an existing event schema in place
-  </pattern>
-  <pattern reason="ADR-011: consumers must tolerate replay">
+  <rule kind="import" match="contexts/**" symbol="httpx|requests|grpc"
+        reason="ADR-004: contexts communicate by event, never by call"/>
+  <rule kind="change" path="contracts/**" action="modify"
+        reason="published events are immutable; add a version, never edit"/>
+  <rule kind="judgement"
+        reason="ADR-011: consumers must tolerate replay">
     handler with side effects that are not idempotent
-  </pattern>
+  </rule>
 </banned>
 <event-registry/>
 ```
@@ -2794,9 +2822,13 @@ shape a chain cannot express. This is what forced `depends-on` to be a comma lis
   <layer id="3" name="api"   depends-on="2"/>
 </layers>
 <banned>
-  <pattern reason="ADR-002: no shared datastore across services">
-    connection string pointing at another service's database
-  </pattern>
+  <!-- "another service's database" is relational and a regex cannot express it, so the
+       rule is re-expressed *stricter* and becomes exact: no service embeds a connection
+       string in source at all; they come from the config that service owns. -->
+  <rule kind="content" match="services/*/src/**" pattern="(postgres|mysql|mongodb)://"
+        reason="ADR-002: no shared datastore across services"/>
+  <rule kind="edge" from="services/*/" to="services/*/"
+        reason="ADR-002: services are independently deployable; call by contract, not by import"/>
 </banned>
 <service-registry/> <api-registry/>
 <repo-structure>monorepo</repo-structure>   <!-- multi-repo is refused: item 53 -->
@@ -2814,11 +2846,16 @@ chosen for. This is what forced `applies-to`.
   <layer id="2" name="commands" depends-on="1"/>
 </layers>
 <testing default="tdd" runner="pytest">
-  <policy match="tests/cli/**" kind="golden"/>    <!-- stdout is a contract -->
+  <policy match="tests/cli/**" kind="golden"/>       <!-- stdout is a contract -->
+  <policy match="tests/cli/**" kind="sandboxed"/>    <!-- was a <banned> rule: writes outside
+                                                          the working directory. Runtime, so a
+                                                          test asserts it. -->
 </testing>
 <banned>
-  <pattern reason="core must be usable as a library">network access from core/**</pattern>
-  <pattern reason="a CLI must not surprise its caller">writes outside the working directory</pattern>
+  <rule kind="import" match="core/**" symbol="requests|httpx|urllib|socket"
+        reason="core must be usable as a library"/>
+  <!-- "writes outside the working directory" moved to <testing>: it is a runtime property,
+       asserted by a test, not a pattern found in source. See 8.6. -->
 </banned>
 <command-registry/>       <!-- subcommands, flags, exit codes, output format -->
 ```
@@ -2840,11 +2877,16 @@ schema that only works for elaborate architectures would be its own kind of fail
 <testing default="tdd" runner="xctest">
   <policy match="**/screens/**" kind="widget"/>
   <policy match="e2e/**"        kind="device-matrix"/>
+  <policy match="**/data/**"    kind="offline"/>     <!-- was a <banned> rule: network call with
+                                                          no offline fallback. Runtime. -->
 </testing>
 <banned>
-  <pattern reason="ANR: the main thread is not for I/O">blocking I/O on the main thread</pattern>
-  <pattern reason="the bundle is readable by anyone who downloads it">secrets in the app bundle</pattern>
-  <pattern reason="offline-first is a product requirement">network call with no offline fallback</pattern>
+  <rule kind="judgement" reason="ANR: the main thread is not for I/O">
+    blocking I/O on the main thread
+  </rule>
+  <rule kind="content" match="**/bundle/**" pattern="(api[_-]?key|secret|BEGIN [A-Z ]*PRIVATE KEY)"
+        reason="the bundle is readable by anyone who downloads it"/>
+  <!-- "network call with no offline fallback" moved to <testing>: runtime, see 8.6. -->
 </banned>
 <screen-registry/> <schema-registry/>   <!-- navigation graph + on-device store -->
 ```
@@ -2859,7 +2901,7 @@ the weakest of P35's findings because it is genuinely absent rather than mis-sha
 | | Held up | Broke |
 |---|---|---|
 | `<layers>` as a DAG | chain, diamond, degenerate | one graph per project (`applies-to`) |
-| `<banned>` | all five, unchanged | — |
+| `<banned>` | the *idea* — every pattern re-expressed | **one element, four mechanisms** (A4) |
 | `<scaffold>` | all five, with `none` | release/target constraints |
 | `<testing>` | — | one runner, one policy |
 | `<task-limits>` | — | one limit |
@@ -2868,3 +2910,30 @@ the weakest of P35's findings because it is genuinely absent rather than mis-sha
 **The bones are right and three leaves were CRUD-shaped.** Nothing here argues against item 28 — it
 argues that item 28 stopped one level above where the vendoring actually lived, and that the way to
 find out was to write the thing out five times.
+
+### 8.7 What re-expressing `<banned>` established (A4)
+
+The nine `<banned>` patterns above were rewritten under item 56's typed kinds. **This is the
+deciding test A4 called for, and it did not come out the way the question was framed.**
+
+| Outcome | Count | Which |
+|---|---|---|
+| Exactly expressible, refuses | **6** | 2 × `import`, 1 × `change`, 2 × `content`, 1 × `edge` |
+| Genuine judgement, reports only | **2** | non-idempotent handler; blocking I/O on the main thread |
+| **Not bans at all** — moved to `<testing>` | **2** | writes outside the working directory; network call with no offline fallback |
+
+Three things the exercise produced that the argument had not:
+
+- **A fifth kind.** `content` — a regex over file contents at a path — was not in A4's proposed
+  four. Secrets in a bundle and connection strings in source are neither imports nor edges, and
+  both are exactly how secret scanners already work.
+- **A rule got *stricter* and thereby became exact.** *"A connection string pointing at another
+  service's database"* is relational and no regex expresses it. Re-expressed as *no service embeds
+  a connection string in source at all*, it is both enforceable and a better rule — the original
+  permitted a class of thing nobody wanted.
+- **Two rules were in the wrong element.** Runtime properties asserted by a test had drifted into
+  `<banned>`, and their presence is most of why `<banned>` looked as though it needed a model to
+  evaluate it. Removing them leaves a much smaller judgement class than the objection assumed.
+
+**Six of ten refuse, two report, two were miscategorised.** That is a better answer than either
+horn of A4's original question, and it was only available by writing all nine out.
