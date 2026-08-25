@@ -54,6 +54,14 @@ proposes `architecture.md` as a prescriptive greenfield artefact, and it turns o
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
 
+**Reviewed, and corrected, 2026-08-25.** An external critique
+([`plugin-2.0-plan-review.md`](plugin-2.0-plan-review.md), findings R1–R17) found seventeen
+executability defects, seven of them this document contradicting itself. R1–R7 are corrected here
+and item 3's probe has been **re-run** rather than re-cited (A2). Ten of the seventeen were
+independently verified against the plan and the repository before acting; all ten held, and R8 —
+`check-project-md.py` hard-requires the two registries item 25 opens up — was a defect this
+document had not found on its own. The remaining items are tracked in that review.
+
 **Audited against itself, 2026-08-25.** Every element this plan introduces was checked for a named
 reader, and every reader for a producer. **Nine failures, in a plan whose closing argument is that a
 producer should have a reader** — two of them contradictions between items rather than omissions.
@@ -265,9 +273,15 @@ and the later one is the expensive one — it is discovered after `/execute` has
 
 **P6 — The `<status>` enum cannot express what real use needs.**
 *Verification: measured.*
-Template allows `defined|tbd|in-progress`. The corpus uses `defined`, `tbd`, `excluded` (7) and
-`superseded` (2), and uses `in-progress` **zero** times. Two of the four values in use are
-undefined by the template; the one value the template offers beyond the obvious pair is unused.
+Template allows `defined|tbd|in-progress`. The corpus uses **five** values — `defined` 34, `tbd`
+20, `excluded` 7, `superseded` 2 and `in-progress` 1 — of which **two are undefined by the
+template**.
+
+*Corrected 2026-08-25 (R1).* This finding previously read *"uses `in-progress` zero times"* and
+concluded that the one value the template offers beyond the obvious pair is unused. The §2
+re-measurement recorded `in-progress` entering use and did not propagate here. The finding survives
+the correction and is narrower: the template is missing two values in active use, rather than
+missing two and over-providing one.
 
 **P7 — `<status>` has no definitions, and nothing checks it.**
 *Verification: measured — see item 3.*
@@ -494,12 +508,13 @@ no GWT rendering, so its absence is a property of the format, not of the authors
 
 | Artefact class | Distinct items | Mentions | Corpus files citing one |
 |---|---|---|---|
-| Architecture decision records | **19** | **136** | 25 of 68 |
+| Architecture decision records | **19** | **136** | 31 of 66 |
 | Open questions register | **22** | **44** | — |
-| Product principles | — | 4 | — |
+| Product principles | — | **10** | — |
 
-**184 references, none validated and none followed** — up from 157 a fortnight earlier, which is
-the point: this class of reference is the fastest-growing thing in the corpus. `analyze-prd` receives PRD XML and nothing
+**190 references, none validated and none followed** — up from 157 a fortnight earlier, which is
+the point: this class of reference is the fastest-growing thing in the corpus. *Figures re-taken
+2026-08-25 (A2); the denominator is 64 feature files plus `index.md` and `what-next.md`.* `analyze-prd` receives PRD XML and nothing
 else, so a feature whose scope is settled by a decision record is broken down without it. Nothing
 detects a reference to a record that does not exist, one that has been superseded, or one that
 contradicts the feature citing it.
@@ -806,7 +821,7 @@ What that buys is a guard with no false positives: *a feature cannot claim to be
 while declaring that its specification is incomplete.* That contradiction is checkable and worth
 stopping. Everything softer than it stays with the author.
 
-**"Cover the edge cases" needed a definition, and P23 is what happens without one.** Seven
+**"Cover the edge cases" needed a definition, and P23 is what happens without one.** Eight
 features carry `defined` while having no criterion that mentions a failure at all. Item 33's
 `pattern` attribute makes the test mechanical: a feature whose criteria are entirely
 `event-driven` has not covered its edge cases, whatever its notes say. That is a deterministic
@@ -816,9 +831,12 @@ Two consequences worth stating plainly:
 
 - `excluded` and `superseded` are **definition states, not priorities**. `excluded` pairs with
   `priority="wont-have"` in the index; `superseded` has no index entry at all.
-- The corpus's zero uses of `in-progress` are a symptom, not a preference. Under these
-  definitions, several features currently labelled `tbd` — thin criteria, real scope in the
-  description — are `in-progress`. The migration in item 4 will reclassify them.
+- **`in-progress` has entered use, exactly once, and that one use argues for keeping it declared.**
+  The single feature carrying it derives a *ceiling* of `defined` — its content would support the
+  higher label — and the author has held it lower anyway. That is precisely the case §4.2 says a
+  checker must not overturn, and it is now an observation rather than a hypothesis. Under these
+  definitions several features still labelled `tbd` are `in-progress`; item 4's migration
+  reclassifies them.
 
 ---
 
@@ -904,6 +922,31 @@ The rule, in order:
 The structured-notes marker was the decisive signal: present in 28 of 34 `defined` files and in
 **none** of the other 30. Zero false positives.
 
+**Re-run 2026-08-25 against the current corpus (A2), because the 63/64 figure was taken on a
+snapshot this document elsewhere marks as superseded (R6).** Both rules were run separately so that
+corpus drift and the rule change are not confounded. The ghost file is excluded; 62 indexed + 2
+`superseded` pointers = 64.
+
+| Rule | Result |
+|---|---|
+| **A** — the rule as first written, deriving a *value* | agree 60 · ambiguous 3 · **contradicted 1** |
+| **B** — the rule as this item now specifies it, deriving a *ceiling* | **violations 0** of 64 |
+
+**Rule A has degraded, and the way it degraded is the argument for Rule B.** Its single
+contradiction is the feature declared `in-progress` whose content supports `defined` — an author
+holding something back for reasons the file cannot express. Deriving a value calls that a defect.
+Deriving a ceiling calls it fine, because *declared ≤ ceiling*. The three ambiguous files resolve
+the same way.
+
+**So the baseline item 23 commits is 0 violations under Rule B, not 63/64 under Rule A.** Recording
+the superseded figure as a regression baseline would have repeated P9's mistake exactly one
+revision later — a measurement inheriting the defects of the snapshot it was taken on.
+
+> **One rule is untested.** No feature in the corpus carries a `<gap kind="specification">`; the
+> only kinds in use are `dependency` and `decision`. §4.2's bar on `defined` is therefore sound in
+> principle and **unexercised in fact**, and the fixture pair (item 43) is where it should first be
+> made to fire.
+
 **One half of the ambiguous band closes by declaration; the other half stays open on purpose.** A
 `<gap kind="specification">` bars `defined` outright — that is a contradiction, and the derivation
 should report it as one rather than escalate it. But the absence of such a gap proves nothing, so
@@ -917,13 +960,14 @@ and during item 41's migration that band is every file written before `<gaps>` e
 **Item 33 adds the signal this rule is missing.** Every test above reads the notes or counts
 criteria; none reads what the criteria *say*. Once criteria carry a `pattern` attribute, add:
 a feature whose criteria are entirely `event-driven` is at most `in-progress`, however rich its
-notes. On the corpus that single rule reclassifies seven features the current rule scores as
-agreeing — see P23, which is the measurement this item's 63/64 concealed.
+notes. On the corpus that single rule reclassifies eight features the current rule scores as
+agreeing — see P23, which is the measurement this item's headline figure concealed.
 
-> **Read this honestly.** The rule was tuned on the same corpus it was scored against, so 63/64
-> is an in-sample figure and not evidence it generalises. What does generalise is the shape:
-> **zero contradictions and a one-file escalation band.** The design is safe because it refuses
-> rather than guesses — an ambiguous file is escalated to the model, never silently relabelled.
+> **Read this honestly.** Both rules were tuned on the corpus they were scored against, so neither
+> figure is evidence of generalisation. What generalises is the shape: **a rule that reports a
+> ceiling cannot contradict an author, and one that reports a value can.** The design is safe
+> because it refuses rather than guesses — an ambiguous file is escalated, never silently
+> relabelled.
 
 And the escalation band is not a defect: **"criteria exist but scope is carried by the
 description alone" is precisely what a counter cannot see.** The ambiguous band *is*
@@ -1213,7 +1257,7 @@ against the declared schema, invoked in three places:
 
 A producer/consumer mismatch should fail at the boundary, not silently degrade three skills later.
 
-**Item 39 extends this outward**, to the 157 references that leave the PRD entirely (P24). Same
+**Item 39 extends this outward**, to the 190 references that leave the PRD entirely (P24). Same
 script, same boundary, one more class of thing that is currently asserted and never checked.
 
 **23. Extend the regression suite.**
@@ -1372,7 +1416,8 @@ comparison's C10, which the first fold dropped and the re-verification pass put 
 *Addresses P18. Extends item 25 — read that first.*
 
 Item 25 already establishes the right artefact in the right place: a prescriptive, machine-readable
-file at `docs/prd/{slug}/architecture.md`, sharing PROJECT.md's schema, with a reader in
+file at the **project root** beside `PROJECT.md` (item 25, corrected — *not* under
+`docs/prd/{slug}/`), sharing PROJECT.md's schema, with a reader in
 `analyze-prd` and a carrier into `<context>`. It scopes that artefact to *architecture*. P18 is
 that architecture is one of five vendored opinions, and the other four need the same channel.
 
@@ -1416,9 +1461,10 @@ Three consequences, and the first is the one that makes this the largest item in
 - **TDD becomes a default, not a law — and this is a three-reader change, not a one-line read.**
   The mandate does not live in `tdd-workflow.md`, which only describes Red/Green/Refactor (P18).
   It is imposed upstream: `<test-requirements>` is a *required* section in `task-format-spec.md`,
-  and `review-criteria.md` makes it critical twice over. A project declaring `policy="none"`
+  and `review-criteria.md` makes it critical twice over. A project declaring `default="none"`
   would therefore have every task fail batch review at `/breakdown` time and never reach
-  `execute-batch` at all. So `<testing policy>` has to be read in three places — by
+  `execute-batch` at all. So `<testing>`'s `default=` — and any `kind=` on a scoped `<policy>` —
+  has to be read in three places, by
   `generate-tasks` (whether to emit the section), by `review-tasks` (whether to require it), and
   by `execute-batch` (whether to run the tests first) — and `task-format-spec.md` has to stop
   marking the section unconditionally required. The current mandate is right for most projects
@@ -1613,7 +1659,7 @@ Three further reasons, in descending order of weight:
   is cheaper than migrating later against more content.
 - **It is less verbose than a GWT triple**, which is a small credit against P22.
 
-**Migration is the risky part, and it gets its own rules.** 519 criteria rewritten by a model is
+**Migration is the risky part, and it gets its own rules.** 550 criteria rewritten by a model is
 exactly the shape of change that loses meaning quietly.
 
 - Per feature, never per corpus. Reviewed as a diff, feature by feature.
@@ -1649,7 +1695,7 @@ pulls in **that feature's `P0` criteria**, not the whole feature. The tier bound
 collapsing under its own dependencies, and "what does this filter actually build" becomes a
 computation rather than a guess.
 
-The residual cost is real: someone assigns a level to 519 criteria. Item 33's migration is the
+The residual cost is real: someone assigns a level to 550 criteria. Item 33's migration is the
 moment to do it, and item 8's agent can propose while a human accepts.
 
 **35. `<architecturally-significant>` — the flag that makes a design step affordable.**
@@ -1679,7 +1725,7 @@ rather than the handful that warrant one. That is the whole reason item 38 is tr
 **36. The decision record: adopt the corpus project's template and conventions wholesale.**
 *Addresses P24 and P25.*
 
-The project the corpus came from already has 16 of these and a settled house style. **It is
+The project the corpus came from already has **19** of these and a settled house style. **It is
 adopted as-is rather than redesigned**, and the check reads the convention that exists rather than
 asking for a migration: `**Status:**` and `**Date:**` are already regular bolded fields, and links
 to features and other records are already regular markdown.
@@ -1788,7 +1834,7 @@ writing into a document it does not own. So: validate that citations resolve, re
 a question already closed, and never write. *Stated here because a consumer with no producer should
 be deliberate or fixed, and this one is deliberate.*
 
-Cheap, and **157 references currently go unchecked**. This is also the minimum that makes the
+Cheap, and **190 references currently go unchecked**. This is also the minimum that makes the
 decision-record track useful even if 35, 36 and 38 are never switched on: a dangling reference in
 a feature that `/breakdown` is about to turn into tasks is a defect whether or not the design
 track is enabled.
@@ -2047,6 +2093,16 @@ Renaming is cheap now and expensive later, and it removes the class of bug where
 right tag from the wrong file. §4.2's warning that `in-progress` reads as build progress stops
 being a warning once the tag is called `<definition>`.
 
+> **The rename is deliberately not propagated through this document, and that is stated rather
+> than left to be noticed (R7).** Every schema passage in §4 and §5 still says `<status>`, because
+> each is specified against the tag *as it exists today* — a plan describes a change from something
+> to something. Propagating the new name into items 1, 3, 4, 6, 13, 15 and §4.2 **is this item's
+> own work**, not a precondition for reading them.
+>
+> [`target-state-data-flow.md`](target-state-data-flow.md) uses `<definition>` throughout, correctly:
+> it draws the end state, where this item has landed. The two documents are in different tenses, and
+> a reader comparing them should expect exactly this difference and no other.
+
 **`in-progress` stays. Decided.** Retiring it was considered, on the grounds that item 29 makes it
 derivable from the presence of a `<gap kind="specification">`. It is not derivable, and the reason
 is the useful one: **an author may want to hold a feature short of `defined` for reasons the file
@@ -2300,7 +2356,7 @@ tells an implementer what to do instead. A bare rule number does not.
 **`<task-limits>` is enforced where the limit already lives.** Today `max-files` is a constraint in
 `task-format-spec.md` and a critical criterion in `review-criteria.md` — both hardcoded to 3. They
 become readers of `<task-limits>`, honouring the scoped overrides. This is the same three-reader
-shape item 28 found for `<testing policy>`: a rule is only overridable if every place that
+shape item 28 found for `<testing>`: a rule is only overridable if every place that
 currently hardcodes it learns to ask.
 
 **A false positive must be answerable.** A banned-pattern check that cannot be overridden becomes a
@@ -2400,7 +2456,7 @@ touched anyway, and assigning a level while a human is already reviewing each fe
 far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
-reference check over files that already exist, and 157 unchecked citations is a defect today.
+reference check over files that already exist, and 190 unchecked citations is a defect today.
 
 **56 belongs with 28**, not after it: `<banned>` and `<task-limits>` are two of the five opinions
 item 28 exists to make overridable, and shipping the declaration without the enforcement would
