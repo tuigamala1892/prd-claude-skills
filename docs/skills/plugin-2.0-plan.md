@@ -1346,11 +1346,35 @@ its schema registry**. Four reasons, and the first was a correction:
   and PROJECT.md gains the same freedom when item 26 seeds it. Fixing the pair would be item 28's
   own defect, one level further down.
 
-  **And each registry needs a reader, or this is P4 in a new file.** `analyze-prd` loads them
-  alongside `<rules>`, exactly as it loads the feature's `<data-model>` — a registry *is* a data
-  model, at project scope. `generate-tasks` carries the entries a task touches into its
-  `<context>`. The existing API registry already has a reader on the CRD path
-  (`crd-impact-analysis` reads it), so the open set must not be the one shape that does not.
+  **Registries are direct children of the root, beside `<rules>` and not inside it. Decided (A3,
+  D1).** `<api-registry>`, `<schema-registry>`, `<event-registry>`, `<command-registry>`,
+  `<service-registry>`, `<screen-registry>` — the names PROJECT.md already uses, at the level it
+  already uses them.
+
+  Two reasons, and the first is decisive. `PROJECT.md` keeps `<meta>`, `<features>`,
+  `<api-registry>` and `<schema-registry>` as **root children**, and `check-project-md.py` reads
+  `[c.tag for c in root]`. This item's whole premise is *the same schema as PROJECT.md*, and item
+  26 seeds one from the other; nesting registries inside `<rules>` would make that seeding a
+  *transform* rather than a copy and would put the validator out of reach — defeating the reason
+  for sharing the schema at all. And item 37 reserves `<rules>` for what the toolchain **obeys**; a
+  registry is read, not obeyed, so an inventory does not belong in the enforced set.
+
+  **And each registry needs a reader, or this is P4 in a new file.** `analyze-prd` loads them, as
+  it loads the feature's `<data-model>` — a registry *is* a data model at project scope.
+  `generate-tasks` carries the entries a task touches into its `<context>`.
+
+  **Two readers already exist and both must change (R8).**
+  `skills/execute/scripts/check-project-md.py` hard-requires `meta`, `features`, `api-registry`
+  and `schema-registry`, so a CLI project seeded by item 26 with only a `<command-registry>` fails
+  a guard it should pass. That file appeared nowhere in this plan before this revision.
+
+  **Decided (A3, D2): the validator requires *at least one* registry, and each consumer checks what
+  it reads.** The script's own docstring says it exists because a bare `&` broke parsing and *"the
+  run reported success"* — its job is well-formedness, and the two named registries were a proxy
+  for *consumers can read this*. Requiring any one `*-registry` keeps the proxy honest without
+  mandating a shape. `crd-impact-analysis` then refuses clearly when the specific registry it is
+  about to read is absent. Each checks what it actually understands, which is items 6 and 22's
+  split applied one level down.
 - `/breakdown` already knows how to load that shape for CRDs, so the greenfield reader is a small
   change rather than a new one.
 - It lets item 26 close the P17 loop — after `/execute`, the finalizer seeds `PROJECT.md` from it
@@ -1482,6 +1506,9 @@ Three consequences, and the first is the one that makes this the largest item in
   this item already borrowed for `<banned>`. A monolithic SPA needs two runners, so this is not an
   exotic requirement.
 - `<repo-structure>` is declared rather than assumed (item 53).
+- **Registries are deliberately not here** (item 25, A3/D1). `<rules>` is what the toolchain obeys;
+  a registry is an inventory it reads. They sit beside this block as root children, with the names
+  and at the level `PROJECT.md` already uses, so that item 26's seeding stays a copy.
 
 **Guard it the way this repository has learned to (S3 / P16):** a script parses `<rules>`, and
 `/breakdown` refuses in the `resolve-output.sh` idiom if a rule file is present and unparseable.
@@ -1916,6 +1943,27 @@ Every schema decision in this plan implies rewriting artefacts that already exis
 64 feature files, 550 criteria, an index and a `what-next.md`. That work will be done by an agent,
 so the guide is not prose for a human to follow: it is **a specification with a consumer**, and it
 is subject to the same discipline this plan applies to every other producer/consumer pair.
+
+**It covers the CRD path too, which this item did not say until §5 J existed.** Seven items in that
+section change artefacts that are already written, and a migration scoped to PRDs would leave every
+existing CRD and `PROJECT.md` behind:
+
+| Artefact | Transformation | Item |
+|---|---|---|
+| `docs/crd/{slug}.md` | `<requirements>` retired; each becomes an EARS criterion in the single list | 46, 33 |
+| | requirement `priority` MoSCoW → `P0\|P1\|P2` on the criterion | 47 |
+| | `<meta>` gains a document-level MoSCoW `<priority>` | 47 |
+| | `<meta><status>` → `<workflow>` | 45 |
+| | deferred criteria become `<gap kind="specification">` | 48 |
+| | `<affected-apis>` → `<affected-contracts kind="api">` | 57 |
+| `PROJECT.md` | `<feature status=>` → `built=` | 45 |
+| | registries stay at root; **none is added or removed by migration** | 25 |
+
+**Two CRD-specific rules.** A CRD whose `<workflow>` is `complete` or `abandoned` is **migrated but
+not re-reviewed** — it is a record of something that already happened, and rewriting its criteria
+into EARS is a formatting change, not a re-specification. And `<affected-apis>` is **accepted on
+read** for a full release after the migration, because a CRD is often authored in one place and
+broken down in another, and a hard cutover would strand the ones in flight.
 
 What it must contain, per schema change:
 
@@ -2364,6 +2412,37 @@ reason to stop declaring patterns. An explicit, reasoned exemption in the task
 (`<exempt pattern="…" reason="…"/>`) is reported in the run summary rather than silently allowed —
 visible, attributable, and not a fight with the tool.
 
+**57. Generalise impact analysis from APIs to contracts.**
+*Addresses A3/D3. Depends on item 25's open registry set; without it the open set is an input
+nothing can report on.*
+
+`crd-impact-analysis` reads `<api-registry>` and `<schema-registry>` and emits `<affected-apis>`.
+Opening the registry set (item 25) lets it *read* an event or command registry and leaves it
+**nowhere to report the impact** — half a change, and the half that shows.
+
+```xml
+<affected-contracts>
+  <contract kind="api"     ref="POST /api/settings">Add theme field</contract>
+  <contract kind="event"   ref="OrderPlaced@v2">New optional field; consumers unaffected</contract>
+  <contract kind="command" ref="deploy --dry-run">New flag</contract>
+</affected-contracts>
+```
+
+`kind` matches the registry the contract came from, so the enum extends when the registry set does
+rather than being a second list to keep in step — which is the mistake item 25 has just corrected
+one level up.
+
+**This changes a published artefact shape**, which nothing else in §5 J does: `crd-format.md`
+declares `<affected-apis>` and every existing CRD is written against it. `<affected-apis>` is
+accepted on read and rewritten as `<affected-contracts kind="api">` by item 41, which now covers
+the CRD path (see there). That is the only part of A3 that is not cheap, and it is the reason A3
+reaches into item 41 at all.
+
+Layer selection reads it too: item 31 derives a foundation layer from schema changes and a backend
+layer from API changes. With contracts generalised, an **event** contract change is what puts work
+in an event-driven graph's `contracts` layer — which is §8.2's first tier and currently unreachable
+from an impact analysis.
+
 ---
 
 ## 6. Summary
@@ -2426,6 +2505,7 @@ visible, attributable, and not a fight with the tool.
 | 54 | A working directory for verification | P36 | Correctness |
 | 55 | The ledger states what it verified | **P37** | Consistency |
 | 56 | Enforce `<banned>` and `<task-limits>` at both ends | P16, **P35** | **Correctness** |
+| 57 | Impact analysis reports contracts, not just APIs | **P35**, P30 | Correctness |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -2654,7 +2734,8 @@ Only the distinguishing parts are shown; `<scaffold>` and boilerplate are elided
   <policy match="web/**"  kind="component" runner="vitest"/>
   <policy match="e2e/**"  kind="end-to-end" runner="playwright"/>
 </testing>
-<registries><api/><schema/></registries>
+<!-- registries are siblings of <rules>, not children: -->
+<api-registry/> <schema-registry/>
 <repo-structure>single</repo-structure>
 ```
 
@@ -2693,7 +2774,7 @@ than merely narrow.
     handler with side effects that are not idempotent
   </pattern>
 </banned>
-<registries><event/></registries>
+<event-registry/>
 ```
 
 Producers and consumers are **siblings**, which is the whole point of the architecture and the
@@ -2717,7 +2798,7 @@ shape a chain cannot express. This is what forced `depends-on` to be a comma lis
     connection string pointing at another service's database
   </pattern>
 </banned>
-<registries><service/><api/></registries>
+<service-registry/> <api-registry/>
 <repo-structure>monorepo</repo-structure>   <!-- multi-repo is refused: item 53 -->
 ```
 
@@ -2739,7 +2820,7 @@ chosen for. This is what forced `applies-to`.
   <pattern reason="core must be usable as a library">network access from core/**</pattern>
   <pattern reason="a CLI must not surprise its caller">writes outside the working directory</pattern>
 </banned>
-<registries><command/></registries>       <!-- subcommands, flags, exit codes, output format -->
+<command-registry/>       <!-- subcommands, flags, exit codes, output format -->
 ```
 
 The degenerate case, and it needs **no special handling**: item 31 collapses a single-tier
@@ -2765,7 +2846,7 @@ schema that only works for elaborate architectures would be its own kind of fail
   <pattern reason="the bundle is readable by anyone who downloads it">secrets in the app bundle</pattern>
   <pattern reason="offline-first is a product requirement">network call with no offline fallback</pattern>
 </banned>
-<registries><screen/><schema/></registries>   <!-- navigation graph + on-device store -->
+<screen-registry/> <schema-registry/>   <!-- navigation graph + on-device store -->
 ```
 
 Two platforms are two instantiations of one graph — the same `applies-to` that microservices need,
@@ -2782,7 +2863,7 @@ the weakest of P35's findings because it is genuinely absent rather than mis-sha
 | `<scaffold>` | all five, with `none` | release/target constraints |
 | `<testing>` | — | one runner, one policy |
 | `<task-limits>` | — | one limit |
-| Registries | monolithic SPA | the other four |
+| Registries | monolithic SPA | the other four — and they are **not** part of `<rules>` (item 25) |
 
 **The bones are right and three leaves were CRUD-shaped.** Nothing here argues against item 28 — it
 argues that item 28 stopped one level above where the vendoring actually lived, and that the way to

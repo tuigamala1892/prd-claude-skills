@@ -136,8 +136,10 @@ User idea ───────────────────────�
                                          ▼
    architecture.md        ◄── NEW (25, 28, 51): PROJECT ROOT, not per-PRD —
                               <rules>: layers, testing, task-limits, banned,
-                              scaffold, repo-structure, registries — ENFORCED
+                              scaffold, repo-structure — ENFORCED
                               <principles>: guidance, NOT enforced      (37)
+                              *-registry: root siblings of <rules>,
+                              read not obeyed, PROJECT.md's names  (25)
 
    docs/prd/{slug}/
    ├── index.md            ◄── features + MoSCoW priority (§4.1), tech stack
@@ -180,7 +182,7 @@ User change description + --project ────┐
              └───────────┬─────────────┘                            │
                          ▼                                          │
                    PROJECT.md  ◄── architecture, built= per feature │
-                         │          api + schema registries         │
+                         │          registries (open set, item 25)  │
                          └──────────────────┬───────────────────────┘
                                             ▼
                           ┌─────────────────────────────┐
@@ -388,6 +390,8 @@ Every row is an exit code, not a paragraph — P16's lesson, and item 4.13's pri
 | A task specifies a `<banned>` pattern | `/breakdown` review-tasks | 56 |
 | Implemented code contains a `<banned>` pattern | `/execute` execute-verify | 56 |
 | A task exceeds `<task-limits>` for its path | `/breakdown` review-tasks | 56 |
+| `PROJECT.md` carries no `*-registry` at all | `check-project-md.py` | 25 |
+| A consumer's specific registry is absent | `crd-impact-analysis` | 25 |
 | Rename left a reference to a slug with no file | `/prd --rename`, Phase 6 | 42 |
 
 ---
