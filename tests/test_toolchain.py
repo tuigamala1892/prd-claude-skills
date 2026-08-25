@@ -27,6 +27,7 @@ ignore it.
 """
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -521,6 +522,64 @@ def _():
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("mutate execute-state.json by hand; call write-state.py "
                      "instead:\n    " + "\n    ".join(bad))
+
+
+@check("state-schema.md documents the file write-state.py actually writes", finding="P28")
+def _():
+    # A reference that describes a different document from the one the producer emits is the
+    # drift this repository keeps finding in other people's artefacts. It was live here: the
+    # reference said schema_version 2.0 and hand-maintained `options`, `worktrees` and
+    # `current_layer`; the script writes 3.0 and none of them. Compare the two mechanically
+    # rather than by reading, because reading is what missed it for three schema revisions.
+    ws = os.path.join(SKILLS, "execute", "scripts", "write-state.py")
+    doc_path = os.path.join(SKILLS, "execute", "references", "state-schema.md")
+    assert os.path.isfile(doc_path), "skills/execute/references/state-schema.md is missing"
+    doc = open(doc_path, encoding="utf-8").read()
+
+    # The writer's own dict literal, not a copy of it kept in sync by hand.
+    written = None
+    for node in ast.walk(ast.parse(open(ws, encoding="utf-8").read())):
+        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "state" for t in node.targets)):
+            written = node.value
+    assert written is not None, "no `state = {...}` literal found in write-state.py"
+    writer_keys = [k.value for k in written.keys if isinstance(k, ast.Constant)]
+    writer_version = next(
+        v.value for k, v in zip(written.keys, written.values)
+        if isinstance(k, ast.Constant) and k.value == "schema_version")
+
+    # The documented example is the ```json block that parses as an object carrying a version.
+    documented = None
+    for block in re.findall(r"```json\s*\n(.*?)\n```", doc, re.S):
+        try:
+            obj = json.loads(block)
+        except Exception:
+            continue
+        if isinstance(obj, dict) and "schema_version" in obj:
+            documented = obj
+            break
+    assert documented is not None, (
+        "state-schema.md has no complete ```json example carrying schema_version")
+
+    missing = [k for k in writer_keys if k not in documented]
+    extra = [k for k in documented if k not in writer_keys]
+    assert not missing and not extra, (
+        "state-schema.md and write-state.py disagree about the root fields"
+        + (f"\n    written, undocumented: {missing}" if missing else "")
+        + (f"\n    documented, never written: {extra}" if extra else ""))
+
+    # Every version the reference states -- in the example and in the prose above it.
+    stated = (set(re.findall(r'"schema_version"\s*:\s*"([^"]+)"', doc))
+              | set(re.findall(r"Current version:\s*`([^`]+)`", doc)))
+    assert stated == {writer_version}, (
+        f"write-state.py writes schema_version {writer_version!r}; "
+        f"state-schema.md states {sorted(stated)}")
+
+    # Fields 2.0 carried and 3.0 does not, at a nesting the key comparison cannot reach.
+    gone = [f for f in ("commits", "errors", "retry_feedback", "elapsed_seconds",
+                        "total_retries", "worktree_path")
+            if f'"{f}"' in json.dumps(documented)]
+    assert not gone, f"the documented example still carries 2.0 fields: {gone}"
 
 
 @check("resume is decided by verified commits, not by the state file", finding="F16")
