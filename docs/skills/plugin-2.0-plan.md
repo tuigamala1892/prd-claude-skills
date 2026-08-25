@@ -767,7 +767,7 @@ warrant it. Item 35 is what makes item 38 affordable.
 
 ---
 
-## 4. Two design decisions that resolve most of the above
+## 4. Three design decisions that resolve most of the above
 
 ### 4.1 Ownership rule: the index owns *planning*, the file owns *definition*
 
@@ -838,6 +838,45 @@ Two consequences worth stating plainly:
   definitions several features still labelled `tbd` are `in-progress`; item 4's migration
   reclassifies them.
 
+### 4.3 Structure earns its place by what a machine must *do* with the content
+
+The review's R16 is that this plan responds to every gap by adding a slot to a schema, and never
+states why schema-tightening beats prose-plus-validation — while collecting four pieces of evidence
+pointing the other way (P10–P13), each recording that prose the model invented was *better* than
+the template it replaced.
+
+**The plan has been applying a test all along and never wrote it down.** Written down, it is:
+
+| If… | Then | Because |
+|---|---|---|
+| A machine must **locate** it | an identifier or attribute, prose body | finding it is all the reader needs |
+| A machine must **understand** it | an element | the reader consumes the content, not the position |
+| Only a human reads it | prose, marked **unread by design** | structure would be cost with no consumer |
+
+**Two things this settles that were being argued as taste.**
+
+*Why item 33 is not a contradiction.* EARS is constrained natural language — a **sentence** with an
+`id`, a `pattern` and a `priority`. The plan's largest schema item therefore chose
+prose-plus-convention, because a machine must *locate* a criterion and know its pattern and tier,
+while only a human needs to *understand* what it says. That is the rule, not an exception to it.
+
+*Why more schema would not have prevented the plan's own central finding.* `<acceptance-criteria>`
+was well-formed XML throughout and still had no reader (P2). **P2 was a missing consumer, not a
+malformed producer**, and no amount of structure catches that. This is the argument for the third
+decision below.
+
+**Consumer-side validation is primary; producer-side is early warning.** Item 22 refuses a
+malformed artefact where it is written, which is worth having because a defect is cheapest at its
+source. But the check that *matters* is the one item 23 states — every element has a named reader,
+every reader a named producer — and it lives at the consumer. A producer-side schema can only
+assert that a document is well-formed; it cannot assert that anybody needs it.
+
+**And the authoring cost is measured, not assumed** (R17). The plan's evidence base is one author's
+behaviour and its output is that author's new workflow: a ninth `/prd` phase, a replaced criterion
+format, a renamed status tag, a second priority vocabulary, two project-root artefacts and 550
+re-annotated criteria. Item 21 gains one line for it. A workflow nobody can bear to use is a
+failure mode this document has no other way to detect.
+
 ---
 
 ## 5. Remediation items
@@ -872,7 +911,6 @@ Two consequences worth stating plainly:
 
   <notes>
     <data-model>...</data-model>            <!-- item 2 -->
-    <relationships>...</relationships>
     <considerations>...</considerations>
   </notes>
 
@@ -881,13 +919,30 @@ Two consequences worth stating plainly:
 </feature>
 ```
 
-**2. Give `<notes>` an internal shape.**
-The corpus already writes notes in three recurring kinds — data model, dependencies and
-relationships, and free considerations — signalled with bold markdown headings. Promoting those
-to elements is what makes P4 fixable: `analyze-prd` can then *read* `<data-model>` instead of
-inferring one. Free markdown stays legal inside each element; the corpus proves markdown-in-XML
-is comfortable. **Migration must not be lossy** — unrecognised note content goes to
-`<considerations>` verbatim, never dropped.
+**2. Give `<notes>` an internal shape — two elements, not three.**
+*Narrowed by §4.3 (A10/D2).*
+
+The corpus writes notes in three recurring kinds — data model, dependencies and relationships, and
+free considerations — signalled with bold markdown headings. **Only one of the three needs to be an
+element.**
+
+- **`<data-model>` — element.** `analyze-prd` must *understand* it: it reads entities and fields
+  and stops inferring them (P4). Locating it is not enough, so §4.3's second row applies.
+- **`<relationships>` — dropped.** Item 27's `<depends-on slug= kind=>` already carries the
+  outbound edges in machine-readable form, and item 40's contract rule finds inbound references by
+  **grepping the feature's slug across the PRD** — locating, not parsing. A second structured list
+  of the same relationships would be two producers for one idea, which items 29 and 46 both
+  refused. Relationship *prose* stays in the notes; the edges live in `<depends-on>`.
+- **`<considerations>` — prose, unread by design.**
+
+**Migration must not be lossy** — unrecognised note content goes to `<considerations>` verbatim,
+never dropped.
+
+> **This removes one of the migration's four judgement axes** (item 41, R14). Restructuring notes
+> across 64 files, three-way and losslessly, was on the plan's critical path; it is now a two-way
+> split where one side is a catch-all. The prose convention that item 3's derivation already
+> depends on — a bold `**Data model**` heading, measured at zero false positives — is what the
+> migration keys on, rather than a shape a human must invent per file.
 
 **`<considerations>` is deliberately unread**, and the template should say so. It is the catch-all
 that makes migration safe and prose survivable; nothing machine-consumes it and nothing should.
@@ -1246,6 +1301,12 @@ task count and that no task derives from the won't-have. Run before and after it
 "before" run is what converts P1 from static to measured. Keep it small deliberately: P5 means a
 realistic PRD would fail for an unrelated reason and confound the result.
 
+**And time the authoring** (§4.3, R17). Author the same four features under the current templates
+and under the new ones, and record how long each takes and where the time goes. It is a sample of
+one and it is not a measurement of quality — but the plan adds a phase, replaces the criterion
+format, and re-annotates 550 criteria, and *"is this still tolerable to write?"* currently has no
+answer at all. One number beats none, and the fixture is where it costs nothing to take.
+
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
 weeks. A single `check-artefacts.py` validating `index.md`, `what-next.md` and every feature file
@@ -1318,7 +1379,7 @@ together.*
 Architecture divides cleanly by scope, and the two halves belong in different places:
 
 - **Feature-local** — the entities, fields and relationships a single feature owns. Home:
-  `<notes><data-model>` and `<relationships>` (item 2). Most of the corpus's index block is
+  `<notes><data-model>`, with edges in `<depends-on>` (items 2, 27). Most of the corpus's index block is
   this, and it only ended up in the index because the feature file had no structured slot.
 - **Cross-cutting** — inheritance strategy, bounded-context rules, ownership conventions,
   patterns no single feature owns. Home: a **new artefact**.
@@ -1980,7 +2041,7 @@ What it must contain, per schema change:
   migrated tree is safe to re-enter.
 - **The transformation**, stated as a rule over the old shape rather than an example of the new
   one. `<priority>` is deleted only after the index entry is confirmed to carry it (item 1);
-  `<notes>` prose becomes `<data-model>` / `<relationships>` / `<considerations>` with
+  `<notes>` prose becomes `<data-model>` / `<considerations>` — two, not three (item 2) — with
   **unrecognised content going to `<considerations>` verbatim, never dropped** (item 2).
 - **Postconditions and invariants**, checkable without judgement. Criterion count in equals count
   out (item 33). Every migrated criterion carries `derived-from`. No feature gains or loses a
