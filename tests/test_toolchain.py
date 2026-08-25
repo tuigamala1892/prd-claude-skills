@@ -528,6 +528,93 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("the tier probe is one feature per MoSCoW tier, and unmistakable", finding="P1")
+def _():
+    # Item 21's input. Four features, one per tier, two criteria each, and slugs that cannot
+    # occur by coincidence -- attribution is a string match until item 16 adds
+    # <source-feature>, and a string match is only sound when the string is unique.
+    probe = os.path.join(REPO, "tests", "fixture", "prd", "tier-probe")
+    index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
+
+    entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
+    tiers = sorted(t for t, _ in entries)
+    assert tiers == ["could-have", "must-have", "should-have", "wont-have"], (
+        f"the probe must carry exactly one feature per tier, found {tiers}")
+
+    for tier, slug in entries:
+        path = os.path.join(probe, "features", f"{slug}.md")
+        assert os.path.isfile(path), f"index names features/{slug}.md and it is not there"
+        body = open(path, encoding="utf-8").read()
+        assert f"<slug>{slug}</slug>" in body, f"{slug}.md does not declare its own slug"
+        assert f"<priority>{tier}</priority>" in body, (
+            f"{slug}.md and the index disagree about priority; the probe measures priority")
+        assert len(re.findall(r"<criterion\b", body)) == 2, (
+            f"{slug}.md must carry exactly two criteria -- P5 says a bigger probe fails for "
+            f"reasons that have nothing to do with what it measures")
+
+    # The won't-have has to be specified as well as the others, or /breakdown could skip it
+    # for being vague and the probe would prove nothing.
+    wont = open(os.path.join(probe, "features", "quokka-telemetry.md"), encoding="utf-8").read()
+    assert "must not be built" in wont, "the won't-have does not say it is rejected"
+    assert len(wont) > 700, ("the won't-have is thinner than the others; a probe whose "
+                             "rejected feature is obviously unbuildable measures nothing")
+
+
+@check("the P1 probe's grader calls a vacuous run invalid, not clean", finding="P1")
+def _():
+    # The grader is exercised here, offline, so that the expensive path is not the only thing
+    # that has ever run it. The case that matters is the third: a probe reporting "no
+    # won't-have tasks" because nothing was generated has measured nothing, and that shape
+    # has already produced two false passes in this phase.
+    import shutil
+    import tempfile
+
+    probe = os.path.join(REPO, "tests", "probe-p1.py")
+    assert os.path.isfile(probe), "tests/probe-p1.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-p1-")
+    try:
+        def task(where, tid, text):
+            os.makedirs(where, exist_ok=True)
+            with open(os.path.join(where, f"{tid}.xml"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write(f"<task><meta><id>{tid}</id></meta><context>{text}</context></task>\n")
+
+        clean = os.path.join(root, "clean")
+        task(clean, "L1-001", "zebra-signin stores a password hash")
+        task(clean, "L2-001", "walrus-export returns text/csv")
+
+        dirty = os.path.join(root, "dirty")
+        task(dirty, "L1-001", "zebra-signin stores a password hash")
+        task(dirty, "L2-003", "quokka-telemetry posts batches to the collector")
+
+        nomust = os.path.join(root, "nomust")
+        task(nomust, "L2-001", "walrus-export returns text/csv")
+
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+
+        expected = {clean: 0, dirty: 1, nomust: 2, empty: 2}
+        for where, code in expected.items():
+            p = subprocess.run([sys.executable, probe, "--grade", where],
+                               capture_output=True, text=True)
+            got = p.stdout + p.stderr
+            assert p.returncode == code, (
+                f"{os.path.basename(where)}: expected exit {code}, got {p.returncode}\n{got}")
+
+        p = subprocess.run([sys.executable, probe, "--grade", dirty],
+                           capture_output=True, text=True)
+        assert "P1 CONFIRMED" in p.stderr, "a won't-have task was found and not called out"
+        assert "L2-003" in p.stdout, "the violating task is not named"
+
+        p = subprocess.run([sys.executable, probe, "--grade", empty],
+                           capture_output=True, text=True)
+        assert "INVALID" in p.stderr and "measures nothing" in p.stderr, (
+            "an empty task set was not called invalid")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("a rename finishes, or leaves the PRD exactly as it was", finding="P27")
 def _():
     # Item 42. The rename that prompted it was done correctly across 20 references in 8 files

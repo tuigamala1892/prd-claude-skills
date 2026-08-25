@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Measure P1 at runtime: does `/breakdown` build features the owner rejected? (item 21)
+
+P1 is established statically and exhaustively -- `breakdown-analyze-prd` writes
+`features[].priority` into analysis.json and no skill downstream ever reads it. The consumer
+does not exist. But a passing grep is not a run, and this plan's own method note says a
+measurement inherits every defect of how it was taken. So: take it.
+
+TWO MODES, AND THE SPLIT IS THE POINT
+
+    probe-p1.py --grade <tasks-dir>     offline. Attribute generated tasks to features.
+    probe-p1.py --run                   live. Build a workspace, run /breakdown, then grade.
+    probe-p1.py --baseline              authoring size of the probe PRD, for the item 21 delta.
+
+The grader is a separate mode so it can be tested without spending a live run -- feed it a
+directory of tasks and it reports the same thing it would report after `--run`. A grader that
+has only ever been exercised by the expensive path is a grader nobody has checked.
+
+WHY THE SLUGS ARE ANIMALS
+
+No task carries a `<source-feature>` element yet; item 16 adds one. Until then, attributing a
+generated task to the feature it came from is a string match, and a string match is sound only
+when the string cannot occur by coincidence. A task about logging might say "telemetry". None
+of them will say "quokka".
+
+WHAT COUNTS AS A RESULT
+
+  exit 0   no task derives from the won't-have feature
+  exit 1   P1 CONFIRMED at runtime: won't-have tasks were generated
+  exit 2   the probe is INVALID -- no tasks, or none from the must-have. Not a pass.
+
+The third one matters most. A probe that reports "no won't-have tasks" because `/breakdown`
+produced nothing at all has measured nothing, and two false passes in this phase have already
+come from exactly that shape.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "tier-probe")
+
+# slug -> (tier, the token that cannot appear by accident)
+FEATURES = {
+    "zebra-signin": ("must-have", "zebra"),
+    "walrus-export": ("should-have", "walrus"),
+    "narwhal-theme": ("could-have", "narwhal"),
+    "quokka-telemetry": ("wont-have", "quokka"),
+}
+REJECTED = "quokka-telemetry"
+
+
+def task_files(tasks_dir):
+    return sorted(glob.glob(os.path.join(tasks_dir, "**", "*.xml"), recursive=True))
+
+
+def attribute(tasks_dir):
+    """task path -> set of feature slugs it appears to derive from."""
+    out = {}
+    for path in task_files(tasks_dir):
+        text = open(path, encoding="utf-8", errors="replace").read().lower()
+        hits = set()
+        for slug, (_tier, token) in FEATURES.items():
+            if slug in text or re.search(r"\b%s\b" % re.escape(token), text):
+                hits.add(slug)
+        out[path] = hits
+    return out
+
+
+def grade(tasks_dir, quiet=False):
+    attributed = attribute(tasks_dir)
+    total = len(attributed)
+
+    per_tier = {tier: 0 for tier, _ in FEATURES.values()}
+    for slugs in attributed.values():
+        for slug in slugs:
+            per_tier[FEATURES[slug][0]] += 1
+    unattributed = sum(1 for s in attributed.values() if not s)
+
+    violations = sorted(p for p, s in attributed.items() if REJECTED in s)
+
+    if not quiet:
+        print(f"tasks generated: {total}")
+        for tier in ("must-have", "should-have", "could-have", "wont-have"):
+            print(f"  {tier:<12} {per_tier[tier]:>3} task(s)")
+        print(f"  {'unattributed':<12} {unattributed:>3} task(s)")
+        for path in violations:
+            print(f"  WONT-HAVE TASK  {os.path.relpath(path, tasks_dir)}")
+
+    # An invalid probe is not a passing probe. Say so before saying anything else.
+    if total == 0:
+        print("INVALID: no tasks were generated at all. This measures nothing.", file=sys.stderr)
+        return 2
+    if per_tier["must-have"] == 0:
+        print("INVALID: no task derives from the must-have feature, so the run did not do "
+              "what the probe assumes. 'No won't-have tasks' would be vacuous.", file=sys.stderr)
+        return 2
+
+    if violations:
+        print(f"\nP1 CONFIRMED at runtime: {len(violations)} of {total} generated tasks derive "
+              f"from a feature marked wont-have. The product owner rejected it and the "
+              f"toolchain built it anyway.", file=sys.stderr)
+        return 1
+
+    print("\nNo task derives from the won't-have feature.")
+    return 0
+
+
+def run(model, timeout):
+    """Build a workspace outside the repository, run /breakdown into it, then grade."""
+    import tempfile
+
+    work = tempfile.mkdtemp(prefix="prd-probe-p1-")
+    # The fixture convention: never build inside the toolchain checkout. /breakdown writes
+    # directories, and F4 is what happens when it writes them here.
+    assert not os.path.abspath(work).startswith(REPO), "refusing to build inside the repo"
+
+    prd = os.path.join(work, "prd", "tier-probe")
+    shutil.copytree(FIXTURE, prd)
+    tasks = os.path.join(work, "tasks")
+    os.makedirs(tasks, exist_ok=True)
+
+    prompt = (f"/breakdown {os.path.join(prd, 'index.md')} --output-dir {tasks}\n\n"
+              "Run it to completion. Do not ask for confirmation.")
+    print(f"workspace: {work}")
+    print(f"running /breakdown on {model}; this generates real files and takes a few minutes")
+
+    proc = subprocess.run(
+        ["claude", "-p", prompt, "--model", model, "--plugin-dir", REPO,
+         "--permission-mode", "acceptEdits"],
+        capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+
+    log = os.path.join(work, "breakdown-output.txt")
+    with open(log, "w", encoding="utf-8", newline="\n") as f:
+        f.write(proc.stdout or "")
+        f.write("\n--- stderr ---\n")
+        f.write(proc.stderr or "")
+    print(f"transcript: {log}")
+
+    # /breakdown resolves its own output paths, so find where the tasks actually landed
+    # rather than assuming. Assuming is what resolve-output.sh exists to stop.
+    roots = [tasks] + [os.path.dirname(p) for p in
+                       glob.glob(os.path.join(work, "**", "manifest.json"), recursive=True)]
+    for root in roots:
+        if task_files(root):
+            print(f"tasks found in: {root}\n")
+            return grade(root)
+
+    print("INVALID: no task XML was written anywhere under the workspace. See the "
+          "transcript.", file=sys.stderr)
+    return 2
+
+
+def baseline(prd_dir):
+    """The mechanical half of item 21's authoring measure (R17)."""
+    features = sorted(glob.glob(os.path.join(prd_dir, "features", "*.md")))
+    print(f"authoring baseline for {os.path.relpath(prd_dir, REPO)}, current templates")
+    print(f"{'feature':<22} {'words':>6} {'criteria':>9} {'elements':>9}")
+    totals = [0, 0, 0]
+    for path in features:
+        text = open(path, encoding="utf-8", errors="replace").read()
+        words = len(re.findall(r"[A-Za-z0-9'-]+", re.sub(r"<[^>]+>", " ", text)))
+        criteria = len(re.findall(r"<criterion\b", text))
+        elements = len(re.findall(r"<[a-z-]+[ >]", text))
+        print(f"{os.path.basename(path):<22} {words:>6} {criteria:>9} {elements:>9}")
+        totals = [totals[0] + words, totals[1] + criteria, totals[2] + elements]
+    print(f"{'TOTAL':<22} {totals[0]:>6} {totals[1]:>9} {totals[2]:>9}")
+    print("\nThis is the size half only. The question item 21 actually asks -- *is this still "
+          "tolerable to write?* -- is a stopwatch against a person, and no script can take it. "
+          "Re-run this after items 33/34 land and record both numbers beside a human timing.")
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--grade", metavar="TASKS_DIR")
+    g.add_argument("--run", action="store_true")
+    g.add_argument("--baseline", nargs="?", const=FIXTURE, metavar="PRD_DIR")
+    ap.add_argument("--model", default="sonnet")
+    ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args()
+
+    if args.grade:
+        if not os.path.isdir(args.grade):
+            print(f"no such tasks directory: {args.grade}", file=sys.stderr)
+            return 2
+        return grade(args.grade, quiet=args.quiet)
+    if args.run:
+        return run(args.model, args.timeout)
+    return baseline(args.baseline)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
