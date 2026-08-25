@@ -10,10 +10,9 @@
   Usage analytics — endpoint hit counts and timings — batched and sent to a third-party
   collector, with a per-user opt-out.
 
-  **This feature is rejected and must not be built.** It is specified to the same depth
-  as the other three deliberately: a won't-have that is obviously unbuildable would let
-  `/breakdown` skip it for the wrong reason, and the probe would then prove nothing. It
-  is defined, it is buildable, and it is not wanted.
+  Batches are posted on a timer rather than per request, so a slow collector cannot
+  delay a response. The opt-out is stored per user and checked when the batch is built,
+  not when the request is served.
   </description>
 
   <acceptance-criteria>

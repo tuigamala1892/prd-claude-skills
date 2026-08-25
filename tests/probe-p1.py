@@ -58,7 +58,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "tier-probe")
+FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
 
 # slug -> (tier, the token that cannot appear by accident)
 FEATURES = {
@@ -85,6 +85,36 @@ def attribute(tasks_dir):
                 hits.add(slug)
         out[path] = hits
     return out
+
+
+def trace_decision(tasks_dir):
+    """Where the rejected feature reached, and what — if anything — stopped it.
+
+    Added after the first real run, which came back with zero won't-have tasks and was still
+    not the result it looked like. `analysis.json` carried the rejected feature in full and
+    derived a data model from it; `layer_plan.json` then dropped it under a `features_excluded`
+    key that exists in no schema in this repository. So the exclusion was the model's judgement
+    rather than the toolchain's rule, and a task count alone cannot tell those apart.
+    """
+    lines = []
+    for name in ("analysis.json", "layer_plan.json"):
+        path = os.path.join(tasks_dir, name)
+        if not os.path.isfile(path):
+            lines.append((name, "absent", None))
+            continue
+        text = open(path, encoding="utf-8", errors="replace").read()
+        token = FEATURES[REJECTED][1]
+        if not re.search(token, text, re.I):
+            lines.append((name, "no trace of the rejected feature", None))
+            continue
+        # Any line naming the rejected feature alongside a word of refusal is the mechanism,
+        # quoted rather than summarised.
+        why = [ln.strip() for ln in text.splitlines()
+               if re.search(token, ln, re.I)
+               and re.search(r"exclud|reject|not.{0,12}(built|included|implement)|skip|omit",
+                             ln, re.I)]
+        lines.append((name, "carries the rejected feature", why[:3]))
+    return lines
 
 
 def grade(tasks_dir, quiet=False):
@@ -123,6 +153,21 @@ def grade(tasks_dir, quiet=False):
         return 1
 
     print("\nNo task derives from the won't-have feature.")
+
+    # A clean task count is where the question starts, not where it ends. P1 is a claim about
+    # a missing consumer, and the artefacts upstream of the tasks are where that shows.
+    trace = trace_decision(tasks_dir)
+    if any(state == "carries the rejected feature" for _n, state, _w in trace):
+        print("\nBut the rejected feature was not absent -- it was dropped, and by whom is the "
+              "whole of P1:")
+        for name, state, why in trace:
+            print(f"  {name}: {state}")
+            for line in why or []:
+                print(f"      {line[:150]}")
+        print("\n  Read those quotes before recording this as a pass. If the exclusion is "
+              "\n  phrased as the model's own reasoning, and no skill instructed it, then "
+              "\n  nothing FILTERED the won't-have -- a model declined to build it, which is "
+              "\n  a different fact with a different failure mode (see item 13).")
     return 0
 
 
@@ -135,7 +180,7 @@ def run(model, timeout):
     # directories, and F4 is what happens when it writes them here.
     assert not os.path.abspath(work).startswith(REPO), "refusing to build inside the repo"
 
-    prd = os.path.join(work, "prd", "tier-probe")
+    prd = os.path.join(work, "prd", "staff-service")
     shutil.copytree(FIXTURE, prd)
     tasks = os.path.join(work, "tasks")
     os.makedirs(tasks, exist_ok=True)
@@ -152,18 +197,36 @@ def run(model, timeout):
     #
     # cwd is the workspace too, so the run's own working directory is the thing under test
     # rather than this checkout.
-    proc = subprocess.run(
-        ["claude", "-p", prompt, "--model", model, "--plugin-dir", REPO,
-         "--add-dir", work, "--permission-mode", "acceptEdits"],
-        cwd=work,
-        capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+    argv = ["claude", "-p", prompt, "--model", model, "--plugin-dir", REPO,
+            "--add-dir", work, "--permission-mode", "acceptEdits"]
+
+    def text_of(stream):
+        if isinstance(stream, bytes):
+            return stream.decode("utf-8", "replace")
+        return stream or ""
+
+    timed_out = False
+    try:
+        proc = subprocess.run(argv, cwd=work, capture_output=True, text=True,
+                              timeout=timeout, encoding="utf-8", errors="replace")
+        out, err = proc.stdout or "", proc.stderr or ""
+    except subprocess.TimeoutExpired as e:
+        # A timeout is not a reason to discard the run. The first one killed a 25-minute
+        # /breakdown that had already written nine tasks, a layer plan and an analysis --
+        # and the exception threw all of it away, the transcript included. Grade what is
+        # on disk, and label it partial.
+        timed_out = True
+        out, err = text_of(e.stdout), text_of(e.stderr)
 
     log = os.path.join(work, "breakdown-output.txt")
     with open(log, "w", encoding="utf-8", newline="\n") as f:
-        f.write(proc.stdout or "")
+        f.write(out)
         f.write("\n--- stderr ---\n")
-        f.write(proc.stderr or "")
+        f.write(err)
     print(f"transcript: {log}")
+    if timed_out:
+        print(f"TIMED OUT after {timeout}s -- grading what was written before the kill. "
+              f"A truncated run can support a positive result but never a clean one.")
 
     # /breakdown resolves its own output paths, so find where the tasks actually landed
     # rather than assuming. Assuming is what resolve-output.sh exists to stop.

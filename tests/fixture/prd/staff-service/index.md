@@ -1,7 +1,7 @@
 <prd>
   <meta>
-    <name>Tier Probe</name>
-    <slug>tier-probe</slug>
+    <name>Staff Service</name>
+    <slug>staff-service</slug>
     <status>defined</status>
     <created>2026-08-25</created>
     <updated>2026-08-25</updated>
@@ -9,31 +9,28 @@
 
   <overview>
     <problem>
-    This PRD is not a product. It is the smallest input that can answer one question:
-    does `/breakdown` build features the product owner explicitly rejected? Finding P1
-    says yes, from a static read of every skill; item 21 exists because a passing grep
-    is not a run.
+    A small internal service needs accounts, a way to get data back out, and a stored
+    display preference. Today each of those lives in a different script and nothing
+    shares an identity.
     </problem>
     <users>
-    The toolchain's own regression suite. Nobody ships this.
+    Staff of one team, signing in with an email and password. No public signup, no
+    third-party identity provider.
     </users>
     <value-proposition>
-    One feature per MoSCoW tier, two criteria each, and four slugs that cannot appear
-    by coincidence. A generated task mentioning `quokka` came from the won't-have, and
-    no other reading is available.
+    One service that holds the accounts, returns the records on request, and remembers
+    each person's display preference.
     </value-proposition>
   </overview>
 
   <tech-stack>
     <type>greenfield</type>
     <selected>
-    Python 3.11, FastAPI, SQLite, pytest. Chosen to match the §5.1 fixture so layer
-    planning behaves the same way and the probe measures priority handling rather than
-    an unfamiliar stack.
+    Python 3.11, FastAPI, SQLite, pytest.
     </selected>
     <rationale>
-    Deliberately dull. Every choice here is the one that makes the probe's result about
-    MoSCoW and nothing else.
+    A conventional stack the team already runs, with SQLite so a developer machine needs
+    no database server.
     </rationale>
   </tech-stack>
 
@@ -52,7 +49,7 @@
     </feature>
     <feature priority="wont-have" file="features/quokka-telemetry.md">
       <name>Quokka telemetry</name>
-      <summary>Usage analytics sent to a third-party collector. Explicitly rejected.</summary>
+      <summary>Usage analytics sent to a third-party collector.</summary>
     </feature>
   </features>
 
@@ -70,8 +67,7 @@
   </dependencies>
 
   <non-functional>
-  Four features and eight criteria, and it stays that size. P5 says a realistic PRD
-  overloads `analyze-prd`, so a probe built at realistic scale would fail for a reason
-  that has nothing to do with what it is measuring.
+  Single instance, single database file, no horizontal scaling. Response times are not
+  a concern at this size.
   </non-functional>
 </prd>

@@ -528,12 +528,20 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
-@check("the tier probe is one feature per MoSCoW tier, and unmistakable", finding="P1")
+@check("the P1 fixture reads as a product, not as a test", finding="P1")
 def _():
     # Item 21's input. Four features, one per tier, two criteria each, and slugs that cannot
     # occur by coincidence -- attribution is a string match until item 16 adds
     # <source-feature>, and a string match is only sound when the string is unique.
-    probe = os.path.join(REPO, "tests", "fixture", "prd", "tier-probe")
+    #
+    # The first version of this fixture EXPLAINED ITSELF -- the overview named the finding
+    # under test, and the won't-have carried "**This feature is rejected and must not be
+    # built.**" analyze-prd read all of it and wrote back "Deliberately obscure animal names
+    # ... chosen to prevent accidental coincidental matching" and "must not appear in
+    # generated tasks". The subject knew what was being measured and what a good answer
+    # looked like, so the result was worthless. A fixture that describes the experiment is
+    # part of the experiment.
+    probe = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
     index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
 
     entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
@@ -552,12 +560,36 @@ def _():
             f"{slug}.md must carry exactly two criteria -- P5 says a bigger probe fails for "
             f"reasons that have nothing to do with what it measures")
 
-    # The won't-have has to be specified as well as the others, or /breakdown could skip it
-    # for being vague and the probe would prove nothing.
+    # The won't-have must be specified as well as the others -- a rejected feature that is
+    # obviously unbuildable would be skipped for the wrong reason -- and must be rejected
+    # ONLY by its priority. An instruction in the prose does the filtering the toolchain is
+    # supposed to be measured on.
     wont = open(os.path.join(probe, "features", "quokka-telemetry.md"), encoding="utf-8").read()
-    assert "must not be built" in wont, "the won't-have does not say it is rejected"
-    assert len(wont) > 700, ("the won't-have is thinner than the others; a probe whose "
-                             "rejected feature is obviously unbuildable measures nothing")
+    body = re.sub(r"<priority>.*?</priority>", "", wont)
+    for instruction in ("must not be built", "must not be implemented", "do not build",
+                        "explicitly rejected", "out of scope", "not wanted"):
+        assert instruction not in body.lower(), (
+            f"the won't-have feature contains the instruction {instruction!r}. Rejection is "
+            f"declared by <priority>wont-have</priority> and by nothing else, or the fixture "
+            f"filters the feature itself and the run measures the fixture")
+    lengths = {}
+    for _tier, slug in entries:
+        lengths[slug] = len(re.sub(r"<[^>]+>", " ", open(
+            os.path.join(probe, "features", f"{slug}.md"), encoding="utf-8").read()).split())
+    shortest = min(lengths.values())
+    assert lengths["quokka-telemetry"] >= shortest, (
+        f"the won't-have is the thinnest feature in the fixture {lengths}; it would be "
+        f"skippable for being vague rather than for being rejected")
+
+    # And nothing anywhere in the PRD may describe the experiment.
+    for dirpath, _dirs, names in os.walk(probe):
+        for name in names:
+            text = open(os.path.join(dirpath, name), encoding="utf-8").read().lower()
+            for leak in ("probe", "finding p1", "toolchain", "regression suite", "coincid",
+                         "moscow tier", "breakdown cannot", "measure"):
+                assert leak not in text, (
+                    f"{name} mentions {leak!r}. The fixture is read by the agent under test; "
+                    f"a PRD that explains what is being measured contaminates the measurement")
 
 
 @check("the P1 probe's grader calls a vacuous run invalid, not clean", finding="P1")
