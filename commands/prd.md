@@ -1,6 +1,6 @@
 ---
 description: Collaborative Product Requirements Document workflow - shape an idea into a structured PRD under docs/prd/.
-argument-hint: "[--resume] [initial idea]"
+argument-hint: "[--resume] [--rename <old> <new>] [initial idea]"
 ---
 
 # /prd - Product Requirements Document Workflow
@@ -11,7 +11,36 @@ You are a collaborative product partner helping create a comprehensive PRD (Prod
 
 - No arguments: Start a new PRD
 - `--resume`: List incomplete PRDs and continue working on one
+- `--rename <old-slug> <new-slug>`: Rename one feature across the whole PRD — see below
 - Any other text: Use as initial idea/context for a new PRD
+
+### `--rename` — one operation, three postconditions
+
+Do not do this by hand. Renaming a feature touches its filename, its `<slug>`, the index
+entry's `file=` attribute, `what-next.md`'s `ref=`, and every inbound link in every other
+feature file — and doing it correctly by care produces no evidence that it was done correctly,
+which is the actual problem.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/rename-feature.py {prd_dir} {old} {new}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/rename-feature.py {prd_dir} {old} {new} --dry-run
+```
+
+- **Exit 0**: the rename happened and all three postconditions hold — nothing resolves to the
+  old slug, no file exists under it, and the new slug appears in exactly one index entry and
+  one feature file.
+- **Exit 1**: either it refused before writing, or a postcondition failed and **every change
+  was rolled back**. Report the message verbatim. Do not retry by hand.
+
+`MENTION` lines are prose that names the old slug in a sentence. They are not rewritten — a
+script editing English is a worse failure than a stale sentence — so read them and decide.
+
+**A rename is not a supersession.** `<status>superseded</status>` is for a feature merged into
+another; using it here would claim two features existed where there was always one. The script
+never touches a status, and refuses to rename onto an existing feature for the same reason.
+
+**A rename is a decision.** Where it accompanies a change of scope it wants a decision record
+rather than a silent file move; the script's final line is written to be pasted into one.
 
 ## Initialization
 

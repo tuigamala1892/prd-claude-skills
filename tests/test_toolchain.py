@@ -528,6 +528,107 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("a rename finishes, or leaves the PRD exactly as it was", finding="P27")
+def _():
+    # Item 42. The rename that prompted it was done correctly across 20 references in 8 files
+    # and produced no evidence of that fact -- which is the defect. This runs the script over
+    # a copy of the §5.1 fixture, with the two link shapes the corpus has and the fixture does
+    # not, and asserts the three postconditions from the outside.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "rename-feature.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/rename-feature.py is missing"
+    src = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
+    assert os.path.isdir(src), "the §5.1 fixture PRD is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-rename-")
+    try:
+        prd = os.path.join(root, "link-shelf")
+        shutil.copytree(src, prd)
+
+        # Inbound links, both shapes, plus a prose mention that must NOT be rewritten.
+        lst = os.path.join(prd, "features", "list-links.md")
+        text = open(lst, encoding="utf-8").read().replace(
+            "</description>",
+            "\n  See [Tag links](tag-links.md) and [again](features/tag-links.md).\n"
+            "  </description>", 1)
+        open(lst, "w", encoding="utf-8", newline="\n").write(text)
+        save = os.path.join(prd, "features", "save-link.md")
+        text = open(save, encoding="utf-8").read().replace(
+            "</description>", "\n  Tagging is specified in tag-links, in prose.\n  </description>", 1)
+        open(save, "w", encoding="utf-8", newline="\n").write(text)
+
+        p = subprocess.run([sys.executable, script, prd, "tag-links", "label-links"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"the rename failed: {p.stdout}\n{p.stderr}"
+
+        # Postcondition 2: no file under the old slug.
+        assert not os.path.exists(os.path.join(prd, "features", "tag-links.md"))
+        assert os.path.isfile(os.path.join(prd, "features", "label-links.md"))
+
+        # Postcondition 1: nothing *resolves* to the old slug any more -- checked here rather
+        # than trusting the script's own report of itself.
+        resolving = re.compile(r"features/tag-links\.md|<slug>\s*tag-links\s*</slug>"
+                               r"|\]\(\s*tag-links\.md\s*\)")
+        for dirpath, _, names in os.walk(prd):
+            for name in names:
+                if name.endswith(".md"):
+                    body = open(os.path.join(dirpath, name), encoding="utf-8").read()
+                    assert not resolving.search(body), f"{name} still resolves to tag-links"
+
+        # Postcondition 3: exactly one index entry, exactly one file.
+        index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
+        assert index.count('file="features/label-links.md"') == 1
+        owners = [n for n in os.listdir(os.path.join(prd, "features"))
+                  if "<slug>label-links</slug>" in
+                  open(os.path.join(prd, "features", n), encoding="utf-8").read()]
+        assert owners == ["label-links.md"], f"the new slug is claimed by {owners}"
+
+        # what-next.md's ref= is the sixth site. The plan's item 42 lists five, and the
+        # fixture is where the sixth turned up.
+        wn = open(os.path.join(prd, "what-next.md"), encoding="utf-8").read()
+        assert 'ref="features/label-links.md"' in wn, "what-next.md was not carried"
+
+        # Prose is reported, not rewritten.
+        assert "MENTION" in p.stdout and "in prose" in p.stdout, (
+            f"the prose mention was not reported: {p.stdout}")
+        assert "tag-links, in prose" in open(save, encoding="utf-8").read(), (
+            "the script rewrote a sentence; it must only rewrite references")
+
+        # And the half that matters for item 41: a failed postcondition must roll back. Two
+        # files claiming one slug is the cheapest way to make postcondition 3 fail after the
+        # writes have already happened.
+        dup = os.path.join(root, "dup")
+        shutil.copytree(src, dup)
+        f = os.path.join(dup, "features", "list-links.md")
+        body = open(f, encoding="utf-8").read().replace("<slug>list-links</slug>",
+                                                        "<slug>saved-link</slug>")
+        open(f, "w", encoding="utf-8", newline="\n").write(body)
+
+        before = {}
+        for dirpath, _, names in os.walk(dup):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                before[os.path.relpath(full, dup)] = open(full, "rb").read()
+
+        p = subprocess.run([sys.executable, script, dup, "save-link", "saved-link"],
+                           capture_output=True, text=True)
+        assert p.returncode == 1, "a failing postcondition did not refuse"
+        assert "POSTCONDITION FAILED" in p.stderr and "rolled back" in p.stderr
+
+        after = {}
+        for dirpath, _, names in os.walk(dup):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                after[os.path.relpath(full, dup)] = open(full, "rb").read()
+        assert before == after, (
+            "a failed rename left the PRD changed. Every byte must be as it was found, or "
+            "the operator is told nothing happened while something did")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the ledger records what was verified, not that it was", finding="P37")
 def _():
     # Item 55. `"verified":true` invited the stronger reading: execute-verify runs the task's
