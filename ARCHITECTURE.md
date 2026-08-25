@@ -349,6 +349,8 @@ Different components use different models based on their requirements:
 
 ## Data Flow
 
+*Current state: the diagrams below describe the toolchain as built.*
+
 ### PRD Phase
 
 ```

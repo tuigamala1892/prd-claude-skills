@@ -4,6 +4,9 @@
 **Date:** 2026-08-17
 **Subject:** what `/prd` and `/crd` write, and how much of it survives into `/breakdown` and `/execute`
 **Supersedes:** items **4.4** and **4.5** of [`toolchain-assessment-and-plan.md`](toolchain-assessment-and-plan.md), which are folded in below as items 12 and 18.
+**Target state:** the data flow these items produce is drawn in
+[`target-state-data-flow.md`](target-state-data-flow.md), which is the companion to
+`ARCHITECTURE.md` §Data Flow.
 **Evidence base:** a sample PRD corpus of 64 feature files (~628 KB, ~174k tokens) plus a full reading of the CRD path, measured rather than assumed.
 
 ---
