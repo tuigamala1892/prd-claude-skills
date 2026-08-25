@@ -32,7 +32,7 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | Item | Status | Commit |
 |---|---|---|
 | **23a** — `schema_version` mismatch | **Landed** 2026-08-25 | `78b8104` |
-| **60** — `execute-layer` hand-maintains a derived file | Not started | — |
+| **60** — `execute-layer` hand-maintains a derived file | **Landed** 2026-08-25 | `e00c3ae` |
 | **39** — validate references leaving the PRD | Not started | — |
 | **54** — a working directory for verification | Not started | — |
 | **55** — the ledger states what it verified | Not started | — |
@@ -115,8 +115,71 @@ documented, never written: ['worktree_dir', 'current_layer', 'current_batch',
 
 A check that has never been seen to fail is not a check. This one has.
 
-### Found while doing it, not fixed here
+### Found while doing it
 
-`skills/execute-layer/SKILL.md` still instructs hand-writing `current_layer`, `current_batch` and
-per-layer counters into the state file, and iterates `merge_queue` for a `"ready"` status that
-3.0 never emits. Written up as **P38 / item 60** in the plan.
+`skills/execute-layer/SKILL.md` reads and writes the 2.0 shape of the file 23a had just
+documented. Written up as **P38 / item 60** and fixed next; see below.
+
+---
+
+## 60 — `execute-layer` maintained a file that is rebuilt from git each time
+
+**Commit:** `e00c3ae` · **Addresses:** P38 · **Files:** `skills/execute-layer/SKILL.md`,
+`tests/test_toolchain.py`
+
+### Why this exists at all
+
+It is not in the plan's original 59. It was found by doing 23a — writing down what
+`write-state.py` actually emits made it obvious that a consumer was reading a different
+document — and was added to the plan as P38 / item 60 afterwards, in Phase 1 beside 23a.
+
+### The live half
+
+**5d could not merge anything.** It iterated `merge_queue` looking for `status == "ready"`, and
+`write-state.py` derives that list from the ledger *after* each merge, so every entry is
+`"merged"` by construction. A loop looking for `"ready"` matches nothing, ever. The merge set is
+5c's `verified` array, which is the only thing that knows what the batch just proved.
+
+**Step 2 took `completed` from the state file** — the one field Step 3 forbids taking from there,
+four lines later, because over-reporting completion starts a task before its dependency landed.
+
+### The quieter half
+
+Steps 4, 5a and 6 wrote `current_layer`, `current_batch` and per-layer counters. Those fields do
+not exist in 3.0, and a hand-written field is **erased rather than merged**, because the script
+rebuilds the document instead of patching it. No corruption — but instructions that teach a model
+the file is hand-maintained, which is how it became hand-maintained four times.
+
+### What made it survive
+
+Two things, both worth carrying forward:
+
+1. **The skill already stated the correct rule**, at line 349: *"There is no queue to maintain in
+   a file… writing one by hand would make that untrue."* It was added without removing the four
+   blocks it contradicts, so the document said both. Same shape as the nine the plan found in
+   itself — the fix written, the thing it replaced left in place.
+2. **F21 had a check for exactly this and it did not fire.** The mutation pattern was an allowlist
+   of seven field names, and `state["current_batch"]` was not among them. Now widened to any key:
+   the finding is that the whole file is derived, which is true of fields nobody has invented yet.
+
+### Deviation from the plan
+
+None — the item was written to match what was done, since it was found during implementation
+rather than specified before it. Recorded here so the plan is not read as having predicted it.
+
+### Verification
+
+`python tests/test_toolchain.py` — 40 checks, 0 failed.
+
+The widened F21 was **run against the unfixed file** and fails there, naming the line:
+
+```
+FAIL  execute-state.json is written by a script, never by hand   [F21]
+      mutate execute-state.json by hand; call write-state.py instead:
+      skills/execute-layer/SKILL.md:124: state["current_batch"] = batch_number
+```
+
+*A first attempt at this proof was worthless and is recorded because it is the failure mode this
+whole phase is about:* the `git stash` that was supposed to restore the unfixed file used the
+wrong flag order, did nothing, and the suite reported **pass** — against the already-fixed file.
+A green result whose mechanism has not been shown is not a result.
