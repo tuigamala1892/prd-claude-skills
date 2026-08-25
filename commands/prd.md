@@ -127,6 +127,24 @@ Before finalizing, run consistency checks:
 - Are there any contradictions in requirements?
 - Flag any concerns as questions to the user
 
+**Then check the references that leave the PRD**, if the document cites any `ADR-NNN` or
+`OQ-NNN`:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py {prd_dir}
+```
+
+Pass `{prd_dir}` as an argument. `${CLAUDE_PLUGIN_ROOT}` is expanded by the harness where this
+command is written, and is **not** exported to the shell the script runs in — a script reading it
+from its own environment gets nothing.
+
+`DANGLING` lines are citations that resolve to nothing: report them and offer to fix them here,
+while the author is still in the conversation. That is the whole reason this runs at authoring
+time as well as at `/breakdown` — the consumer-side check is the one that must refuse, and this
+one is early warning, at the moment the person who knows the answer is present.
+
+This never edits the open-questions register. It is maintained by hand and outlives the PRD.
+
 ### Phase 7: Interactive Review
 
 Present a summary of each section:

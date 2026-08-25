@@ -528,6 +528,103 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("dangling ADR / OQ citations are refused, and named", finding="P24")
+def _():
+    # Item 39. The suite is otherwise static, and this one runs a script -- which is safe in a
+    # way running a skill is not: check-references.py reads a directory and returns an exit
+    # code. It creates nothing, so there is no repository for it to damage.
+    #
+    # It is run rather than grepped because the assertion that matters is not "the script
+    # mentions ADR" -- it is that a planted dangling citation comes back named. A validator
+    # that exits 0 on everything passes every static check ever written about it.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/check-references.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-refs-")
+    try:
+        prd = os.path.join(root, "prd", "link-shelf")
+        adr = os.path.join(root, "architecture", "decisions")
+        os.makedirs(os.path.join(prd, "features"))
+        os.makedirs(adr)
+
+        def write(path, text):
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+
+        write(os.path.join(prd, "index.md"),
+              "# Link Shelf\nSettled by ADR-003. Superseded elsewhere: ADR-007.\nOpen: OQ-012.\n")
+        write(os.path.join(prd, "features", "tagging.md"),
+              "# Tagging\nPer ADR-999 a join table. See OQ-004 and OQ-777.\n")
+        write(os.path.join(adr, "003-join-table.md"),
+              "# Tags are a join table\n**Status:** Accepted\n"
+              "**Drives:** [Tagging](../../prd/link-shelf/features/tagging.md), "
+              "[Gone](../../prd/link-shelf/features/removed.md)\n")
+        write(os.path.join(adr, "007-sqlite.md"), "# SQLite\n**Status:** Superseded by ADR-011\n")
+        write(os.path.join(adr, "011-postgres.md"), "# Postgres\n**Status:** Accepted\n")
+        write(os.path.join(root, "architecture", "open-questions.md"),
+              "# Open Questions\n## OQ-004 -- ordering? Resolved 2026-03-02 by ADR-003\n"
+              "## OQ-012 -- which auth provider?\n")
+
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        out = p.stdout
+
+        assert p.returncode == 1, f"a PRD with three dangling references exited {p.returncode}"
+
+        # Each dangling reference is named, as written, with somewhere to look.
+        for needle in ("ADR-999", "OQ-777", "removed.md"):
+            assert needle in out, f"the report does not name {needle}:\n{out}"
+        assert "features" in out and ":2:" in out, (
+            f"the report names no file and line for a citation:\n{out}")
+
+        # A superseded record and a resolved question are reported, and do NOT refuse: both
+        # still exist, and citing one is a judgement call rather than a defect.
+        assert "ADR-007 is superseded by ADR-011" in out, f"supersession not reported:\n{out}"
+        assert "OQ-004" in out and "Resolved" in out, f"resolution not reported:\n{out}"
+
+        # Citations are echoed as written. ADR-007 and ADR-7 are the same record, and a report
+        # that renames one sends a reader looking for a string that is not in the file.
+        assert "ADR-7 " not in out and "OQ-4 " not in out, (
+            f"the report strips leading zeros from citations:\n{out}")
+
+        # With the dangling three repaired, the same tree passes -- warnings and all.
+        write(os.path.join(prd, "features", "tagging.md"),
+              "# Tagging\nPer ADR-003 a join table. See OQ-004 and OQ-012.\n")
+        write(os.path.join(adr, "003-join-table.md"),
+              "# Tags are a join table\n**Status:** Accepted\n"
+              "**Drives:** [Tagging](../../prd/link-shelf/features/tagging.md)\n")
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 0, f"a PRD with no dangling references exited {p.returncode}"
+
+        # And a citation with nowhere to resolve against is an error, not a quiet pass. A
+        # validator that goes green because it could not find the register is decorative.
+        lonely = os.path.join(root, "lonely")
+        os.makedirs(lonely)
+        shutil.copy(os.path.join(prd, "index.md"), lonely)
+        p = subprocess.run([sys.executable, script, lonely], capture_output=True, text=True)
+        assert p.returncode == 1, "citations with no decision directory exited 0"
+        assert "--adr-dir" in p.stdout, "the refusal does not name the flag that would fix it"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("both ends of the pipeline call the reference check", finding="P24")
+def _():
+    # Item 39's own argument, applied to itself: a script nothing invokes is the producer
+    # without a reader that this plan exists to describe. /breakdown must refuse on it;
+    # /prd runs it as early warning while the author is still in the conversation.
+    breakdown = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "check-references.py" in breakdown, "/breakdown never runs the reference check"
+    assert "check-references.py" in prd, "/prd never runs the reference check"
+    # The probe established that CLAUDE_PLUGIN_ROOT is expanded where the command is written
+    # and is NOT exported to the spawned shell, so the path has to be passed as an argument.
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py" in prd, (
+        "/prd invokes the script by a path the harness will not expand")
+
+
 @check("state-schema.md documents the file write-state.py actually writes", finding="P28")
 def _():
     # A reference that describes a different document from the one the producer emits is the
