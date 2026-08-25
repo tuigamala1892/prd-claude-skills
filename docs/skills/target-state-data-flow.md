@@ -117,7 +117,7 @@ User idea ───────────────────────�
       │  prd-criteria-author  (8, 40) │          │  Phase 6   CHECK        │
       │  agent · context: fork        │          │  check-prd.py  (6, 9)   │
       │                               │          │                         │
-      │  mode: propose-criteria       │
+      │  mode: propose-criteria       │          │                         │
       │    + drafts <user-story>      │          │  · derive a status      │
       │    EARS patterns unrepresented│          │    CEILING, not a value │
       │  mode: review-definition      │          │  · EARS pattern cover   │

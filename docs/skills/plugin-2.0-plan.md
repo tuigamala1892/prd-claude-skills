@@ -1252,10 +1252,12 @@ without silently changing what an existing invocation builds.
 **Item 34 adds a second, finer filter** — `--requirement-level <P0|P1|P2>`, applied after this
 one. The two compose: this flag selects *features*, that one selects *criteria within them*.
 
-> **A filtered set is not automatically a buildable set.** 9 of the corpus's 13 must-have
-> features reference lower-tier features, 49 times in total. Resolve open question 4 before
-> building this item — the flag is easy, but what it should do about a must-have that points at
-> a could-have is not.
+> **A filtered set is not automatically a buildable set — and item 34 is what makes that
+> computable rather than blocking.** 9 of the corpus's 13 must-have features reference lower-tier
+> features, 49 times in total, so filtering on this flag alone yields an open set. Criterion-level
+> priority closes it: a must-have depending on a could-have pulls **that feature's `P0` criteria**,
+> not the whole feature. **Build 34 with this item, not after it** — the flag is easy, and on its
+> own it is the wrong half.
 
 **15. Refuse to break down features that are not defined enough — loudly.**
 A `tbd` feature has a name and roughly one criterion. Breaking it down does not produce a thin
@@ -2916,12 +2918,16 @@ it is Phase 1, which is six items, all reversible, all fixing something real.
 
    The measurement counts *references* (inter-feature links), which are not all build
    dependencies; some are "see also". But the ratio is high enough that item 14 cannot assume a
-   filtered set is coherent. Three options, in increasing cost: filter and report the dangling
-   references; filter with dependency closure, pulling in lower-tier features a must-have needs
-   (which quietly rebuilds the tier boundary); or treat the reference graph as the real
-   ordering and let MoSCoW select roots rather than members. **This needs deciding before item
-   14 is built, not after** — and distinguishing a genuine dependency from a cross-reference is
-   itself work the schema does not currently support, since both are plain markdown links.
+   filtered set is coherent, which is why the question was raised.
+
+   *Three options were weighed before item 34 dissolved the problem*, and they are recorded because
+   each has a cost worth knowing: filter and report the dangling references; filter with dependency
+   closure, pulling in the lower-tier features a must-have needs (which quietly rebuilds the tier
+   boundary it was meant to respect); or treat the reference graph as the real ordering and let
+   MoSCoW select roots rather than members. **Item 34 took none of them** — criterion priority means
+   closure costs a thin slice rather than a whole feature. What survives is item 27's problem, not
+   item 14's: distinguishing a genuine dependency from a cross-reference is work the schema does not
+   yet support, since both are plain markdown links.
 5. **Resolved — see item 29.** *(Was: what is `blocking`'s default, and who sets it?)* The
    question presupposed a boolean on a `<needs-clarification>` element that no longer exists.
    `<gaps>` carries `kind` instead, and the kind decides: `specification` and `decision` stop a
