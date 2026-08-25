@@ -2106,6 +2106,46 @@ Three properties the guide itself must have:
 - **Versioned against `toolchain_version`** (item 24), so an artefact stamped by an older toolchain
   selects the right migration rather than the newest one.
 
+### What it costs, and what happens if it stops (A9/R14)
+
+The migration is the precondition for items 1, 2, 11, 16, 17, 30, 35 and 40. **If this plan dies in
+execution it dies here**, and "idempotent and resumable" is not a cost estimate.
+
+**Three judgement axes, not four.** §4.3 removed one: `<relationships>` is dropped and `<notes>`
+becomes a two-way split keyed on a heading convention that already measures at zero false
+positives (item 2). What remains:
+
+| Judgement | Count | Axis | Mandatory in the pass? |
+|---|---|---|---|
+| `pattern` on each criterion | 550 | six-way | **yes** — it is the format |
+| `priority` on each criterion | 550 | three-way | **no** — see below |
+| `<architecturally-significant>` | 64 | six-way `because=` | no — item 51's Design phase |
+| `<user-story>` | 34 | prose | no — new content, drafted by item 8 |
+
+**Priority defaults to `P1` in the migration pass and is refined afterwards.** Item 34 argued for
+doing it together because *"the criterion is being touched anyway"* — sound for *when*, and silent
+about *how much*. Two six-hundred-item judgement axes on one critical path is how a migration
+stalls. `pattern` is not optional because it *is* the new format; `priority` is a planning
+judgement that can follow, and item 6 already reports the unassigned count so the debt is visible
+rather than forgotten.
+
+**The partial-completion contract, stated properly.** *Per-file atomic*: a feature file is either
+fully migrated or untouched, never half-written — so an interrupted run leaves a tree where every
+file is valid under one schema or the other. *Marked in the file*: `schema_version` in the feature's
+own `<meta>`, not in a side-car that can drift. *And `/breakdown` refuses a mixed tree*, naming the
+count — `REFUSED: 30 of 64 features migrated`. Supporting mixed input would mean two readers for
+every element, which is the drift item 44 exists to prevent.
+
+**If the review stops at feature 30 of 64**, the answer is that nothing is broken and nothing is
+blocked except `/breakdown`, which says so. The tree is valid, the migrated files are correct, and
+the work resumes where it stopped. That is the whole benefit of per-file atomicity, and it is worth
+more than any estimate.
+
+**A per-feature estimate belongs in this item and cannot be written from here.** Take it from the
+first ten features migrated, and revise the plan if the number is bad. Item 21's authoring measure
+(§4.3) is the same instrument pointed at a different question, and both are cheap because the
+fixture is already there.
+
 **And it needs a checker**, or it becomes P10 in a new place: a script that reads a migrated tree
 and asserts the postconditions above. **Item 43 supplies a stronger one** — a golden pair of
 fixtures, the same project in the old schema and the new, so the migration is verified by
@@ -2616,6 +2656,58 @@ layer from API changes. With contracts generalised, an **event** contract change
 in an event-driven graph's `contracts` layer — which is §8.2's first tier and currently unreachable
 from an impact analysis.
 
+**58. One table of assertions, and item 6 becomes a caller.**
+*Addresses A7/R12. No new checks — the same checks, with an owner each.*
+
+Item 6 had accumulated eleven assertions, and items 22, 39, 40 and 42 each claim some of the same
+ground. *"No reference anywhere to a slug that has no file"* is currently owned by four items. The
+repository's own idiom is one script, one job, one exit code — `resolve-output.sh`,
+`build-manifest.py`, `check-project-md.py` — and item 6 is the first thing in this plan to depart
+from it.
+
+| Assertion | Owning script | Invoked by |
+|---|---|---|
+| Output paths resolve; not inside a plugin | `resolve-output.sh` *(exists)* | `/breakdown` Ph.1 |
+| `PROJECT.md` parses; ≥1 `*-registry` | `check-project-md.py` *(exists)* | `/crd` Ph.1, `/execute` finalize |
+| Manifest matches the files on disk | `build-manifest.py` *(exists)* | `/breakdown` Ph.5 |
+| Artefacts match the shared schema + `schema_version` | `check-artefacts.py` (22, 43, 44) | `/prd` end · `/breakdown` Ph.1 · suite |
+| Declared status ≤ derived ceiling; `defined` has no `specification` gap | `check-status.py` (3) | `/prd` Ph.6 · suite |
+| `ADR-NNN` / `OQ-NNN` / principle citations resolve | `check-references.py` (39) | `/prd` Ph.6 · `/breakdown` Ph.1 |
+| Index ↔ `features/` reconcile; no slug without a file | `check-rename.py` (42) | `/prd` Ph.6 · after `--rename` |
+| `<rules>` parses; `<layers>` acyclic and reachable | `check-rules.py` (28, 43) | `/breakdown` Ph.1 |
+| `<banned>` and `<task-limits>` | `check-banned.py` (56) | `review-tasks` · `execute-verify` |
+| Every in-scope feature and criterion has a task | `check-coverage.py` (30) | `/breakdown` Ph.5 · gate (38) |
+| The seven mechanical definition tests | `check-definition.py` (40) | `/prd` Ph.6 |
+
+**Item 6 is the *caller*, not the container.** `/prd` Phase 6 invokes `check-artefacts`,
+`check-status`, `check-references`, `check-rename` and `check-definition`, and reports their
+combined output. Each script is independently runnable, independently testable, and owns its
+assertion — so *"which script says a slug has no file"* has one answer.
+
+**59. A runtime test across the `/breakdown` → `/execute` boundary.**
+*Addresses A8/R13. Depends on item 43's fixture pair; item 21 is its sibling.*
+
+Items 13–17, 19, 20 and 30–32 all specify behaviour at that boundary and **no run has ever crossed
+it with an input this plan's schema describes**. For a document whose central methodological
+complaint is that static agreement is not evidence, that ratio is the wrong way round.
+
+Run the `schema-2` fixture end to end and assert, in this order:
+
+1. **Criteria arrive verbatim, with their ids.** Every `<criterion id>` in the fixture appears in
+   some task's `<acceptance-criteria>` with the same id and the same text (item 17). This is P2's
+   fix, and it is the one assertion that would have failed for the whole life of the toolchain.
+2. **`<source-feature>` resolves both ways.** Every task names a feature that exists; every
+   in-scope feature is named by a task (items 16, 30).
+3. **The coverage report names a real shortfall.** Remove one feature's tasks and assert the report
+   names *that feature*, by slug — not a count (item 30).
+4. **The tier is reported.** `<moscow>` and `<requirement-level>` appear in the run output (19).
+5. **A won't-have task is refused at preflight**, not merely absent (20).
+
+**Assertion 3 is the one worth insisting on.** A coverage check that reports *"4 features have no
+task"* passes a test that a check reporting the wrong four would also pass. Naming the shortfall is
+what makes item 30 falsifiable, and a test that does not force it will not detect a check that
+counts correctly and attributes wrongly.
+
 ---
 
 ## 6. Summary
@@ -2679,81 +2771,89 @@ from an impact analysis.
 | 55 | The ledger states what it verified | **P37** | Consistency |
 | 56 | Typed `<banned>` kinds + `<task-limits>`, enforced at both ends | P16, **P35** | **Correctness** |
 | 57 | Impact analysis reports contracts, not just APIs | **P35**, P30 | Correctness |
+| 58 | One table of assertions; item 6 becomes a caller | P16 | Structural |
+| 59 | A runtime test across the breakdown→execute boundary | **P22**, P20 | **Blocking** |
 
-**Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
-tested end to end on a realistic PRD until analysis fits in context.
+**Sequence.** The previous version of this section was a set of pairwise constraints, each
+correctly reasoned, that had never been composed — eight items were separately asserted to be first
+(R11). Composed, they give six phases. **Every phase is independently shippable**, and each is
+defined by what becomes possible once it lands rather than by size.
 
-Then the schema block (1–5, 25, **28**, 27) and its migration, because 13–17 depend on the shapes
-it defines, because 27 is what makes item 14 decidable, and because **28 is now the largest thing
-in that block** — it is the only item that turns the fixed pipeline into a parameter, and both 31's
-layer derivation and 30's priority filter want to read values it defines. Do 25 and 28 as one piece
-of work; splitting them means designing the same file twice.
+### Phase 1 — Fix what is broken today. No schema change.
 
-Then 29, before the `/breakdown` items rather than after: every later item is worth more once a
-task can admit what it does not know, and 15 and 30 both get less blunt when partial uncertainty
-has somewhere to go.
+`23a` · `39` · `54` · `55` · `42` · `21` · `9`
 
-Then the `/breakdown` and `/execute` items (13–17, 19, 20), which are small once the schema
-carries the data, with **30** immediately after 16 — it has nothing to check until
-`<source-feature>` exists. **31** belongs with 28 rather than after the rest: it makes the layer set a function of content,
-which is the same change 28 makes to the layer *graph*, and the two are one design decision seen
-from two sides. It is no longer a bypass around the pipeline — it is the pipeline asking what the
-work needs. **32** wants to be early rather than late: it is an
-output format over a traversal that already runs, and every item before it makes the task set
-bigger. 22 and 23 last, to hold the result in place.
+Nothing here touches `<criterion>`, `<status>`, `architecture.md` or the migration; all of it is
+reversible; and every item fixes a defect that exists now rather than preparing for one that might.
 
-**Where the new items go.** **33 and 34 belong with the schema block**, and 33 belongs at the
-front of it: it changes the criterion element that items 1, 5, 16, 17 and 35 all build on, and
-every day it waits is more content to migrate. Do 34 in the same pass — the criterion is being
-touched anyway, and assigning a level while a human is already reviewing each feature's diff is
-far cheaper than a second sweep.
+- **23a** — `state-schema.md` says `2.0`, `write-state.py` writes `3.0`. A live producer/spec
+  mismatch, in the one place the toolchain already versions a schema (P28).
+- **39** — 190 unchecked citations. Depends on nothing in this plan.
+- **54** — monorepo verification runs from the wrong directory today.
+- **55** — the ledger implies a build it never ran.
+- **42** — the cheapest possible rehearsal of item 41's postcondition machinery, on 8 files rather
+  than 64. **This is the one to watch:** if the pattern is awkward here it will be far worse there.
+- **21** — measure P1 and the authoring baseline *before* changing anything they describe.
+- **9** — `/prd`'s prose guards become scripts; the mechanism is now measured, not assumed.
 
-**39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
-reference check over files that already exist, and 190 unchecked citations is a defect today.
+### Phase 2 — Make the rest testable.
 
-**56 belongs with 28**, not after it: `<banned>` and `<task-limits>` are two of the five opinions
-item 28 exists to make overridable, and shipping the declaration without the enforcement would
-leave an operator believing a rule is in force — item 28's own stated failure mode for a
-silently-ignored rule file.
+`18` · `43` · `52` · `53`
 
-**53, 54 and 55 are small and independent.** 53 is a declaration plus a refusal in the same idiom
-Phase 1 already uses; 54 is one optional element and two readers; 55 is a field in the ledger.
-None depends on anything else in the plan, and 54 is worth doing early because monorepo
-verification is wrong today.
+**18 first, and it is Blocking**: nothing can be tested end to end on a realistic PRD while
+`analyze-prd` is handed 174k tokens in one prompt. **43** supplies the fixture pair that makes 41
+and 24 testable at all. 52 and 53 are a `test -f` and a declaration.
 
-**51 and 52 come with the schema block, not after it.** Item 51 is the producer for the artefact
-items 25 and 28 define, so defining those without it leaves a file nothing writes; and 52 is a
-`test -f` that item 51's opening question depends on. Both are small and neither has dependencies
-beyond the shape of `<rules>`.
+### Phase 3 — The architecture artefact. One piece of work.
 
-**44 and 45 come before every schema item, with 43.** A shared core defined after the elements it
-is meant to share is a merge rather than an extraction, and 45's renaming is cheap now and
-expensive once three vocabularies have consumers. 46 and 47 follow 33 and 34 immediately — they are
-the same change reaching the other path, and letting them lag is how the two vocabularies get
-consumers. 48, 49 and 50 can come with the rest of their concerns.
+`25` + `28` + `37` + `51` + `31` + `56` + `26` + `57`
 
-**43 comes before every schema item, including 41.** The regression suite validates the fixture
-against the current schema, so item 1 breaks it unless a second fixture exists to land beside the
-first. It is also what makes 41 and 24 testable rather than merely specified. Nothing else in the
-plan is a precondition for this many items.
+25 defines the artefact, 28 fills it, 37 says what belongs in it, **51 is its producer** — and a
+file nothing writes was the defect that produced item 51. 31 makes the layer *set* derived and 56
+makes `<banned>` enforced, both being 28's opinions becoming real. 26 closes the greenfield loop;
+57 follows the registries.
 
-**41 is a precondition, not a follow-up.** Items 1, 2, 5, 11, 33, 34 and 35 all rewrite artefacts
-that exist; none of them can land until the migration they imply is specified and verifiable. Write
-it with the first schema item, not after the last.
+Splitting these means designing the same file four times.
 
-**42 is small and can go whenever**, but it is worth doing before item 41 rather than after: it is
-the same shape of problem across a handful of files instead of sixty-five, and getting the
-postcondition-assertion pattern right on a rename is much cheaper than getting it wrong on a
-migration.
+### Phase 4 — The schema core and its migration.
 
-**40 belongs with 6 and 8**, whose machinery it uses — the mechanical tests are exit codes in one
-and the judgement tests are a second mode of the other. Its contract-rule script can go earlier
-still: it needs nothing from this plan and has 93 one-way edges to triage today.
+`44` → `45` → `41` → `33` · `34` · `29` · `27` · `35` · `1` · `2` · `4` · `5` · `11` · `12` · `36`
 
-**35, 36 and 38 are one piece of work**, after the schema block and after 30. They are also the
-one block that can be deferred wholesale: with `<design-track enabled="false">` none of them
-changes behaviour, so they can land late without blocking anything. **37 is the exception** — it
-is a paragraph of definition in items 25 and 28, costs nothing, and should land with them.
+**44 is first and the order inside it matters.** A shared core defined *after* the elements it
+shares is a merge, not an extraction. **45** next, because renaming three vocabularies is cheap
+before they have consumers and expensive after. **41 is written here, not after** — every item
+below rewrites artefacts that exist, and none can land until the migration is specified and
+verifiable.
+
+**4 and 5 are the template's other half**: 4 migrates the conventions the corpus invented
+(`excluded` + `<rationale>`, `superseded` + pointer) into the templates and reclassifies against
+them, and 5 *removes* `<phases>`. A removal is a schema change like any other and belongs in the
+same pass as the additions, or the migration runs twice.
+
+### Phase 5 — Consumers, and the parity pass.
+
+`16` · `17` · `3` · `6` · `7` · `8` · `40` · `58` · `13` · `14` · `15` · `19` · `20` · `30` · `32` ·
+`46` · `47` · `48` · `49` · `50` · `38` · `24` · `10` · `59`
+
+Small, once the schema carries the data. **30 immediately after 16** — it has nothing to check until
+`<source-feature>` exists. **59 as soon as 17 and 30 land**, because it is the first test that
+crosses the boundary those items specify. **46 and 47 immediately after 33 and 34**: they are the
+same change reaching the CRD path, and letting them lag is exactly how two vocabularies acquire
+consumers.
+
+### Phase 6 — Hold it in place.
+
+`22` · `23`
+
+Last, deliberately. A schema check written against a schema still moving is a check that gets
+edited rather than obeyed.
+
+---
+
+**What this ordering does not do.** It does not price anything. The grades rank severity, not
+effort, and the only cost estimate this plan can honestly carry is item 41's — taken from the first
+ten features migrated rather than guessed here (A9). If the answer to *"we have a week"* is needed,
+it is Phase 1, which is six items, all reversible, all fixing something real.
 
 ---
 
