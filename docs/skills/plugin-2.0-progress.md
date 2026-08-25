@@ -36,13 +36,13 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | **39** — validate references leaving the PRD | **Landed** 2026-08-25, *narrowed* | `e112ec8` |
 | **54** — a working directory for verification | **Landed** 2026-08-25 | `fce02c9` |
 | **55** — the ledger states what it verified | **Landed** 2026-08-25 | `2b12720` |
-| **42** — rename with a checkable postcondition | Not started | — |
+| **42** — rename with a checkable postcondition | **Landed** 2026-08-25 | `083c70e` |
 | **21** — runtime test for P1, and the authoring baseline | Not started | — |
 | **9** — `/prd`'s prose guards become scripts | Not started | — |
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55).
+**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55) → **46** (42).
 
 ---
 
@@ -386,3 +386,69 @@ is doing work rather than sitting dead behind the grep that precedes it.
 
 None of substance. The item specified the field and the wording; the report lines and the
 refuses-a-missing-commit assertion are the same idea carried to where it is read.
+
+---
+
+## 42 — a rename that finishes, or a PRD exactly as it was found
+
+**Commit:** `083c70e` · **Addresses:** P27 · **Files:**
+`skills/breakdown/scripts/rename-feature.py` (new), `commands/prd.md`, `tests/test_toolchain.py`
+
+**This was the phase's designated rehearsal** — the plan calls it *"the cheapest possible rehearsal
+of item 41's postcondition machinery, on 8 files rather than 64… if the pattern is awkward here it
+will be far worse there."* It was awkward here, in a specific and useful way. See *What the
+rehearsal found*.
+
+### What was built
+
+`rename-feature.py <prd-dir> <old> <new> [--dry-run]`, wired to `/prd --rename`. It rewrites the
+reference shapes, then **asserts** the three postconditions rather than assuming them: nothing
+resolves to the old slug, no file exists under it, the new slug appears in exactly one index entry
+and one feature file.
+
+### Two corrections to the item, both found by running it
+
+**The item lists five sites; there are six.** `what-next.md` carries
+`ref="features/{slug}.md"` and was not in the list. Found by running the operation against the
+§5.1 fixture — not by re-reading the item, which had been read several times.
+
+**One of the five was not a reference.** *"The index entry's content"* is prose: `<name>` and
+`<summary>` may mention the old slug in a sentence. Prose mentions are now **reported with file
+and line and never rewritten** — a script that edits English is a worse failure than a stale
+sentence. Same refuses/reports split item 39 draws.
+
+Both corrections are in the plan.
+
+### What the rehearsal found — the reason this item exists
+
+The first working version asserted the postconditions **after** renaming the file and rewriting
+four others. A failure therefore produced *a half-done rename plus an accurate message*, which is
+worse than not starting: the operator is told it did not finish and has to work out how far it
+got.
+
+Now it snapshots every file it will touch, restores them all when a postcondition fails, and
+**asserts the restore** — because an unverified undo is the same class of claim as the unverified
+rename this script exists to replace. If the rollback is itself incomplete it says
+`ROLLBACK INCOMPLETE` and names what to check, rather than claiming nothing happened.
+
+**Carry this into item 41.** Its partial-completion contract is *per-file atomic*, which is this
+property at 64 files instead of 8. Learning it on a rename cost one afternoon; learning it on the
+EARS migration would have cost a corpus.
+
+### Verification
+
+The check copies the §5.1 fixture, adds the two inbound link shapes the corpus has and the fixture
+does not, plus a prose mention, and then asserts the three postconditions **from the outside** —
+walking the tree itself rather than trusting the script's report of itself. It also asserts
+`what-next.md` was carried, and that the prose sentence was left alone.
+
+Then the rollback: a second copy with two files claiming one slug, hashed before and after, and
+**every byte must match**. Three mutants fail the check — rollback removed, a reference shape
+removed, and a version that rewrites prose.
+
+### Note on where the script lives
+
+`skills/breakdown/scripts/` now holds two PRD-artefact tools (`check-references.py`,
+`rename-feature.py`), one of which `/prd` calls and `/breakdown` does not. That is slightly wrong
+and deliberately not fixed mid-phase: item 22's `check-artefacts.py` is where these consolidate,
+and inventing a directory now would mean moving them twice.

@@ -2190,9 +2190,17 @@ embarrassing possible outcome.
 **42. A rename operation, and the postcondition that proves it finished.**
 *Addresses P27. Small, and the cheapest possible test of item 41's machinery.*
 
-`/prd --rename <old-slug> <new-slug>`, doing all five edits a slug requires: the filename, `<slug>`,
-the index entry's `file=` attribute, the index entry's content, and every inbound cross-reference
-in every other feature file.
+`/prd --rename <old-slug> <new-slug>`, doing every edit a slug requires: the filename, `<slug>`,
+the index entry's `file=` attribute, `what-next.md`'s `ref=`, and every inbound cross-reference in
+every other feature file.
+
+**Corrected while building it: that is six sites, not the five listed here, and one of the five
+was wrong.** `what-next.md` carries `ref="features/{slug}.md"` and was missing from the list —
+found by running the operation against the §5.1 fixture rather than by re-reading. And *"the index
+entry's content"* is prose, not a reference: the `<name>` and `<summary>` may mention the old slug
+in a sentence, and a script that rewrites English is a worse failure than a stale sentence. Prose
+mentions are **reported with file and line, never rewritten**, which is the same
+refuses/reports split item 39 draws.
 
 **The postcondition is the whole point.** The rename that prompted this item was done correctly,
 across 20 references in 8 files, and produced no evidence of that fact — which is the actual
@@ -2206,6 +2214,14 @@ from being wrong and silent:
 Assert those three and a residue becomes impossible rather than merely unlikely. Item 6 runs the same assertions over the whole
 PRD, so a rename done by hand is caught even when the command was not used — which matters,
 because the command will not always be used.
+
+**And roll back when one fails, which is the finding this rehearsal was for.** Asserting a
+postcondition *after* writing, and then reporting the failure, leaves a half-done rename plus a
+message — worse than not starting, because the operator now has to work out how far it got. The
+operation snapshots every file it will touch, restores them all on failure, and then **asserts the
+restore**: an unverified undo is the same class of claim as the unverified rename the item exists
+to replace. Item 41's per-file atomicity across 64 files is this shape, and it was cheaper to
+learn on 8.
 
 Two things to carry rather than lose. A rename should leave a record: the decision to re-slug a
 feature is a decision, and where the rename accompanies a change of scope it is a decision record
