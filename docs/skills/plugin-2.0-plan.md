@@ -2979,8 +2979,26 @@ it is Phase 1, which is six items, all reversible, all fixing something real.
    (acyclic, every layer reachable, no task stranded); report which graph was used, so a bad rule
    file is attributable. Then answer the real question by experiment once item 43 exists: **run the
    fixture through the default graph and through a deliberately poor one, and compare the task
-   sets.** If quality tracks the graph, it is load-bearing and the default must be protected. If it
-   does not, the graph was convention and P18 costs nothing.
+   sets.**
+
+   **And the rule for reading the result, written before it is run (R15).** An experiment with no
+   decision attached is a measurement nobody has to act on.
+
+   | Outcome | Decision |
+   |---|---|
+   | The poor graph produces materially worse tasks | The graph is **load-bearing**. Item 28 still ships — but the shipped default becomes a *baseline*, not merely a fallback: item 43 gains a third arm comparing a project's graph against it, and `/breakdown` reports when a supplied graph decomposes materially differently. That is real cost, and it is only paid on this result. |
+   | The two task sets are comparable | The graph was **convention**. P18 costs nothing, item 28 ships plain, and the shipped graph is a convenience. |
+   | The difference is small or unclear | **Treat as load-bearing.** |
+
+   The third row is the one that matters, and it is deliberately not "run a bigger experiment". The
+   risk being measured is OQ7's own third loss — a failure mode that *"moves and gets quieter"* —
+   and an ambiguous result about a silent failure is not evidence of safety. **Ambiguity resolves
+   toward protection**, because the cost of protecting unnecessarily is a fixture arm and a report
+   line, and the cost of not protecting when it mattered is a bad rule file obeyed without comment.
+
+   *What this does not do is gate item 28 behind the experiment.* P18 is correctly graded the
+   largest gap against the field, the experiment decides what ships **alongside** item 28, and
+   Phase 3 does not wait for Phase 2's fixtures to have been run through twice.
 
 ---
 
