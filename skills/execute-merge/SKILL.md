@@ -50,6 +50,11 @@ tracked changes; asserts the worktree is on `worktree-{task_id}`, is clean, and 
 commit ahead; merges `--no-ff` with a message built from the task XML; records the merge commit
 via `record-task.sh`; and only then removes the worktree and deletes the branch.
 
+The ledger entry it appends records **what was verified, not merely that it was**:
+`"verified":"task-steps"` — the task's own `<verification>` block, run in its worktree by a
+separate agent. The project's build and test suite were not run, and the entry no longer reads as
+though they were.
+
 **Why this is one program and not the ten steps that used to be here.** It was the last git
 sequence in the toolchain still described rather than executed — and every other one became a
 script because the described version demonstrably failed. Six agents retyped `git worktree add`

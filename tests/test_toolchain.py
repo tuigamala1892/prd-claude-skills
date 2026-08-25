@@ -528,6 +528,76 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("the ledger records what was verified, not that it was", finding="P37")
+def _():
+    # Item 55. `"verified":true` invited the stronger reading: execute-verify runs the task's
+    # OWN declared steps, and never the project's build. A task that merges green and breaks
+    # CI was indistinguishable from one that did not, and the ledger was the thing implying
+    # otherwise. The entry now names its scope.
+    #
+    # Run rather than read, because the assertion is about the bytes appended to the ledger.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute-merge", "scripts", "record-task.sh")
+    assert os.path.isfile(script), "skills/execute-merge/scripts/record-task.sh is missing"
+    sh = shutil.which("sh")
+    assert sh, "sh is not on PATH; the execute pipeline's own scripts could not run either"
+
+    body = open(script, encoding="utf-8").read()
+    assert '"verified":true' not in body.replace(" ", ""), (
+        "record-task.sh still writes a bare `verified: true`, which claims more than was run")
+
+    root = tempfile.mkdtemp(prefix="prd-ledger-")
+    try:
+        def git(*args):
+            return subprocess.run(["git"] + list(args), cwd=root,
+                                  capture_output=True, text=True)
+
+        git("init", "-q")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "T")
+        git("commit", "-q", "--allow-empty", "-m", "base")
+        sha = git("rev-parse", "HEAD").stdout.strip()
+
+        p = subprocess.run([sh, script, root, "link-shelf", "L1-001", sha, "2"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"record-task.sh failed on a real commit: {p.stderr}"
+
+        entries = open(os.path.join(root, ".execute", "link-shelf", "ledger.jsonl"),
+                       encoding="utf-8").read().strip().splitlines()
+        assert len(entries) == 1, f"expected one ledger entry, got {len(entries)}"
+        entry = json.loads(entries[0])
+
+        assert entry["verified"] == "task-steps", (
+            f"the ledger says verified={entry['verified']!r}; it must name what ran, and the "
+            f"only thing that ran is the task's own declared steps")
+        assert entry["commit"] == sha and entry["task_id"] == "L1-001"
+        assert entry["attempts"] == 2, "attempts was not carried through"
+
+        # The rule the field depends on: an entry is never written for a commit that is not
+        # there. A named verification of a merge that did not happen is worse, not better.
+        p = subprocess.run([sh, script, root, "link-shelf", "L1-002", "0" * 40],
+                           capture_output=True, text=True)
+        assert p.returncode != 0, "a commit that does not exist was recorded anyway"
+        after = open(os.path.join(root, ".execute", "link-shelf", "ledger.jsonl"),
+                     encoding="utf-8").read().strip().splitlines()
+        assert len(after) == 1, "the refused entry was appended regardless"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the completion report does not imply a build it never ran", finding="P37")
+def _():
+    # The other half of P37. "44/44 tasks completed" is a claim about merges that every
+    # reader hears as a claim about the build, and the report is where that costs most.
+    body = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert re.search(r"^Verified: .*declared steps", body, re.M), (
+        "the completion report does not state what was verified")
+    assert re.search(r"^Not run: .*(build|test suite)", body, re.M), (
+        "the completion report does not state what was NOT run")
+
+
 @check("`<cwd>` has a producer, two readers, and a guard that runs", finding="P36")
 def _():
     # Item 54. Verification used to run at the worktree root and nowhere else, so a monorepo

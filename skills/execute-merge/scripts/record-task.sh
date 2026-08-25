@@ -9,6 +9,19 @@
 #      which is recoverable. The reverse over-reports, which is how execute-state.json
 #      came to claim 23 of 18 tasks done in a run that actually completed 18.
 #
+# A third rule, of the same kind: record WHAT was verified, not that it was.
+#
+#   `"verified":"task-steps"` names the thing execute-verify actually ran -- the task's own
+#   <verification> block, in its worktree, by a separate agent on a different model. That is
+#   real, and it is more than most of the field does. It is also narrower than it sounds:
+#   the project's build and test suite were NOT run, and running them belongs to CI rather
+#   than to /execute.
+#
+#   The field used to be `true`, which invited the stronger reading. A task that merges green
+#   and breaks the build was indistinguishable from one that did not, and the ledger was the
+#   thing implying otherwise. Naming the scope costs one string and removes the implication.
+#   If something ever verifies more, this value is what changes.
+#
 # Usage:
 #   record-task.sh <project-path> <slug> <task-id> <commit-sha> [attempts]
 #
@@ -54,7 +67,7 @@ base=.execute
 mkdir -p "$base/$slug"
 [ -f "$base/.gitignore" ] || printf '*\n' > "$base/.gitignore"
 
-printf '{"task_id":"%s","commit":"%s","at":"%s","attempts":%s,"verified":true}\n' \
+printf '{"task_id":"%s","commit":"%s","at":"%s","attempts":%s,"verified":"task-steps"}\n' \
     "$task_id" "$full" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$attempts" \
     >> "$base/$slug/ledger.jsonl"
 
