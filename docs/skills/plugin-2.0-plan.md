@@ -35,7 +35,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P33** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P34** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -498,6 +498,23 @@ contradicts the feature citing it.
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
 
+**P34 — `/prd` does not know what project it is writing into.**
+*Verification: static, exhaustive.* `commands/prd.md` mentions `PROJECT.md` **zero times**.
+
+`/crd` opens with a context check: find `PROJECT.md`, compare `last-context-hash` against `HEAD`,
+investigate or update before doing anything else. `/prd` has no equivalent. A greenfield PRD
+authored inside a repository that already has a codebase, a `PROJECT.md`, and an established
+architecture notices none of it, and proceeds to ask what the tech stack should be.
+
+This is the P17 asymmetry seen from the authoring end rather than the breakdown end: the brownfield
+path is context-aware by construction and the greenfield path is context-blind by construction,
+and *greenfield* describes the document rather than the repository it lands in.
+
+It matters more once item 28 exists, because then there are **project-scoped rules** to conflict
+with. Two PRDs in one repository — which `/prd` explicitly supports, globbing `docs/prd/*/` and
+offering to *"start a new one alongside it"* — could otherwise state two different layer graphs
+and two different test policies for one codebase.
+
 **P33 — Layer selection is derived on one path, hardcoded on the other, and wrong on both.**
 *Verification: static, exhaustive.*
 
@@ -755,12 +772,8 @@ Two consequences worth stating plainly:
 
   <description>...</description>
 
-  <phases>                                  <!-- optional; item 5 -->
-    <phase id="1" name="...">...</phase>
-  </phases>
-
   <acceptance-criteria>
-    <criterion id="1" pattern="event-driven" priority="P0" phase="1">   <!-- items 33, 34 -->
+    <criterion id="1" pattern="event-driven" priority="P0">   <!-- items 33, 34 -->
       When <trigger>, the system shall <response>.
     </criterion>
   </acceptance-criteria>
@@ -849,12 +862,34 @@ why the check is three-valued by construction rather than by concession.
 every status: expect a cohort of `tbd` files to become `in-progress`, and expect the two orphans
 to validate as legitimate rather than flag.
 
-**5. Phasing within a feature.**
-Optional `<phases>` with `phase=` on criteria. Deliberately minimal: a phase is a **named subset
-of the acceptance criteria**, not a second priority axis and not a schedule. `/breakdown` gains
-`--phase <n>` (item 15) and, absent it, builds phase 1 only where phases are declared — because
-seven corpus features describe a phase 2 that depends on access or decisions that do not exist
-yet, and building it would be wrong, not early.
+**5. Retire `<phases>`: phasing is priority plus gaps.**
+*Superseded in its own proposal, like items 29 and 46. P12 stands; its answer changes.*
+
+This item originally proposed `<phases>` with `phase=` on criteria. Items 34 and 29 have since
+arrived, and between them the toolchain now has **three** ways to say *not now*:
+
+| Mechanism | Says | Carries |
+|---|---|---|
+| `priority="P2"` (34) | less important | a rank |
+| `<gap kind="dependency\|decision">` (29) | blocked | *why*, and *since when* |
+| `phase="2"` | later | nothing else |
+
+**The corpus's phase-2 usage is the second, not the first.** Its phase 2s depend on external access
+that does not exist and on questions that are open — one feature says outright that *whether phase
+2 should exist at all* is undecided. Those are a dependency gap and a decision gap, and a gap
+records why and when, which `phase="2"` cannot.
+
+The case that looked like it needed a third axis — **a criterion that is essential but blocked** —
+is handled better by the pair than by phases: priority keeps its `P0` because it matters, and the
+gap blocks execution because it cannot proceed. Folding that into a phase would force an author to
+*demote* something important in order to say it is stuck.
+
+What is genuinely lost is naming a coherent increment: priority ranks, it does not group. That is
+recovered from the filter rather than the schema — `--requirement-level P0` **produces** the
+increment, so the grouping is a query result instead of a fourth thing to maintain.
+
+**Removed with it:** `<phases>` from item 1's template, `phase=` from `<criterion>`, item 6's
+check that `phase` references resolve, and `<feature-phase>` from item 16's task `<meta>`.
 
 ### B. `/prd` — the command
 
@@ -870,7 +905,7 @@ Today Phase 6 asks the model four prose questions about the tech stack. It gains
   the convention states and nobody evaluates
 - **no reference anywhere to a slug that has no file**, which is the postcondition a rename has to
   satisfy and currently does not (P27)
-- criterion `id` uniqueness within a feature; `phase` references that exist in `<phases>`
+- criterion `id` uniqueness within a feature
 - `excluded` without `<rationale>`; `superseded` without a successor or still present in the index
 - **EARS pattern coverage** per feature (item 33): report any `defined` feature with no
   `unwanted-behaviour` criterion, and any criterion whose `pattern` attribute is missing
@@ -1033,7 +1068,6 @@ In `task-format-spec.md` `<meta>`, **not** as `<priority>` (P3):
   <moscow>must-have</moscow>                          <!-- P1, feature level -->
   <satisfies-criteria>1,4,7</satisfies-criteria>      <!-- item 34, criterion level -->
   <requirement-level>P0</requirement-level>           <!-- highest among those criteria -->
-  <feature-phase>1</feature-phase>                    <!-- P12, optional -->
 </meta>
 ```
 
@@ -1156,12 +1190,22 @@ constraint in a transient file is the same category error as §4.1's priority-in
 right content, wrong lifetime. A `<step kind="architecture">` also mixes *decisions already made*
 in with *work not yet done*, which is the one distinction `<next-steps>` exists to draw.
 
-**Recommended shape:** `docs/prd/{slug}/architecture.md`, written in the **same schema as
-PROJECT.md's `## Architecture` section plus its schema registry**, for three reasons: there is
-then one architecture format rather than two; `/breakdown` already knows how to load that shape
-for CRDs, so the greenfield reader is a small change rather than a new one; and it lets item 26
-close the P17 loop — after `/execute`, the finalizer seeds PROJECT.md from it instead of being
-skipped, so a greenfield project ends with the architecture record it currently never gets.
+**Recommended shape:** `architecture.md` at the **project root, beside `PROJECT.md`** — not under
+`docs/prd/{slug}/` — written in the **same schema as PROJECT.md's `## Architecture` section plus
+its schema registry**. Four reasons, and the first was a correction:
+
+- **It is project-scoped content, so it needs project scope.** `/prd` explicitly supports several
+  PRDs in one repository — it globs `docs/prd/*/` and offers to *"start a new one alongside it"*.
+  Layer graphs, test policy, task limits and banned patterns are properties of the **codebase**,
+  so a per-PRD file would let two PRDs state two different architectures for one repository, and
+  item 26 would then seed a single project-scoped `PROJECT.md` from whichever ran last.
+- One architecture format rather than two.
+- `/breakdown` already knows how to load that shape for CRDs, so the greenfield reader is a small
+  change rather than a new one.
+- It lets item 26 close the P17 loop — after `/execute`, the finalizer seeds `PROJECT.md` from it
+  instead of being skipped, so a greenfield project ends with the architecture record it currently
+  never gets. **With both files at project root, that seeding no longer widens scope**; it is one
+  project-scoped artefact informing another.
 
 ADRs stay where the corpus already puts them: outside the PRD, holding the rationale and the
 history. `architecture.md` holds the *binding constraints* and may cite an ADR by pointer. The
@@ -1958,6 +2002,62 @@ Both paths drift apart the moment nothing measures the distance. Add to the regr
 The last one is the point. Five of the asymmetries this section resolves existed because nobody had
 read the two paths side by side, and the plan itself was PRD-only for forty-three items.
 
+**51. A Design phase in `/prd`, between Phase 3 and Phase 4.**
+*The producer items 25 and 28 never named. Addresses P17 and P25 at the authoring end.*
+
+Items 25 and 28 specify where `architecture.md` lives, its schema, who reads it, and what happens
+to it after `/execute`. **No item said who writes it.** A reader with no producer is the mirror of
+this plan's own central finding, and it went unnoticed for twenty-six items.
+
+**Between 3 and 4, and the order is the argument.** After features, so the conversation knows what
+is being built. Before dependencies, because Phase 4 asks *"what external services will this
+depend on?"* — and dependencies are partly **decided by** the architecture, so asking them first
+inverts the causality.
+
+**It opens with a question that can be answered in one word:**
+
+> *"Do you want to discuss architecture for this project, or take the default layering?"*
+
+**Default writes nothing.** The shipped five-tier graph applies, and a PRD with no
+`architecture.md` stays a valid PRD — which is what keeps every existing artefact working on the
+day item 28 lands, and is the OQ7 mitigation stated as a workflow rather than as a principle.
+
+**Discussing captures all of `<rules>` in one place** — `<layers>`, `<testing>`, `<task-limits>`,
+`<banned>`, `<scaffold>`, plus the structure conventions P17 identified as the actual gap (file
+organisation, naming, import patterns). One producer, one file, one phase. The alternative
+considered was splitting it — conventions at Phase 2 where the stack is chosen, layering here —
+and rejected: two producers for one file is how two producers for one file drift.
+
+Three things it must do beyond asking:
+
+- **Read before it writes** (item 52). If `architecture.md` or `PROJECT.md` already exists, the
+  question becomes *follow / extend / override* rather than a blank-page interview.
+- **Record the choice either way.** "Defaults, deliberately" and "nobody was asked" must be
+  distinguishable later, so the default branch still stamps a `<rules>` file recording that the
+  default was chosen — or `what-next.md` records that the phase ran and was declined.
+- **Feed item 35.** Architecturally-significant features are identified from this conversation, so
+  the ASR flags and any decision records (item 36) are its natural output alongside `<rules>`.
+
+**52. A context check at `/prd` initialization.**
+*Addresses P34. Mirrors `/crd` Phase 1.*
+
+`/prd` mentions `PROJECT.md` zero times. `/crd` begins by finding it, comparing
+`last-context-hash` against `HEAD`, and investigating or updating before anything else. `/prd`
+gains the same check, in the same place — beside the existing-PRD scan that F3 added, which is
+already exactly this shape of guard.
+
+When a `PROJECT.md` or a project-root `architecture.md` is present, `/prd` says so, and item 51's
+Design phase offers **follow / extend / override** instead of asking from scratch.
+
+**A check rather than a flag.** A `--greenfield` flag would let the context be missed by omission,
+and project type is already asked in Phase 2 — the check should fire regardless of how that is
+answered, because *greenfield* describes the document and not the repository it lands in. A PRD
+for a new product inside an existing monorepo is a real and ordinary case.
+
+The cost is one `test -f` and a sentence. The benefit is that the two paths stop disagreeing about
+whether knowing the project matters, which is item 50's parity check applied to the thing that
+prompted it.
+
 ---
 
 ## 6. Summary
@@ -1968,7 +2068,7 @@ read the two paths side by side, and the plan itself was PRD-only for forty-thre
 | 2 | Structure `<notes>` | P4 | Correctness |
 | 3 | Status derivation script | P7 | Consistency |
 | 4 | Migrate corpus conventions, reclassify | P6, P14 | Consistency |
-| 5 | `<phases>` within a feature | P12 | Structural |
+| 5 | Retire `<phases>`; phasing is priority plus gaps | P12 | Consistency |
 | 6 | Phase 6 becomes an executable consistency check | P7, P9, P16 | Consistency |
 | 7 | `--resume` re-checks all features | P7 | Consistency |
 | 8 | Criteria-challenger sub-agent | P2 | Structural |
@@ -2014,6 +2114,8 @@ read the two paths side by side, and the plan itself was PRD-only for forty-thre
 | 48 | CRD gains gaps, `--resume` and a pre-write guard | **P32** | **Correctness** |
 | 49 | PRD gains `<scope>` and `<confidence>` | P19, P21 | Structural |
 | 50 | Parity as a regression check | **P30** | — |
+| 51 | A Design phase in `/prd`, between 3 and 4 | **P17, P25** | **Correctness** |
+| 52 | A context check at `/prd` initialization | **P34** | **Correctness** |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -2045,6 +2147,11 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**51 and 52 come with the schema block, not after it.** Item 51 is the producer for the artefact
+items 25 and 28 define, so defining those without it leaves a file nothing writes; and 52 is a
+`test -f` that item 51's opening question depends on. Both are small and neither has dependencies
+beyond the shape of `<rules>`.
 
 **44 and 45 come before every schema item, with 43.** A shared core defined after the elements it
 is meant to share is a merge rather than an extraction, and 45's renaming is cheap now and
@@ -2109,6 +2216,12 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
    artefact and PROJECT.md is unambiguously the *descriptive* one. Merging them would produce one
    file where half the content is hash-stamped against a commit and half must be read before any
    commit exists. Item 26's seeding step stays the join between them.
+
+   **And the scope half is now settled too — both live at the project root.** The question that
+   forced it: `/prd` supports several PRDs in one repository, so a per-PRD `architecture.md` would
+   permit two layer graphs and two test policies for one codebase, and item 26 would seed a single
+   `PROJECT.md` from whichever ran last. Two files, both project-scoped, one prescriptive and one
+   descriptive, joined by item 26. **Resolved.**
 3. **Resolved — see item 27.** *(Was: should `/breakdown` consume the task-generation order?)*
    No. The order was model-deduced during `/prd`, not human-authored, so consuming it means
    preferring one model's unvalidated inference to another's — while duplicating

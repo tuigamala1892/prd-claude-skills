@@ -21,6 +21,8 @@ puts it there.
 | Acceptance criteria read on the CRD path only | Carried verbatim into tasks on both (17) |
 | `<notes>` and MoSCoW written, never read | Structured and consumed (2, 16, 34) |
 | No architecture input, none recorded on greenfield | `architecture.md` in, `PROJECT.md` out (25, 26) |
+| Nothing asks about architecture; nothing writes the rules | A **Design phase** between 3 and 4 (51) |
+| `/prd` never looks for `PROJECT.md` | Context check at initialization (52) |
 | Nothing between `/breakdown` and `/execute` | A coverage check and a gate (30, 38) |
 | Guards are prose | Guards are exit codes (9, 22, 39, 43) |
 
@@ -75,9 +77,35 @@ Three vocabularies are **disjoint by construction** (45), so no value appears in
 User idea ──────────────────────────────┐
                                         ▼
                           ┌─────────────────────────────┐
-                          │  /prd   Phases 1–5          │
-                          │    idea, stack, features,   │
+                          │  Initialization   CHECK     │
+                          │  existing PRDs?      (F3)   │
+                          │  PROJECT.md?         (52)   │
+                          │  architecture.md?    (52)   │
+                          └──────────────┬──────────────┘
+                                         ▼
+                          ┌─────────────────────────────┐
+                          │  Phases 1–3                 │
+                          │    idea, stack, features    │
+                          └──────────────┬──────────────┘
+                                         ▼
+                          ┌─────────────────────────────┐
+                          │  Phase 3.5   DESIGN   (51)  │
+                          │                             │
+                          │  "discuss architecture, or  │
+                          │   take the default graph?"  │
+                          │                             │
+                          │  default → writes nothing;  │
+                          │    the shipped graph applies│
+                          │  discuss → <rules> + ASR    │
+                          │    flags (35) + ADRs (36)   │
+                          │  existing file → follow /   │
+                          │    extend / override   (52) │
+                          └──────────────┬──────────────┘
+                                         ▼
+                          ┌─────────────────────────────┐
+                          │  Phases 4–5                 │
                           │    dependencies, options    │
+                          │  (deps follow architecture) │
                           └──────────────┬──────────────┘
                                          │
                     ┌────────────────────┴────────────────────┐
@@ -104,10 +132,12 @@ User idea ───────────────────────�
                           │  refuses on collision (F3)  │
                           └──────────────┬──────────────┘
                                          ▼
+   architecture.md        ◄── NEW (25, 28, 51): PROJECT ROOT, not per-PRD —
+                              <rules>: layers, testing policy, task limits,
+                              banned patterns, scaffold, structure conventions
+
    docs/prd/{slug}/
    ├── index.md            ◄── features + MoSCoW priority (§4.1), tech stack
-   ├── architecture.md     ◄── NEW (25, 28): <rules> — layers, testing policy,
-   │                            task limits, banned patterns, scaffold
    ├── what-next.md        ◄── XML skeleton, markdown bodies (11)
    │                            <authoring-gaps> DERIVED from features' <gaps>
    │                            <next-steps kind="…">, <risks>, <open-questions href=…>
@@ -115,6 +145,7 @@ User idea ───────────────────────�
        └── {feature}.md    ◄── <definition>, EARS criteria (33) with P0|P1|P2 (34),
                                 <gaps> (29), <notes><data-model> (2),
                                 <architecturally-significant> (35), <depends-on> (27)
+                                no <phases> — retired to priority + gaps (5)
 
    ../../architecture/decisions/NNN-*.md   ◄── ADRs (36), **Drives:** back to features
    ../../product/open-questions.md         ◄── cross-feature unknowns (40)
@@ -273,7 +304,7 @@ can, so the split has nothing left to carry.
    ├── summary.md        ◄── NEW (32): one row per task, no XML to read
    └── {layer}/L{n}-*.xml
            <meta>  <source-feature> · <moscow> · <satisfies-criteria> ·
-                   <requirement-level> · <feature-phase>          (16)
+                   <requirement-level>                            (16)
            <acceptance-criteria>  verbatim, original ids          (17)
            <context>  data model, binding <rules> constraints     (2, 28)
 ```
