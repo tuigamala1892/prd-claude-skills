@@ -54,6 +54,15 @@ proposes `architecture.md` as a prescriptive greenfield artefact, and it turns o
 of the ground a project's rule file needs. Item 28 widens 25 rather than competing with it — see
 the note there.
 
+**Audited against itself, 2026-08-25.** Every element this plan introduces was checked for a named
+reader, and every reader for a producer. **Nine failures, in a plan whose closing argument is that a
+producer should have a reader** — two of them contradictions between items rather than omissions.
+All are resolved in place: `<banned>` and `<task-limits>` gain enforcers (item 56), principles fold
+into `architecture.md` rather than a file nothing creates (37), registries gain a reader (25),
+`<confidence>` gains a producer on the PRD path (49), and the open-questions register is declared
+**human-maintained and validate-only** (39, 40) rather than left looking like an oversight. Item 23
+gains the check that would have caught all nine.
+
 **Extended 2026-08-24 to cover the `/crd` path.** Findings P29–P32 and items 44–50 (§5 J) come
 from reading the CRD command, its three sub-skills, its four agents and both of its format
 references against this plan. The plan was PRD-only until then, which was a scoping choice that had
@@ -862,6 +871,11 @@ inferring one. Free markdown stays legal inside each element; the corpus proves 
 is comfortable. **Migration must not be lossy** — unrecognised note content goes to
 `<considerations>` verbatim, never dropped.
 
+**`<considerations>` is deliberately unread**, and the template should say so. It is the catch-all
+that makes migration safe and prose survivable; nothing machine-consumes it and nothing should.
+Marking it explicit is what distinguishes *unread by design* from *unread by oversight*, which is
+the distinction this plan exists to draw.
+
 **3. Status derivation, as a script — and it is feasible.**
 *Measured, with the caveat below.* A probe deriving each feature's status from its own content:
 
@@ -1073,8 +1087,13 @@ Three things this gets right that neither the current template nor the corpus fi
 
 - **`<authoring-gaps>` is derived.** The corpus file lists no TBD items at all — with 21 of them,
   hand-maintenance was never going to happen. Generating it is what makes it survive.
-- **`kind=` on steps** preserves the prose file's real value (the ordered breakdown sequence, the
-  spikes and what they must measure) in a form `/breakdown` could later consume.
+- **`kind=` on steps** preserves the prose file's real value — the spikes and what they must
+  measure, the infrastructure, the design work. It routes: item 40 sends a spike to investigation
+  and a cross-feature question to the register, and `kind=` is what tells them apart.
+  *It is **not** justified by `/breakdown` consuming the sequence — item 27 concludes it must not,
+  and an earlier draft of this bullet claimed otherwise.*
+- **`<risks>` is deliberately unread.** It is for the human resuming the work. Recorded so that its
+  absence from every consumer list reads as intent.
 - **`<open-questions>` may be a pointer.** The corpus moved its questions to a project-wide
   register; the template must permit that instead of forcing them back inline.
 
@@ -1159,9 +1178,16 @@ make haiku adequate; without it, no model choice rescues the design.
 
 ### E. `/execute`
 
-**19. Report the tier being built.**
-Carry `<moscow>` into `execute-state.json` per task; group the final report by tier. Requires
-item 16 and nothing else.
+**19. Report the tier being built — both tiers.**
+Carry `<moscow>` **and `<requirement-level>`** into `execute-state.json` per task, and group the
+final report by both. Requires item 16 and nothing else.
+
+The second is the one that would otherwise have no reader at all. Item 16 puts
+`<requirement-level>` on the task; item 30 checks criteria against the *threshold* rather than
+against the element; nothing else looks at it. Reporting it is both the cheapest reader and the
+useful one — *"built 14 tasks: 9 must-have/P0, 5 should-have/P0"* is a sentence an operator can act
+on, and it is the only place the two-level filter (items 14 and 34) becomes visible in the output
+rather than only in the invocation.
 
 **20. Refuse won't-have tasks at execution time.**
 Defence in depth, as an exit code, matching item 4.13's principle that guards must be executable.
@@ -1202,6 +1228,17 @@ regression guard: `execute-state.json`'s documented `schema_version` must equal 
 `write-state.py` writes — today they are `2.0` and `3.0`. Then: each fixture validates against
 **its own** schema rather than the current one, and exactly one schema is marked current, since
 the end-to-end checks must run against that one.
+
+**And the check that would have caught this plan's own nine.** Every element the schema defines
+must have either a named reader or an explicit *unread by design* marker — `<considerations>` and
+`<risks>` are the second kind, and everything else must be the first. Run the same test in reverse:
+every artefact a component reads must have a named producer, or be declared externally maintained
+as the open-questions register now is (item 39).
+
+An audit of this plan against that rule on 2026-08-25 found **nine failures**, two of them
+contradictions between items rather than omissions — in a document whose closing argument is the
+sentence below. That is the strongest possible evidence that the rule needs a script rather than a
+principle.
 
 That last one matters most. **P2 and P4 were both invisible to a test suite that reads the
 files, because the failure is an absent consumer rather than a wrong string.** A check that a
@@ -1264,6 +1301,12 @@ its schema registry**. Four reasons, and the first was a correction:
   needs — `<event-registry>`, `<command-registry>`, `<service-registry>`, `<screen-registry>` —
   and PROJECT.md gains the same freedom when item 26 seeds it. Fixing the pair would be item 28's
   own defect, one level further down.
+
+  **And each registry needs a reader, or this is P4 in a new file.** `analyze-prd` loads them
+  alongside `<rules>`, exactly as it loads the feature's `<data-model>` — a registry *is* a data
+  model, at project scope. `generate-tasks` carries the entries a task touches into its
+  `<context>`. The existing API registry already has a reader on the CRD path
+  (`crd-impact-analysis` reads it), so the open set must not be the one shape that does not.
 - `/breakdown` already knows how to load that shape for CRDs, so the greenfield reader is a small
   change rather than a new one.
 - It lets item 26 close the P17 loop — after `/execute`, the finalizer seeds `PROJECT.md` from it
@@ -1691,8 +1734,15 @@ said ADRs stay where they are and are cited by pointer.
 | Kind | Test | Home | Enforced? |
 |---|---|---|---|
 | **Decision** | has rejected alternatives to record | a decision record (item 36) | no — it is a record |
-| **Principle** | a rule, with no alternatives weighed | the project's principles file | no — it is guidance |
+| **Principle** | a rule, with no alternatives weighed | a `<principles>` section of `architecture.md` | no — it is guidance |
 | **Constraint** | the toolchain must obey it | `<rules>` in `architecture.md` (item 28) | **yes — exit code** |
+
+**Principles live inside `architecture.md`, not in a file of their own.** Item 28 already rejected
+a separate `PRINCIPLES.md` — three files describing one project — and an earlier draft of this
+table then routed principles to exactly that file, so the plan named a destination it had declined
+to create. A `<principles>` section sits beside `<rules>` in the same artefact, **outside** it and
+explicitly non-enforced: `<rules>` is what a script obeys, `<principles>` is what a reader is told.
+Keeping them in one file and distinct within it is the whole point of the row above.
 
 The test in the first column comes from the corpus project's own conventions. Items 25 and 28
 currently blur the second and third rows, and that blur is dangerous in exactly the way P16
@@ -1729,6 +1779,14 @@ somebody is there, but the three assertions are worth running either way.
 Every `ADR-NNN`, `OQ-NNN` and principle citation resolves to a file that exists; a citation of a
 superseded record is reported together with its successor; every `**Drives:**` link resolves to a
 feature that exists.
+
+**The open-questions register is human-maintained, and the toolchain only validates it. Decided.**
+Item 40 makes it the required home for any unknown binding more than one feature, and no item
+creates or maintains one — which read as an oversight and is a choice. A register is a product
+artefact with a life longer than any PRD, and a toolchain that generated entries into it would be
+writing into a document it does not own. So: validate that citations resolve, report a citation of
+a question already closed, and never write. *Stated here because a consumer with no producer should
+be deliberate or fixed, and this one is deliberate.*
 
 Cheap, and **157 references currently go unchecked**. This is also the minimum that makes the
 decision-record track useful even if 35, 36 and 38 are never switched on: a dangling reference in
@@ -1778,7 +1836,8 @@ wrong *content*, and a gate that blocks the label invites relabelling rather tha
 
 - **Unknowns are not under-definition.** A feature need not have every answer; it must know which
   answers it lacks and record each in the place that makes it findable — a spike where
-  investigation settles it, the open-questions register where the question binds more than one
+  investigation settles it, the open-questions register — **human-maintained; the toolchain
+  validates citations and never writes entries (item 39)** — where the question binds more than one
   feature, or a `<gap>` where this feature owns it and can close it alone. *Prose in one feature is
   not a place other features can be expected to look.*
 - **What does not belong in a feature file**, all three checkable by item 6: priority argument
@@ -2078,7 +2137,10 @@ and given consumers on both paths:
   its job on both paths is the same: to disagree loudly when the analysis and the generation
   produce different pictures of how big the work is.
 - `<confidence>` is item 29's whole-analysis counterpart to a per-item `<gap>`, and item 38's gate
-  reads both.
+  reads both. **On the PRD path `analyze-prd` produces it, per feature** — it is the component
+  doing the analysing, exactly as `crd-impact-analysis` is on the other path, and a per-feature
+  confidence says where the analysis was guessing. Without that this item would have given the PRD
+  path a field with a reader and no writer.
 
 **50. Parity as a check, not an aspiration.**
 *Addresses P30. Extends item 23.*
@@ -2215,6 +2277,37 @@ Running the project's pipeline stays out of scope — it belongs to CI, and `/ex
 business owning it. What is in scope is not implying it ran. S2 is *"state is derived from git,
 never asserted"*; this is the same rule applied to the claim rather than to the count.
 
+**56. Enforce `<banned>` and `<task-limits>`, at both ends.**
+*The enforcers item 28 assumed and never named. Item 37 puts `<rules>` in the exit-code column;
+these two rows had nothing behind them.*
+
+**`<banned>` is checked twice, deliberately.**
+
+| Where | Catches | Cost of a miss |
+|---|---|---|
+| `review-tasks`, per generated task | a task that *specifies* a banned pattern | none — no code exists yet |
+| `execute-verify`, per implemented task | code that contains one anyway | a rejected task, before merge |
+
+Review is primary because it is free: a task saying *"call the billing service over HTTP"* under a
+rule banning cross-context calls is wrong before anybody writes a line. Verification is the
+backstop, because a task can be innocently worded and implemented badly, and because a pattern
+matched against real code catches what a pattern matched against a description cannot.
+
+**Both report the `reason` verbatim**, which is why item 28 made `reason` mandatory. *"Banned:
+HTTP client to another context's service — ADR-004: contexts communicate by event, never by call"*
+tells an implementer what to do instead. A bare rule number does not.
+
+**`<task-limits>` is enforced where the limit already lives.** Today `max-files` is a constraint in
+`task-format-spec.md` and a critical criterion in `review-criteria.md` — both hardcoded to 3. They
+become readers of `<task-limits>`, honouring the scoped overrides. This is the same three-reader
+shape item 28 found for `<testing policy>`: a rule is only overridable if every place that
+currently hardcodes it learns to ask.
+
+**A false positive must be answerable.** A banned-pattern check that cannot be overridden becomes a
+reason to stop declaring patterns. An explicit, reasoned exemption in the task
+(`<exempt pattern="…" reason="…"/>`) is reported in the run summary rather than silently allowed —
+visible, attributable, and not a fight with the tool.
+
 ---
 
 ## 6. Summary
@@ -2276,6 +2369,7 @@ never asserted"*; this is the same rule applied to the claim rather than to the 
 | 53 | Declare `<repo-structure>`; refuse `multi-repo` early | **P36** | **Correctness** |
 | 54 | A working directory for verification | P36 | Correctness |
 | 55 | The ledger states what it verified | **P37** | Consistency |
+| 56 | Enforce `<banned>` and `<task-limits>` at both ends | P16, **P35** | **Correctness** |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -2307,6 +2401,11 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**56 belongs with 28**, not after it: `<banned>` and `<task-limits>` are two of the five opinions
+item 28 exists to make overridable, and shipping the declaration without the enforcement would
+leave an operator believing a rule is in force — item 28's own stated failure mode for a
+silently-ignored rule file.
 
 **53, 54 and 55 are small and independent.** 53 is a declaration plus a refusal in the same idiom
 Phase 1 already uses; 54 is one optional element and two readers; 55 is a field in the ledger.
