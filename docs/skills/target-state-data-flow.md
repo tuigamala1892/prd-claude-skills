@@ -98,6 +98,8 @@ User idea ───────────────────────�
                           │    the shipped graph applies│
                           │  discuss → <rules> + ASR    │
                           │    flags (35) + ADRs (36)   │
+                          │    layers · testing · limits│
+                          │    banned · repo-structure  │
                           │  existing file → follow /   │
                           │    extend / override   (52) │
                           └──────────────┬──────────────┘
@@ -304,7 +306,7 @@ can, so the split has nothing left to carry.
    ├── summary.md        ◄── NEW (32): one row per task, no XML to read
    └── {layer}/L{n}-*.xml
            <meta>  <source-feature> · <moscow> · <satisfies-criteria> ·
-                   <requirement-level>                            (16)
+                   <requirement-level> · <cwd>                    (16, 54)
            <acceptance-criteria>  verbatim, original ids          (17)
            <context>  data model, binding <rules> constraints     (2, 28)
 ```
@@ -371,6 +373,8 @@ Every row is an exit code, not a paragraph — P16's lesson, and item 4.13's pri
 |---|---|---|
 | Output path resolves, and is not inside a plugin | `/breakdown` Phase 1 | 4.6 |
 | `<rules>` present but unparseable | `/breakdown` Phase 1 | 28 |
+| `<repo-structure>` is `multi-repo` | `/breakdown` Phase 1 | 53 |
+| `<layers>` graph is cyclic, or strands a task | `/breakdown` Phase 1 | 28, 43 |
 | `schema_version` incompatible | `/breakdown` Phase 1, `/execute` preflight | 24, 43 |
 | Prompt would exceed the model's window | `/breakdown` Phase 2 | 18 |
 | Feature is `wont-have` / `excluded` / `superseded` | `/breakdown` Phase 2.5 | 13 |

@@ -35,7 +35,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P34** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P37** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -497,6 +497,65 @@ contradicts the feature citing it.
 
 This is P4's shape at document scale — content the PRD depends on, with no reader — and it is
 larger, because a dangling reference is wrong rather than merely unread.
+
+**P35 — `<rules>` has the right bones and three CRUD-shaped leaves.**
+*Verification: measured against five architecture patterns — monolithic SPA, event-driven,
+microservices, CLI, mobile — in §8.*
+
+Item 28 frees the layer graph from the plugin. Writing `<rules>` for five patterns shows it then
+**re-vendors the same class of opinion one level down**, in three places:
+
+- **Registries are fixed at two.** Item 25 has `architecture.md` share PROJECT.md's schema *"plus
+  its schema registry"* — an **API Registry** (method, path, request, response) and a **Schema
+  Registry** (model, table, fields). That is REST plus relational. Four of the five patterns need
+  a different primary contract: an **event registry**, a **service registry**, a **command
+  registry** (subcommands, flags, exit codes, output format), a **screen registry**.
+- **One runner, one test policy.** `<testing policy="tdd" runner="pytest"/>` cannot express that
+  contracts need compatibility tests, consumers need consumer-driven contracts and projections
+  need replay tests — **nor that a monolithic SPA has two toolchains**, pytest behind and vitest
+  in front. The default case breaks it, which is the strongest evidence available that it is
+  wrong.
+- **One task limit.** Three files is right for a UI change and wrong for adding an event type,
+  where schema, producer, consumer, projection and test are one change.
+
+And one structural limit rather than a leaf: **`<layers>` assumes a single graph for the whole
+project.** Microservices and multi-platform mobile need the same graph *instantiated per unit*,
+and flattening them is not merely inconvenient — it destroys the independent deployability that
+motivated the architecture, by ordering *all* services' data layers before *any* service's API.
+
+`<banned>` and `<scaffold>` generalise across all five without change, and the degenerate CLI case
+needs no special handling because item 31 collapses a single-layer plan on its own. The bones are
+right.
+
+**P36 — The execution model assumes one repository, and says so nowhere until it fails.**
+*Verification: static, exhaustive.* No file in `skills/`, `commands/` or `agents/` mentions
+monorepo, multi-repo or submodules. `manifest.json` carries one `project_path`,
+`execute-state.json` tracks one target, and the ledger derives completion from commits in that one
+repository.
+
+**The assumption is defensible; its lateness is not.** `create-worktree.sh` refuses a
+subdirectory — *"The target must be the repository root, not a subdirectory of one"* — which is
+correct, but it fires during batch execution, several phases after the point where the layout was
+knowable. A project split repo-per-service gets a plan, a manifest and a task set before anything
+objects.
+
+*Not a git limitation.* A repo-per-service layout would create a worktree **per repository**,
+which is ordinary. What is missing is a *target* model with dependencies — contracts must land in
+one repository before consumers in another — and an explicit account of the window in which a
+change spanning three repositories has merged into one of them. That window is a property the
+architecture chose, not a defect to remove, which is why supporting it is a scope decision rather
+than a fix.
+
+**P37 — The ledger reports a merge and implies a build.**
+*Verification: static.* `execute-verify` runs the task's **own declared** verification steps in
+the worktree before merge, which is real and is more than the field does (S1). The ledger then
+records the merge. In any project with a build pipeline, a task that merges green and breaks CI is
+invisible: the ledger says done.
+
+The claim to fix is small and the principle is the plan's own. S2 is *"state is derived from git,
+never asserted"* — so the ledger should state **what it verified** rather than leave a reader to
+assume the stronger thing. Running the project's pipeline is out of scope; implying it was run is
+not.
 
 **P34 — `/prd` does not know what project it is writing into.**
 *Verification: static, exhaustive.* `commands/prd.md` mentions `PROJECT.md` **zero times**.
@@ -1199,7 +1258,12 @@ its schema registry**. Four reasons, and the first was a correction:
   Layer graphs, test policy, task limits and banned patterns are properties of the **codebase**,
   so a per-PRD file would let two PRDs state two different architectures for one repository, and
   item 26 would then seed a single project-scoped `PROJECT.md` from whichever ran last.
-- One architecture format rather than two.
+- One architecture format rather than two — **with registries as an open set** (P35). PROJECT.md's
+  API and schema registries are the right pair for a REST-and-relational project and the wrong pair
+  for four of the five patterns in §8. `architecture.md` may declare any registry its architecture
+  needs — `<event-registry>`, `<command-registry>`, `<service-registry>`, `<screen-registry>` —
+  and PROJECT.md gains the same freedom when item 26 seeds it. Fixing the pair would be item 28's
+  own defect, one level further down.
 - `/breakdown` already knows how to load that shape for CRDs, so the greenfield reader is a small
   change rather than a new one.
 - It lets item 26 close the P17 loop — after `/execute`, the finalizer seeds `PROJECT.md` from it
@@ -1279,8 +1343,20 @@ uneasy about at two. Widen the one item 25 defines:
     <layer id="1" name="foundation" depends-on=""/>
     <layer id="2" name="backend"    depends-on="1"/>
   </layers>
-  <testing policy="tdd|tests-after|none" runner="pytest"/>
-  <task-limits max-files="3"/>
+  <!-- depends-on is a COMMA LIST and the result is a DAG, not a chain: an event-driven
+       graph fans contracts out to producers and consumers independently, then converges.
+       A single-valued attribute could not express the case P18 uses as its example.
+       Optional applies-to instantiates the graph once per matching directory, which is
+       what microservices and multi-platform mobile need (P35, §8). -->
+  <layers applies-to="services/*/"> ... </layers>
+  <testing default="tdd" runner="pytest">          <!-- scoped, because one runner is never enough -->
+    <policy match="services/**"  kind="consumer-contract" runner="pytest"/>
+    <policy match="web/**"       kind="component"         runner="vitest"/>
+  </testing>
+  <task-limits default="3">
+    <limit match="contracts/**" max-files="5"/>
+  </task-limits>
+  <repo-structure>single|monorepo|multi-repo</repo-structure>   <!-- item 53 -->
   <banned><pattern reason="...">...</pattern></banned>
   <scaffold template="python|go|tanstack|none" path="..."/>
 </rules>
@@ -1305,6 +1381,18 @@ Three consequences, and the first is the one that makes this the largest item in
   marking the section unconditionally required. The current mandate is right for most projects
   and wrong for a spike, and the toolchain should be able to say which it is running.
 - **The template list stops being an enum in a reference file.** `<scaffold>` names a path.
+
+**Four revisions from §8's worked examples** (P35), each of which the five patterns forced:
+
+- `depends-on` is a **comma list**; the graph is a DAG. Item 43's validation — acyclic, every layer
+  reachable, no task stranded — stops being nice-to-have and becomes the thing that makes a
+  hand-written graph safe.
+- `<layers applies-to="…">` instantiates a graph **per matching directory**, for microservices and
+  for multi-platform mobile. A monolith declares one unscoped block and never meets the feature.
+- `<testing>` and `<task-limits>` take **scoped overrides**, using the same `fileMatch` mechanism
+  this item already borrowed for `<banned>`. A monolithic SPA needs two runners, so this is not an
+  exotic requirement.
+- `<repo-structure>` is declared rather than assumed (item 53).
 
 **Guard it the way this repository has learned to (S3 / P16):** a script parses `<rules>`, and
 `/breakdown` refuses in the `resolve-output.sh` idiom if a rule file is present and unparseable.
@@ -1800,6 +1888,11 @@ both: `toolchain_version` for provenance, `schema_version` for compatibility. It
 reads the second. The first cannot answer the question it is being asked, because a patch release
 changes it without changing anything about how an artefact should be read.
 
+**It also gives the graph validator something to validate against.** P35 makes `<layers>` a DAG
+with comma-list edges and optional per-directory instantiation, all hand-written. The fixture pair
+is where *acyclic, every layer reachable, no task stranded* is exercised on a graph somebody
+actually wrote rather than on the shipped default.
+
 **Three things become testable that are not testable today:**
 
 - **Item 41's migration gets a golden test.** Run the migration over `schema-1`, assert the result
@@ -2058,6 +2151,70 @@ The cost is one `test -f` and a sentence. The benefit is that the two paths stop
 whether knowing the project matters, which is item 50's parity check applied to the thing that
 prompted it.
 
+**53. Declare the repository structure, and refuse `multi-repo` at `/breakdown`.**
+*Addresses P36. **Decided: multi-repo is out of scope.***
+
+```xml
+<repo-structure>single|monorepo|multi-repo</repo-structure>
+```
+
+| Value | Meaning | Behaviour |
+|---|---|---|
+| `single` | one repository, one component | supported; the default when absent |
+| `monorepo` | one repository, several components | supported; enables `applies-to` (28) and `cwd` (54) |
+| `multi-repo` | several repositories | **refused at `/breakdown`, with the reason** |
+
+**The refusal is the feature.** The assumption is already there and already enforced —
+`create-worktree.sh` will not accept a subdirectory — but it fires during batch execution, several
+phases after the layout was knowable. A project split repo-per-service currently gets a layer plan,
+a manifest and a full task set before anything objects, and then fails with a message about
+worktrees that does not name the actual cause. Refusing in Phase 1, in the `resolve-output.sh`
+idiom, converts a confusing late failure into an accurate early one.
+
+**Say why, not just no.** The refusal should state what would be needed rather than implying the
+layout is wrong: a *target* model with dependencies, so contracts land in one repository before
+consumers in another, and an explicit account of the window in which a change spanning three
+repositories has merged into one of them. That window is a property repo-per-service **chose** — it
+is why those teams version contracts — so supporting it means modelling the window, not removing
+it. That is a scope decision comparable in size to §5 I, and it is deliberately not taken here.
+
+*It is not a git limitation, and the refusal should not pretend otherwise.* A repo-per-service
+layout would create a worktree per repository, which is ordinary. What is missing is the data
+model, not the mechanism.
+
+**54. A working directory for verification.**
+*Addresses P36's monorepo half. Small, and needed whatever happens to 53.*
+
+`execute-verify` does `cd {worktree_path}` and nothing more, so every verification command runs
+from the repository root. In a monorepo, a task in one package must therefore hand-write
+`cd packages/billing && pytest` into each of its steps, and the task format has no working-directory
+concept at all.
+
+```xml
+<meta>
+  <cwd>packages/billing</cwd>     <!-- optional; relative to the worktree root -->
+</meta>
+```
+
+`execute-verify` and the implementer both honour it. This is where P18's fifth vendored opinion —
+*verification is runnable shell commands* — meets repo structure: the opinion is fine, and it
+quietly assumed there was one place to run them from.
+
+**55. The ledger states what it verified.**
+*Addresses P37. A wording change with a principle behind it.*
+
+`execute-verify` runs each task's **own declared** steps in its worktree before merge — real
+verification by a separate agent on a different model, which is more than the field does (S1). The
+ledger then records the merge, and a reader supplies the rest.
+
+So record the narrower true thing: **`verified: task-steps`** beside the merge SHA, rather than a
+bare completion. In any project with a build pipeline, a task that merges green and breaks CI is
+currently indistinguishable from one that did not.
+
+Running the project's pipeline stays out of scope — it belongs to CI, and `/execute` has no
+business owning it. What is in scope is not implying it ran. S2 is *"state is derived from git,
+never asserted"*; this is the same rule applied to the claim rather than to the count.
+
 ---
 
 ## 6. Summary
@@ -2116,6 +2273,9 @@ prompted it.
 | 50 | Parity as a regression check | **P30** | — |
 | 51 | A Design phase in `/prd`, between 3 and 4 | **P17, P25** | **Correctness** |
 | 52 | A context check at `/prd` initialization | **P34** | **Correctness** |
+| 53 | Declare `<repo-structure>`; refuse `multi-repo` early | **P36** | **Correctness** |
+| 54 | A working directory for verification | P36 | Correctness |
+| 55 | The ledger states what it verified | **P37** | Consistency |
 
 **Suggested order.** 21 first — measure P1 before changing it. Then 18, since nothing else can be
 tested end to end on a realistic PRD until analysis fits in context.
@@ -2147,6 +2307,11 @@ far cheaper than a second sweep.
 
 **39 can go immediately, ahead of everything.** It depends on nothing in this plan, it is a
 reference check over files that already exist, and 157 unchecked citations is a defect today.
+
+**53, 54 and 55 are small and independent.** 53 is a declaration plus a refusal in the same idiom
+Phase 1 already uses; 54 is one optional element and two readers; 55 is a field in the ledger.
+None depends on anything else in the plan, and 54 is worth doing early because monorepo
+verification is wrong today.
 
 **51 and 52 come with the schema block, not after it.** Item 51 is the producer for the artefact
 items 25 and 28 define, so defining those without it leaves a file nothing writes; and 52 is a
@@ -2308,3 +2473,162 @@ is a paragraph of definition in items 25 and 28, costs nothing, and should land 
    fixture through the default graph and through a deliberately poor one, and compare the task
    sets.** If quality tracks the graph, it is load-bearing and the default must be protected. If it
    does not, the graph was convention and P18 costs nothing.
+
+---
+
+## 8. Appendix — `<rules>` across five architecture patterns
+
+These are the worked examples that produced **P35**, and they are kept for one reason: they are the
+cheapest available test that item 28's schema still generalises. **Anyone changing `<rules>` should
+re-express all five.** Three of the schema's leaves were CRUD-shaped until these were written, and
+the defect that mattered most was exposed by the *default* case, not by an exotic one.
+
+Only the distinguishing parts are shown; `<scaffold>` and boilerplate are elided.
+
+### 8.1 Monolithic SPA — a chain, and two toolchains
+
+```xml
+<layers>
+  <layer id="0" name="setup"       depends-on=""/>
+  <layer id="1" name="foundation"  depends-on="0"/>   <!-- models, migrations -->
+  <layer id="2" name="backend"     depends-on="1"/>
+  <layer id="3" name="frontend"    depends-on="2"/>
+  <layer id="4" name="integration" depends-on="2,3"/>
+</layers>
+<testing default="tdd" runner="pytest">
+  <policy match="web/**"  kind="component" runner="vitest"/>
+  <policy match="e2e/**"  kind="end-to-end" runner="playwright"/>
+</testing>
+<registries><api/><schema/></registries>
+<repo-structure>single</repo-structure>
+```
+
+The shipped default, and **it already needs two runners.** A single `runner="pytest"` cannot
+describe the case the toolchain was built for, which is why P35 grades that leaf as wrong rather
+than merely narrow.
+
+### 8.2 Event-driven — a diamond
+
+```xml
+<layers>
+  <layer id="1" name="contracts"      depends-on=""/>
+  <layer id="2" name="infrastructure" depends-on="1"/>   <!-- topics, DLQs, retention -->
+  <layer id="3" name="producers"      depends-on="1,2"/>
+  <layer id="4" name="consumers"      depends-on="1,2"/>  <!-- independent of producers -->
+  <layer id="5" name="projections"    depends-on="1,2"/>
+  <layer id="6" name="orchestration"  depends-on="3,4"/>  <!-- sagas -->
+  <layer id="7" name="integration"    depends-on="3,4,5,6"/>
+</layers>
+<testing default="tdd" runner="pytest">
+  <policy match="contracts/**"   kind="schema-compatibility"/>
+  <policy match="consumers/**"   kind="consumer-contract"/>
+  <policy match="projections/**" kind="replay"/>
+</testing>
+<task-limits default="3">
+  <limit match="contracts/**" max-files="5"/>   <!-- schema + producer + consumer + projection + test -->
+</task-limits>
+<banned>
+  <pattern reason="ADR-004: contexts communicate by event, never by call">
+    HTTP or gRPC client targeting another context's service
+  </pattern>
+  <pattern reason="published events are immutable; add a version, never edit">
+    modifying an existing event schema in place
+  </pattern>
+  <pattern reason="ADR-011: consumers must tolerate replay">
+    handler with side effects that are not idempotent
+  </pattern>
+</banned>
+<registries><event/></registries>
+```
+
+Producers and consumers are **siblings**, which is the whole point of the architecture and the
+shape a chain cannot express. This is what forced `depends-on` to be a comma list.
+
+### 8.3 Microservices — the same graph, once per service
+
+```xml
+<layers>                                  <!-- shared -->
+  <layer id="1" name="contracts"   depends-on=""/>
+  <layer id="9" name="gateway"     depends-on="1"/>
+  <layer id="10" name="integration" depends-on="1,9"/>
+</layers>
+<layers applies-to="services/*/">          <!-- instantiated per service -->
+  <layer id="1" name="data"  depends-on=""/>
+  <layer id="2" name="logic" depends-on="1"/>
+  <layer id="3" name="api"   depends-on="2"/>
+</layers>
+<banned>
+  <pattern reason="ADR-002: no shared datastore across services">
+    connection string pointing at another service's database
+  </pattern>
+</banned>
+<registries><service/><api/></registries>
+<repo-structure>monorepo</repo-structure>   <!-- multi-repo is refused: item 53 -->
+```
+
+**Flattening this is not a compromise, it is wrong.** One global graph would order every service's
+data layer before any service's API, destroying the independent deployability the architecture was
+chosen for. This is what forced `applies-to`.
+
+### 8.4 CLI — nearly no layers at all
+
+```xml
+<layers>
+  <layer id="1" name="core"     depends-on=""/>
+  <layer id="2" name="commands" depends-on="1"/>
+</layers>
+<testing default="tdd" runner="pytest">
+  <policy match="tests/cli/**" kind="golden"/>    <!-- stdout is a contract -->
+</testing>
+<banned>
+  <pattern reason="core must be usable as a library">network access from core/**</pattern>
+  <pattern reason="a CLI must not surprise its caller">writes outside the working directory</pattern>
+</banned>
+<registries><command/></registries>       <!-- subcommands, flags, exit codes, output format -->
+```
+
+The degenerate case, and it needs **no special handling**: item 31 collapses a single-tier
+single-task plan on its own. Worth keeping as an example precisely because nothing breaks — a
+schema that only works for elaborate architectures would be its own kind of failure.
+
+### 8.5 Mobile — a chain per platform, plus release constraints
+
+```xml
+<layers applies-to="platforms/*/">
+  <layer id="1" name="models"      depends-on=""/>
+  <layer id="2" name="data"        depends-on="1"/>   <!-- local store + sync -->
+  <layer id="3" name="view-models" depends-on="2"/>
+  <layer id="4" name="screens"     depends-on="3"/>
+  <layer id="5" name="navigation"  depends-on="4"/>
+</layers>
+<testing default="tdd" runner="xctest">
+  <policy match="**/screens/**" kind="widget"/>
+  <policy match="e2e/**"        kind="device-matrix"/>
+</testing>
+<banned>
+  <pattern reason="ANR: the main thread is not for I/O">blocking I/O on the main thread</pattern>
+  <pattern reason="the bundle is readable by anyone who downloads it">secrets in the app bundle</pattern>
+  <pattern reason="offline-first is a product requirement">network call with no offline fallback</pattern>
+</banned>
+<registries><screen/><schema/></registries>   <!-- navigation graph + on-device store -->
+```
+
+Two platforms are two instantiations of one graph — the same `applies-to` that microservices need,
+for an unrelated reason. **The one thing with nowhere to go is the release constraint** — minimum
+OS version, signing identity, store submission. It is arguably `<scaffold>`'s business, and it is
+the weakest of P35's findings because it is genuinely absent rather than mis-shaped.
+
+### 8.6 What the exercise established
+
+| | Held up | Broke |
+|---|---|---|
+| `<layers>` as a DAG | chain, diamond, degenerate | one graph per project (`applies-to`) |
+| `<banned>` | all five, unchanged | — |
+| `<scaffold>` | all five, with `none` | release/target constraints |
+| `<testing>` | — | one runner, one policy |
+| `<task-limits>` | — | one limit |
+| Registries | monolithic SPA | the other four |
+
+**The bones are right and three leaves were CRUD-shaped.** Nothing here argues against item 28 — it
+argues that item 28 stopped one level above where the vendoring actually lived, and that the way to
+find out was to write the thing out five times.
