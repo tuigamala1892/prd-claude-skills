@@ -33,7 +33,7 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 |---|---|---|
 | **23a** — `schema_version` mismatch | **Landed** 2026-08-25 | `78b8104` |
 | **60** — `execute-layer` hand-maintains a derived file | **Landed** 2026-08-25 | `e00c3ae` |
-| **39** — validate references leaving the PRD | Not started | — |
+| **39** — validate references leaving the PRD | **Landed** 2026-08-25, *narrowed* | `e112ec8` |
 | **54** — a working directory for verification | Not started | — |
 | **55** — the ledger states what it verified | Not started | — |
 | **42** — rename with a checkable postcondition | Not started | — |
@@ -42,7 +42,7 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks passing at branch point → **40** after 23a.
+**Suite:** 39 checks passing at branch point → **40** after 23a → **42** after 39.
 
 ---
 
@@ -183,3 +183,79 @@ FAIL  execute-state.json is written by a script, never by hand   [F21]
 whole phase is about:* the `git stash` that was supposed to restore the unfixed file used the
 wrong flag order, did nothing, and the suite reported **pass** — against the already-fixed file.
 A green result whose mechanism has not been shown is not a result.
+
+---
+
+## 39 — 180 references that left the PRD and were never followed
+
+**Commit:** `e112ec8` · **Addresses:** P24 · **Files:**
+`skills/breakdown/scripts/check-references.py` (new), `skills/breakdown/SKILL.md`,
+`commands/prd.md`, `tests/test_toolchain.py`
+
+### What was built
+
+`check-references.py <prd-dir> [--adr-dir DIR] [--questions FILE] [--strict] [--quiet]`.
+
+| Reference | Resolves against | Dangling → | Stale → |
+|---|---|---|---|
+| `ADR-NNN` | the decision directory | exit 1 | reported with its successor |
+| `OQ-NNN` | the open-questions register | exit 1 | reported with what resolved it |
+| `**Drives:**` links | the feature the record names | exit 1 | — |
+
+**Superseded and resolved do not refuse.** Both artefacts still exist; a feature citing one is a
+judgement call, not a defect. `--strict` promotes them for a caller that wants it.
+
+**Nothing is ever written.** The register is human-maintained and outlives any one PRD — item
+39's own decision, restated in the script so the next reader does not "fix" it.
+
+### Deviation from the plan: narrowed, and the number is stated
+
+Item 39 says *"every `ADR-NNN`, `OQ-NNN` and principle citation resolves."* **Principle citations
+are not checked** — 10 of the corpus's 190 references. A principle has nowhere to live until item
+28 gives `architecture.md` its `<principles>` section (item 37 routes them there explicitly), so
+there is no target to resolve against. Validating against a file that does not exist yet is the
+defect this plan is about.
+
+So: **180 of 190 covered, 10 deferred to Phase 3.** Written into the script's docstring under
+*WHAT IS NOT CHECKED, AND WHY* rather than left as a silent gap — a validator quietly skipping a
+class of input is worse than one that says it skips it.
+
+### The other deviation: it was wired in, which item 39 does not mention
+
+A script nothing invokes is the producer-without-a-reader this whole plan exists to describe, so
+shipping one would have been self-refuting. Two callers, and they are deliberately asymmetric —
+§4.3's rule that consumer-side validation refuses and producer-side is early warning:
+
+- **`/breakdown` Phase 1, step 9** — runs it before Phase 2 reads the PRD, and **stops** on exit 1.
+- **`/prd` Phase 6** — reports and offers to fix, while the author who knows the answer is still
+  in the conversation.
+
+`/prd` invokes it as `${CLAUDE_PLUGIN_ROOT}/skills/.../check-references.py {prd_dir}`, passing the
+path **as an argument**: OQ1's probe established that the variable is expanded where the command
+is written and is *not* exported to the spawned shell. A check asserts that exact string, because
+the failure mode is silent — a script that cannot find its own path just does not run.
+
+### Verification
+
+Two checks, both `finding="P24"`, and the first is **the suite's first that runs a script rather
+than reading one**. That is safe in a way running a skill is not: this one reads a directory and
+returns an exit code, and creates nothing. It is also necessary — *"the script mentions ADR"* is a
+property every useless validator also has.
+
+It builds a temp tree with three planted dangling references (a missing record, a missing
+question, a `**Drives:**` link to a deleted feature), one superseded record, one resolved
+question, and asserts: exit 1; each dangling reference named as written with a file and line; the
+supersession and resolution reported but not refusing; then repairs the three and asserts exit 0
+on the same tree; then asserts that citations with **no register found at all** are an error
+naming the flag to pass, rather than a quiet pass.
+
+**Mutation-tested.** A build of the script returning 0 instead of 1 on errors makes the check fail
+with *"a PRD with three dangling references exited 0"*. The check has been watched failing for the
+reason it exists.
+
+### A defect in my own first output, worth recording
+
+The first run reported `ADR-7` for a citation written `ADR-007` — leading zeros were being
+stripped for matching and then reused for display, sending a reader looking for a string that is
+not in the file. Fixed by keeping the as-written form beside the match key; there is now an
+assertion for it.

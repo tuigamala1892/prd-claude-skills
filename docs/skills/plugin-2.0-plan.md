@@ -1993,6 +1993,12 @@ writing into a document it does not own. So: validate that citations resolve, re
 a question already closed, and never write. *Stated here because a consumer with no producer should
 be deliberate or fixed, and this one is deliberate.*
 
+**Principle citations are excluded, and the exclusion is the honest part.** A principle has no
+home until item 28 gives `architecture.md` its `<principles>` section (item 37), so there is
+nothing for a citation to resolve against and validating one would assert a file that does not
+exist. That is 10 of the 190; the other **180 are checked**, and the script says which it skips
+rather than skipping quietly. The remainder lands with Phase 3, not here.
+
 Cheap, and **190 references currently go unchecked**. This is also the minimum that makes the
 decision-record track useful even if 35, 36 and 38 are never switched on: a dangling reference in
 a feature that `/breakdown` is about to turn into tasks is a defect whether or not the design
