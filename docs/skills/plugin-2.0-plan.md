@@ -800,7 +800,7 @@ The five values, defined — and the definitions go **in the template**, where t
 |---|---|---|
 | `tbd` | No criteria written. A name and an intent. | — |
 | `in-progress` | Criteria exist; the feature is deliberately being held short of `defined`. | ≥1 criterion |
-| `defined` | Criteria cover the edge cases — *measured* as EARS pattern coverage, not asserted; notes carry the data model and relationships. | ≥1 `unwanted-behaviour` criterion + structured notes |
+| `defined` | Criteria cover the edge cases — *measured* as EARS pattern coverage, not asserted; notes carry the data model; intent is stated. | `<user-story>` + ≥1 `unwanted-behaviour` criterion + `<data-model>` |
 | `excluded` | Won't-have. Deliberately not built. | `<rationale>` (adopts P13) |
 | `superseded` | Merged into another feature; file retained as a pointer. | successor link; **removed from `index.md`** |
 
@@ -895,6 +895,10 @@ failure mode this document has no other way to detect.
     <!-- status = how completely this feature is DEFINED, not how far it is BUILT -->
   </meta>
 
+  <user-story>                               <!-- intent, before its elaboration -->
+  As a {{actor}}, I want {{capability}}, so that {{benefit}}.
+  </user-story>
+
   <description>...</description>
 
   <acceptance-criteria>
@@ -918,6 +922,33 @@ failure mode this document has no other way to detect.
   <superseded-by slug="..."/>               <!-- required when status=superseded -->
 </feature>
 ```
+
+**`<user-story>` is new, and the corpus is the argument for it.** Measured across the 64 features:
+**0** descriptions use *"As a…"*, **4** say *"so that"*, and **44 name no user at all**. This is not
+formalising something authors already do — it is closing a gap that is nearly total, and the missing
+half is the *benefit*, which is what MoSCoW is judged on.
+
+**A separate element, not part of `<description>`.** Item 40's test 1 is *about* the description —
+scope, and the boundary naming who holds each excluded part. Intent and elaboration are different
+jobs, and one element serving two tests serves neither. The story goes first because the
+description elaborates it.
+
+**Prose with a three-part convention, not parsed attributes** (§4.3). No consumer needs to
+*understand* a user story: item 8's agent could use the persona and MoSCoW is argued from the
+benefit, but those are *could use*, not *must parse*. Locate it, check its shape, leave it in prose.
+
+**The actor may be a consuming feature, not only a person.** Five reference-data features have no
+human user, and forcing one yields *"As a system, I want…"* — the degenerate case that teaches
+people to stop taking the field seriously. *"As **Best Value Engine**, I want price bands per
+venue, so that I can compare offers without re-deriving them"* is a better story **and** it forces
+a reference-data feature to name who consumes it, which is item 40's test 7 arriving from the other
+direction. The features least able to state a human benefit are exactly the ones whose consumers
+are least clear.
+
+**Required for `defined`, not for `tbd`** (item 40, test 8). That means **34 stories now, not 64**;
+the rest acquire one on promotion, and early authoring stays cheap. It is **new content, not a
+transformation**, so it adds nothing to item 41 — this is authoring work, and item 8's agent can
+propose a draft from the description, which it already reads.
 
 **2. Give `<notes>` an internal shape — two elements, not three.**
 *Narrowed by §4.3 (A10/D2).*
@@ -1078,6 +1109,8 @@ Today Phase 6 asks the model four prose questions about the tech stack. It gains
 - **no reference anywhere to a slug that has no file**, which is the postcondition a rename has to
   satisfy and currently does not (P27)
 - criterion `id` uniqueness within a feature
+- `<user-story>` present on every `defined` feature, in three parts, with a *"so that"* clause that
+  is not a restatement of the *"I want"* clause (item 40, test 8)
 - `excluded` without `<rationale>`; `superseded` without a successor or still present in the index
 - **EARS pattern coverage** per feature (item 33): report any `defined` feature with no
   `unwanted-behaviour` criterion, and any criterion whose `pattern` attribute is missing
@@ -1111,6 +1144,9 @@ does not think to add. A same-persona agent would deepen the bias; an adversaria
   criteria only, never a rewritten file.
 - Persona: a QA lead trying to find the case the author missed — edge cases, empty and error
   states, the negative assertion, the thing that must *not* happen.
+- It also **drafts the `<user-story>`** from the description, for the same reason it drafts
+  criteria: it has already read the feature, and 44 of 64 features name no user for a proposer to
+  start from. The author accepts or rejects, as everywhere else in this item.
 - **Its checklist is the six EARS patterns** (item 33), which turns a vague brief into a specific
   question: which patterns are unrepresented here? A feature with fifteen `event-driven` criteria
   and no `unwanted-behaviour` one has a named gap rather than a hunch, and P23 says that describes
@@ -1953,9 +1989,16 @@ applied one at a time**, split by what a script can settle and what needs a read
 | 5 | External dependencies as providers with roles, not brand names; and what they gate | partly — presence only |
 | 6 | Cited decision records are **discharged**, not merely cited: their obligations appear as criteria | partly — citation vs criteria |
 | 7 | A relationships list **in both directions** — outbound and inbound | **yes** |
+| 8 | A `<user-story>` naming an actor, a capability and a **benefit** — where the actor may be a consuming feature | partly — shape is mechanical, substance is not |
 
 Test 7's inbound half is the one that gets skipped and the one that catches contract gaps, which
 is why it is mechanical and why it is worth running first.
+
+**Test 8 has one cheap screen and no more.** A story degrades into *"As a user, I want X, so that I
+can X"*, and the tautology is catchable: **the "so that" clause must not merely restate the "I
+want" clause.** That is crude, it catches only the worst case, and it is worth having because the
+worst case is the common one. Everything beyond it — is this a real benefit, is this the right
+actor — is judgement, and sits with tests 1 and 3.
 
 **The contract rule is the highest-yield check, and it is a script.** *Every expectation another
 feature places on this one must be discharged by something in this one.* Grep the feature's slug

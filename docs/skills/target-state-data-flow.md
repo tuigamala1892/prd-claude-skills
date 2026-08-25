@@ -117,7 +117,8 @@ User idea ───────────────────────�
       │  prd-criteria-author  (8, 40) │          │  Phase 6   CHECK        │
       │  agent · context: fork        │          │  check-prd.py  (6, 9)   │
       │                               │          │                         │
-      │  mode: propose-criteria       │          │  · derive a status      │
+      │  mode: propose-criteria       │
+      │    + drafts <user-story>      │          │  · derive a status      │
       │    EARS patterns unrepresented│          │    CEILING, not a value │
       │  mode: review-definition      │          │  · EARS pattern cover   │
       │    the seven tests            │          │  · index ↔ features/    │
@@ -147,7 +148,8 @@ User idea ───────────────────────�
    │                            <authoring-gaps> DERIVED from features' <gaps>
    │                            <next-steps kind="…">, <risks>, <open-questions href=…>
    └── features/
-       └── {feature}.md    ◄── <definition>, EARS criteria (33) with P0|P1|P2 (34),
+       └── {feature}.md    ◄── <user-story> (1, 40), <definition>,
+                                EARS criteria (33) with P0|P1|P2 (34),
                                 <gaps> (29), <notes><data-model> (2),
                                 <architecturally-significant> (35), <depends-on> (27)
                                 no <phases> — retired to priority + gaps (5)
