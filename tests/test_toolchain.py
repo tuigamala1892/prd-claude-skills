@@ -507,8 +507,12 @@ def _():
     # Nobody else may *mutate* it. Reading is fine and sometimes necessary; `rm -f` in
     # --reset is fine. An assignment, an append or a delete into its fields is not -- that
     # is the hand-maintenance this finding is about.
+    # Any field, not a list of seven. The allowlist let `state["current_batch"] = n` through
+    # for as long as that field existed and for two schema revisions after it stopped -- and
+    # the whole point of the finding is that the file is derived, which is true of every key
+    # in it including ones nobody has invented yet.
     mutation = re.compile(
-        r'state\[["\'](tasks|metrics|completed|merge_queue|layers|abandoned|failed)["\']\]'
+        r'state\[["\'][^"\']+["\']\]'
         r'.*?(=(?!=)|\.append\(|\.pop\(|\.extend\()'
         r'|^\s*del\s+state\[')
     bad = []
