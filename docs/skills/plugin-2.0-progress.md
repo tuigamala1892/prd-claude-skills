@@ -35,14 +35,14 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | **60** — `execute-layer` hand-maintains a derived file | **Landed** 2026-08-25 | `e00c3ae` |
 | **39** — validate references leaving the PRD | **Landed** 2026-08-25, *narrowed* | `e112ec8` |
 | **54** — a working directory for verification | **Landed** 2026-08-25 | `fce02c9` |
-| **55** — the ledger states what it verified | Not started | — |
+| **55** — the ledger states what it verified | **Landed** 2026-08-25 | `2b12720` |
 | **42** — rename with a checkable postcondition | Not started | — |
 | **21** — runtime test for P1, and the authoring baseline | Not started | — |
 | **9** — `/prd`'s prose guards become scripts | Not started | — |
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54).
+**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55).
 
 ---
 
@@ -325,3 +325,64 @@ had not been shown. The first was a `git stash` that silently did nothing (item 
 Mutation-testing an **uncommitted** file must not be undone with `git checkout -- <file>`. Doing
 that here reverted `execute-verify/SKILL.md` to HEAD and discarded the item's real edits along
 with the mutation; they had to be rewritten. Copy the file aside and copy it back.
+
+---
+
+## 55 — the ledger recorded *that* a task was verified, not *what* was verified
+
+**Commit:** `2b12720` · **Addresses:** P37 · **Files:**
+`skills/execute-merge/scripts/record-task.sh`, `skills/execute-merge/SKILL.md`,
+`skills/execute/SKILL.md`, `tests/test_toolchain.py`
+
+### What changed
+
+`"verified":true` → `"verified":"task-steps"`. One string.
+
+What `execute-verify` actually runs is the task's own `<verification>` block, in its worktree, by
+a separate agent on a different model — real verification, and more than the field does. The
+boolean invited the wider reading, and in any project with a build pipeline a task that merges
+green and breaks CI was indistinguishable from one that did not.
+
+### Not a schema break, and checked rather than assumed
+
+Nothing read the old field. `ledger-status.sh` computes its own `verified` **count** from git
+reachability — a different quantity that happens to share the word — and `write-state.py` reads
+`task_id`, `commit`, `at` and `attempts`. Grepped for readers before changing the value, because
+a field with no reader and a field with a reader you did not find look identical from the writer.
+
+### The half that reaches a person
+
+The report is where the implication actually lands, so the completion block now carries:
+
+```
+Total: 44/44 tasks completed
+Verified: each task's own declared steps, in its worktree, before merge
+Not run: the project's build or test suite -- that belongs to CI
+```
+
+with a note that both added lines are load-bearing and must not be trimmed as boilerplate.
+Running the project's pipeline stays out of scope — `/execute` has no business owning it. **Not
+implying it ran is a different question**, and this is the answer to that one.
+
+### Verification
+
+The check **runs `record-task.sh`** against a real commit in a temp repository and reads the bytes
+it appended, rather than grepping the script. It also asserts the rule the new field leans on: a
+commit that does not exist is still refused, and nothing is appended. A *named* verification of a
+merge that never happened would be worse than the boolean it replaced.
+
+**Three mutants fail it**, and the third is the one that matters:
+
+| Mutant | Caught by |
+|---|---|
+| `"verified":true` | the static assertion |
+| report lines removed | the second check |
+| `"verified":"everything"` | **the runtime assertion** — it passes the static one |
+
+That third mutant is why the behavioural half is worth its cost: it proves the runtime assertion
+is doing work rather than sitting dead behind the grep that precedes it.
+
+### Deviation from the plan
+
+None of substance. The item specified the field and the wording; the report lines and the
+refuses-a-missing-commit assertion are the same idea carried to where it is read.
