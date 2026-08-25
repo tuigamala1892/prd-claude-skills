@@ -23,6 +23,20 @@ generated task to the feature it came from is a string match, and a string match
 when the string cannot occur by coincidence. A task about logging might say "telemetry". None
 of them will say "quokka".
 
+WHAT THIS MEASUREMENT CANNOT RULE OUT
+
+The run needs `--plugin-dir` pointed at this checkout, so the agent under test *can* read this
+file and learn which token the grader looks for. The prompt never mentions the probe, and the
+workspace is the working directory, but the possibility cannot be removed while the grader and
+the subject share a filesystem. A clean `exit 0` therefore has to be read with that in mind --
+it is weak evidence that the toolchain filters, and strong evidence only when paired with a
+transcript showing *why* the rejected feature was dropped.
+
+There is a second and more interesting confound, and it is not a defect: an agent reads the PRD,
+sees `priority="wont-have"`, and may skip that feature on its own judgement. That is still a
+finding rather than noise -- it means the behaviour is model-dependent rather than enforced,
+which is precisely what item 13 exists to fix.
+
 WHAT COUNTS AS A RESULT
 
   exit 0   no task derives from the won't-have feature
@@ -131,9 +145,17 @@ def run(model, timeout):
     print(f"workspace: {work}")
     print(f"running /breakdown on {model}; this generates real files and takes a few minutes")
 
+    # --add-dir is mandatory and was missing from the first version of this script: the
+    # workspace comes from mkdtemp() with a random suffix, so it can never be pre-authorised,
+    # and every read and mkdir under it was refused. `--permission-mode acceptEdits`
+    # auto-accepts edits *within* allowed directories; it does not widen the allowlist.
+    #
+    # cwd is the workspace too, so the run's own working directory is the thing under test
+    # rather than this checkout.
     proc = subprocess.run(
         ["claude", "-p", prompt, "--model", model, "--plugin-dir", REPO,
-         "--permission-mode", "acceptEdits"],
+         "--add-dir", work, "--permission-mode", "acceptEdits"],
+        cwd=work,
         capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
 
     log = os.path.join(work, "breakdown-output.txt")

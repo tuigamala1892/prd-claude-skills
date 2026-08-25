@@ -1369,6 +1369,18 @@ one and it is not a measurement of quality — but the plan adds a phase, replac
 format, and re-annotates 550 criteria, and *"is this still tolerable to write?"* currently has no
 answer at all. One number beats none, and the fixture is where it costs nothing to take.
 
+**Split into two halves when built, because only one of them is automatable.** `probe-p1.py
+--baseline` takes the *size* — words, criteria and elements per feature — which is the instrument
+the after-measurement compares against, and it is worth having on record before items 33 and 34
+move it. The *timing* is a stopwatch against a person and no script can take it; the probe says so
+in its own output rather than reporting the size half as though it were the whole. Whoever runs
+the after-measurement records both numbers together.
+
+**The probe's third exit code is the one to keep.** A run that generates no tasks, or none from
+the must-have, exits `INVALID` rather than clean: *"no won't-have tasks"* is vacuous when nothing
+was generated at all. That guard is not hypothetical — two checks in Phase 1 passed against
+nothing before it was added to them.
+
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
 weeks. A single `check-artefacts.py` validating `index.md`, `what-next.md` and every feature file
