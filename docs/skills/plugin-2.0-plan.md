@@ -1,6 +1,9 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** Proposed. Nothing here is implemented yet.
+**Status:** In implementation as of 2026-08-25, on branch `phase-1-live-defects`. This document
+stays a **specification**; what has actually landed, and where the implementation departed from
+what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
+is implemented except what that file lists.
 **Date:** 2026-08-17
 **Subject:** what `/prd` and `/crd` write, and how much of it survives into `/breakdown` and `/execute`
 **Supersedes:** items **4.4** and **4.5** of [`toolchain-assessment-and-plan.md`](toolchain-assessment-and-plan.md), which are folded in below as items 12 and 18.
