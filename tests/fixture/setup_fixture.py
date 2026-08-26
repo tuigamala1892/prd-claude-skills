@@ -51,7 +51,12 @@ def rmtree(path):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-PRD_SRC = os.path.join(HERE, "prd")
+# The fixture PRD lives under the schema version it is written in (item 43). This is the
+# CURRENT one; when a schema-2 fixture exists, changing this line is how the end-to-end
+# fixture moves to it -- deliberately one line, and deliberately not a glob that would
+# silently pick whichever directory sorted last.
+PRD_SCHEMA = "schema-1"
+PRD_SRC = os.path.join(HERE, "prd", PRD_SCHEMA)
 SLUG = "link-shelf"
 
 

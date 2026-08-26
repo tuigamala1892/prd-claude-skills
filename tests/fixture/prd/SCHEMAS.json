@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Which PRD artefact schema versions the toolchain still claims to accept, and which one",
+    "is current. Item 43. Two rules keep this set from rotting:",
+    "",
+    "  1. One fixture per schema version the toolchain still ACCEPTS. Dropping read support",
+    "     drops the fixture -- otherwise the directory grows for ever and most of it is",
+    "     decoration.",
+    "  2. A non-current fixture is FROZEN. It changes only when the migration's expected",
+    "     output changes. If the fixture project needs a fourth feature to exercise",
+    "     something new, that is a reason to touch the current schema only. Maintaining the",
+    "     same project twice is the cost that makes people abandon versioned fixtures.",
+    "",
+    "The frozen hashes below are what enforces rule 2. They are not a security measure --",
+    "anyone can update them -- they are a speed bump that turns an accidental edit into a",
+    "failing check with a name on it.",
+    "",
+    "A non-current fixture is not decoration under these rules: it is the INPUT to item 41's",
+    "migration test and to item 24's compatibility comparison, so it is exercised on every",
+    "run rather than merely stored."
+  ],
+
+  "current": "schema-1",
+
+  "versions": {
+    "schema-1": {
+      "status": "current",
+      "description": "The schema as shipped in plugin 2.0.0: <criterion> with given/when/then, MoSCoW priority duplicated between index and feature file, <status> limited to the template enum.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": false,
+      "notes": "link-shelf is the §5.1 end-to-end fixture; staff-service is item 21's tier probe."
+    }
+  },
+
+  "planned": {
+    "schema-2": {
+      "arrives_with": ["item 1", "item 2", "item 5", "item 11", "item 33", "item 34", "item 35"],
+      "description": "Each Phase 4 schema item lands by ADDING its change to a schema-2 fixture beside schema-1, so the suite stays green through the transition instead of breaking in the same commit as the schema change.",
+      "unblocks": [
+        "item 41 -- run the migration over schema-1 and assert the result equals schema-2; a golden comparison catches losses nobody thought to assert",
+        "item 24 -- 'warn on mismatch, refuse on a known incompatibility' cannot be tested without an artefact of an older schema, and none exists in the repository today",
+        "backward-read behaviour -- whatever /breakdown should do with an older PRD becomes a decision with a test rather than an assumption"
+      ]
+    }
+  }
+}

@@ -60,7 +60,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
+FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "staff-service")
 
 # slug -> (tier, the token that cannot appear by accident)
 FEATURES = {

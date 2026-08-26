@@ -536,6 +536,105 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+def schema_registry():
+    path = os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json")
+    return path, json.load(open(path, encoding="utf-8"))
+
+
+@check("exactly one PRD schema is current, and each has its fixture", finding="P28")
+def _():
+    # Item 43. The fixture directory is versioned so that Phase 4's schema items can each land
+    # by ADDING a schema-2 fixture beside schema-1, instead of breaking the suite in the same
+    # commit as the schema change -- which is what items 1, 2, 5, 11, 33, 34 and 35 would
+    # otherwise each have to do.
+    path, reg = schema_registry()
+    assert os.path.isfile(path), "tests/fixture/prd/SCHEMAS.json is missing"
+
+    versions = reg.get("versions") or {}
+    assert versions, "the registry lists no schema versions"
+
+    current = [name for name, v in versions.items() if v.get("status") == "current"]
+    assert len(current) == 1, (
+        f"{len(current)} schemas are marked current ({current}); the end-to-end checks have "
+        f"to run against exactly one, and item 24's comparison needs to know which")
+    assert reg.get("current") == current[0], (
+        f"the registry's `current` field says {reg.get('current')!r} but the version marked "
+        f"current is {current[0]!r}")
+
+    # Rule 1: one fixture per version the toolchain still accepts. A listed version with no
+    # directory is a promise the repository cannot keep.
+    root = os.path.join(REPO, "tests", "fixture", "prd")
+    for name, v in versions.items():
+        d = os.path.join(root, name)
+        assert os.path.isdir(d), f"{name} is registered but {d} does not exist"
+        for project in v.get("projects") or []:
+            index = os.path.join(d, project, "index.md")
+            assert os.path.isfile(index), f"{name}/{project} has no index.md"
+
+    # And the reverse: a directory nobody registered is the decoration rule 1 exists to stop.
+    on_disk = {n for n in os.listdir(root)
+               if os.path.isdir(os.path.join(root, n)) and n.startswith("schema-")}
+    unregistered = sorted(on_disk - set(versions))
+    assert not unregistered, (
+        f"schema fixture directories exist that the registry does not list: {unregistered}. "
+        f"One fixture per accepted version -- an unlisted one is maintained by nobody")
+
+
+@check("a generated manifest carries both versions, and they are different questions",
+       finding="P28")
+def _():
+    # P28: `toolchain_version` is provenance, `schema_version` is compatibility. A patch
+    # release moves the first and not the second, which is why item 24's compatibility
+    # decision cannot read the first. Run the generator rather than reading it.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    root = tempfile.mkdtemp(prefix="prd-manifest-")
+    try:
+        layer = os.path.join(root, "0-setup")
+        os.makedirs(layer)
+        with open(os.path.join(layer, "L0-001-thing.xml"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write("<task><meta><id>L0-001</id><name>Thing</name>"
+                    "<layer>0-setup</layer></meta></task>\n")
+
+        p = subprocess.run([sys.executable, script, root], capture_output=True, text=True)
+        assert p.returncode == 0, f"build-manifest.py failed: {p.stderr}"
+        manifest = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+
+        assert "schema_version" in manifest, (
+            "the manifest carries no schema_version, so item 24 has nothing to compare and "
+            "'refuse on a known incompatibility' cannot be implemented (P28)")
+        assert "toolchain_version" in manifest, "the manifest lost its provenance stamp"
+        assert manifest["schema_version"] != manifest["toolchain_version"], (
+            "schema_version equals toolchain_version, which collapses the distinction P28 "
+            "exists to draw: a patch release must move one and not the other")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the golden pair exists: a fixture in the previous schema and the current one",
+       finding="P28", expect_fail="item 1")
+def _():
+    # The pair is what makes item 41's migration testable by COMPARISON -- run it over the old
+    # fixture, assert the result equals the new one -- and item 24 exercisable at all, since
+    # no artefact of an older schema exists anywhere in the repository today.
+    #
+    # Marked expect_fail because schema-2 arrives with Phase 4's first schema item, not with
+    # item 43. When it lands this reports FIXED and fails the run, which is the signal to
+    # delete the marker and write the migration comparison against it.
+    _path, reg = schema_registry()
+    versions = reg.get("versions") or {}
+    assert len(versions) >= 2, (
+        f"only {len(versions)} schema version(s) registered. A single version cannot be a "
+        f"golden pair: there is nothing to migrate FROM and nothing for item 24 to refuse")
+
+    frozen = [n for n, v in versions.items() if v.get("frozen")]
+    assert frozen, ("no non-current fixture is marked frozen; rule 2 says a superseded "
+                    "fixture changes only when the migration's expected output changes")
+
+
 @check("an oversized PRD is refused before a prompt is built", finding="P5")
 def _():
     # Item 18. Phase 2 used to send the whole PRD in one prompt -- ~174k tokens on the sample
@@ -716,7 +815,7 @@ def _():
     # generated tasks". The subject knew what was being measured and what a good answer
     # looked like, so the result was worthless. A fixture that describes the experiment is
     # part of the experiment.
-    probe = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
+    probe = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "staff-service")
     index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
 
     entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
@@ -841,7 +940,7 @@ def _():
 
     script = os.path.join(SKILLS, "breakdown", "scripts", "rename-feature.py")
     assert os.path.isfile(script), "skills/breakdown/scripts/rename-feature.py is missing"
-    src = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
+    src = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
     assert os.path.isdir(src), "the §5.1 fixture PRD is missing"
 
     root = tempfile.mkdtemp(prefix="prd-rename-")
@@ -2041,8 +2140,8 @@ def _():
     # The fixture is only useful if /breakdown can parse it. Validating here means a
     # drifting fixture fails the fast suite rather than an end-to-end run.
     import xml.etree.ElementTree as ET
-    base = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
-    assert os.path.isdir(base), "tests/fixture/prd/link-shelf is missing"
+    base = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
+    assert os.path.isdir(base), "tests/fixture/prd/schema-1/link-shelf is missing"
 
     root = ET.parse(os.path.join(base, "index.md")).getroot()
     assert root.tag == "prd", f"index.md root is <{root.tag}>, expected <prd>"
