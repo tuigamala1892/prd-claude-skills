@@ -123,17 +123,50 @@ Execute these phases in order:
 
 If analysis.json exists, skip this phase.
 
-**For PRD:**
-Invoke the `breakdown-analyze-prd` skill with the full PRD content.
+**For PRD — one index pass, then one pass per feature. Never the whole PRD in one prompt.**
 
-Pass the PRD XML content and request structured extraction of:
-- All features with priorities
-- Tech stack with versions
-- Implied data models
-- Implied API endpoints
-- Implied frontend components
+This used to say *"invoke `breakdown-analyze-prd` with the full PRD content"*. On a real corpus
+that is ~174k tokens in a single prompt to a 200k-window model, leaving no room for the
+structured extraction it was asked to produce — and with no size check, the failure mode was a
+silently truncated analysis that everything downstream is then built from (**P5**).
+
+**Step 1 — measure before sending anything:**
+
+```bash
+python {skill_dir}/scripts/check-prd-size.py {prd_dir}
+```
+
+- **Exit 0**: every prompt fits. Continue.
+- **Exit 1**: `REFUSED:` names the file and its size. **Stop and report it.** Do not send it
+  anyway and do not summarise the file to make it fit — there is no truncation that leaves the
+  analysis correct.
+
+**Step 2 — the index pass.** Invoke `breakdown-analyze-prd` with **`index.md` alone**, asking for:
+- All features with priorities, and the `file=` path of each feature's spec
+- Tech stack with versions, project type, project path (brownfield only)
 - External dependencies
 - Template path if specified
+
+It writes `{tasks_dir}/analysis.index.json`.
+
+**Step 3 — one pass per feature.** For each feature named in the index, invoke
+`breakdown-analyze-prd` again with **that one feature file**, asking for what only that feature
+implies:
+- Data models, API endpoints and frontend components implied by this feature
+- The feature's own acceptance criteria, carried rather than summarised
+
+Each writes `{tasks_dir}/analysis.feature.{slug}.json`. A feature file is read **once**, by the
+pass that owns it, and never as part of a larger blob.
+
+**Step 4 — merge.** Combine the index fragment and every feature fragment into
+`{tasks_dir}/analysis.json`, with the same shape Phase 3 already expects. Union the inferred
+models, endpoints and components, keeping each one's `inferred_from` so a later reader can tell
+which feature produced it. Do not re-infer during the merge: the merge is arithmetic, and any
+judgement in it belongs to the pass that had the feature file in front of it.
+
+**Why this is worth four steps.** Only Step 1 can refuse, and only Steps 2 and 3 ever see a
+prompt whose size is known in advance. `generate-tasks` later receives only the feature files
+for its batch, for the same reason.
 
 **For CRD:**
 Extract directly from CRD structure:

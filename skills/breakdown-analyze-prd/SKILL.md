@@ -11,11 +11,29 @@ You are analyzing a PRD (Product Requirements Document) to extract structured in
 
 ## Input
 
-The calling skill will provide the full PRD XML content.
+**One of two passes, never the whole PRD.** The caller states which, and gives you exactly one
+file's content:
+
+| Pass | Input | You write | Sections below |
+|---|---|---|---|
+| **index** | `index.md` alone | `analysis.index.json` | 1, 2, 6, 7 |
+| **feature** | one file from `features/` | `analysis.feature.{slug}.json` | 3, 4, 5, plus the feature's own criteria |
+
+If you are handed a whole PRD — an index *and* its feature files in one prompt — **stop and say
+so** rather than analysing it. That is the caller skipping Phase 2's split, and the result is the
+silent truncation this split exists to prevent (**P5**). The caller's own size check refuses
+before this point; reaching you unsplit means it was not run.
+
+**Your model is `claude-haiku-4-5`, and the split is what makes that adequate.** One feature file
+is a few thousand tokens; the corpus this skill used to be handed was ~174k. Do not treat the
+window as spare capacity to read more than you were given.
 
 ## Your Task
 
-Extract and structure the following information from the PRD:
+Extract and structure the information below **for the pass you were asked to do**. An index pass
+that infers data models is doing a feature pass's job on a file that does not contain the
+evidence, and a feature pass that re-lists the tech stack duplicates a fact the index already
+owns — two fragments disagreeing about one value is the drift the merge cannot resolve.
 
 ### 1. Features
 
@@ -70,6 +88,20 @@ If tech-stack references a template:
 - What the template provides (auth, database setup, etc.)
 
 ## Output Format
+
+**Which keys you emit depends on the pass.** The structure below is the merged shape; you write
+your half of it and the caller's Step 4 combines them.
+
+- **index pass** → `prd_meta`, `features`, `tech_stack`, `dependencies`, `template`. No
+  `data_models`, no `api_endpoints`, no `components` — `index.md` does not hold the evidence for
+  them, and inferring from a summary line is how a model gets invented that no feature asked for.
+- **feature pass** → `data_models`, `api_endpoints`, `components`, `acceptance_criteria`, each
+  carrying `"inferred_from": "<feature slug>"` so the merge can attribute every entry. Plus
+  `"feature": "<slug>"` at the top level, so a fragment is self-identifying.
+
+Every inferred entry **must** carry `inferred_from`. The merge unions fragments and cannot ask
+where an entry came from; an entry that cannot be attributed to a feature is one nobody can
+later check against the feature's own text.
 
 Return a JSON object with this structure:
 

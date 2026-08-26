@@ -536,6 +536,90 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("an oversized PRD is refused before a prompt is built", finding="P5")
+def _():
+    # Item 18. Phase 2 used to send the whole PRD in one prompt -- ~174k tokens on the sample
+    # corpus, to a 200k-window model, with no size check. The failure mode was a silently
+    # truncated analysis.json, and everything downstream is built from that file.
+    #
+    # The refusal is run against a synthetic oversize feature, because both in-repo fixtures
+    # are ~2k tokens and would pass whatever the script did.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-prd-size.py")
+    assert os.path.isfile(script), "check-prd-size.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-size-")
+    try:
+        prd = os.path.join(root, "big")
+        os.makedirs(os.path.join(prd, "features"))
+        open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd><meta><slug>big</slug></meta></prd>\n")
+        small = os.path.join(prd, "features", "small.md")
+        open(small, "w", encoding="utf-8", newline="\n").write("<feature/>\n" + "x " * 500)
+        huge = os.path.join(prd, "features", "huge.md")
+        open(huge, "w", encoding="utf-8", newline="\n").write("<feature/>\n" + "x " * 200_000)
+
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 1, f"an oversize feature was not refused (exit {p.returncode})"
+        assert "REFUSED" in p.stderr and "huge.md" in p.stderr, (
+            f"the refusal does not name the file that is too big:\n{p.stderr}")
+        assert "small.md" not in p.stderr, "a file within budget was named in the refusal"
+        # The contrast the finding is about must be reported, not just the per-prompt figure.
+        assert "whole corpus" in p.stdout, (
+            "the report does not say what one prompt would have carried before the split")
+
+        # Within budget, the same tree passes -- the guard must not refuse on total size, only
+        # on any single prompt. Splitting is exactly what makes a large corpus workable.
+        os.remove(huge)
+        for i in range(40):
+            open(os.path.join(prd, "features", f"f{i}.md"), "w", encoding="utf-8",
+                 newline="\n").write("<feature/>\n" + "x " * 20_000)
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 0, (
+            "a corpus that is large in TOTAL but fits per prompt was refused; that is the "
+            "case item 18 exists to make workable, not to block")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("Phase 2 analyses per feature, and says so where it is instructed", finding="P5")
+def _():
+    # The script can only guard what the skills actually do. These assert the split is
+    # specified at both ends -- the caller that fans out, and the skill that must refuse a
+    # whole PRD if one arrives anyway.
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+
+    assert "check-prd-size.py" in caller, "/breakdown never runs the size check"
+    # The INSTRUCTION must be gone; a quotation of it, under "this used to say", is how the
+    # file explains itself and must survive. The difference is grammatical -- an imperative
+    # line telling the reader to do it -- so test for that rather than for the words, or this
+    # check fails the moment someone documents the history it exists to enforce.
+    imperative = [ln for ln in caller.splitlines()
+                  if re.match(r"^\s*(?:[-*]\s*)?(?:\*\*)?Invoke\b", ln)
+                  and re.search(r"full PRD|whole PRD|entire PRD", ln, re.I)]
+    assert not imperative, (
+        "/breakdown still instructs sending the whole PRD in one prompt (P5):\n    "
+        + "\n    ".join(imperative))
+    assert re.search(r"index pass", caller, re.I) and re.search(r"per feature", caller, re.I), (
+        "Phase 2 does not describe the index pass and the per-feature fan-out")
+    assert "analysis.json" in caller, "Phase 2 no longer says where the merged analysis lands"
+
+    # Whitespace-normalised: a prose assertion that breaks when someone re-wraps a paragraph
+    # is a check pinned to formatting, which is the F3 mistake in miniature.
+    flat = " ".join(analyzer.split())
+    assert re.search(r"index\b.*\bfeature\b", flat, re.I), (
+        "analyze-prd does not distinguish its two passes")
+    assert re.search(r"stop and (say so|report)", flat, re.I), (
+        "analyze-prd does not refuse a whole PRD arriving unsplit, so the split is advisory")
+    assert "inferred_from" in analyzer, (
+        "feature fragments carry no attribution, so the merge cannot say which feature "
+        "produced an inferred model")
+
+
 @check("`/prd`'s overwrite guard is an exit code, not a paragraph", finding="P16")
 def _():
     # Item 9. Five prose guards in this repository became programs after being documented and
