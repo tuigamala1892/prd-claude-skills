@@ -1825,6 +1825,28 @@ def _():
                      + "\n    ".join(bad))
 
 
+@check("nothing tracked is also ignored", finding="F4")
+def _():
+    # `.gitignore` does not apply to files git already tracks, so a rule added after the fact
+    # silences the warning without removing the file. Four .pyc files rode along that way,
+    # under `__pycache__/` and `*.pyc` rules that had been correct the whole time -- and the
+    # F4 check above never saw them because it guards `skills/` and they were under `tests/`.
+    #
+    # This is the general form: ask git for the contradiction rather than enumerating the file
+    # types that might cause it.
+    p = subprocess.run(["git", "ls-files", "--cached", "--ignored", "--exclude-standard"],
+                       cwd=REPO, capture_output=True, text=True)
+    if p.returncode != 0:
+        # Not a git checkout (an export, a tarball). Nothing to assert, and failing here would
+        # be asserting a property of the packaging rather than of the toolchain.
+        return
+    tracked_and_ignored = [line for line in p.stdout.splitlines() if line.strip()]
+    assert not tracked_and_ignored, (
+        "these files are tracked AND matched by .gitignore, so the ignore rule is inert and "
+        "they keep committing:\n    " + "\n    ".join(tracked_and_ignored)
+        + "\n\n    Fix with `git rm --cached <file>`; the ignore rules are already right.")
+
+
 @check("`/breakdown` resolves its output paths rather than joining strings", finding="F4")
 def _():
     # F4: a whole run's tasks landed in skills/breakdown-generate-tasks/output/, because the
