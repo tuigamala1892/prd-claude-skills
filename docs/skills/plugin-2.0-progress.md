@@ -733,8 +733,8 @@ designing `architecture.md` four times.
 |---|---|---|
 | **25 + 28 + 37** — the artefact, its guard, its readers | **Landed** 2026-08-26 | `_` |
 | **51** — a Design phase in `/prd`, the producer | **Landed** 2026-08-26 | `_` |
-| **31** — derive the layer set from content, both paths | not started | |
-| **56** — enforce `<banned>` and `<task-limits>` | not started | |
+| **31** — derive the layer set from content, both paths | **Landed** 2026-08-26 | `_` |
+| **56** — enforce `<banned>` and `<task-limits>` | **Landed** 2026-08-26 | `_` |
 | **26** — seed PROJECT.md on greenfield | not started | |
 | **57** — impact analysis reports contracts, not APIs | not started | |
 

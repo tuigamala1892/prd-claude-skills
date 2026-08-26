@@ -2592,7 +2592,11 @@ def _():
         "the sentence invoking plan-layers does not name architecture.json, so a declared graph "
         "is validated in Phase 1 and then dropped. A later paragraph mentioning the file is not "
         "the same as passing it:" + chr(10) + invocation)
-    assert prose("that graph replaces the five tiers below") in prose(section), (
+    # The CLAIM, not its phrasing: a declared graph replaces the defaults and is not
+    # merged with them. Item 31 reworded "the five tiers below" to "the default tiers"
+    # -- correctly, since Phase 3 no longer carries a list -- and this assertion had
+    # pinned the old words. Assert what must stay true.
+    assert prose("Not merged with them") in prose(section), (
         "Phase 3 no longer states that a declared graph REPLACES the default tiers. Merging "
         "them is how a project acquires layers it explicitly rejected")
 
@@ -2639,13 +2643,34 @@ def _():
                 bad.append(f"{label}: no longer states {sentence!r}")
     assert not bad, "\n    " + "\n    ".join(bad)
 
-    # execute-batch is handed no path to the rule file and must never acquire one: a second
-    # channel is a policy that can disagree with the artefact being implemented.
+    # execute-batch must not decide TEST POLICY by opening a file: the task it is holding
+    # already carries that decision, and a second channel can disagree with the artefact being
+    # implemented.
+    #
+    # Asserted POSITIVELY, and that is the third correction to this one assertion. It began as
+    # "the word `architecture` must not appear in the argument table", which failed when item
+    # 56 legitimately gave execute-batch a `--rules` path to FORWARD to execute-verify. Narrowed
+    # to "architecture.md must not appear in the TDD section", it failed again -- that section
+    # has to *mention* the file to explain that the declaration is honoured upstream.
+    #
+    # Mentioning a file and opening it are different acts, and only one of them is the defect.
+    # So assert what must be TRUE rather than hunting for words that must be absent; the
+    # sentences below are already required by the table at the top of this check.
     batch = read(SKILLS, "execute-batch", "SKILL.md")
+    tdd_section = batch[batch.find("**`{tdd_workflow_line}` is conditional"):
+                        batch.find("**Example - launching")]
+    assert tdd_section, "execute-batch lost the section explaining the TDD branch"
+    assert prose("Read the task instead") in prose(tdd_section), (
+        "execute-batch's TDD section no longer says where the answer comes from. The task's own "
+        "<test-requirements> IS the declaration; anything else is a second source of truth")
+
+    # A `--rules` argument is legitimate -- <banned> rules need the worktree and the diff, which
+    # exist only at verify time -- but it must be forwarded, never consumed for test policy.
     args = batch[batch.find("## Input Arguments"):batch.find("## Execution Flow")]
-    assert "architecture" not in args.lower(), (
-        "execute-batch now declares an architecture argument. The declaration already reaches "
-        "it in the task file")
+    if "--rules" in args:
+        assert "forward" in args.lower(), (
+            "execute-batch takes a --rules path without saying it forwards it. If it consumes "
+            "the rules itself, the TDD policy has two sources again")
 
     # tdd-workflow.md describes the procedure and must not acquire the mandate: a fourth
     # enforcement site makes the opinion harder to override rather than easier.
@@ -2900,6 +2925,315 @@ def _():
     for link in re.findall(r"\]\(([^)]*architecture-format\.md)\)", design_body):
         target = os.path.normpath(os.path.join(COMMANDS, link))
         assert os.path.isfile(target), f"the format link does not resolve: {link} -> {target}"
+
+
+
+@check("the layer set is derived from content, not taken as a list", finding="P33")
+def _():
+    """Item 31. The CRD path derived the layer set and then undid it; the PRD path never asked.
+
+    `/breakdown` Phase 4 took `[0-setup, 1-foundation, 2-backend, 3-frontend, 4-integration]`
+    unconditionally for every PRD, so a PRD with no frontend got a frontend layer. The CRD path
+    asked the right question -- does this change span tiers? -- and then ended with *"Always
+    include Layer 4 (integration) for wiring changes together"*, which made the minimum possible
+    plan two layers, two batches and two rounds of generate -> review -> retry for a change that
+    might be one edit to one file.
+
+    The derivation is a TABLE, so this parses the table rather than grepping for sentences. It
+    also must not forbid the phrase it deletes: Phase 2 shipped a check that failed on the
+    sentence quoting the old instruction to explain the change, which forbade documenting the
+    history it enforced.
+    """
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    planner = open(os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md"),
+                   encoding="utf-8").read()
+
+    phase3 = caller[caller.find("### Phase 3:"):caller.find("### Phase 4:")]
+    phase4 = caller[caller.find("### Phase 4:"):caller.find("### Phase 5:")]
+    assert phase3 and phase4, "/breakdown lost Phase 3 or Phase 4"
+
+    # --- the derivation exists as a table, with a condition per layer ------------------
+    rows = {}
+    for line in phase3.splitlines():
+        m = re.match(r"\s*\|\s*`?([0-9]-[a-z]+)`?\s*\|([^|]*)\|", line)
+        if m:
+            rows[m.group(1)] = prose(m.group(2)).lower()
+    for layer in ("0-setup", "1-foundation", "2-backend", "3-frontend", "4-integration"):
+        assert layer in rows, (
+            f"Phase 3 has no derivation row for {layer}. Without a stated condition the layer is "
+            f"either always present or always absent, and 'always present' is the defect")
+
+    # --- integration must be conditional on tier COUNT, which is the deleted line -----
+    integration = rows["4-integration"]
+    assert "more than one" in integration or "two or more" in integration, (
+        f"the integration layer's condition is {integration!r}, which does not depend on how "
+        f"many other tiers survived. `Always include Layer 4` is what made the minimum plan two "
+        f"layers instead of one -- there is nothing to integrate when only one tier moved")
+
+    # --- Phase 4 must not restore the unconditional list -----------------------------
+    literal = re.search(r"\[\s*0-setup\s*,\s*1-foundation\s*,\s*2-backend", phase4)
+    assert not literal, (
+        "Phase 4 again names the five layers as a literal list. It must process exactly the "
+        "layers layer_plan.json contains, or it silently restores the unconditional tiers "
+        "Phase 3 just derived away:\n" + literal.group(0))
+    assert "layer_plan.json" in phase4, (
+        "Phase 4 does not take its layer set from layer_plan.json, so the derivation has no "
+        "consumer")
+
+    # --- the degenerate case, stated on both sides -----------------------------------
+    # BOTH ends, not either. This was an `or`, and a mutant deleting Phase 3's rule was
+    # satisfied by Phase 4's mention of it. An `or` across two locations means each one alone
+    # suffices -- which is exactly what a producer/consumer pair must never allow, and halves
+    # the strength of the assertion for free.
+    assert prose("one layer holding one task") in prose(phase3), (
+        "Phase 3 no longer states the degenerate case. One layer holding one task is not a "
+        "plan; running it directly is the small path P21 asks for, arriving from the right "
+        "question rather than from a file-count threshold")
+    assert prose("one layer with one task") in prose(phase4), (
+        "Phase 4 no longer acts on the degenerate case, so Phase 3 derives it and nothing "
+        "honours it")
+
+    # --- the planner's own output must carry the derivation, parsed not grepped -------
+    blocks = re.findall(r"```json\s*\n(.*?)```", planner, re.S)
+    plan = None
+    for b in blocks:
+        try:
+            candidate = json.loads(b)
+        except Exception:
+            continue
+        if isinstance(candidate, dict) and "layers" in candidate:
+            plan = candidate
+            break
+    assert plan is not None, (
+        "plan-layers documents no parseable layer plan, so its output shape is prose")
+    assert "layers_dropped" in plan, (
+        "the documented layer plan has no `layers_dropped`. A derivation that drops a tier "
+        "without saying so leaves an operator who expected four tasks and got one with no "
+        "explanation -- the report is half the item")
+    assert "degenerate" in plan, (
+        "the documented layer plan cannot express the single-layer single-task case, so the "
+        "caller has nothing to branch on")
+    assert isinstance(plan["layers_dropped"], list) and plan["layers_dropped"], (
+        "`layers_dropped` is documented as empty, so the example never shows what a dropped "
+        "layer looks like")
+    for entry in plan["layers_dropped"]:
+        assert "reason" in entry, (
+            f"a dropped layer carries no reason: {entry}. 'Dropped: 3-frontend' without "
+            f"'no components in this document' is not something an operator can act on")
+
+    # --- skip-layering and skip-batching must stay distinct --------------------------
+    flat = prose(phase3)
+    assert prose("Skip batching") in flat and prose("Skip layering") in flat, (
+        "Phase 3 does not keep skip-layering and skip-batching apart. Twenty endpoints in one "
+        "tier is a large change that needs no layering and still wants batching, and a "
+        "threshold on file count gets that backwards")
+
+
+
+@check("`<banned>` and `<task-limits>` are enforced -- by running the enforcer", finding="P35")
+def _():
+    """Item 56. Item 28 gave a project somewhere to declare constraints; item 37 put `<rules>`
+    in the exit-code column. Neither named an enforcer, so both rows stood for nothing.
+
+    Every kind is run against a real violation and a real clean case. `the script mentions
+    <banned>` is a property every useless validator also has, and this phase has already shipped
+    five checks with exactly that defect.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-rules.py")
+    assert os.path.isfile(script), "check-rules.py is missing"
+
+    ARCH = (
+        '<architecture version="1.0"><rules>\n'
+        '<task-limits default="3"><limit match="contracts/**" max-files="5"/></task-limits>\n'
+        '<banned>\n'
+        '  <rule kind="import" match="contexts/**" symbol="httpx|requests"\n'
+        '        reason="ADR-004: contexts communicate by event, never by call">\n'
+        '    <except match="contexts/*/adapters/outbound/**" reason="third-party APIs are HTTP"/>\n'
+        '  </rule>\n'
+        '  <rule kind="content" match="services/*/src/**" pattern="(postgres|mysql)://"\n'
+        '        reason="ADR-002: no shared datastore across services"/>\n'
+        '  <rule kind="edge" from="services/*/" to="services/*/"\n'
+        '        reason="ADR-002: services are independently deployable"/>\n'
+        '  <rule kind="change" path="contracts/**" action="modify"\n'
+        '        reason="published events are immutable; add a version, never edit"/>\n'
+        '  <rule kind="judgement" reason="ADR-011: consumers must tolerate replay">\n'
+        '    handler with side effects that are not idempotent\n'
+        '  </rule>\n'
+        '</banned></rules></architecture>\n')
+
+    root = tempfile.mkdtemp(prefix="prd-rules-")
+    try:
+        def write(rel, text):
+            full = os.path.join(root, rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+            return full
+
+        arch = write("architecture.md", ARCH)
+
+        def run(*args):
+            p = subprocess.run([sys.executable, script, "--rules", arch, *args],
+                               capture_output=True, text=True)
+            return p.returncode, p.stdout, p.stderr
+
+        # ---------------- review mode: only import/content, plus task-limits -------------
+        clean = write("t-clean.xml",
+                      "<task><requirements><requirement id=\"1\">Publish an event."
+                      "</requirement></requirements>\n<files-to-create>\n"
+                      "- contexts/orders/handlers.py\n</files-to-create></task>")
+        rc, out, err = run("--mode", "review", "--task", clean)
+        assert rc == 0, f"a compliant task was refused:\n{err}"
+        assert "judgement" in out, (
+            "a judgement rule did not appear in the report. It must be surfaced for a human "
+            "even when nothing refuses -- reporting is the whole of what that kind does")
+
+        bad = write("t-bad.xml",
+                    "<task><requirements><requirement id=\"1\">Call billing with httpx.post()."
+                    "</requirement></requirements>\n<files-to-create>\n"
+                    "- contexts/orders/client.py\n</files-to-create></task>")
+        rc, out, err = run("--mode", "review", "--task", bad)
+        assert rc == 1, (
+            "a task SPECIFYING a banned import was not refused at review. Catching it here is "
+            "free -- no code exists yet -- and the cost of missing it is a rejected task after "
+            f"an implementation run:\n{out}{err}")
+        assert "ADR-004" in err, (
+            f"the rule's reason was not reported verbatim. A bare rule number does not tell an "
+            f"implementer what to do instead:\n{err}")
+
+        exempt = write("t-exempt.xml",
+                       "<task><requirements><requirement id=\"1\">Call Stripe with httpx."
+                       "</requirement></requirements>\n<files-to-create>\n"
+                       "- contexts/billing/adapters/outbound/stripe.py\n"
+                       "</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", exempt)
+        assert rc == 0, (
+            "the rule's own <except> did not suppress the violation. An exception that does not "
+            f"apply makes the rule unusable and pushes people toward per-task exemptions:\n{err}")
+
+        over = write("t-over.xml", "<task><files-to-create>\n- app/a.py\n- app/b.py\n"
+                                   "- app/c.py\n- app/d.py\n</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", over)
+        assert rc == 1 and "task-limits" in err, (
+            f"4 files against a default limit of 3 was not refused:\n{err}")
+
+        # `content` must fire at review too, not only `import`. This was a genuine coverage
+        # gap: a mutant restricting review to imports alone passed every assertion here.
+        content_bad = write("t-content.xml",
+                            "<task><requirements><requirement id=\"1\">Set DSN to "
+                            "postgres://shared/warehouse.</requirement></requirements>\n"
+                            "<files-to-create>\n- services/a/src/db.py\n"
+                            "</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", content_bad)
+        assert rc == 1 and "[content]" in err, (
+            "a task SPECIFYING a banned content pattern was not refused at review. `content` "
+            "and `import` are the two kinds that can fire before code exists, and catching "
+            f"either one there is free:\n{err}")
+        assert "ADR-002" in err, f"the content rule's reason was not reported:\n{err}"
+
+        scoped = write("t-scoped.xml", "<task><files-to-create>\n- contracts/a.py\n"
+                                       "- contracts/b.py\n- contracts/c.py\n- contracts/d.py\n"
+                                       "- contracts/e.py\n</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", scoped)
+        assert rc == 0, (
+            "the scoped <limit match=\"contracts/**\" max-files=\"5\"> was not honoured. "
+            f"Three files is right for a UI change and wrong for adding an event type:\n{err}")
+
+        # ---------------- verify mode: all five, against code and diff ------------------
+        wt = os.path.join(root, "wt")
+        os.makedirs(wt)
+        for cmd in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+            subprocess.run(["git", "-C", wt, *cmd], capture_output=True)
+        write("wt/contracts/order.py", "SCHEMA = {'v': 1}\n")
+        write("wt/services/b/api.py", "def thing(): ...\n")
+        write("wt/services/a/src/ok.py", "from services.a.api import x\n")
+        write("wt/services/a/api.py", "x = 1\n")
+        subprocess.run(["git", "-C", wt, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", wt, "commit", "-qm", "base"], capture_output=True)
+        base = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+
+        rc, out, err = run("--mode", "verify", "--worktree", wt, "--base", base)
+        assert rc == 0, f"a clean worktree was refused:\n{err}"
+
+        write("wt/contexts/orders/client.py", "import httpx\n")
+        write("wt/services/a/src/db.py", "DSN = 'postgres://shared/db'\n")
+        write("wt/services/a/src/cross.py", "from services.b.api import thing\n")
+        write("wt/contracts/order.py", "SCHEMA = {'v': 1, 'extra': True}\n")
+        subprocess.run(["git", "-C", wt, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", wt, "commit", "-qm", "violations"], capture_output=True)
+
+        rc, out, err = run("--mode", "verify", "--worktree", wt, "--base", base)
+        assert rc == 1, f"a worktree violating four rules was not refused:\n{out}"
+        for kind in ("import", "content", "edge", "change"):
+            assert f"[{kind}]" in err, (
+                f"the {kind} rule did not fire. Each of the four refusing kinds detects "
+                f"something the others cannot, and a silent one is a rule the operator believes "
+                f"is in force:\n{err}")
+
+        # The dotted import is the case that matters and the one a naive matcher misses.
+        assert "cross.py" in err, (
+            "a dotted cross-service import was not caught. `from services.b.api import thing` "
+            "is how a Python file crosses a service boundary; a matcher understanding only "
+            f"slashes misses the commonest form of the violation:\n{err}")
+        assert "ok.py" not in err, (
+            "a service importing its OWN module was reported as a boundary crossing. A rule "
+            f"that fires on compliant code gets switched off:\n{err}")
+
+        # judgement never changes the exit code, and never lands in the refusing stream.
+        assert "[judgement]" in out and "[judgement]" not in err, (
+            "a judgement rule reached the refusing stream. S3: prose guards get weighed rather "
+            "than obeyed, so these report and never block a merge. A rule that claims to "
+            f"enforce and does not is what P16 is about.\nout={out}\nerr={err}")
+
+        # A `change` rule with no diff must say it is not in force, not pass quietly.
+        rc, out, err = run("--mode", "verify", "--worktree", wt)
+        assert "UNRESOLVED" in out, (
+            "with no --base, the change rule passed silently instead of reporting that it could "
+            f"not see its evidence:\n{out}")
+
+        # ---------------- both checkpoints must actually call it ------------------------
+        reviewer = open(os.path.join(SKILLS, "breakdown-review-tasks", "SKILL.md"),
+                        encoding="utf-8").read()
+        verifier = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"),
+                        encoding="utf-8").read()
+        # Asserted as a RUNNABLE INVOCATION inside a fenced block, not as the string
+        # "check-rules.py". Both files also mention the script in prose -- review-tasks in its
+        # criterion 7, execute-verify in its argument table -- so a mutant deleting the command
+        # left the word behind and passed an earlier version of this check.
+        for label, text in (("breakdown-review-tasks", reviewer),
+                            ("execute-verify", verifier)):
+            invocations = [b for b in re.findall(r"```bash\s*\n(.*?)```", text, re.S)
+                           if "check-rules.py" in b]
+            assert invocations, (
+                f"{label} names check-rules.py in prose but never runs it. A checkpoint that "
+                f"describes the enforcer instead of invoking it enforces nothing -- which is "
+                f"P16 in the component whose whole job is enforcement")
+            body = invocations[0]
+            assert "--rules" in body and "--mode" in body, (
+                f"{label}'s invocation is missing --rules or --mode:\n{body}")
+
+        # The judgement verdict, taken from the TABLE ROW that carries it. The paragraph below
+        # that table also contains "never fail", so a mutant flipping the row survived an
+        # earlier assertion that merely looked for those words somewhere in the file.
+        row = None
+        for line in verifier.splitlines():
+            if line.strip().startswith("|") and "judgement" in line:
+                row = [c.strip() for c in line.strip().strip("|").split("|")]
+        assert row, "execute-verify has no table row for the judgement kind"
+        verdict = prose(row[-1]).lower()
+        assert "never fail" in verdict or "report only" in verdict, (
+            f"execute-verify's judgement row says {verdict!r}. S3: prose guards get weighed "
+            f"rather than obeyed, so these report and never block a merge. A rule that claims "
+            f"to enforce and does not is exactly what P16 is about")
+        assert "fail the task" not in verdict, (
+            f"execute-verify now fails tasks on a judgement finding: {verdict!r}. That is "
+            f"inventing enforcement the toolchain cannot deliver")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 

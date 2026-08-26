@@ -115,7 +115,21 @@ Organize remaining tasks into these 4 layers:
 
 ## Your Task
 
-Create a layer plan that:
+**First, decide which layers exist at all.** A tier with no work in it is not a tier: emit only
+the layers this document actually puts work in, and name the ones you dropped and why. The caller
+reports that list to the operator, because someone who expected four tasks and got one has to be
+told the reason.
+
+`4-integration` — or whatever the declared graph's terminal layer is — is included **only when
+more than one other layer survived**, or when a requirement is explicitly cross-cutting. There is
+nothing to integrate when the work spans one tier, and an unconditional integration layer is what
+made the minimum plan two layers instead of one.
+
+**If exactly one layer survives holding exactly one task, say so and stop.** Emit that layer with
+its single task and set `"degenerate": true`; the caller runs the task directly rather than
+building a plan around it.
+
+Then create a layer plan that:
 1. Assigns each identified component to the appropriate layer
 2. Orders tasks within each layer by dependency
 3. Ensures no circular dependencies
@@ -130,6 +144,11 @@ Return a JSON object with this structure:
 ```json
 {
   "project_type": "greenfield",
+  "degenerate": false,
+  "layers_dropped": [
+    {"id": "3-frontend", "reason": "no components, screens or routes in this document"},
+    {"id": "4-integration", "reason": "only one other tier present -- nothing to wire"}
+  ],
   "layers": [
     {
       "id": "0-setup",

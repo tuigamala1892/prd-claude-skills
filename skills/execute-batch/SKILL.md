@@ -22,6 +22,7 @@ Parse these from the prompt:
 | `--base-branch <name>` | No | Branch to base worktrees on (default: repository HEAD) |
 | `--batch-number <N>` | Yes | Batch number within layer |
 | `--layer <name>` | Yes | Layer name (for status reporting) |
+| `--rules <path>` | No | `architecture.json`, forwarded to `execute-verify` so the project's `<banned>` rules are enforced before merge (item 56). Absent means none declared |
 
 ## Execution Flow
 

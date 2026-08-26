@@ -261,44 +261,89 @@ Save the analysis to `{tasks_dir}/analysis.json`
 
 If layer_plan.json exists, skip this phase.
 
-**For PRD:**
-Invoke the `breakdown-plan-layers` skill with the analysis JSON **and, when it exists,
-`{tasks_dir}/architecture.json`** — the validated form of the project's declared layer graph,
-written in Phase 1.
+**Both paths, one planner.** Invoke the `breakdown-plan-layers` skill with the analysis JSON
+**and, when it exists, `{tasks_dir}/architecture.json`** — the validated form of the project's
+declared layer graph, written in Phase 1.
 
-**When `architecture.json` declares `layer_blocks`, that graph replaces the five tiers below
+The two paths differ only in what the evidence is, not in how the question is answered: a PRD
+supplies it as inferred models, endpoints and components; a CRD supplies it as
+`<affected-schemas>`, `<affected-apis>` and `<affected-files>`. Both are answering *which tiers
+does this work touch?*
+
+**When `architecture.json` declares `layer_blocks`, that graph replaces the default tiers
 entirely.** Not merged with them: a project that declared its own tiers did not ask for
 `0-setup` or `4-integration`, and grafting them on is how a project acquires layers it
 explicitly rejected. Pass the file and say which case applies.
 
 
-Request organization into 4-5 layers:
-1. **0-setup**: Template copy, initial commit, environment (greenfield only).
-   Does NOT create the repository - `/execute` requires `{project_path}` to be an
-   existing git repository, so Layer 0 commits into it rather than initialising it.
-2. **1-foundation**: Database models, migrations, base config
-3. **2-backend**: API endpoints, services, business logic
-4. **3-frontend**: React components, state management, routing
-5. **4-integration**: Wiring, E2E flows, polish
+**A tier with no work in it is not a tier.** Ask, of each candidate layer, whether this
+document actually puts work there — and drop the ones it does not. The layer set is **derived**,
+on both paths:
 
-**For CRD:**
-Layer planning is simpler based on `<impact-analysis>`:
+| Layer | Included when | Evidence |
+|---|---|---|
+| `0-setup` | greenfield **and** a scaffold is named | `<scaffold>`, or Phase 2's template |
+| `1-foundation` | there are data models, migrations or shared types | analysis `data_models`; CRD `<affected-schemas>` |
+| `2-backend` | there are endpoints, services or background work | analysis `api_endpoints`; CRD `<affected-apis>` |
+| `3-frontend` | there are components, screens or routes | analysis `frontend_components`; CRD frontend paths in `<affected-files>` |
+| `4-integration` | **more than one other tier is present**, or a requirement is explicitly cross-cutting | the count above |
 
-- If `<affected-schemas>` has changes: Include Layer 1 (foundation)
-- If `<affected-apis>` has changes: Include Layer 2 (backend)
-- If frontend files in `<affected-files>`: Include Layer 3 (frontend)
-- Always include Layer 4 (integration) for wiring changes together
+**The PRD path used to take all five unconditionally**, so a PRD with no frontend got a frontend
+layer and a batch that generated nothing worth having. The CRD path already asked the question
+that matters — *does this change span dependency tiers?* — and answered it from what the change
+touches. This is that derivation, extended rather than invented (**P33**).
 
-CRD typically produces 2-3 layers, not 5.
+**Layer 4 is no longer automatic, and that line was the expensive one.** *"Always include Layer 4
+for wiring changes together"* made the minimum possible plan two layers, two batches and two
+rounds of generate → review → retry, for a change that might be one edit to one file. **There is
+nothing to integrate when only one tier moved.**
+
+**When `architecture.json` declares a graph, derive over *that* graph**, not over the five above:
+a declared layer with no work in it is dropped on the same rule. The graph says what tiers
+*exist*; the document says which ones this work *touches*.
+
+#### The degenerate case: no plan at all
+
+**When the derivation yields one layer holding one task, there is no plan to make. Run the
+task.** Skip layering, skip batching, skip the layer directory; generate the single task and say
+so. This is the small path P21 asks for, arriving as a consequence of asking the right question
+rather than as a `--small` flag with a file-count threshold.
+
+**Two decisions, and they are not the same one.** *Skip layering* when the work spans one tier.
+*Skip batching* when a layer holds few enough tasks. Twenty endpoints in one tier is a large
+change that needs no layering and still wants batching — a threshold on file count would have got
+that backwards, which is why there is no threshold here to set.
+
+#### Report the routing decision
+
+An operator who expected four tasks and got one must be told why:
+
+```
+Layers: 2-backend only (1 task)
+  Dropped: 1-foundation (no schema changes), 3-frontend (no components),
+           4-integration (single tier -- nothing to wire)
+  Single task in a single layer: running it directly, no batching.
+```
+
+**And cross-check `<scope>` rather than routing on it.** A CRD's `<scope>` is no longer an input
+to this decision — *"impact analysis said `small`, breakdown produced 14 tasks"* is worth
+flagging as a sign that one of the two is wrong, but the derivation above already knows more than
+a band boundary does.
 
 Save the layer plan to `{tasks_dir}/layer_plan.json`
 
 ### Phase 4: Generate Tasks (Per Layer)
 
-Determine layers to process based on input type:
-- **PRD Greenfield**: `[0-setup, 1-foundation, 2-backend, 3-frontend, 4-integration]`
-- **PRD Brownfield**: `[1-foundation, 2-backend, 3-frontend, 4-integration]` (skip Layer 0)
-- **CRD**: Only layers identified in Phase 3 based on impact analysis
+**Process exactly the layers `layer_plan.json` contains — never a list written here.**
+Phase 3 derived the set from what the document actually puts work in, and re-deriving it from
+input type would silently restore the five unconditional tiers it just dropped (**P33**).
+
+Brownfield has no `0-setup` because nothing scaffolds an existing project, and a PRD with no
+frontend has no `3-frontend` for the same reason: the layer is absent from the plan, not skipped
+here.
+
+**If the plan holds one layer with one task**, Phase 3 already said so: generate that task, skip
+the batching loop below, and do not create a `.done` marker for a layer that was never a layer.
 
 For each layer in order:
 

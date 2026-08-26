@@ -12,9 +12,11 @@ You are reviewing task files for quality and completeness.
 
 ## Input
 
-The calling skill will provide:
-1. Path to directory containing generated task files
-2. Layer being reviewed
+| The caller provides | Always? |
+|---|---|
+| a path to the generated task files | yes |
+| the layer name | yes |
+| `{tasks_dir}/architecture.json` | **only when the project declares an `architecture.md`** |
 
 ## Review Criteria
 
@@ -58,7 +60,7 @@ Failure on ANY critical criterion means the task FAILS.
 - Commands use correct syntax
 
 #### 7. File Scope
-- Maximum 3 files (excluding test)
+- At most `<task-limits>` files (excluding test), **defaulting to 3**. Checked mechanically by `check-rules.py`, not counted by eye
 - Full relative paths from project root
 
 ### Warning (Note but Don't Fail)
@@ -70,6 +72,36 @@ Failure on ANY critical criterion means the task FAILS.
 #### 2. Export Completeness
 - All public interfaces exported
 - Usable by downstream tasks
+
+### 8. Project Rules (Critical, and mechanical)
+
+**Run the enforcer; do not judge these by eye.** When the caller passed `architecture.json`,
+for each generated task:
+
+```bash
+python {skill_dir}/../breakdown/scripts/check-rules.py \
+    --rules {tasks_dir}/architecture.json --mode review --task {task_file}
+```
+
+- **Exit 0** — nothing refused. Any `REPORT` lines are `judgement` rules: include them in the
+  review output as warnings, never as critical issues.
+- **Exit 1** — every `REFUSED` line is a **critical issue**. Copy the rule's `reason` into the
+  issue verbatim: it says what to do instead, and a rule number does not.
+- **Exit 2** — the rules file could not be read. Stop and report it; do not review as though the
+  project declared nothing.
+
+**Only `import` and `content` fire here, and that is the point.** A task saying *"call the
+billing service over HTTP"* under a rule banning cross-context calls is wrong **before anybody
+writes a line**, and catching it costs nothing because no code exists yet. `edge` and `change`
+cannot fire at review — there is no dependency graph and no diff until something is implemented
+— so `execute-verify` is where those land.
+
+`<task-limits>` is enforced by the same run. It replaces the hardcoded 3 in criterion 7: the
+limit is `<task-limits default=>` with any scoped `<limit match= max-files=>` applied, and three
+is the shipped default rather than a law.
+
+**There is no per-task exemption, deliberately.** If a rule should not apply to a task, the rule
+is edited — a component that can exempt itself makes the check advisory with extra steps.
 
 ## Review Process
 
