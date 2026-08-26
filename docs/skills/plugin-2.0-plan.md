@@ -1329,6 +1329,13 @@ item 30's job and the reason the two items are paired in the ordering below.
 This is where the pipeline stops discarding the document.
 
 **18. Fix P5: analyse per feature, not per corpus.**
+*Amended 2026-08-26 after the first real run: the merge is not purely arithmetic. A feature pass
+cannot see the index and the index pass sees no feature, so the split CREATES contradictions
+visible nowhere else — components inferred for a backend-only project, a template path the PRD's
+own rationale disclaims, a test dependency no feature declares. The merge reconciles those and
+records each in `merge_notes`. The instruction it replaces ("do not re-infer during the merge")
+was disobeyed on the first run, correctly, and the model invented `merge_notes` to say so — P10's
+shape, arriving in an element this plan had just specified.*
 Two stages: an index-level pass (~13k tokens — tech stack, feature list, priorities,
 architecture) and a per-feature pass fanned out one file at a time, each writing its own
 fragment. `generate-tasks` receives only the feature files for its batch. Add a hard **size

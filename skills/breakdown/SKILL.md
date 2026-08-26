@@ -176,9 +176,24 @@ pass that owns it, and never as part of a larger blob.
 
 **Step 4 — merge.** Combine the index fragment and every feature fragment into
 `{tasks_dir}/analysis.json`, with the same shape Phase 3 already expects. Union the inferred
-models, endpoints and components, keeping each one's `inferred_from` so a later reader can tell
-which feature produced it. Do not re-infer during the merge: the merge is arithmetic, and any
-judgement in it belongs to the pass that had the feature file in front of it.
+models, endpoints and components, keeping every `inferred_from` so a later reader can tell which
+feature produced an entry — when two features infer the same model, keep both attributions.
+
+**The merge is mostly arithmetic, and the exception is the point.** A feature pass sees one
+feature file and cannot see the index; the index pass sees no feature. So the merge is the only
+place that holds both, and some contradictions are visible **nowhere else**:
+
+- a feature pass infers frontend components for a project whose index says backend-only
+- the index pass maps a keyword to a template path that the PRD's own rationale disclaims
+- a dependency every task's verification needs that no feature thought to declare
+
+Reconcile those, and **record each one in `merge_notes`** — an array of
+`{kind, field, detail}` where `kind` is `unioned`, `reconciled`, `dropped` or `added`. Say what
+the fragments claimed and why the merged file differs.
+
+What the merge may **not** do is re-read a feature file to infer something new. Judgement about
+what a feature *means* belongs to the pass that had it in front of it; judgement about what two
+fragments say *together* belongs here, and has to leave a trace either way.
 
 **Why this is worth four steps.** Only Step 1 can refuse, and only Steps 2 and 3 ever see a
 prompt whose size is known in advance. `generate-tasks` later receives only the feature files
