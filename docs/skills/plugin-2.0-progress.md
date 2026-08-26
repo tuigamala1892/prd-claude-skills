@@ -38,11 +38,15 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | **55** — the ledger states what it verified | **Landed** 2026-08-25 | `2b12720` |
 | **42** — rename with a checkable postcondition | **Landed** 2026-08-25 | `083c70e` |
 | **21** — runtime test for P1, and the authoring baseline | **Landed** 2026-08-26, *result is UNDECIDABLE by design* | `14545f9` |
-| **9** — `/prd`'s prose guards become scripts | Not started | — |
+| **9** — `/prd`'s prose guards become scripts | **Landed** 2026-08-26, *Phase 1 share* | `6c7825b` |
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55) → **46** (42) → **48** (21).
+**Phase 1 is complete.** Eight items, 39 → 49 regression checks, every item verified by running
+something rather than reading it. What the phase cost in surprises is in each entry below; the
+three that generalise are collected in *What Phase 1 taught* at the end of this file.
+
+**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55) → **46** (42) → **48** (21) → **49** (9).
 
 ---
 
@@ -538,3 +542,103 @@ take it. Recorded in the plan's item 21 rather than reported as done.
 
 **And a datum for item 18:** a **four-feature** PRD did not finish `/breakdown` in 45 minutes. P5
 says `analyze-prd` is handed 174k tokens of corpus; this is what the small end already costs.
+
+---
+
+## 9 — `/prd`'s two remaining prose guards become exit codes
+
+**Commit:** `6c7825b` · **Addresses:** P16 (and F3's other half) · **Files:**
+`skills/breakdown/scripts/check-writable.py` (new), `skills/breakdown/scripts/list-prds.py`
+(new), `commands/prd.md`, `tests/test_toolchain.py`
+
+### Scope
+
+Item 9 names three guards: the Phase 8 pre-write check, the status marker, and item 6's checks.
+**The first two are here; item 6 is a Phase 5 item** and its checks land with it.
+
+### What replaced what
+
+| Was | Is | Why it needed to be a program |
+|---|---|---|
+| `test -e docs/prd/{slug}/index.md && echo EXISTS`, then four paragraphs | `check-writable.py` | Lists every file at risk with size and age, and **refuses**. `--resume` is the only way past and must be stated — the script cannot tell a resume from a slug collision, only the caller can, and a guard whose safe path is the default is a guard taken by accident |
+| `ls -d docs/prd/*/` and a two-file `grep -l` | `list-prds.py` | Reports **which file** declares each status — F3's other half, since resume once looked only in `what-next.md` while the PRD carried the marker in `index.md` |
+
+`list-prds.py` names two conditions that previously had no name and no exit code:
+
+- **`DISAGREE`** — `index.md` and `what-next.md` declare different statuses, so whether a resume
+  finds the PRD depends on which file it reads first. F3 restated as a data defect.
+- **`NO MARKER`** — neither declares one, so `--resume` cannot see the PRD and a new one on that
+  slug would replace it without warning.
+
+### The part worth keeping: the F3 check had to be rewritten, not extended
+
+Four of its assertions were pinned to the exact prose this item deletes — the `ls -d`, the grep
+covering both filenames, Phase 8's `test -e`, and its `**stop and ask**`. Removing the prose broke
+the check that existed to protect the behaviour, **while the behaviour got stronger**.
+
+That is P16 one level up: *a check written against a paragraph passes only while the paragraph is
+there.* It now asserts the mechanism — that `list-prds.py` itself reads both marker locations, and
+that Phase 8 runs the guard and calls its exit code binding. Those survive a rewording; the old
+ones did not survive an improvement.
+
+### Verification
+
+Both scripts are **run** against a temp tree holding a live PRD with features, a fresh slug, a
+self-contradicting PRD, a PRD with no marker, and one declaring its status in a single file (the
+older layout, which must *not* be reported as a defect).
+
+Four mutants fail the check: a guard returning 0, one that resumes unconditionally, a `--check`
+that never fails, and restoring the old `test -e` prose to `/prd`.
+
+### Deviation from the plan
+
+None. Item 9's own note — pass the plugin path as an argument, never write a bare relative path —
+was already settled by OQ1's probe and is followed: both invocations are
+`${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/…` with the target passed as an argument.
+
+---
+
+## What Phase 1 taught
+
+Three things recurred often enough to be worth stating once, at the top of Phase 2 rather than
+buried in eight entries.
+
+### 1. A green result whose mechanism has not been shown is not a result
+
+**Five false passes in eight items**, each a different mechanism:
+
+| Where | The false pass |
+|---|---|
+| 23a proof | `git stash` with the wrong flag order silently did nothing; the suite reported PASS against the already-fixed file |
+| item 54 | Removing the guard's escape branch still passed — `cd` failed anyway on a path that did not exist, and the fallback refusal satisfied an assertion looking only for `REFUSED` |
+| item 21 run 2 | A clean probe result produced by a fixture that had explained the experiment to the agent under test |
+| item 21 grading | 13 of 17 tasks reported as deriving from the rejected feature; every one was a *negative* requirement |
+| item 21 grading | Then 0 of 17 for every tier, because a stray `0x08` byte had disabled both word-boundary anchors |
+
+Every one was caught by mutation: break the thing, watch the check fail, put it back. **That is
+now the standard for this build** — no check is finished until it has been seen failing for the
+reason it exists.
+
+### 2. Checks pinned to prose break when the prose improves
+
+Item 9 removed four paragraphs and broke the F3 check that protected them — *while the behaviour
+those paragraphs described got stronger*. A check asserting a sentence passes only while the
+sentence is there.
+
+Assert the mechanism: that a script reads both files, that an exit code is treated as binding.
+Item 23's rule — every element has a named reader — is the same idea, and item 58's table of
+assertions is where this belongs permanently.
+
+### 3. Half the items were larger than specified, and the plan was right to be vague
+
+| Item | Specified | Actually |
+|---|---|---|
+| 23a | a version string | a whole reference document describing a schema three revisions old |
+| 42 | five reference sites | six, and one of the five was prose rather than a reference |
+| 54 | two readers honour `<cwd>` | plus a guard, a producer, and a field in the result |
+| 21 | run `/breakdown`, assert the count | the count cannot be attributed at all until item 16 |
+
+**None of these was knowable before opening the file**, which is the argument for the ledger
+existing: the plan is a specification written before the code was read, and where it was wrong is
+what Phase 2 needs. Item 41's per-file atomicity — learned on item 42's rename, at 8 files instead
+of 64 — is the clearest example of the rehearsal paying for itself.
