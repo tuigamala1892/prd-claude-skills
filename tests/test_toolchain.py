@@ -63,6 +63,19 @@ def check(name, finding=None, expect_fail=None):
 
 # --------------------------------------------------------------------- helpers
 
+def prose(text):
+    """Markdown flattened for assertions about what a document SAYS.
+
+    Three prose checks in Phase 2 failed on formatting rather than on content -- a phrase
+    split by a line wrap, and twice on backticks inside the phrase being matched. A check
+    pinned to formatting is the F3 mistake in miniature: it breaks when someone rewraps a
+    paragraph or emphasises a word, which is not a change in meaning.
+
+    Collapses whitespace and strips ` * _ so `never emit \\`<cwd>\\`` matches "never emit <cwd>".
+    """
+    return " ".join(re.sub(r"[`*_]", "", text).split())
+
+
 def parse_frontmatter(path):
     """Return (frontmatter dict, body). Empty dict when there is no `---` block."""
     text = open(path, encoding="utf-8", errors="replace").read()
@@ -536,6 +549,340 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("multi-repo is refused in Phase 1, with what would be needed", finding="P36")
+def _():
+    # Item 53. The assumption is already enforced -- create-worktree.sh refuses a subdirectory
+    # -- but it fires during batch execution, several phases after the layout was knowable. A
+    # repo-per-service project gets a layer plan, a manifest and a full task set first, then
+    # fails with a message about worktrees that does not name the cause.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-repo-structure.py")
+    assert os.path.isfile(script), "check-repo-structure.py is missing"
+
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase1 = caller[:caller.find("### Phase 2")]
+    assert "check-repo-structure.py" in phase1, (
+        "the structure check is not in Phase 1, so the refusal still arrives after a task "
+        "set has been generated")
+
+    # The producer: /prd must ask, or the element is one nothing writes.
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "<repo-structure>" in prd, "the PRD template does not carry <repo-structure>"
+    assert re.search(r"monorepo", prd), "/prd never asks how the code is laid out"
+
+    root = tempfile.mkdtemp(prefix="prd-repo-")
+    try:
+        def doc(name, body):
+            path = os.path.join(root, name)
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(body)
+            return path
+
+        cases = {
+            "single": ("<prd><tech-stack><repo-structure>single</repo-structure>"
+                       "</tech-stack></prd>\n", 0),
+            "monorepo": ("<prd><tech-stack><repo-structure>monorepo</repo-structure>"
+                         "</tech-stack></prd>\n", 0),
+            "multi": ("<prd><tech-stack><repo-structure>multi-repo</repo-structure>"
+                      "</tech-stack></prd>\n", 1),
+            "bogus": ("<prd><tech-stack><repo-structure>polyrepo</repo-structure>"
+                      "</tech-stack></prd>\n", 1),
+            # Absent must be `single`. Every PRD written before the element existed means one
+            # repository; defaulting to a refusal would break all of them.
+            "absent": ("<prd><tech-stack><type>greenfield</type></tech-stack></prd>\n", 0),
+        }
+        for name, (body, expected) in cases.items():
+            p = subprocess.run([sys.executable, script, doc(f"{name}.md", body)],
+                               capture_output=True, text=True)
+            assert p.returncode == expected, (
+                f"{name}: expected exit {expected}, got {p.returncode}\n{p.stdout}{p.stderr}")
+
+        # The refusal must say what would be needed, not merely no -- and must not imply the
+        # layout is wrong or that git cannot do it.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "multi.md")],
+                           capture_output=True, text=True)
+        assert "Not a git limitation" in p.stderr, (
+            "the refusal does not say this is a missing data model rather than a git one")
+        for needed in ("target model", "window"):
+            assert needed in p.stderr, f"the refusal does not name what is missing: {needed}"
+        assert "Nothing was generated" in p.stderr, (
+            "the refusal does not say the run produced nothing, which is the point of "
+            "refusing in Phase 1 rather than at merge time")
+
+        # And the two supported values are distinguishable by a caller, since <cwd> depends
+        # on which one it is.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "monorepo.md")],
+                           capture_output=True, text=True)
+        assert "repo_structure=monorepo" in p.stdout, "the value is not reported to the caller"
+        p = subprocess.run([sys.executable, script, os.path.join(root, "absent.md")],
+                           capture_output=True, text=True)
+        assert "repo_structure=single" in p.stdout and "default" in p.stdout, (
+            "a defaulted value is not reported as defaulted, so a reader cannot tell a "
+            "declaration from an assumption")
+
+        # Item 53 gates item 54: <cwd> is meaningless outside a monorepo.
+        gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                   encoding="utf-8").read()
+        flat = prose(gen)
+        assert re.search(r"single.{0,120}never emit <cwd>", flat, re.I), (
+            "generate-tasks may emit <cwd> for a single-repo project, where it can only be "
+            "wrong")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`/prd` asks what the repository knows before asking the user", finding="P34")
+def _():
+    # Item 52. /crd has opened with this check since it was written; commands/prd.md mentioned
+    # PROJECT.md zero times, so the two paths disagreed about whether knowing the project
+    # matters. Greenfield describes the DOCUMENT, not the repository it lands in.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-project-context.py")
+    assert os.path.isfile(script), "check-project-context.py is missing"
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    init = prd[prd.find("## Initialization"):prd.find("## Workflow Phases")]
+    assert "check-project-context.py" in init, (
+        "the context check is not in Initialization, so it can be reached only after the "
+        "interview has already asked what the stack should be")
+    flat = " ".join(prd.split())
+    assert re.search(r"follow\s*/\s*extend\s*/\s*override", flat, re.I), (
+        "/prd never says what to do with context it finds")
+    assert re.search(r"regardless of how Phase 2", flat, re.I), (
+        "the check is not stated as unconditional, so it can be skipped by answering "
+        "'greenfield' -- which is the omission a --greenfield flag would have caused")
+
+    root = tempfile.mkdtemp(prefix="prd-ctx-")
+    try:
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+        p = subprocess.run([sys.executable, script, empty], capture_output=True, text=True)
+        assert p.returncode == 0, f"an empty directory did not exit 0 (got {p.returncode})"
+
+        # Context present, and current. Exit 3 is a branch, not a verdict: a PRD is never
+        # refused because the repository has a PROJECT.md.
+        ctx = os.path.join(root, "ctx")
+        os.makedirs(ctx)
+        for args_ in (["init", "-q"], ["config", "user.email", "t@e.invalid"],
+                      ["config", "user.name", "T"],
+                      ["commit", "-q", "--allow-empty", "-m", "base"]):
+            subprocess.run(["git"] + args_, cwd=ctx, capture_output=True)
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ctx,
+                              capture_output=True, text=True).stdout.strip()
+        with open(os.path.join(ctx, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"<project-context><meta><name>Billing</name>"
+                    f"<last-context-hash>{head}</last-context-hash></meta></project-context>\n")
+        p = subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert p.returncode == 3, f"context present did not exit 3 (got {p.returncode})"
+        assert "Billing" in p.stdout, "the report does not name the project it found"
+        assert "STALE" not in p.stdout, "a current PROJECT.md was reported as stale"
+
+        # Stale must be named as stale -- a PRD written against an old description can
+        # contradict code that already exists.
+        with open(os.path.join(ctx, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write("<project-context><meta><name>Billing</name>"
+                    "<last-context-hash>" + "0" * 40 + "</last-context-hash></meta>"
+                    "</project-context>\n")
+        p = subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert p.returncode == 3 and "STALE" in p.stdout, (
+            f"a stale PROJECT.md was not reported as stale:\n{p.stdout}")
+
+        # It must never write. Updating PROJECT.md is /crd's job.
+        before = open(os.path.join(ctx, "PROJECT.md"), "rb").read()
+        subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert open(os.path.join(ctx, "PROJECT.md"), "rb").read() == before, (
+            "the context check modified PROJECT.md; it reports and never repairs")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def schema_registry():
+    path = os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json")
+    return path, json.load(open(path, encoding="utf-8"))
+
+
+@check("exactly one PRD schema is current, and each has its fixture", finding="P28")
+def _():
+    # Item 43. The fixture directory is versioned so that Phase 4's schema items can each land
+    # by ADDING a schema-2 fixture beside schema-1, instead of breaking the suite in the same
+    # commit as the schema change -- which is what items 1, 2, 5, 11, 33, 34 and 35 would
+    # otherwise each have to do.
+    path, reg = schema_registry()
+    assert os.path.isfile(path), "tests/fixture/prd/SCHEMAS.json is missing"
+
+    versions = reg.get("versions") or {}
+    assert versions, "the registry lists no schema versions"
+
+    current = [name for name, v in versions.items() if v.get("status") == "current"]
+    assert len(current) == 1, (
+        f"{len(current)} schemas are marked current ({current}); the end-to-end checks have "
+        f"to run against exactly one, and item 24's comparison needs to know which")
+    assert reg.get("current") == current[0], (
+        f"the registry's `current` field says {reg.get('current')!r} but the version marked "
+        f"current is {current[0]!r}")
+
+    # Rule 1: one fixture per version the toolchain still accepts. A listed version with no
+    # directory is a promise the repository cannot keep.
+    root = os.path.join(REPO, "tests", "fixture", "prd")
+    for name, v in versions.items():
+        d = os.path.join(root, name)
+        assert os.path.isdir(d), f"{name} is registered but {d} does not exist"
+        for project in v.get("projects") or []:
+            index = os.path.join(d, project, "index.md")
+            assert os.path.isfile(index), f"{name}/{project} has no index.md"
+
+    # And the reverse: a directory nobody registered is the decoration rule 1 exists to stop.
+    on_disk = {n for n in os.listdir(root)
+               if os.path.isdir(os.path.join(root, n)) and n.startswith("schema-")}
+    unregistered = sorted(on_disk - set(versions))
+    assert not unregistered, (
+        f"schema fixture directories exist that the registry does not list: {unregistered}. "
+        f"One fixture per accepted version -- an unlisted one is maintained by nobody")
+
+
+@check("a generated manifest carries both versions, and they are different questions",
+       finding="P28")
+def _():
+    # P28: `toolchain_version` is provenance, `schema_version` is compatibility. A patch
+    # release moves the first and not the second, which is why item 24's compatibility
+    # decision cannot read the first. Run the generator rather than reading it.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    root = tempfile.mkdtemp(prefix="prd-manifest-")
+    try:
+        layer = os.path.join(root, "0-setup")
+        os.makedirs(layer)
+        with open(os.path.join(layer, "L0-001-thing.xml"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write("<task><meta><id>L0-001</id><name>Thing</name>"
+                    "<layer>0-setup</layer></meta></task>\n")
+
+        p = subprocess.run([sys.executable, script, root], capture_output=True, text=True)
+        assert p.returncode == 0, f"build-manifest.py failed: {p.stderr}"
+        manifest = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+
+        assert "schema_version" in manifest, (
+            "the manifest carries no schema_version, so item 24 has nothing to compare and "
+            "'refuse on a known incompatibility' cannot be implemented (P28)")
+        assert "toolchain_version" in manifest, "the manifest lost its provenance stamp"
+        assert manifest["schema_version"] != manifest["toolchain_version"], (
+            "schema_version equals toolchain_version, which collapses the distinction P28 "
+            "exists to draw: a patch release must move one and not the other")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the golden pair exists: a fixture in the previous schema and the current one",
+       finding="P28", expect_fail="item 1")
+def _():
+    # The pair is what makes item 41's migration testable by COMPARISON -- run it over the old
+    # fixture, assert the result equals the new one -- and item 24 exercisable at all, since
+    # no artefact of an older schema exists anywhere in the repository today.
+    #
+    # Marked expect_fail because schema-2 arrives with Phase 4's first schema item, not with
+    # item 43. When it lands this reports FIXED and fails the run, which is the signal to
+    # delete the marker and write the migration comparison against it.
+    _path, reg = schema_registry()
+    versions = reg.get("versions") or {}
+    assert len(versions) >= 2, (
+        f"only {len(versions)} schema version(s) registered. A single version cannot be a "
+        f"golden pair: there is nothing to migrate FROM and nothing for item 24 to refuse")
+
+    frozen = [n for n, v in versions.items() if v.get("frozen")]
+    assert frozen, ("no non-current fixture is marked frozen; rule 2 says a superseded "
+                    "fixture changes only when the migration's expected output changes")
+
+
+@check("an oversized PRD is refused before a prompt is built", finding="P5")
+def _():
+    # Item 18. Phase 2 used to send the whole PRD in one prompt -- ~174k tokens on the sample
+    # corpus, to a 200k-window model, with no size check. The failure mode was a silently
+    # truncated analysis.json, and everything downstream is built from that file.
+    #
+    # The refusal is run against a synthetic oversize feature, because both in-repo fixtures
+    # are ~2k tokens and would pass whatever the script did.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-prd-size.py")
+    assert os.path.isfile(script), "check-prd-size.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-size-")
+    try:
+        prd = os.path.join(root, "big")
+        os.makedirs(os.path.join(prd, "features"))
+        open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd><meta><slug>big</slug></meta></prd>\n")
+        small = os.path.join(prd, "features", "small.md")
+        open(small, "w", encoding="utf-8", newline="\n").write("<feature/>\n" + "x " * 500)
+        huge = os.path.join(prd, "features", "huge.md")
+        open(huge, "w", encoding="utf-8", newline="\n").write("<feature/>\n" + "x " * 200_000)
+
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 1, f"an oversize feature was not refused (exit {p.returncode})"
+        assert "REFUSED" in p.stderr and "huge.md" in p.stderr, (
+            f"the refusal does not name the file that is too big:\n{p.stderr}")
+        assert "small.md" not in p.stderr, "a file within budget was named in the refusal"
+        # The contrast the finding is about must be reported, not just the per-prompt figure.
+        assert "whole corpus" in p.stdout, (
+            "the report does not say what one prompt would have carried before the split")
+
+        # Within budget, the same tree passes -- the guard must not refuse on total size, only
+        # on any single prompt. Splitting is exactly what makes a large corpus workable.
+        os.remove(huge)
+        for i in range(40):
+            open(os.path.join(prd, "features", f"f{i}.md"), "w", encoding="utf-8",
+                 newline="\n").write("<feature/>\n" + "x " * 20_000)
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 0, (
+            "a corpus that is large in TOTAL but fits per prompt was refused; that is the "
+            "case item 18 exists to make workable, not to block")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("Phase 2 analyses per feature, and says so where it is instructed", finding="P5")
+def _():
+    # The script can only guard what the skills actually do. These assert the split is
+    # specified at both ends -- the caller that fans out, and the skill that must refuse a
+    # whole PRD if one arrives anyway.
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+
+    assert "check-prd-size.py" in caller, "/breakdown never runs the size check"
+    # The INSTRUCTION must be gone; a quotation of it, under "this used to say", is how the
+    # file explains itself and must survive. The difference is grammatical -- an imperative
+    # line telling the reader to do it -- so test for that rather than for the words, or this
+    # check fails the moment someone documents the history it exists to enforce.
+    imperative = [ln for ln in caller.splitlines()
+                  if re.match(r"^\s*(?:[-*]\s*)?(?:\*\*)?Invoke\b", ln)
+                  and re.search(r"full PRD|whole PRD|entire PRD", ln, re.I)]
+    assert not imperative, (
+        "/breakdown still instructs sending the whole PRD in one prompt (P5):\n    "
+        + "\n    ".join(imperative))
+    assert re.search(r"index pass", caller, re.I) and re.search(r"per feature", caller, re.I), (
+        "Phase 2 does not describe the index pass and the per-feature fan-out")
+    assert "analysis.json" in caller, "Phase 2 no longer says where the merged analysis lands"
+
+    # Whitespace-normalised: a prose assertion that breaks when someone re-wraps a paragraph
+    # is a check pinned to formatting, which is the F3 mistake in miniature.
+    flat = " ".join(analyzer.split())
+    assert re.search(r"index\b.*\bfeature\b", flat, re.I), (
+        "analyze-prd does not distinguish its two passes")
+    assert re.search(r"stop and (say so|report)", flat, re.I), (
+        "analyze-prd does not refuse a whole PRD arriving unsplit, so the split is advisory")
+    assert "inferred_from" in analyzer, (
+        "feature fragments carry no attribution, so the merge cannot say which feature "
+        "produced an inferred model")
+
+
 @check("`/prd`'s overwrite guard is an exit code, not a paragraph", finding="P16")
 def _():
     # Item 9. Five prose guards in this repository became programs after being documented and
@@ -632,7 +979,7 @@ def _():
     # generated tasks". The subject knew what was being measured and what a good answer
     # looked like, so the result was worthless. A fixture that describes the experiment is
     # part of the experiment.
-    probe = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
+    probe = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "staff-service")
     index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
 
     entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
@@ -757,7 +1104,7 @@ def _():
 
     script = os.path.join(SKILLS, "breakdown", "scripts", "rename-feature.py")
     assert os.path.isfile(script), "skills/breakdown/scripts/rename-feature.py is missing"
-    src = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
+    src = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
     assert os.path.isdir(src), "the §5.1 fixture PRD is missing"
 
     root = tempfile.mkdtemp(prefix="prd-rename-")
@@ -1957,8 +2304,8 @@ def _():
     # The fixture is only useful if /breakdown can parse it. Validating here means a
     # drifting fixture fails the fast suite rather than an end-to-end run.
     import xml.etree.ElementTree as ET
-    base = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
-    assert os.path.isdir(base), "tests/fixture/prd/link-shelf is missing"
+    base = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
+    assert os.path.isdir(base), "tests/fixture/prd/schema-1/link-shelf is missing"
 
     root = ET.parse(os.path.join(base, "index.md")).getroot()
     assert root.tag == "prd", f"index.md root is <{root.tag}>, expected <prd>"

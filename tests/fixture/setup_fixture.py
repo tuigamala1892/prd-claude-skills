@@ -51,7 +51,12 @@ def rmtree(path):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-PRD_SRC = os.path.join(HERE, "prd")
+# The fixture PRD lives under the schema version it is written in (item 43). This is the
+# CURRENT one; when a schema-2 fixture exists, changing this line is how the end-to-end
+# fixture moves to it -- deliberately one line, and deliberately not a glob that would
+# silently pick whichever directory sorted last.
+PRD_SCHEMA = "schema-1"
+PRD_SRC = os.path.join(HERE, "prd", PRD_SCHEMA)
 SLUG = "link-shelf"
 
 
@@ -162,7 +167,11 @@ def build(workdir):
     print(f"  root commit   : {root_commit[:12]}  <- --verify checks this survives\n")
     print("Run the §5.2 sequence from inside the workspace:\n")
     print(f"  cd {workdir}")
-    print(f"  claude --plugin-dir {REPO}\n")
+    print(f"  claude --plugin-dir {REPO} --add-dir {REPO}\n")
+    print("  `--add-dir` is not optional and not a duplicate of `--plugin-dir`. The first")
+    print("  LOADS the plugin; the second makes its bundled scripts READABLE. Without it")
+    print("  /breakdown cannot run resolve-output.sh, check-references.py or")
+    print("  build-manifest.py, and the whole run stops in Phase 1.\n")
     print(f"  /breakdown docs/prd/{SLUG}/index.md --output-dir {os.path.join(workdir, 'app')}")
     print(f"  /execute docs/tasks/{SLUG} --project-path {os.path.join(workdir, 'app')}\n")
     print("Then: python tests/fixture/setup_fixture.py --verify")

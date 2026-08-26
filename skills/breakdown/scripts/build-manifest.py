@@ -27,6 +27,8 @@ It also fills the two fields F9 and item 4.5 are about:
                         never fire and --project-path was effectively mandatory.
   toolchain_version  -- read from .claude-plugin/plugin.json, so a generated artefact records
                         which toolchain produced it.
+  schema_version     -- how to READ this file, which is a different question from what wrote
+                        it. A patch release moves toolchain_version and not this one (P28).
 
 Usage:
     build-manifest.py <tasks-path> [--project-path <path>]   # rewrite manifest.json from disk
@@ -96,6 +98,11 @@ def resolve(tasks_path, stored):
     if len(parts) < 2:
         return None
     return os.path.join(tasks_path, parts[-2], parts[-1])
+
+
+# The manifest's own shape. Bump it when a field is added, removed or changes meaning --
+# never for a plugin release, which is what toolchain_version is for.
+MANIFEST_SCHEMA_VERSION = "1.0"
 
 
 def toolchain_version():
@@ -187,6 +194,12 @@ def main():
     version = toolchain_version()
     if version:
         manifest["toolchain_version"] = version
+
+    # Two versions, and they answer different questions (P28, item 43). `toolchain_version` is
+    # provenance -- what produced this file. `schema_version` is compatibility -- how to read
+    # it. A patch release moves the first and not the second, which is exactly why a provenance
+    # stamp cannot answer a compatibility question, and why item 24's comparison reads this one.
+    manifest["schema_version"] = MANIFEST_SCHEMA_VERSION
 
     # F9: record the target so /execute's documented fallback can actually fire. Prefer the
     # explicit argument, then whatever the manifest already knows, then the older key name

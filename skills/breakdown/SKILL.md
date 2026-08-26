@@ -95,7 +95,23 @@ Execute these phases in order:
 
 7. Create `{tasks_dir}`
 8. If it exists, check for existing `.done` markers to resume
-9. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
+9. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+
+   ```bash
+   python {skill_dir}/scripts/check-repo-structure.py {input_file}
+   ```
+
+   - **Exit 0**: stdout is `repo_structure=single|monorepo`. Carry the value: `monorepo` is
+     what lets a task declare `<meta><cwd>` (item 54), and `single` means tasks run at the
+     repository root as they always have.
+   - **Exit 1**: `REFUSED:`. **Stop and report it verbatim.** Create nothing.
+
+   The assumption is already enforced — `create-worktree.sh` refuses a subdirectory — but it
+   fires during batch execution, several phases after the layout was knowable. A repo-per-service
+   project currently gets a layer plan, a manifest and a full task set before anything objects,
+   then fails with a message about worktrees that does not name the cause (**P36**).
+
+10. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
    python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]
@@ -123,17 +139,65 @@ Execute these phases in order:
 
 If analysis.json exists, skip this phase.
 
-**For PRD:**
-Invoke the `breakdown-analyze-prd` skill with the full PRD content.
+**For PRD — one index pass, then one pass per feature. Never the whole PRD in one prompt.**
 
-Pass the PRD XML content and request structured extraction of:
-- All features with priorities
-- Tech stack with versions
-- Implied data models
-- Implied API endpoints
-- Implied frontend components
+This used to say *"invoke `breakdown-analyze-prd` with the full PRD content"*. On a real corpus
+that is ~174k tokens in a single prompt to a 200k-window model, leaving no room for the
+structured extraction it was asked to produce — and with no size check, the failure mode was a
+silently truncated analysis that everything downstream is then built from (**P5**).
+
+**Step 1 — measure before sending anything:**
+
+```bash
+python {skill_dir}/scripts/check-prd-size.py {prd_dir}
+```
+
+- **Exit 0**: every prompt fits. Continue.
+- **Exit 1**: `REFUSED:` names the file and its size. **Stop and report it.** Do not send it
+  anyway and do not summarise the file to make it fit — there is no truncation that leaves the
+  analysis correct.
+
+**Step 2 — the index pass.** Invoke `breakdown-analyze-prd` with **`index.md` alone**, asking for:
+- All features with priorities, and the `file=` path of each feature's spec
+- Tech stack with versions, project type, project path (brownfield only)
 - External dependencies
 - Template path if specified
+
+It writes `{tasks_dir}/analysis.index.json`.
+
+**Step 3 — one pass per feature.** For each feature named in the index, invoke
+`breakdown-analyze-prd` again with **that one feature file**, asking for what only that feature
+implies:
+- Data models, API endpoints and frontend components implied by this feature
+- The feature's own acceptance criteria, carried rather than summarised
+
+Each writes `{tasks_dir}/analysis.feature.{slug}.json`. A feature file is read **once**, by the
+pass that owns it, and never as part of a larger blob.
+
+**Step 4 — merge.** Combine the index fragment and every feature fragment into
+`{tasks_dir}/analysis.json`, with the same shape Phase 3 already expects. Union the inferred
+models, endpoints and components, keeping every `inferred_from` so a later reader can tell which
+feature produced an entry — when two features infer the same model, keep both attributions.
+
+**The merge is mostly arithmetic, and the exception is the point.** A feature pass sees one
+feature file and cannot see the index; the index pass sees no feature. So the merge is the only
+place that holds both, and some contradictions are visible **nowhere else**:
+
+- a feature pass infers frontend components for a project whose index says backend-only
+- the index pass maps a keyword to a template path that the PRD's own rationale disclaims
+- a dependency every task's verification needs that no feature thought to declare
+
+Reconcile those, and **record each one in `merge_notes`** — an array of
+`{kind, field, detail}` where `kind` is `unioned`, `reconciled`, `dropped` or `added`. Say what
+the fragments claimed and why the merged file differs.
+
+What the merge may **not** do is re-read a feature file to infer something new. Judgement about
+what a feature *means* belongs to the pass that had it in front of it; judgement about what two
+fragments say *together* belongs here, and has to leave a trace either way.
+
+**Why this is worth four steps.** Only Step 1 can refuse, and only Steps 2 and 3 ever see a
+prompt whose size is known in advance. `generate-tasks` later receives only the feature files
+for its batch, for the same reason.
 
 **For CRD:**
 Extract directly from CRD structure:

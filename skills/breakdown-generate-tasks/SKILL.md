@@ -256,11 +256,15 @@ For each task in the layer plan:
 5. **Define verification steps** with runnable commands
 6. **Define exports** for downstream tasks
 
-**`<meta><cwd>`, only when the source names a component.** If the feature this task comes from
-declares which package, service or app it belongs to, emit that path as `<cwd>` and write every
-verification command **as if standing in it** — `pytest tests/test_invoices.py`, never
-`cd packages/billing && pytest tests/test_invoices.py`. A `cd` inside a command string works in
-one runner and nowhere else.
+**`<meta><cwd>`, only under `monorepo`, and only when the source names a component.** Phase 1
+resolved `<repo-structure>` (item 53) and passed it down:
+
+- **`single`** — never emit `<cwd>`. One repository with one thing in it has one place to run
+  commands, and a `<cwd>` there is noise that can only be wrong.
+- **`monorepo`** — if the feature this task comes from declares which package, service or app it
+  belongs to, emit that path as `<cwd>` and write every verification command **as if standing in
+  it**: `pytest tests/test_invoices.py`, never `cd packages/billing && pytest
+  tests/test_invoices.py`. A `cd` inside a command string works in one runner and nowhere else.
 
 **Do not infer it from `<files-to-create>`.** Two files sharing a parent directory is not evidence
 that the parent is where the test runner lives, and a wrong `<cwd>` fails verification in a way
