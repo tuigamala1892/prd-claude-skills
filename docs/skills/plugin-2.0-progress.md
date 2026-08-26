@@ -606,10 +606,68 @@ Plan order: `18` · `43` · `52` · `53`, on branch `phase-2-make-it-testable`.
 | Item | Status | Commit |
 |---|---|---|
 | **/execute smoke test** — Phase 1's execute-path changes, exercised | **Done** 2026-08-26 | `b54135f` |
-| **18** — per-feature analysis + size refusal | Not started | — |
-| **43** — a fixture per schema version | Not started | — |
-| **52** — a context check at `/prd` initialization | Not started | — |
-| **53** — declare `<repo-structure>`; refuse multi-repo early | Not started | — |
+| **18** — per-feature analysis + size refusal | **Landed** 2026-08-26 | `8129cdb` |
+| **43** — a fixture per schema version | **Landed** 2026-08-26, *scaffolding; schema-2 arrives with item 1* | `f512ece` |
+| **52** — a context check at `/prd` initialization | **Landed** 2026-08-26 | `ae38b83` |
+| **53** — declare `<repo-structure>`; refuse multi-repo early | **Landed** 2026-08-26 | `1a4184e` |
+
+### What Phase 2 delivered, and what it deliberately did not
+
+**Phase 2 is complete.** Four items plus the smoke test, 49 → 56 regression checks and one
+`expect_fail` that names the next thing to build.
+
+| Item | The refusal or scaffold it added |
+|---|---|
+| **18** | `check-prd-size.py` — per **prompt**, not per corpus, so a large PRD split into small prompts passes and a single oversized one does not |
+| **43** | Versioned fixture directories + `SCHEMAS.json`, so Phase 4's schema items land by *adding* rather than by breaking the suite in the same commit |
+| **52** | `check-project-context.py` — `/prd` reads `PROJECT.md` before asking what the stack should be |
+| **53** | `check-repo-structure.py` — `multi-repo` refused in Phase 1, with what would be needed |
+
+**Three of the four are refusals with a stated reason**, which is the shape Phase 1 converged on:
+an exit code, a named cause, and text saying what to do instead. The fourth is scaffolding whose
+whole purpose is to make a later item cheap.
+
+### What item 43 does not include, and why that is the item's own answer
+
+No `schema-2` fixture. Item 43's text says Phase 4's schema items each land **by adding** their
+change to a schema-2 fixture beside schema-1 — so authoring it here would mean inventing the
+target schema ahead of items 1, 33 and 34, which specify it.
+
+What exists instead is the scaffolding plus a check marked `expect_fail="item 1"` that reports
+KNOWN today and **FIXED** the moment a second schema is registered — verified by registering one
+and watching it flip. The suite therefore refuses to let schema-2 arrive quietly.
+
+**One thing is owed with it.** Rule 2 — a non-current fixture is frozen — is enforced today by a
+`"frozen": false` flag and prose, not by content hashes. There is no frozen fixture yet to hash.
+When schema-1 becomes frozen that check needs writing, or rule 2 is exactly the prose guard P16
+is about. Recorded in `SCHEMAS.json` and here rather than left to be noticed.
+
+### The correction Phase 2 forced on Phase 1's reasoning
+
+I twice cited the 45-minute `/breakdown` run from item 21 as fresh evidence for item 18.
+**Measuring the fixtures disproved it:**
+
+```
+link-shelf     4 prompts, whole corpus  2,195 tokens
+staff-service  5 prompts, whole corpus  1,758 tokens
+```
+
+Those are ~2k tokens against a 200k window. Nothing there stresses context, so the slow and
+truncated runs had a different cause — most plausibly the per-layer generate → review → retry
+loop. **P5 is still real and still Blocking for the 174k corpus; the runtime evidence I offered
+for it was not evidence.** Item 18 was built on the static argument, which holds.
+
+### The lesson Phase 2 added to Phase 1's three
+
+**Checks pinned to formatting break when the formatting changes.** Three prose assertions failed
+this phase on presentation rather than content: a phrase split by a line wrap, and twice on
+backticks inside the matched phrase. Worse, one of them forbade *documenting the history it
+enforced* — it matched the words "full PRD content" anywhere, so it failed on the sentence
+quoting the old instruction to explain the change.
+
+Both are the same error as Phase 1's second lesson, one level down: **assert the meaning, not the
+presentation.** There is now a `prose()` helper that collapses whitespace and strips markdown
+emphasis, and item 18's check tests for imperative grammar rather than for a phrase.
 
 ### The smoke test, and what it took to run at all
 
