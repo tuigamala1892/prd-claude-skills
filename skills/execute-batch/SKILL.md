@@ -130,7 +130,7 @@ Task specification: {task_file_path}
 Attempt: {attempt} of 5
 
 Read these first — they define the workflow and the commit format you must follow:
-  {skill_dir}/references/tdd-workflow.md
+  {tdd_workflow_line}
   {skill_dir}/references/commit-format.md
 
 {IF RETRY:}
@@ -143,8 +143,44 @@ Commit your work in the worktree when the local verification passes, then end wi
 RESULT JSON described in your instructions.
 ```
 
-The two reference paths are absolute so the agent can `Read` them; it has the `Read` tool and
+The reference paths are absolute so the agent can `Read` them; it has the `Read` tool and
 no `Skill` tool.
+
+**`{tdd_workflow_line}` is conditional, and it is decided by the task, not by a file.**
+
+TDD is a **default** rather than a law (P18): a project may declare `<testing default="none">` in
+its `architecture.md`. That declaration is honoured upstream, at `/breakdown` time, by
+`generate-tasks` emitting no `<test-requirements>` section and `review-tasks` not requiring one.
+
+**So do not open `architecture.md` here.** You are not given a path to it, and adding one would
+make the policy a third source of truth that can disagree with the two task files already carry.
+Read the task instead — the section's presence *is* the declaration, arriving as data:
+
+| The task file | `{tdd_workflow_line}` becomes |
+|---|---|
+| has `<test-requirements>` | `{skill_dir}/references/tdd-workflow.md` |
+| has no `<test-requirements>` | omitted, and the line below substituted |
+
+```
+This task carries no <test-requirements>, so the project it belongs to declares
+<testing default="none">. Do not write tests first; implement directly and make the
+task's own <verification> steps pass. That is the project's declaration -- it is not
+permission to skip verification.
+```
+
+This is S2 applied to policy: **derived from the artefact in hand, never asserted beside it.** A
+task with the section and a project that switched TDD off cannot both be true, and the task is
+the thing the implementer is actually given.
+
+**An empty `<test-requirements>` is a defect, not a declaration**, and `review-tasks` fails it as
+one. Absent and empty are different claims; only one of them is a project's choice.
+
+**Every run this toolchain has ever done is the first row.** TDD stays the default, and a project
+with no `architecture.md` reaches it unchanged.
+
+**The runner comes from the task too.** A task whose `<context><constraints>` names a scoped
+`<policy runner=>` runs that runner; the agent reads it in the file it was handed. This prompt
+does not need to know it and must not carry a second copy that can disagree.
 
 **Example - launching 3 tasks in parallel:**
 

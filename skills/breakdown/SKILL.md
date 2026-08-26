@@ -95,23 +95,63 @@ Execute these phases in order:
 
 7. Create `{tasks_dir}`
 8. If it exists, check for existing `.done` markers to resume
-9. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+9. **Read the project's own rules first, and refuse a rule file that cannot be obeyed:**
 
    ```bash
-   python {skill_dir}/scripts/check-repo-structure.py {input_file}
+   python {skill_dir}/scripts/check-architecture.py {target_dir}
    ```
 
-   - **Exit 0**: stdout is `repo_structure=single|monorepo`. Carry the value: `monorepo` is
-     what lets a task declare `<meta><cwd>` (item 54), and `single` means tasks run at the
-     repository root as they always have.
+   `architecture.md` is the project's prescriptive artefact — the layer graph, the test policy,
+   the task file limit, the banned patterns and the scaffold. It lives at the project root
+   beside `PROJECT.md`, it is **optional**, and it is read here rather than later because the
+   two steps below both consult it.
+
+   - **Exit 0, `no architecture.md`**: the common case, and not a problem. The shipped defaults
+     apply — `references/layer-definitions.md` for the graph, TDD, three files per task —
+     and everything proceeds exactly as it did before this file existed.
+   - **Exit 0, `architecture.md valid`**: **write the parsed form down, and pass that on:**
+
+     ```bash
+     python {skill_dir}/scripts/check-architecture.py {target_dir} --json > {tasks_dir}/architecture.json
+     ```
+
+     Every later phase reads `{tasks_dir}/architecture.json`, never `architecture.md` itself.
+     The graph has already been validated — acyclic, ids unique, every `depends-on` known — and
+     a second reader re-parsing the markdown by eye would be a second parser that can disagree
+     with the one that did the checking. `--json` is that parser's own output.
+
+     Write nothing when the file is absent: a missing `architecture.json` is how every later
+     phase knows to take the defaults, and an empty one is a different claim.
+   - **Exit 1**: `REFUSED:` names every rule it could not read, with the element and the reason.
+     **Stop and report it verbatim.** Create nothing.
+
+   **Absent is fine; present-and-broken must stop the run.** A rule file that is silently
+   ignored is worse than no rule file at all, because the rule is not in force and the operator
+   believes it is — P16's failure mode, one level up from prose.
+
+   For CRD input the project root is `{project_path}`. The file belongs to the codebase, not to
+   the document that changes it.
+
+10. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+
+   ```bash
+   python {skill_dir}/scripts/check-repo-structure.py {input_file} --project-root {target_dir}
+   ```
+
+   - **Exit 0**: stdout is `repo_structure=single|monorepo` and names where the value came from.
+     Carry the value: `monorepo` is what lets a task declare `<meta><cwd>` (item 54), and
+     `single` means tasks run at the repository root as they always have.
    - **Exit 1**: `REFUSED:`. **Stop and report it verbatim.** Create nothing.
+   - A `DISAGREE:` line means `architecture.md` and the input document state different layouts.
+     The project file wins — layout is a property of the codebase, not of a document about it —
+     and the run continues. Report the line; the stale copy is for a human to delete.
 
    The assumption is already enforced — `create-worktree.sh` refuses a subdirectory — but it
    fires during batch execution, several phases after the layout was knowable. A repo-per-service
    project currently gets a layer plan, a manifest and a full task set before anything objects,
    then fails with a message about worktrees that does not name the cause (**P36**).
 
-10. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
+11. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
    python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]
@@ -126,6 +166,11 @@ Execute these phases in order:
    - **Exit 1**: `DANGLING` lines name a citation that resolves to nothing. **Report them and
      stop.** A feature whose scope was settled by a record that no longer exists will be broken
      down without it, and the task will look complete.
+
+   `ADR-NNN`, `OQ-NNN`, `**Drives:**` links and `P-NNN` principle citations are all resolved.
+   The last of those is why step 9 runs first: a principle resolves against
+   `architecture.md`'s `<principles>` section, and the script discovers that file by walking up
+   from the PRD. Pass `--architecture` when it lives somewhere the walk will not reach.
 
    Skip only when the PRD cites nothing: the script exits 0 on a PRD with no citations, so
    running it unconditionally costs nothing and there is no condition to evaluate.
@@ -217,7 +262,15 @@ Save the analysis to `{tasks_dir}/analysis.json`
 If layer_plan.json exists, skip this phase.
 
 **For PRD:**
-Invoke the `breakdown-plan-layers` skill with the analysis JSON.
+Invoke the `breakdown-plan-layers` skill with the analysis JSON **and, when it exists,
+`{tasks_dir}/architecture.json`** — the validated form of the project's declared layer graph,
+written in Phase 1.
+
+**When `architecture.json` declares `layer_blocks`, that graph replaces the five tiers below
+entirely.** Not merged with them: a project that declared its own tiers did not ask for
+`0-setup` or `4-integration`, and grafting them on is how a project acquires layers it
+explicitly rejected. Pass the file and say which case applies.
+
 
 Request organization into 4-5 layers:
 1. **0-setup**: Template copy, initial commit, environment (greenfield only).

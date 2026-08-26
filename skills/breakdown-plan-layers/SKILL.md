@@ -11,10 +11,65 @@ You are planning how to organize implementation tasks into layers.
 
 ## Input
 
-The calling skill will provide the PRD analysis JSON from the analyze-prd phase.
+| The caller provides | Always? |
+|---|---|
+| the PRD analysis JSON from the analyze-prd phase | yes |
+| `architecture.json` | **only when the project declares an `architecture.md`** |
 
-## Layer Definitions
+`architecture.json` is `check-architecture.py --json` output, written in `/breakdown` Phase 1
+after the rule file was validated. Read the graph from there, not from `architecture.md` — the
+markdown has already been parsed once by the component that checked it, and parsing it a second
+time by eye is a second parser that can disagree with the one that did the checking.
 
+**Its absence is meaningful and is the common case**: no file, no declared graph, take the
+default tiers below.
+
+## Where the layer graph comes from
+
+**The project's, if `architecture.json` carries one; the shipped default otherwise.**
+
+The five tiers below used to be *the* layer graph — hardcoded, with no override, so a project
+that did not decompose that way had to fork the plugin (**P18**). They are now the **default**.
+
+| The caller passes | Use |
+|---|---|
+| `architecture.json` with a non-empty `layer_blocks` | **that graph**, exactly as declared |
+| no `architecture.json`, or empty `layer_blocks` | the five tiers below, as always |
+
+The declared graph arrives already parsed and already validated:
+
+```json
+"layer_blocks": [
+  {"applies_to": null,
+   "layers": [
+     {"id": "1", "name": "contracts",   "depends_on": []},
+     {"id": "2", "name": "producers",   "depends_on": ["1"]},
+     {"id": "3", "name": "consumers",   "depends_on": ["1"]},
+     {"id": "4", "name": "integration", "depends_on": ["2", "3"]}]}
+]
+```
+
+- **`depends_on` is a LIST and the result is a DAG, not a chain.** `producers` and
+  `consumers` above are siblings — both depend on `contracts` and neither on the other. Reading
+  it as a chain would serialise an architecture whose whole point is that they are independent.
+- The layer directory is `{id}-{name}`, and task ids stay `L{id}-{seq}` — the existing
+  convention, so nothing downstream changes.
+- **A block with a non-null `applies_to` glob is instantiated once per matching directory**, for
+  microservices and multi-platform mobile. Layer ids are scoped to their block, so two blocks may
+  both declare `id="1"`. The directory becomes `{unit}/{id}-{name}`. Flattening these into one
+  graph is not a compromise but an error: it orders every unit's data layer before any unit's
+  API, destroying the independent deployability the architecture was chosen for.
+- The caller has already validated the graph with `check-architecture.py` — acyclic, ids unique,
+  every `depends-on` known, every layer reachable — and **refused** the run if it was not. You do
+  not need to re-check it, and a graph reaching you has passed.
+
+**Do not merge the two.** A project that declares a graph gets its own and nothing from
+the list below — not Layer 0, not `4-integration`. Grafting the shipped tiers onto a declared
+graph is how a project ends up with tiers it explicitly did not ask for.
+
+## Layer Definitions (the default graph)
+
+Used when the caller passed no `architecture.json`, or one whose `layer_blocks` is empty.
 Organize tasks into layers based on project type:
 
 ### Layer 0: Setup (`0-setup`) - Greenfield Only
@@ -64,7 +119,9 @@ Create a layer plan that:
 1. Assigns each identified component to the appropriate layer
 2. Orders tasks within each layer by dependency
 3. Ensures no circular dependencies
-4. Keeps tasks small (max 3 files each)
+4. Keeps tasks small — at most `<task-limits>` files each, **defaulting to 3**. When
+   `architecture.md` declares a limit, use it, and honour a scoped
+   `<limit match= max-files=>` for tasks whose files fall under that glob
 
 ## Output Format
 

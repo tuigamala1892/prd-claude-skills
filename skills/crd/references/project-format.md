@@ -46,10 +46,50 @@ PROJECT.md provides context about an existing codebase for efficient change requ
 <project-context version="1.0">
   <meta>...</meta>
   <features>...</features>
-  <api-registry>...</api-registry>
+  <api-registry>...</api-registry>        <!-- any number of registries; see below -->
   <schema-registry>...</schema-registry>
 </project-context>
 ```
+
+`meta` and `features` are required, and **at least one registry** is required. Which registry is
+the project's business, not this format's — see [The registry set is open](#the-registry-set-is-open).
+
+### The registry set is open
+
+`api-registry` plus `schema-registry` is REST plus relational: the right pair for the project
+this toolchain was built for, and the wrong pair for most others. A CLI's primary contract is its
+subcommands; an event-driven system's is its published events; a microservice estate's is its
+service boundaries. So the pair is a **default, not the schema**.
+
+| Registry | Records | Natural to |
+|---|---|---|
+| `<api-registry>` | method, path, request, response | REST |
+| `<schema-registry>` | model, table, fields | relational |
+| `<event-registry>` | event, version, payload, producers, consumers | event-driven |
+| `<command-registry>` | subcommand, flags, exit codes, output format | CLI |
+| `<service-registry>` | service, owns, contracts, deployable unit | microservices |
+| `<screen-registry>` | screen, route, view-model | mobile / SPA |
+
+A registry outside these six is accepted; it simply has no shipped reader.
+
+`check-project-md.py` requires **any one** rather than two particular ones. The two names were a
+proxy for *a consumer can read this*, and that proxy stays honest while asking for one. Each
+consumer then refuses on its own behalf: `crd-impact-analysis` says clearly when the specific
+registry it is about to read is absent, rather than this file mandating a shape for it.
+
+### Relationship to `architecture.md`
+
+The same registry elements, with the same content, are root children of
+[`architecture.md`](../../breakdown/references/architecture-format.md) — the **prescriptive**
+counterpart to this **descriptive** file. That is deliberate: item 26 seeds a greenfield
+`PROJECT.md` from `architecture.md`, and sharing the element names and nesting level makes that
+seeding a subtree **copy** rather than a transform.
+
+| | `architecture.md` | `PROJECT.md` |
+|---|---|---|
+| Direction | prescriptive — what must be true | descriptive — what is true |
+| Derived from | a conversation, before code exists | the code |
+| Also carries | `<rules>`, `<principles>` | `<features>` |
 
 ### Meta Section
 
@@ -272,3 +312,4 @@ src/
 | Version | Changes |
 |---------|---------|
 | 1.0 | Initial format specification |
+| 1.0 | Registry set opened; any one registry required rather than the REST/relational pair (plan item 25, review finding R8). No element changed shape, so existing files stay valid |

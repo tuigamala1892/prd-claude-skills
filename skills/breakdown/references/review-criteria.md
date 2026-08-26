@@ -9,6 +9,11 @@ Failure on ANY critical criterion means the task must be regenerated.
 ### 1. Completeness
 
 - [ ] All required XML sections present (`meta`, `context`, `dependencies`, `objective`, `requirements`, `test-requirements`, `files-to-create`, `verification`, `exports`)
+  - **`test-requirements` is required unless the project declares `<testing default="none">`** in `architecture.md`. Read the declaration before failing a
+    task for its absence: this criterion and `task-format-spec.md` are two of the three
+    places the TDD mandate actually lives, and a project that switched TDD off would
+    otherwise have every task fail here and never reach execution. Its *presence* when
+    `default="none"` is not a failure — only its emptiness is.
 - [ ] No empty sections
 - [ ] No placeholder text: "TODO", "TBD", "...", "[fill in]", "etc."
 - [ ] No "see above", "as mentioned", or references to other parts of the document
