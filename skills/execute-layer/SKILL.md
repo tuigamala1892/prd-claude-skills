@@ -37,7 +37,7 @@ Extract:
 - `dependency_graph`: Map of task_id → list of dependency task_ids
 - `layers`: List of layer definitions with task lists
 
-### Step 2: Load State
+### Step 2: Load What Cannot Be Derived
 
 Read `execute-state.json`:
 
@@ -45,12 +45,19 @@ Read `execute-state.json`:
 cat {tasks_path}/execute-state.json
 ```
 
-Get:
-- `completed`: List of completed task IDs
-- `failed`: List of failed task IDs
-- `abandoned`: List of abandoned task IDs
-- `tasks`: Individual task status details
-- `merge_queue`: Current merge queue
+Take **two fields, and only two**:
+
+- `failed`: task IDs that failed and have not since merged
+- `abandoned`: task IDs that hit the retry limit
+
+Those are the only things in that file not derived from somewhere more trustworthy — which is
+why `write-state.py` carries exactly those two forward and rebuilds everything else.
+
+**Do not take `completed` from here.** Completion comes from `ledger-status.sh`, re-verified
+against git, in Step 3. This file has over-reported completion in four consecutive runs, and
+over-reporting is the dangerous direction: it starts a task before the dependency it builds on
+has landed. `tasks` and `merge_queue` are records of what already happened; nothing in this
+skill decides anything from them.
 
 ### Step 3: Build Ready Queue
 
@@ -87,24 +94,17 @@ def build_ready_queue(layer, dependency_graph, state):
     return ready
 ```
 
-### Step 4: Update Layer Status
+### Step 4: Nothing to Mark
 
-Mark layer as in_progress in state:
+There is no step here, deliberately.
 
-```json
-{
-  "layers": {
-    "{layer}": {
-      "status": "in_progress",
-      "started_at": "{now}",
-      "tasks_total": 6,
-      "tasks_completed": 0,
-      "tasks_failed": 0
-    }
-  },
-  "current_layer": "{layer}"
-}
-```
+A layer is `in_progress` when `merged < total` and `completed` when they are equal, and
+`write-state.py` computes both from the manifest and the ledger every time it runs. Writing
+`"status": "in_progress"` by hand would assert something already derived — and it would be
+**erased**, not merged, because the script rebuilds the whole file rather than patching it.
+
+`current_layer` no longer exists. A position marker can only be maintained by hand, and the
+layer being executed is an argument this skill was invoked with.
 
 ### Step 5: Execute Batches Loop
 
@@ -118,10 +118,11 @@ Group ready tasks up to `max_parallel`:
 batch = ready_queue[:max_parallel]
 ```
 
-Assign batch number:
+Assign batch number — a counter local to this layer, held for the duration of the loop and
+passed to `/execute-batch` as an argument. It is not state and nothing persists it:
+
 ```python
-batch_number = current_batch + 1
-state["current_batch"] = batch_number
+batch_number += 1
 ```
 
 #### 5b. Spawn Batch Agent
@@ -166,25 +167,30 @@ Parse batch result:
 Do not paraphrase a `usage_limit` stop into "task failed". Nothing failed — the run ran out of
 allowance, and the only correct next action is to resume later.
 
-#### 5d. Process Merge Queue
+#### 5d. Merge What the Batch Verified
 
-After each batch, merge verified tasks in order:
+The merge set is **5c's `verified` array**, in the order the batch returned it. That array is
+the only thing that knows what this batch just proved:
 
 ```python
-for item in merge_queue:
-    if item["status"] == "ready":
-        # Invoke merge
-        invoke_merge(item["task_id"])
-        item["status"] = "merged"
+for task_id in batch_result["verified"]:
+    invoke_merge(task_id)
 ```
 
-Call `/execute-merge` for each ready task:
+**Do not look for the merge set in `execute-state.json`.** Its `merge_queue` is a record of
+merges that have already happened — `write-state.py` derives it from the ledger, and every entry
+in it is `"merged"` by construction. There is no `"ready"` entry to find, so a loop looking for
+one merges nothing at all. See §Merge Queue State below, which says the same thing from the
+other direction.
+
+Call `/execute-merge` for each one:
 
 ```
 /execute-merge --task-id {task_id} --project-path {project_path} --worktree-path {worktree_path} --task-file {task_file} --tasks-path {tasks_path} --prd-slug {prd_slug} --base-branch {base_branch} --attempts {attempts}
 ```
 
-**IMPORTANT**: Merge tasks **sequentially** in priority order to avoid conflicts.
+**IMPORTANT**: Merge tasks **sequentially**, one `/execute-merge` at a time, in the order above.
+Parallel merges conflict.
 
 #### 5e. Re-evaluate Ready Queue
 
@@ -193,22 +199,18 @@ After batch completes and merges finish:
 - Rebuild ready queue with fresh state
 - Continue loop if tasks remain
 
-### Step 6: Update Layer Completion
+### Step 6: Nothing to Close
 
-When no more ready tasks:
+When there are no more ready tasks, the layer is over and there is nothing to write.
 
-```json
-{
-  "layers": {
-    "{layer}": {
-      "status": "completed",
-      "completed_at": "{now}",
-      "tasks_completed": 6,
-      "tasks_failed": 0
-    }
-  }
-}
-```
+`/execute-merge` runs `write-state.py` after every merge, so the last merge of the layer already
+left `execute-state.json` current: `merged == total` for this layer, and its status therefore
+reads `completed` without anyone saying so. If the layer ends with tasks unmerged, the file
+correctly says `in_progress` — and writing `completed` over it, which is what this step used to
+do, would be the assertion that made four runs disagree with git.
+
+Report the outcome in Step 7 instead. A report is a claim about a run; the state file is a
+derivation from the repository, and only one of the two may be authored.
 
 ### Step 7: Report Layer Result
 
@@ -333,12 +335,16 @@ Merge Order (sequential by priority):
 ```json
 {
   "merge_queue": [
-    {"task_id": "L1-001", "priority": 1, "status": "merged"},
-    {"task_id": "L1-002", "priority": 2, "status": "ready"},
-    {"task_id": "L1-006", "priority": 3, "status": "ready"}
+    {"task_id": "L1-001", "status": "merged", "commit": "3dde719", "merged_at": "2026-08-25T09:12:00Z"},
+    {"task_id": "L1-002", "status": "merged", "commit": "8a1f0c4", "merged_at": "2026-08-25T09:13:00Z"}
   ]
 }
 ```
+
+Every entry is a merge that happened, with the commit that proves it. There is no `priority`
+field and no `pending`, `ready` or `merging` entry — a queue of intentions is exactly the kind of
+assertion that was wrong in four runs out of four. L1-006 is absent from the example because it
+has not merged yet, and nothing records an intention to merge it.
 
 ### Merge Order
 

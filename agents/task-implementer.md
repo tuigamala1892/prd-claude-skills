@@ -65,7 +65,12 @@ If you cannot proceed inside your worktree, stop and report the blocker. Do not 
 
 ## Implementation Order
 
-1. **Change to your worktree** - the path given in your prompt; work nowhere else
+1. **Change to your worktree** - the path given in your prompt; work nowhere else. If the task
+   declares `<meta><cwd>`, run your build, test and verification commands from
+   `{worktree}/{cwd}` instead of the worktree root — that is what it is for, and it is why the
+   task's `<verification>` steps do not carry a `cd` of their own. The commit still happens in
+   the worktree (see Committing), and `<files-to-create>` paths stay relative to the worktree
+   root, not to `<cwd>`
 2. **Read the full task XML** - Understand objective and requirements
 3. **Check dependencies** - Understand available interfaces from `<dependencies>`
 4. **Create test file(s)** - From `<test-requirements>`, use exact test values

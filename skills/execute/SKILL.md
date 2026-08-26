@@ -347,9 +347,20 @@ Layers:
   4-integration: 12/12 completed
 
 Total: 44/44 tasks completed
+Verified: each task's own declared steps, in its worktree, before merge
+Not run: the project's build or test suite -- that belongs to CI
 Duration: 2h 15m
 Retries: 3 (all succeeded)
 ```
+
+**Those two lines are not boilerplate and must not be dropped.** "44/44 completed" is a claim
+about merges, and every reader hears it as a claim about the build. The ledger records
+`verified: task-steps` for exactly this reason — the narrower true thing rather than the wider
+implied one. A task that merges green and breaks CI is otherwise indistinguishable from one that
+did not, and the report is where that difference matters most.
+
+Running the project's pipeline stays out of scope: `/execute` has no business owning it. Not
+implying it ran is a different question, and this is the answer to it.
 
 ### Step 10: Finalize Context (CRD Projects)
 

@@ -95,6 +95,24 @@ Execute these phases in order:
 
 7. Create `{tasks_dir}`
 8. If it exists, check for existing `.done` markers to resume
+9. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
+
+   ```bash
+   python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]
+   ```
+
+   `{prd_dir}` is the directory holding `index.md` and `features/` — the input file's directory,
+   not the input file.
+
+   - **Exit 0**: continue. Any `STALE` lines are reported to the operator and do not stop the
+     run — a superseded decision record still exists, and a feature citing one is a judgement
+     call rather than a defect.
+   - **Exit 1**: `DANGLING` lines name a citation that resolves to nothing. **Report them and
+     stop.** A feature whose scope was settled by a record that no longer exists will be broken
+     down without it, and the task will look complete.
+
+   Skip only when the PRD cites nothing: the script exits 0 on a PRD with no citations, so
+   running it unconditionally costs nothing and there is no condition to evaluate.
 
 **For CRD input:**
 - Require `--project-path` argument (CRDs always target existing projects)

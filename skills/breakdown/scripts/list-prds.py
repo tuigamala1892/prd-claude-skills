@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""List every PRD and where its status marker actually lives (plan item 9, findings P16, F3).
+
+`/prd` Initialization greps for the marker across two files:
+
+    grep -l "<status>in-progress</status>" docs/prd/*/what-next.md docs/prd/*/index.md
+
+Both locations are checked because F3 was exactly this: resume looked only in `what-next.md`
+while the real PRD carried the marker in `index.md`, so an existing PRD could not be found --
+and a PRD that cannot be found is a PRD that gets silently replaced.
+
+Grepping two files for one string is a shell command a model can mistype, and the *decision*
+that follows it has always been prose. This makes both an exit code.
+
+WHAT IT REPORTS
+
+One line per PRD: slug, feature count, the status each file declares, and how long since it was
+touched. Then the two conditions worth acting on:
+
+  DISAGREE    index.md and what-next.md declare different statuses. Nothing can resume this
+              safely, because the answer depends on which file the reader happens to check --
+              which is F3 restated as a data defect rather than a code one.
+  NO MARKER   neither file declares a status. `--resume` cannot see this PRD at all.
+
+USAGE
+
+    list-prds.py [prd-root] [--check] [--quiet]
+
+  prd-root  defaults to docs/prd
+  --check   exit 1 if any PRD disagrees with itself or carries no marker
+
+  exit 0  listed; with --check, every PRD is self-consistent
+  exit 1  with --check, at least one PRD disagrees or has no marker
+  exit 2  the root does not exist
+"""
+
+import argparse
+import os
+import re
+import sys
+import time
+
+STATUS = re.compile(r"<status>\s*([a-z-]+)\s*</status>", re.I)
+NAME = re.compile(r"<name>\s*(.+?)\s*</name>", re.S)
+
+
+def read(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def status_of(path):
+    """The first <status> a file declares, or None. `/prd` writes exactly one."""
+    if not os.path.isfile(path):
+        return None
+    m = STATUS.search(read(path))
+    return m.group(1).lower() if m else None
+
+
+def survey(root):
+    out = []
+    for slug in sorted(os.listdir(root)):
+        prd = os.path.join(root, slug)
+        if not os.path.isdir(prd):
+            continue
+        index, what_next = os.path.join(prd, "index.md"), os.path.join(prd, "what-next.md")
+        if not os.path.isfile(index) and not os.path.isfile(what_next):
+            continue
+        features = os.path.join(prd, "features")
+        count = len([n for n in os.listdir(features) if n.lower().endswith(".md")]) \
+            if os.path.isdir(features) else 0
+        name = None
+        if os.path.isfile(index):
+            m = NAME.search(read(index))
+            name = " ".join(m.group(1).split()) if m else None
+        newest = max((os.path.getmtime(p) for p in (index, what_next) if os.path.isfile(p)),
+                     default=0)
+        out.append({
+            "slug": slug,
+            "name": name or slug,
+            "features": count,
+            "index": status_of(index),
+            "what_next": status_of(what_next),
+            "age_days": (time.time() - newest) / 86400 if newest else None,
+        })
+    return out
+
+
+def verdict(prd):
+    i, w = prd["index"], prd["what_next"]
+    if i is None and w is None:
+        return "NO MARKER"
+    if i is not None and w is not None and i != w:
+        return "DISAGREE"
+    return i or w
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("root", nargs="?", default=os.path.join("docs", "prd"))
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args()
+
+    root = os.path.abspath(args.root)
+    if not os.path.isdir(root):
+        # Not an error worth failing on: no PRD directory means no PRD, which is the normal
+        # state of a fresh project and exactly what `/prd` with no arguments expects.
+        if not args.quiet:
+            print(f"no PRD directory at {root}")
+        return 0 if not args.check else 0
+
+    prds = survey(root)
+    if not prds:
+        if not args.quiet:
+            print(f"no PRDs under {root}")
+        return 0
+
+    if not args.quiet:
+        print(f"{'slug':<24} {'feat':>4}  {'status':<12} {'declared in':<22} touched")
+        for prd in prds:
+            state = verdict(prd)
+            where = ", ".join(f for f, v in (("index.md", prd["index"]),
+                                             ("what-next.md", prd["what_next"])) if v) or "-"
+            age = "-" if prd["age_days"] is None else (
+                "today" if prd["age_days"] < 1 else f"{prd['age_days']:.0f}d ago")
+            print(f"{prd['slug']:<24} {prd['features']:>4}  {state:<12} {where:<22} {age}")
+
+    bad = [p for p in prds if verdict(p) in ("DISAGREE", "NO MARKER")]
+    for prd in bad:
+        if verdict(prd) == "DISAGREE":
+            print(f"\n{prd['slug']}: index.md says {prd['index']!r} and what-next.md says "
+                  f"{prd['what_next']!r}. A resume finds whichever file it looks in first, "
+                  f"which is F3 as a data defect. Fix the PRD before resuming it.",
+                  file=sys.stderr)
+        else:
+            print(f"\n{prd['slug']}: no <status> in either file, so `--resume` cannot see it "
+                  f"and a new PRD on this slug would replace it without warning.",
+                  file=sys.stderr)
+
+    if args.check and bad:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

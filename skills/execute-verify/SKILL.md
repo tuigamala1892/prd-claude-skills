@@ -40,19 +40,43 @@ Read the `<verification>` section:
 </verification>
 ```
 
-Also read `<meta><id>` to get the task_id.
+Also read `<meta><id>` to get the task_id, and `<meta><cwd>` if the task declares one.
 
-### Step 2: Change to Worktree
+### Step 2: Change to the Directory the Task Names
+
+`<meta><cwd>` is optional and relative to the worktree root. **Absent, this is `cd
+{worktree_path}` and nothing has changed.** Present, every verification step below runs from
+there — which is the point: a task in `packages/billing` should declare `pytest`, not
+`cd packages/billing && pytest`.
+
+Refuse a `<cwd>` that leaves the worktree, rather than resolving it:
 
 ```bash
-cd {worktree_path}
+case "{cwd}" in
+  ""     ) target="{worktree_path}" ;;
+  /*|?:* ) echo "REFUSED: <cwd> must be relative to the worktree, not absolute: {cwd}" >&2; exit 1 ;;
+  *..*   ) echo "REFUSED: <cwd> must not escape the worktree: {cwd}" >&2; exit 1 ;;
+  *      ) target="{worktree_path}/{cwd}" ;;
+esac
+
+cd "$target" || { echo "REFUSED: <cwd> does not exist in the worktree: {cwd}" >&2; exit 1; }
 ```
 
-Verify you're in the correct directory:
+A `..` is refused even when it would resolve back inside — `packages/../packages/billing` is
+rejected rather than normalised. The worktree is the isolation boundary the whole pipeline rests
+on, and a verification that passes outside it has proved something about files no merge will
+carry, which is the most expensive kind of green there is. Nothing is lost by making the author
+write the path they meant.
+
+Confirm where you landed, and report it:
 ```bash
 pwd
 ls -la
 ```
+
+Carry that directory into your result as `cwd`, so a reader of a passing verification knows where
+the commands ran. A step that fails in the wrong directory looks exactly like a step that fails in
+the right one.
 
 ### Step 3: Setup Environment (if needed)
 
@@ -135,6 +159,7 @@ Output structured JSON result:
 {
   "task_id": "L1-001",
   "worktree_path": "/path/.worktrees/L1-001",
+  "cwd": "packages/billing",
   "all_passed": true,
   "steps": [
     {
@@ -165,6 +190,7 @@ Output structured JSON result:
 {
   "task_id": "L1-001",
   "worktree_path": "/path/.worktrees/L1-001",
+  "cwd": "packages/billing",
   "all_passed": false,
   "steps": [
     {

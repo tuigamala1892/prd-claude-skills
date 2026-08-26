@@ -27,6 +27,7 @@ ignore it.
 """
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -472,22 +473,30 @@ def _():
     assert re.search(r"regardless of arguments", init, re.I), (
         "Initialization does not state the existing-PRD check is unconditional, so the "
         "no-argument path can still start a fresh interview over an existing PRD")
-    assert re.search(r"ls -d docs/prd/\*/", init), (
+    # Item 9 replaced `ls -d docs/prd/*/` and the two-file grep with list-prds.py, which
+    # enumerates the same directories and additionally reports which file carries each status
+    # marker -- the half of F3 the grep could only hint at.
+    assert re.search(r"list-prds\.py\s+docs/prd", init), (
         "Initialization has no command that enumerates existing PRD directories")
 
-    # Both marker locations in one command, so PRDs predating the template are still found.
-    marker = re.search(r"grep[^\n]*status[^\n]*\n?[^\n]*", init)
-    assert marker, "Initialization has no grep for the in-progress status marker"
-    assert "what-next.md" in marker.group(0) and "index.md" in marker.group(0), (
-        "the status-marker search does not cover both what-next.md and index.md; a PRD it "
-        "cannot find is a PRD it will silently replace")
+    # Both marker locations must still be covered, and after item 9 that is a property of the
+    # script rather than of a sentence -- so assert it where it is now true. A PRD the lookup
+    # cannot find is a PRD it will silently replace.
+    lister = open(os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py"),
+                  encoding="utf-8").read()
+    assert "index.md" in lister and "what-next.md" in lister, (
+        "list-prds.py does not read both marker locations; PRDs predating the template carry "
+        "the marker only in index.md")
 
-    # The write path must refuse on its own, not rely on care taken earlier.
+    # The write path must refuse on its own, not rely on care taken earlier. It is now an exit
+    # code, and the command must treat it as binding rather than advisory.
     phase8 = text[text.find("### Phase 8"):text.find("## Output Formats")]
-    assert re.search(r"test -e docs/prd/", phase8), (
-        "Phase 8 writes docs/prd/[slug]/ without a command that checks whether it exists")
-    assert re.search(r"\*\*stop and ask\*\*", phase8), (
-        "Phase 8 does not require stopping to ask before replacing an existing PRD")
+    assert re.search(r"check-writable\.py docs/prd/", phase8), (
+        "Phase 8 writes docs/prd/[slug]/ without running the overwrite guard")
+    assert re.search(r"exit code is binding|\*\*Exit 1\*\*", phase8, re.I), (
+        "Phase 8 runs the guard without saying its refusal stops the write")
+    assert re.search(r"\bStop\b", phase8), (
+        "Phase 8 does not require stopping before replacing an existing PRD")
 
 
 @check("execute-state.json is written by a script, never by hand", finding="F21")
@@ -506,8 +515,12 @@ def _():
     # Nobody else may *mutate* it. Reading is fine and sometimes necessary; `rm -f` in
     # --reset is fine. An assignment, an append or a delete into its fields is not -- that
     # is the hand-maintenance this finding is about.
+    # Any field, not a list of seven. The allowlist let `state["current_batch"] = n` through
+    # for as long as that field existed and for two schema revisions after it stopped -- and
+    # the whole point of the finding is that the file is derived, which is true of every key
+    # in it including ones nobody has invented yet.
     mutation = re.compile(
-        r'state\[["\'](tasks|metrics|completed|merge_queue|layers|abandoned|failed)["\']\]'
+        r'state\[["\'][^"\']+["\']\]'
         r'.*?(=(?!=)|\.append\(|\.pop\(|\.extend\()'
         r'|^\s*del\s+state\[')
     bad = []
@@ -521,6 +534,622 @@ def _():
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("mutate execute-state.json by hand; call write-state.py "
                      "instead:\n    " + "\n    ".join(bad))
+
+
+@check("`/prd`'s overwrite guard is an exit code, not a paragraph", finding="P16")
+def _():
+    # Item 9. Five prose guards in this repository became programs after being documented and
+    # then ignored; /prd's Phase 8 pre-write check was the largest one left. Run both scripts
+    # rather than reading them -- "the command mentions test -e" is a property the ignored
+    # version also had.
+    import shutil
+    import tempfile
+
+    writable = os.path.join(SKILLS, "breakdown", "scripts", "check-writable.py")
+    listing = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+    for path in (writable, listing):
+        assert os.path.isfile(path), f"{os.path.basename(path)} is missing"
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "check-writable.py" in prd, "/prd never runs the overwrite guard"
+    assert "list-prds.py" in prd, "/prd never runs the PRD listing"
+    # The prose it replaced must be gone, or both exist and the model may follow either.
+    assert "test -e docs/prd/" not in prd, (
+        "the old inline `test -e` guard is still in /prd; a guard and its replacement both "
+        "present is worse than either alone")
+    assert 'grep -l "<status>in-progress</status>"' not in prd, (
+        "the old two-file grep is still in /prd")
+
+    root = tempfile.mkdtemp(prefix="prd-guard-")
+    try:
+        def prd_dir(slug, index_status=None, next_status=None, features=0):
+            d = os.path.join(root, "docs", "prd", slug)
+            os.makedirs(os.path.join(d, "features"), exist_ok=True)
+            if index_status is not None:
+                open(os.path.join(d, "index.md"), "w", encoding="utf-8", newline="\n").write(
+                    f"<prd><meta><name>{slug}</name>"
+                    f"<status>{index_status}</status></meta></prd>\n")
+            if next_status is not None:
+                open(os.path.join(d, "what-next.md"), "w", encoding="utf-8",
+                     newline="\n").write(f"<what-next><status>{next_status}</status>"
+                                         f"</what-next>\n")
+            for i in range(features):
+                open(os.path.join(d, "features", f"f{i}.md"), "w", encoding="utf-8",
+                     newline="\n").write("<feature/>\n")
+            return d
+
+        live = prd_dir("live-prd", "in-progress", "in-progress", features=2)
+        fresh = os.path.join(root, "docs", "prd", "brand-new")
+
+        # The guard refuses a collision, names what would go, and says how many.
+        p = subprocess.run([sys.executable, writable, live], capture_output=True, text=True)
+        assert p.returncode == 1, "the guard did not refuse an existing PRD"
+        assert "REFUSED" in p.stderr and "index.md" in p.stderr and "f0.md" in p.stderr, (
+            f"the refusal does not name the files at risk:\n{p.stderr}")
+
+        # --resume is the only way past, and it has to be stated.
+        p = subprocess.run([sys.executable, writable, live, "--resume"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "--resume did not permit writing back"
+
+        # A slug nobody has used is not a refusal.
+        p = subprocess.run([sys.executable, writable, fresh], capture_output=True, text=True)
+        assert p.returncode == 0, "the guard refused a PRD directory that does not exist"
+
+        # F3 as a data defect: the two files disagreeing means a resume finds whichever it
+        # reads first. --check has to fail on that, and on a PRD with no marker at all.
+        prd_dir("split-brain", "in-progress", "defined")
+        prd_dir("silent2", "defined", None)  # one file only is fine, not a disagreement
+        # A PRD whose index.md exists but declares no status at all. Not the same as an empty
+        # directory, which is correctly invisible: this one is a real PRD that `--resume`
+        # cannot see.
+        silent = os.path.join(root, "docs", "prd", "silent")
+        os.makedirs(silent, exist_ok=True)
+        open(os.path.join(silent, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd><meta><name>Silent</name></meta></prd>\n")
+        p = subprocess.run([sys.executable, listing, os.path.join(root, "docs", "prd"),
+                            "--check"], capture_output=True, text=True)
+        assert p.returncode == 1, "a self-contradicting PRD passed --check"
+        assert "split-brain" in p.stderr and "silent" in p.stderr
+        assert "silent2" not in p.stderr, (
+            "a PRD declaring its status in one file only was reported as a defect; that is "
+            "the normal older layout F3 exists to keep readable")
+        assert "DISAGREE" in p.stdout and "NO MARKER" in p.stdout
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the P1 fixture reads as a product, not as a test", finding="P1")
+def _():
+    # Item 21's input. Four features, one per tier, two criteria each, and slugs that cannot
+    # occur by coincidence -- attribution is a string match until item 16 adds
+    # <source-feature>, and a string match is only sound when the string is unique.
+    #
+    # The first version of this fixture EXPLAINED ITSELF -- the overview named the finding
+    # under test, and the won't-have carried "**This feature is rejected and must not be
+    # built.**" analyze-prd read all of it and wrote back "Deliberately obscure animal names
+    # ... chosen to prevent accidental coincidental matching" and "must not appear in
+    # generated tasks". The subject knew what was being measured and what a good answer
+    # looked like, so the result was worthless. A fixture that describes the experiment is
+    # part of the experiment.
+    probe = os.path.join(REPO, "tests", "fixture", "prd", "staff-service")
+    index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
+
+    entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
+    tiers = sorted(t for t, _ in entries)
+    assert tiers == ["could-have", "must-have", "should-have", "wont-have"], (
+        f"the probe must carry exactly one feature per tier, found {tiers}")
+
+    for tier, slug in entries:
+        path = os.path.join(probe, "features", f"{slug}.md")
+        assert os.path.isfile(path), f"index names features/{slug}.md and it is not there"
+        body = open(path, encoding="utf-8").read()
+        assert f"<slug>{slug}</slug>" in body, f"{slug}.md does not declare its own slug"
+        assert f"<priority>{tier}</priority>" in body, (
+            f"{slug}.md and the index disagree about priority; the probe measures priority")
+        assert len(re.findall(r"<criterion\b", body)) == 2, (
+            f"{slug}.md must carry exactly two criteria -- P5 says a bigger probe fails for "
+            f"reasons that have nothing to do with what it measures")
+
+    # The won't-have must be specified as well as the others -- a rejected feature that is
+    # obviously unbuildable would be skipped for the wrong reason -- and must be rejected
+    # ONLY by its priority. An instruction in the prose does the filtering the toolchain is
+    # supposed to be measured on.
+    wont = open(os.path.join(probe, "features", "quokka-telemetry.md"), encoding="utf-8").read()
+    body = re.sub(r"<priority>.*?</priority>", "", wont)
+    for instruction in ("must not be built", "must not be implemented", "do not build",
+                        "explicitly rejected", "out of scope", "not wanted"):
+        assert instruction not in body.lower(), (
+            f"the won't-have feature contains the instruction {instruction!r}. Rejection is "
+            f"declared by <priority>wont-have</priority> and by nothing else, or the fixture "
+            f"filters the feature itself and the run measures the fixture")
+    lengths = {}
+    for _tier, slug in entries:
+        lengths[slug] = len(re.sub(r"<[^>]+>", " ", open(
+            os.path.join(probe, "features", f"{slug}.md"), encoding="utf-8").read()).split())
+    shortest = min(lengths.values())
+    assert lengths["quokka-telemetry"] >= shortest, (
+        f"the won't-have is the thinnest feature in the fixture {lengths}; it would be "
+        f"skippable for being vague rather than for being rejected")
+
+    # And nothing anywhere in the PRD may describe the experiment.
+    for dirpath, _dirs, names in os.walk(probe):
+        for name in names:
+            text = open(os.path.join(dirpath, name), encoding="utf-8").read().lower()
+            for leak in ("probe", "finding p1", "toolchain", "regression suite", "coincid",
+                         "moscow tier", "breakdown cannot", "measure"):
+                assert leak not in text, (
+                    f"{name} mentions {leak!r}. The fixture is read by the agent under test; "
+                    f"a PRD that explains what is being measured contaminates the measurement")
+
+
+@check("the P1 probe's grader calls a vacuous run invalid, not clean", finding="P1")
+def _():
+    # The grader is exercised here, offline, so that the expensive path is not the only thing
+    # that has ever run it. The case that matters is the third: a probe reporting "no
+    # won't-have tasks" because nothing was generated has measured nothing, and that shape
+    # has already produced two false passes in this phase.
+    import shutil
+    import tempfile
+
+    probe = os.path.join(REPO, "tests", "probe-p1.py")
+    assert os.path.isfile(probe), "tests/probe-p1.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-p1-")
+    try:
+        def task(where, tid, objective, requirements=""):
+            # A task is attributed by its <name> and <objective> only. <requirements> is
+            # written separately here because that is where a real run put "Do NOT add a
+            # telemetry table", and counting that as derivation inverts the result.
+            os.makedirs(where, exist_ok=True)
+            with open(os.path.join(where, f"{tid}.xml"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write(f"<task><meta><id>{tid}</id><name>{objective}</name></meta>"
+                        f"<objective>{objective}</objective>"
+                        f"<requirements>{requirements}</requirements></task>\n")
+
+        clean = os.path.join(root, "clean")
+        task(clean, "L1-001", "zebra-signin stores a password hash",
+             "Do NOT add a quokka-telemetry table; that feature is excluded")
+        task(clean, "L2-001", "walrus-export returns text/csv")
+
+        dirty = os.path.join(root, "dirty")
+        task(dirty, "L1-001", "zebra-signin stores a password hash")
+        task(dirty, "L2-003", "quokka-telemetry posts batches to the collector")
+
+        nomust = os.path.join(root, "nomust")
+        task(nomust, "L2-001", "walrus-export returns text/csv")
+
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+
+        # `clean` carries a negative requirement naming the rejected feature and must still
+        # grade 0: an instruction not to build something is not building it.
+        expected = {clean: 0, dirty: 1, nomust: 2, empty: 2}
+        for where, code in expected.items():
+            p = subprocess.run([sys.executable, probe, "--grade", where],
+                               capture_output=True, text=True)
+            got = p.stdout + p.stderr
+            assert p.returncode == code, (
+                f"{os.path.basename(where)}: expected exit {code}, got {p.returncode}\n{got}")
+
+        p = subprocess.run([sys.executable, probe, "--grade", dirty],
+                           capture_output=True, text=True)
+        assert "P1 CONFIRMED" in p.stderr, "a won't-have task was found and not called out"
+        assert "L2-003" in p.stdout, "the violating task is not named"
+
+        p = subprocess.run([sys.executable, probe, "--grade", empty],
+                           capture_output=True, text=True)
+        assert "INVALID" in p.stderr and "measures nothing" in p.stderr, (
+            "an empty task set was not called invalid")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a rename finishes, or leaves the PRD exactly as it was", finding="P27")
+def _():
+    # Item 42. The rename that prompted it was done correctly across 20 references in 8 files
+    # and produced no evidence of that fact -- which is the defect. This runs the script over
+    # a copy of the §5.1 fixture, with the two link shapes the corpus has and the fixture does
+    # not, and asserts the three postconditions from the outside.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "rename-feature.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/rename-feature.py is missing"
+    src = os.path.join(REPO, "tests", "fixture", "prd", "link-shelf")
+    assert os.path.isdir(src), "the §5.1 fixture PRD is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-rename-")
+    try:
+        prd = os.path.join(root, "link-shelf")
+        shutil.copytree(src, prd)
+
+        # Inbound links, both shapes, plus a prose mention that must NOT be rewritten.
+        lst = os.path.join(prd, "features", "list-links.md")
+        text = open(lst, encoding="utf-8").read().replace(
+            "</description>",
+            "\n  See [Tag links](tag-links.md) and [again](features/tag-links.md).\n"
+            "  </description>", 1)
+        open(lst, "w", encoding="utf-8", newline="\n").write(text)
+        save = os.path.join(prd, "features", "save-link.md")
+        text = open(save, encoding="utf-8").read().replace(
+            "</description>", "\n  Tagging is specified in tag-links, in prose.\n  </description>", 1)
+        open(save, "w", encoding="utf-8", newline="\n").write(text)
+
+        p = subprocess.run([sys.executable, script, prd, "tag-links", "label-links"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"the rename failed: {p.stdout}\n{p.stderr}"
+
+        # Postcondition 2: no file under the old slug.
+        assert not os.path.exists(os.path.join(prd, "features", "tag-links.md"))
+        assert os.path.isfile(os.path.join(prd, "features", "label-links.md"))
+
+        # Postcondition 1: nothing *resolves* to the old slug any more -- checked here rather
+        # than trusting the script's own report of itself.
+        resolving = re.compile(r"features/tag-links\.md|<slug>\s*tag-links\s*</slug>"
+                               r"|\]\(\s*tag-links\.md\s*\)")
+        for dirpath, _, names in os.walk(prd):
+            for name in names:
+                if name.endswith(".md"):
+                    body = open(os.path.join(dirpath, name), encoding="utf-8").read()
+                    assert not resolving.search(body), f"{name} still resolves to tag-links"
+
+        # Postcondition 3: exactly one index entry, exactly one file.
+        index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
+        assert index.count('file="features/label-links.md"') == 1
+        owners = [n for n in os.listdir(os.path.join(prd, "features"))
+                  if "<slug>label-links</slug>" in
+                  open(os.path.join(prd, "features", n), encoding="utf-8").read()]
+        assert owners == ["label-links.md"], f"the new slug is claimed by {owners}"
+
+        # what-next.md's ref= is the sixth site. The plan's item 42 lists five, and the
+        # fixture is where the sixth turned up.
+        wn = open(os.path.join(prd, "what-next.md"), encoding="utf-8").read()
+        assert 'ref="features/label-links.md"' in wn, "what-next.md was not carried"
+
+        # Prose is reported, not rewritten.
+        assert "MENTION" in p.stdout and "in prose" in p.stdout, (
+            f"the prose mention was not reported: {p.stdout}")
+        assert "tag-links, in prose" in open(save, encoding="utf-8").read(), (
+            "the script rewrote a sentence; it must only rewrite references")
+
+        # And the half that matters for item 41: a failed postcondition must roll back. Two
+        # files claiming one slug is the cheapest way to make postcondition 3 fail after the
+        # writes have already happened.
+        dup = os.path.join(root, "dup")
+        shutil.copytree(src, dup)
+        f = os.path.join(dup, "features", "list-links.md")
+        body = open(f, encoding="utf-8").read().replace("<slug>list-links</slug>",
+                                                        "<slug>saved-link</slug>")
+        open(f, "w", encoding="utf-8", newline="\n").write(body)
+
+        before = {}
+        for dirpath, _, names in os.walk(dup):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                before[os.path.relpath(full, dup)] = open(full, "rb").read()
+
+        p = subprocess.run([sys.executable, script, dup, "save-link", "saved-link"],
+                           capture_output=True, text=True)
+        assert p.returncode == 1, "a failing postcondition did not refuse"
+        assert "POSTCONDITION FAILED" in p.stderr and "rolled back" in p.stderr
+
+        after = {}
+        for dirpath, _, names in os.walk(dup):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                after[os.path.relpath(full, dup)] = open(full, "rb").read()
+        assert before == after, (
+            "a failed rename left the PRD changed. Every byte must be as it was found, or "
+            "the operator is told nothing happened while something did")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the ledger records what was verified, not that it was", finding="P37")
+def _():
+    # Item 55. `"verified":true` invited the stronger reading: execute-verify runs the task's
+    # OWN declared steps, and never the project's build. A task that merges green and breaks
+    # CI was indistinguishable from one that did not, and the ledger was the thing implying
+    # otherwise. The entry now names its scope.
+    #
+    # Run rather than read, because the assertion is about the bytes appended to the ledger.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute-merge", "scripts", "record-task.sh")
+    assert os.path.isfile(script), "skills/execute-merge/scripts/record-task.sh is missing"
+    sh = shutil.which("sh")
+    assert sh, "sh is not on PATH; the execute pipeline's own scripts could not run either"
+
+    body = open(script, encoding="utf-8").read()
+    assert '"verified":true' not in body.replace(" ", ""), (
+        "record-task.sh still writes a bare `verified: true`, which claims more than was run")
+
+    root = tempfile.mkdtemp(prefix="prd-ledger-")
+    try:
+        def git(*args):
+            return subprocess.run(["git"] + list(args), cwd=root,
+                                  capture_output=True, text=True)
+
+        git("init", "-q")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "T")
+        git("commit", "-q", "--allow-empty", "-m", "base")
+        sha = git("rev-parse", "HEAD").stdout.strip()
+
+        p = subprocess.run([sh, script, root, "link-shelf", "L1-001", sha, "2"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"record-task.sh failed on a real commit: {p.stderr}"
+
+        entries = open(os.path.join(root, ".execute", "link-shelf", "ledger.jsonl"),
+                       encoding="utf-8").read().strip().splitlines()
+        assert len(entries) == 1, f"expected one ledger entry, got {len(entries)}"
+        entry = json.loads(entries[0])
+
+        assert entry["verified"] == "task-steps", (
+            f"the ledger says verified={entry['verified']!r}; it must name what ran, and the "
+            f"only thing that ran is the task's own declared steps")
+        assert entry["commit"] == sha and entry["task_id"] == "L1-001"
+        assert entry["attempts"] == 2, "attempts was not carried through"
+
+        # The rule the field depends on: an entry is never written for a commit that is not
+        # there. A named verification of a merge that did not happen is worse, not better.
+        p = subprocess.run([sh, script, root, "link-shelf", "L1-002", "0" * 40],
+                           capture_output=True, text=True)
+        assert p.returncode != 0, "a commit that does not exist was recorded anyway"
+        after = open(os.path.join(root, ".execute", "link-shelf", "ledger.jsonl"),
+                     encoding="utf-8").read().strip().splitlines()
+        assert len(after) == 1, "the refused entry was appended regardless"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the completion report does not imply a build it never ran", finding="P37")
+def _():
+    # The other half of P37. "44/44 tasks completed" is a claim about merges that every
+    # reader hears as a claim about the build, and the report is where that costs most.
+    body = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    assert re.search(r"^Verified: .*declared steps", body, re.M), (
+        "the completion report does not state what was verified")
+    assert re.search(r"^Not run: .*(build|test suite)", body, re.M), (
+        "the completion report does not state what was NOT run")
+
+
+@check("`<cwd>` has a producer, two readers, and a guard that runs", finding="P36")
+def _():
+    # Item 54. Verification used to run at the worktree root and nowhere else, so a monorepo
+    # task had to write `cd packages/billing && pytest` inside each command string -- which
+    # works in one runner and nowhere else.
+    #
+    # The element is checked in both directions, which is item 23's rule: a reader with no
+    # producer is as broken as a producer with no reader, and `<cwd>` would have shipped with
+    # two readers and nothing writing it if nobody looked.
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    verify = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"), encoding="utf-8").read()
+    implementer = open(os.path.join(AGENTS, "task-implementer.md"), encoding="utf-8").read()
+    generator = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                     encoding="utf-8").read()
+
+    assert "<cwd>" in spec, "task-format-spec.md does not declare <cwd>"
+    assert "cwd" in verify, "execute-verify does not read <cwd>"
+    assert "cwd" in implementer, "the implementer does not read <cwd>"
+    assert "cwd" in generator, "nothing produces <cwd> -- it would ship read-only"
+
+    # The spec has to say the two things that make it safe, or the readers are guessing.
+    assert re.search(r"relative to the worktree", spec, re.I), (
+        "the spec does not say <cwd> is relative to the worktree root")
+    assert re.search(r"files-to-create.*worktree root|worktree root.*files-to-create",
+                     spec, re.I | re.S), (
+        "the spec does not say whether <files-to-create> is relative to <cwd>")
+
+    # And the guard is EXECUTED, not read. `sh` is already a hard dependency of this toolchain
+    # -- preflight.sh, create-worktree.sh and merge-task.sh are how /execute works -- so a box
+    # without it cannot run the pipeline either.
+    import shutil
+    import tempfile
+    sh = shutil.which("sh")
+    assert sh, "sh is not on PATH; the execute pipeline's own scripts could not run either"
+
+    block = None
+    for candidate in re.findall(r"```bash\s*\n(.*?)\n```", verify, re.S):
+        if "REFUSED: <cwd>" in candidate and "case " in candidate:
+            block = candidate
+            break
+    assert block, "execute-verify states no runnable guard for <cwd>"
+
+    # Substitute the skill's placeholders for shell variables. Nothing else is changed: the
+    # lines under test are the lines a model is told to run.
+    script = block.replace("{worktree_path}", '$WT').replace("{cwd}", '$CWD')
+    script += '\necho "LANDED:$(pwd)"\n'
+
+    root = tempfile.mkdtemp(prefix="prd-cwd-")
+    try:
+        # The worktree is a level down, and `outside/` is a real directory beside it. That
+        # matters: an escaping <cwd> has to point somewhere that EXISTS, or removing the
+        # escape branch still produces a refusal -- from `cd` failing -- and the check passes
+        # against a guard that no longer guards. That false pass happened once here.
+        wt = os.path.join(root, "wt")
+        os.makedirs(os.path.join(wt, "packages", "billing"))
+        os.makedirs(os.path.join(root, "outside"))
+
+        cases = [
+            ("", "LANDED", "an absent <cwd> must land at the worktree root"),
+            ("packages/billing", "LANDED", "a plain relative <cwd> must be accepted"),
+            ("/etc", "must be relative", "an absolute <cwd> must be refused"),
+            ("C:/Windows", "must be relative", "a drive-letter <cwd> must be refused"),
+            ("../outside", "must not escape", "a <cwd> escaping to a real directory must be "
+                                              "refused by the guard, not by cd failing"),
+            ("packages/../packages/billing", "must not escape",
+             "a `..` that resolves back inside must still be refused, not normalised"),
+            ("packages/nope", "does not exist", "a <cwd> that does not exist must be refused"),
+        ]
+        for value, expected, why in cases:
+            env = dict(os.environ, WT=wt.replace("\\", "/"), CWD=value)
+            p = subprocess.run([sh, "-c", script], capture_output=True, text=True, env=env)
+            got = (p.stdout + p.stderr).strip()
+            assert expected in got, f"{why}; <cwd>={value!r} gave: {got[:160]}"
+            if expected != "LANDED":
+                assert p.returncode != 0, f"{why}; it refused but exited 0"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("dangling ADR / OQ citations are refused, and named", finding="P24")
+def _():
+    # Item 39. The suite is otherwise static, and this one runs a script -- which is safe in a
+    # way running a skill is not: check-references.py reads a directory and returns an exit
+    # code. It creates nothing, so there is no repository for it to damage.
+    #
+    # It is run rather than grepped because the assertion that matters is not "the script
+    # mentions ADR" -- it is that a planted dangling citation comes back named. A validator
+    # that exits 0 on everything passes every static check ever written about it.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/check-references.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-refs-")
+    try:
+        prd = os.path.join(root, "prd", "link-shelf")
+        adr = os.path.join(root, "architecture", "decisions")
+        os.makedirs(os.path.join(prd, "features"))
+        os.makedirs(adr)
+
+        def write(path, text):
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+
+        write(os.path.join(prd, "index.md"),
+              "# Link Shelf\nSettled by ADR-003. Superseded elsewhere: ADR-007.\nOpen: OQ-012.\n")
+        write(os.path.join(prd, "features", "tagging.md"),
+              "# Tagging\nPer ADR-999 a join table. See OQ-004 and OQ-777.\n")
+        write(os.path.join(adr, "003-join-table.md"),
+              "# Tags are a join table\n**Status:** Accepted\n"
+              "**Drives:** [Tagging](../../prd/link-shelf/features/tagging.md), "
+              "[Gone](../../prd/link-shelf/features/removed.md)\n")
+        write(os.path.join(adr, "007-sqlite.md"), "# SQLite\n**Status:** Superseded by ADR-011\n")
+        write(os.path.join(adr, "011-postgres.md"), "# Postgres\n**Status:** Accepted\n")
+        write(os.path.join(root, "architecture", "open-questions.md"),
+              "# Open Questions\n## OQ-004 -- ordering? Resolved 2026-03-02 by ADR-003\n"
+              "## OQ-012 -- which auth provider?\n")
+
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        out = p.stdout
+
+        assert p.returncode == 1, f"a PRD with three dangling references exited {p.returncode}"
+
+        # Each dangling reference is named, as written, with somewhere to look.
+        for needle in ("ADR-999", "OQ-777", "removed.md"):
+            assert needle in out, f"the report does not name {needle}:\n{out}"
+        assert "features" in out and ":2:" in out, (
+            f"the report names no file and line for a citation:\n{out}")
+
+        # A superseded record and a resolved question are reported, and do NOT refuse: both
+        # still exist, and citing one is a judgement call rather than a defect.
+        assert "ADR-007 is superseded by ADR-011" in out, f"supersession not reported:\n{out}"
+        assert "OQ-004" in out and "Resolved" in out, f"resolution not reported:\n{out}"
+
+        # Citations are echoed as written. ADR-007 and ADR-7 are the same record, and a report
+        # that renames one sends a reader looking for a string that is not in the file.
+        assert "ADR-7 " not in out and "OQ-4 " not in out, (
+            f"the report strips leading zeros from citations:\n{out}")
+
+        # With the dangling three repaired, the same tree passes -- warnings and all.
+        write(os.path.join(prd, "features", "tagging.md"),
+              "# Tagging\nPer ADR-003 a join table. See OQ-004 and OQ-012.\n")
+        write(os.path.join(adr, "003-join-table.md"),
+              "# Tags are a join table\n**Status:** Accepted\n"
+              "**Drives:** [Tagging](../../prd/link-shelf/features/tagging.md)\n")
+        p = subprocess.run([sys.executable, script, prd], capture_output=True, text=True)
+        assert p.returncode == 0, f"a PRD with no dangling references exited {p.returncode}"
+
+        # And a citation with nowhere to resolve against is an error, not a quiet pass. A
+        # validator that goes green because it could not find the register is decorative.
+        lonely = os.path.join(root, "lonely")
+        os.makedirs(lonely)
+        shutil.copy(os.path.join(prd, "index.md"), lonely)
+        p = subprocess.run([sys.executable, script, lonely], capture_output=True, text=True)
+        assert p.returncode == 1, "citations with no decision directory exited 0"
+        assert "--adr-dir" in p.stdout, "the refusal does not name the flag that would fix it"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("both ends of the pipeline call the reference check", finding="P24")
+def _():
+    # Item 39's own argument, applied to itself: a script nothing invokes is the producer
+    # without a reader that this plan exists to describe. /breakdown must refuse on it;
+    # /prd runs it as early warning while the author is still in the conversation.
+    breakdown = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "check-references.py" in breakdown, "/breakdown never runs the reference check"
+    assert "check-references.py" in prd, "/prd never runs the reference check"
+    # The probe established that CLAUDE_PLUGIN_ROOT is expanded where the command is written
+    # and is NOT exported to the spawned shell, so the path has to be passed as an argument.
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py" in prd, (
+        "/prd invokes the script by a path the harness will not expand")
+
+
+@check("state-schema.md documents the file write-state.py actually writes", finding="P28")
+def _():
+    # A reference that describes a different document from the one the producer emits is the
+    # drift this repository keeps finding in other people's artefacts. It was live here: the
+    # reference said schema_version 2.0 and hand-maintained `options`, `worktrees` and
+    # `current_layer`; the script writes 3.0 and none of them. Compare the two mechanically
+    # rather than by reading, because reading is what missed it for three schema revisions.
+    ws = os.path.join(SKILLS, "execute", "scripts", "write-state.py")
+    doc_path = os.path.join(SKILLS, "execute", "references", "state-schema.md")
+    assert os.path.isfile(doc_path), "skills/execute/references/state-schema.md is missing"
+    doc = open(doc_path, encoding="utf-8").read()
+
+    # The writer's own dict literal, not a copy of it kept in sync by hand.
+    written = None
+    for node in ast.walk(ast.parse(open(ws, encoding="utf-8").read())):
+        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "state" for t in node.targets)):
+            written = node.value
+    assert written is not None, "no `state = {...}` literal found in write-state.py"
+    writer_keys = [k.value for k in written.keys if isinstance(k, ast.Constant)]
+    writer_version = next(
+        v.value for k, v in zip(written.keys, written.values)
+        if isinstance(k, ast.Constant) and k.value == "schema_version")
+
+    # The documented example is the ```json block that parses as an object carrying a version.
+    documented = None
+    for block in re.findall(r"```json\s*\n(.*?)\n```", doc, re.S):
+        try:
+            obj = json.loads(block)
+        except Exception:
+            continue
+        if isinstance(obj, dict) and "schema_version" in obj:
+            documented = obj
+            break
+    assert documented is not None, (
+        "state-schema.md has no complete ```json example carrying schema_version")
+
+    missing = [k for k in writer_keys if k not in documented]
+    extra = [k for k in documented if k not in writer_keys]
+    assert not missing and not extra, (
+        "state-schema.md and write-state.py disagree about the root fields"
+        + (f"\n    written, undocumented: {missing}" if missing else "")
+        + (f"\n    documented, never written: {extra}" if extra else ""))
+
+    # Every version the reference states -- in the example and in the prose above it.
+    stated = (set(re.findall(r'"schema_version"\s*:\s*"([^"]+)"', doc))
+              | set(re.findall(r"Current version:\s*`([^`]+)`", doc)))
+    assert stated == {writer_version}, (
+        f"write-state.py writes schema_version {writer_version!r}; "
+        f"state-schema.md states {sorted(stated)}")
+
+    # Fields 2.0 carried and 3.0 does not, at a nesting the key comparison cannot reach.
+    gone = [f for f in ("commits", "errors", "retry_feedback", "elapsed_seconds",
+                        "total_retries", "worktree_path")
+            if f'"{f}"' in json.dumps(documented)]
+    assert not gone, f"the documented example still carries 2.0 fields: {gone}"
 
 
 @check("resume is decided by verified commits, not by the state file", finding="F16")

@@ -1,6 +1,6 @@
 ---
 description: Collaborative Product Requirements Document workflow - shape an idea into a structured PRD under docs/prd/.
-argument-hint: "[--resume] [initial idea]"
+argument-hint: "[--resume] [--rename <old> <new>] [initial idea]"
 ---
 
 # /prd - Product Requirements Document Workflow
@@ -11,29 +11,65 @@ You are a collaborative product partner helping create a comprehensive PRD (Prod
 
 - No arguments: Start a new PRD
 - `--resume`: List incomplete PRDs and continue working on one
+- `--rename <old-slug> <new-slug>`: Rename one feature across the whole PRD — see below
 - Any other text: Use as initial idea/context for a new PRD
+
+### `--rename` — one operation, three postconditions
+
+Do not do this by hand. Renaming a feature touches its filename, its `<slug>`, the index
+entry's `file=` attribute, `what-next.md`'s `ref=`, and every inbound link in every other
+feature file — and doing it correctly by care produces no evidence that it was done correctly,
+which is the actual problem.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/rename-feature.py {prd_dir} {old} {new}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/rename-feature.py {prd_dir} {old} {new} --dry-run
+```
+
+- **Exit 0**: the rename happened and all three postconditions hold — nothing resolves to the
+  old slug, no file exists under it, and the new slug appears in exactly one index entry and
+  one feature file.
+- **Exit 1**: either it refused before writing, or a postcondition failed and **every change
+  was rolled back**. Report the message verbatim. Do not retry by hand.
+
+`MENTION` lines are prose that names the old slug in a sentence. They are not rewritten — a
+script editing English is a worse failure than a stale sentence — so read them and decide.
+
+**A rename is not a supersession.** `<status>superseded</status>` is for a feature merged into
+another; using it here would claim two features existed where there was always one. The script
+never touches a status, and refuses to rename onto an existing feature for the same reason.
+
+**A rename is a decision.** Where it accompanies a change of scope it wants a decision record
+rather than a silent file move; the script's final line is written to be pasted into one.
 
 ## Initialization
 
 **Always look for existing PRDs first — before anything else, and regardless of arguments.**
 
 ```bash
-ls -d docs/prd/*/ 2>/dev/null
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/list-prds.py docs/prd
 ```
 
 A PRD represents a long conversation the user has already had. Starting a fresh interview on
 top of one, and then writing to `docs/prd/[slug]/` in Phase 8, can overwrite that work. The
 check costs one command; the mistake costs the interview.
 
-For each directory found, read the status marker from **either** file:
+One line per PRD: slug, feature count, status, and **which file declares it**. Both `index.md`
+and `what-next.md` are read deliberately — new PRDs carry the marker in `what-next.md`, older
+ones only in `index.md`, and a PRD that cannot be found is a PRD that gets silently replaced
+(**F3**).
 
-```bash
-grep -l "<status>in-progress</status>" docs/prd/*/what-next.md docs/prd/*/index.md 2>/dev/null
-```
+Two verdicts need you to stop and say something rather than carry on:
 
-Both locations are checked deliberately. New PRDs carry the marker in `what-next.md`, but
-artefacts written before that template settled carry it only in `index.md`, and a PRD that
-cannot be found is a PRD that gets silently replaced.
+- **`DISAGREE`** — the two files declare different statuses. Whether a resume finds this PRD
+  depends on which file it looks in first. Report it and offer to fix it before doing anything
+  else with that slug.
+- **`NO MARKER`** — neither file declares a status, so `--resume` cannot see it and a new PRD on
+  that slug would replace it without warning. Say so.
+
+This used to be a `grep -l` and a paragraph of instructions. It is a script because five other
+prose guards in this repository became programs after being documented and then ignored
+(**P16**).
 
 **If any PRD directory exists:**
 1. Present a numbered list — slug, name, status, and when it was last modified
@@ -127,6 +163,24 @@ Before finalizing, run consistency checks:
 - Are there any contradictions in requirements?
 - Flag any concerns as questions to the user
 
+**Then check the references that leave the PRD**, if the document cites any `ADR-NNN` or
+`OQ-NNN`:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py {prd_dir}
+```
+
+Pass `{prd_dir}` as an argument. `${CLAUDE_PLUGIN_ROOT}` is expanded by the harness where this
+command is written, and is **not** exported to the shell the script runs in — a script reading it
+from its own environment gets nothing.
+
+`DANGLING` lines are citations that resolve to nothing: report them and offer to fix them here,
+while the author is still in the conversation. That is the whole reason this runs at authoring
+time as well as at `/breakdown` — the consumer-side check is the one that must refuse, and this
+one is early warning, at the moment the person who knows the answer is present.
+
+This never edits the open-questions register. It is maintained by hand and outlives the PRD.
+
 ### Phase 7: Interactive Review
 
 Present a summary of each section:
@@ -148,24 +202,30 @@ docs/prd/[project-slug]/
     [feature-slug].md (one per feature with detailed specs)
 ```
 
-**Check before writing, every time:**
+**Check before writing, every time. This is a script and its exit code is binding:**
 
 ```bash
-test -e docs/prd/[project-slug]/index.md && echo EXISTS
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py docs/prd/{slug}
 ```
 
-If anything is already there, **stop and ask** — naming the files that would be replaced and
-offering a different slug. Do not overwrite `index.md`, `what-next.md` or anything under
-`features/` on the strength of having reached this phase.
+- **Exit 0** — nothing would be lost. Write.
+- **Exit 1** — `REFUSED`, and stderr lists every file that would be replaced with its size and
+  age. **Stop.** Show that list to the user, then either take a different slug or, once they
+  confirm this is the PRD they meant, re-run with `--resume` and proceed.
 
-Two different situations end up here, and only one of them is safe:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py docs/prd/{slug} --resume
+```
 
-- **Resuming a PRD** you loaded in Initialization: writing back is the point. Proceed.
-- **A new PRD that happens to collide** with an existing slug: two projects with similar names
-  produce the same slug, and the second silently destroys the first. Ask.
+Two situations end up here and only one is safe. **The script cannot tell them apart — only you
+can** — which is why refusing is the default and `--resume` has to be stated:
 
-If the interview was long, say what is about to be replaced *before* replacing it. A PRD is an
-hour of someone's thinking; a slug collision should never be the reason it disappears.
+- **Resuming a PRD** you loaded in Initialization: writing back is the point.
+- **A new PRD that collides** with an existing slug: two projects with similar names produce the
+  same slug, and the second silently destroys the first.
+
+Never pass `--resume` to get past a refusal you did not expect. A PRD is an hour of someone's
+thinking, and a slug collision should not be the reason it disappears.
 
 ## Output Formats
 

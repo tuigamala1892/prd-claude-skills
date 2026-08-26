@@ -1,6 +1,9 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** Proposed. Nothing here is implemented yet.
+**Status:** In implementation as of 2026-08-25, on branch `phase-1-live-defects`. This document
+stays a **specification**; what has actually landed, and where the implementation departed from
+what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
+is implemented except what that file lists.
 **Date:** 2026-08-17
 **Subject:** what `/prd` and `/crd` write, and how much of it survives into `/breakdown` and `/execute`
 **Supersedes:** items **4.4** and **4.5** of [`toolchain-assessment-and-plan.md`](toolchain-assessment-and-plan.md), which are folded in below as items 12 and 18.
@@ -35,7 +38,7 @@ pipeline consumes one of them:
 Three quarters of the document is written and discarded. Everything below follows from that.
 
 Findings use the same grades as the assessment (Blocking / Correctness / Consistency /
-Structural / Measured) and are numbered **P1–P37** so they do not collide with its F1–F24.
+Structural / Measured) and are numbered **P1–P38** so they do not collide with its F1–F24.
 
 **Verification status is stated per finding.** "Static" means every file in `skills/`,
 `commands/` and `agents/` was searched and the consumer does not exist. "Measured" means a
@@ -580,6 +583,27 @@ The claim to fix is small and the principle is the plan's own. S2 is *"state is 
 never asserted"* — so the ledger should state **what it verified** rather than leave a reader to
 assume the stronger thing. Running the project's pipeline is out of scope; implying it was run is
 not.
+
+**P38 — `execute-layer` maintains a file that is rebuilt from git on every write.**
+*Verification: static, exhaustive. Found while implementing item 23a, 2026-08-25.*
+`write-state.py` derives `execute-state.json` from the manifest and the ledger and rebuilds it
+whole; `execute-layer` was written against the hand-maintained 2.0 file and still instructs four
+writes into it and two reads out of it. The reads are the live half:
+
+| Step | What it does | Consequence |
+|---|---|---|
+| 5d | Iterates `merge_queue` for `status == "ready"` | **Merges nothing.** Every entry is `merged` by construction — the list is derived from the ledger *after* the fact |
+| 2 | Takes `completed` from the state file | Over-reports completion, which starts a task before its dependency landed. Step 3 forbids this four lines later |
+| 4, 5a, 6 | Write `current_layer`, `current_batch`, per-layer counters | Fields absent from 3.0; erased rather than merged, since the script rebuilds rather than patches |
+
+**The skill already contained the correct rule** — *"There is no queue to maintain in a file…
+writing one by hand would make that untrue"* — added at some point without removing the blocks it
+contradicts. That is the same shape as the plan's own nine (item 23): the fix was written and the
+thing it replaced was left in place, so the document says both.
+
+**And the regression suite had a check for exactly this that did not fire.** F21's mutation
+pattern was an allowlist of seven field names, so `state["current_batch"] = batch_number` was
+never in scope. A check scoped to the fields that were wrong last time cannot catch the next one.
 
 **P34 — `/prd` does not know what project it is writing into.**
 *Verification: static, exhaustive.* `commands/prd.md` mentions `PROJECT.md` **zero times**.
@@ -1345,6 +1369,18 @@ one and it is not a measurement of quality — but the plan adds a phase, replac
 format, and re-annotates 550 criteria, and *"is this still tolerable to write?"* currently has no
 answer at all. One number beats none, and the fixture is where it costs nothing to take.
 
+**Split into two halves when built, because only one of them is automatable.** `probe-p1.py
+--baseline` takes the *size* — words, criteria and elements per feature — which is the instrument
+the after-measurement compares against, and it is worth having on record before items 33 and 34
+move it. The *timing* is a stopwatch against a person and no script can take it; the probe says so
+in its own output rather than reporting the size half as though it were the whole. Whoever runs
+the after-measurement records both numbers together.
+
+**The probe's third exit code is the one to keep.** A run that generates no tasks, or none from
+the must-have, exits `INVALID` rather than clean: *"no won't-have tasks"* is vacuous when nothing
+was generated at all. That guard is not hypothetical — two checks in Phase 1 passed against
+nothing before it was added to them.
+
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
 weeks. A single `check-artefacts.py` validating `index.md`, `what-next.md` and every feature file
@@ -1969,6 +2005,12 @@ writing into a document it does not own. So: validate that citations resolve, re
 a question already closed, and never write. *Stated here because a consumer with no producer should
 be deliberate or fixed, and this one is deliberate.*
 
+**Principle citations are excluded, and the exclusion is the honest part.** A principle has no
+home until item 28 gives `architecture.md` its `<principles>` section (item 37), so there is
+nothing for a citation to resolve against and validating one would assert a file that does not
+exist. That is 10 of the 190; the other **180 are checked**, and the script says which it skips
+rather than skipping quietly. The remainder lands with Phase 3, not here.
+
 Cheap, and **190 references currently go unchecked**. This is also the minimum that makes the
 decision-record track useful even if 35, 36 and 38 are never switched on: a dangling reference in
 a feature that `/breakdown` is about to turn into tasks is a defect whether or not the design
@@ -2160,9 +2202,17 @@ embarrassing possible outcome.
 **42. A rename operation, and the postcondition that proves it finished.**
 *Addresses P27. Small, and the cheapest possible test of item 41's machinery.*
 
-`/prd --rename <old-slug> <new-slug>`, doing all five edits a slug requires: the filename, `<slug>`,
-the index entry's `file=` attribute, the index entry's content, and every inbound cross-reference
-in every other feature file.
+`/prd --rename <old-slug> <new-slug>`, doing every edit a slug requires: the filename, `<slug>`,
+the index entry's `file=` attribute, `what-next.md`'s `ref=`, and every inbound cross-reference in
+every other feature file.
+
+**Corrected while building it: that is six sites, not the five listed here, and one of the five
+was wrong.** `what-next.md` carries `ref="features/{slug}.md"` and was missing from the list —
+found by running the operation against the §5.1 fixture rather than by re-reading. And *"the index
+entry's content"* is prose, not a reference: the `<name>` and `<summary>` may mention the old slug
+in a sentence, and a script that rewrites English is a worse failure than a stale sentence. Prose
+mentions are **reported with file and line, never rewritten**, which is the same
+refuses/reports split item 39 draws.
 
 **The postcondition is the whole point.** The rename that prompted this item was done correctly,
 across 20 references in 8 files, and produced no evidence of that fact — which is the actual
@@ -2176,6 +2226,14 @@ from being wrong and silent:
 Assert those three and a residue becomes impossible rather than merely unlikely. Item 6 runs the same assertions over the whole
 PRD, so a rename done by hand is caught even when the command was not used — which matters,
 because the command will not always be used.
+
+**And roll back when one fails, which is the finding this rehearsal was for.** Asserting a
+postcondition *after* writing, and then reporting the failure, leaves a half-done rename plus a
+message — worse than not starting, because the operator now has to work out how far it got. The
+operation snapshots every file it will touch, restores them all on failure, and then **asserts the
+restore**: an unverified undo is the same class of claim as the unverified rename the item exists
+to replace. Item 41's per-file atomicity across 64 files is this shape, and it was cheaper to
+learn on 8.
 
 Two things to carry rather than lose. A rename should leave a record: the decision to re-slug a
 feature is a decision, and where the rename accompanies a change of scope it is a decision record
@@ -2710,6 +2768,31 @@ task"* passes a test that a check reporting the wrong four would also pass. Nami
 what makes item 30 falsifiable, and a test that does not force it will not detect a check that
 counts correctly and attributes wrongly.
 
+**60. `execute-layer` stops maintaining a derived file.**
+*Addresses P38. Phase 1: no schema change, and it fixes a merge loop that cannot fire.*
+
+Six edits to one skill, all of them removals of instructions the same file contradicts elsewhere:
+
+- **5d takes its merge set from 5c's `verified` array**, not from `merge_queue`. This is the one
+  with teeth — the loop as written matched nothing.
+- **Step 2 takes only `failed` and `abandoned`** from `execute-state.json`, the two fields
+  `write-state.py` carries forward because they cannot be derived. Completion comes from
+  `ledger-status.sh`, as Step 3 already says.
+- **Steps 4 and 6 become explicit no-ops**, stating why: layer status is `merged` against `total`,
+  computed on every write, and `/execute-merge` has already run the script by then.
+- **`batch_number` is a local counter**, not a state field.
+- **The `merge_queue` example shows real 3.0 output** — merges that happened, with the commits
+  that prove it, six lines above the paragraph that says so.
+
+**And F21's mutation check is widened from seven field names to any key.** The allowlist is why
+the defect survived: a check scoped to last time's wrong fields cannot catch this time's. Confirm
+it by running it against the unfixed file — a check nobody has watched fail is not yet a check.
+
+*This item is small and it is not a schema change, which is why it belongs in Phase 1 rather than
+with the consumer work. It is also evidence for item 23's rule in a place the rule did not reach:
+every element having a reader does not help when the reader looks for a value the producer stopped
+emitting.*
+
 ---
 
 ## 6. Summary
@@ -2775,6 +2858,7 @@ counts correctly and attributes wrongly.
 | 57 | Impact analysis reports contracts, not just APIs | **P35**, P30 | Correctness |
 | 58 | One table of assertions; item 6 becomes a caller | P16 | Structural |
 | 59 | A runtime test across the breakdown→execute boundary | **P22**, P20 | **Blocking** |
+| 60 | `execute-layer` stops maintaining a derived file | **P38** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
@@ -2783,13 +2867,15 @@ defined by what becomes possible once it lands rather than by size.
 
 ### Phase 1 — Fix what is broken today. No schema change.
 
-`23a` · `39` · `54` · `55` · `42` · `21` · `9`
+`23a` · `60` · `39` · `54` · `55` · `42` · `21` · `9`
 
 Nothing here touches `<criterion>`, `<status>`, `architecture.md` or the migration; all of it is
 reversible; and every item fixes a defect that exists now rather than preparing for one that might.
 
 - **23a** — `state-schema.md` says `2.0`, `write-state.py` writes `3.0`. A live producer/spec
   mismatch, in the one place the toolchain already versions a schema (P28).
+- **60** — **immediately after 23a, and found by doing it.** `execute-layer` reads and writes the
+  2.0 shape of the file 23a just documented, including a merge loop that cannot fire (P38).
 - **39** — 190 unchecked citations. Depends on nothing in this plan.
 - **54** — monorepo verification runs from the wrong directory today.
 - **55** — the ledger implies a build it never ran.
@@ -2855,7 +2941,7 @@ edited rather than obeyed.
 **What this ordering does not do.** It does not price anything. The grades rank severity, not
 effort, and the only cost estimate this plan can honestly carry is item 41's — taken from the first
 ten features migrated rather than guessed here (A9). If the answer to *"we have a week"* is needed,
-it is Phase 1, which is six items, all reversible, all fixing something real.
+it is Phase 1, which is eight items, all reversible, all fixing something real.
 
 ---
 
