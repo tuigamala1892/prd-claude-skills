@@ -95,7 +95,23 @@ Execute these phases in order:
 
 7. Create `{tasks_dir}`
 8. If it exists, check for existing `.done` markers to resume
-9. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
+9. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+
+   ```bash
+   python {skill_dir}/scripts/check-repo-structure.py {input_file}
+   ```
+
+   - **Exit 0**: stdout is `repo_structure=single|monorepo`. Carry the value: `monorepo` is
+     what lets a task declare `<meta><cwd>` (item 54), and `single` means tasks run at the
+     repository root as they always have.
+   - **Exit 1**: `REFUSED:`. **Stop and report it verbatim.** Create nothing.
+
+   The assumption is already enforced — `create-worktree.sh` refuses a subdirectory — but it
+   fires during batch execution, several phases after the layout was knowable. A repo-per-service
+   project currently gets a layer plan, a manifest and a full task set before anything objects,
+   then fails with a message about worktrees that does not name the cause (**P36**).
+
+10. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
    python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]

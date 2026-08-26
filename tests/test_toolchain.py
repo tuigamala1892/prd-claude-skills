@@ -63,6 +63,19 @@ def check(name, finding=None, expect_fail=None):
 
 # --------------------------------------------------------------------- helpers
 
+def prose(text):
+    """Markdown flattened for assertions about what a document SAYS.
+
+    Three prose checks in Phase 2 failed on formatting rather than on content -- a phrase
+    split by a line wrap, and twice on backticks inside the phrase being matched. A check
+    pinned to formatting is the F3 mistake in miniature: it breaks when someone rewraps a
+    paragraph or emphasises a word, which is not a change in meaning.
+
+    Collapses whitespace and strips ` * _ so `never emit \\`<cwd>\\`` matches "never emit <cwd>".
+    """
+    return " ".join(re.sub(r"[`*_]", "", text).split())
+
+
 def parse_frontmatter(path):
     """Return (frontmatter dict, body). Empty dict when there is no `---` block."""
     text = open(path, encoding="utf-8", errors="replace").read()
@@ -534,6 +547,90 @@ def _():
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("mutate execute-state.json by hand; call write-state.py "
                      "instead:\n    " + "\n    ".join(bad))
+
+
+@check("multi-repo is refused in Phase 1, with what would be needed", finding="P36")
+def _():
+    # Item 53. The assumption is already enforced -- create-worktree.sh refuses a subdirectory
+    # -- but it fires during batch execution, several phases after the layout was knowable. A
+    # repo-per-service project gets a layer plan, a manifest and a full task set first, then
+    # fails with a message about worktrees that does not name the cause.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-repo-structure.py")
+    assert os.path.isfile(script), "check-repo-structure.py is missing"
+
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase1 = caller[:caller.find("### Phase 2")]
+    assert "check-repo-structure.py" in phase1, (
+        "the structure check is not in Phase 1, so the refusal still arrives after a task "
+        "set has been generated")
+
+    # The producer: /prd must ask, or the element is one nothing writes.
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "<repo-structure>" in prd, "the PRD template does not carry <repo-structure>"
+    assert re.search(r"monorepo", prd), "/prd never asks how the code is laid out"
+
+    root = tempfile.mkdtemp(prefix="prd-repo-")
+    try:
+        def doc(name, body):
+            path = os.path.join(root, name)
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(body)
+            return path
+
+        cases = {
+            "single": ("<prd><tech-stack><repo-structure>single</repo-structure>"
+                       "</tech-stack></prd>\n", 0),
+            "monorepo": ("<prd><tech-stack><repo-structure>monorepo</repo-structure>"
+                         "</tech-stack></prd>\n", 0),
+            "multi": ("<prd><tech-stack><repo-structure>multi-repo</repo-structure>"
+                      "</tech-stack></prd>\n", 1),
+            "bogus": ("<prd><tech-stack><repo-structure>polyrepo</repo-structure>"
+                      "</tech-stack></prd>\n", 1),
+            # Absent must be `single`. Every PRD written before the element existed means one
+            # repository; defaulting to a refusal would break all of them.
+            "absent": ("<prd><tech-stack><type>greenfield</type></tech-stack></prd>\n", 0),
+        }
+        for name, (body, expected) in cases.items():
+            p = subprocess.run([sys.executable, script, doc(f"{name}.md", body)],
+                               capture_output=True, text=True)
+            assert p.returncode == expected, (
+                f"{name}: expected exit {expected}, got {p.returncode}\n{p.stdout}{p.stderr}")
+
+        # The refusal must say what would be needed, not merely no -- and must not imply the
+        # layout is wrong or that git cannot do it.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "multi.md")],
+                           capture_output=True, text=True)
+        assert "Not a git limitation" in p.stderr, (
+            "the refusal does not say this is a missing data model rather than a git one")
+        for needed in ("target model", "window"):
+            assert needed in p.stderr, f"the refusal does not name what is missing: {needed}"
+        assert "Nothing was generated" in p.stderr, (
+            "the refusal does not say the run produced nothing, which is the point of "
+            "refusing in Phase 1 rather than at merge time")
+
+        # And the two supported values are distinguishable by a caller, since <cwd> depends
+        # on which one it is.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "monorepo.md")],
+                           capture_output=True, text=True)
+        assert "repo_structure=monorepo" in p.stdout, "the value is not reported to the caller"
+        p = subprocess.run([sys.executable, script, os.path.join(root, "absent.md")],
+                           capture_output=True, text=True)
+        assert "repo_structure=single" in p.stdout and "default" in p.stdout, (
+            "a defaulted value is not reported as defaulted, so a reader cannot tell a "
+            "declaration from an assumption")
+
+        # Item 53 gates item 54: <cwd> is meaningless outside a monorepo.
+        gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                   encoding="utf-8").read()
+        flat = prose(gen)
+        assert re.search(r"single.{0,120}never emit <cwd>", flat, re.I), (
+            "generate-tasks may emit <cwd> for a single-repo project, where it can only be "
+            "wrong")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 @check("`/prd` asks what the repository knows before asking the user", finding="P34")

@@ -142,6 +142,19 @@ later and wonder why it disagrees with the project it sits in.
 - Ask about any tech preferences or constraints
 - Present 2-3 stack options with pros/cons based on the features discussed
 
+**Ask how the code is laid out, both cases:** one repository, one repository with several
+components, or several repositories. Write it as `<repo-structure>`.
+
+| Answer | Value | What it changes |
+|---|---|---|
+| One repository, one thing in it | `single` | Nothing — this is what the toolchain assumes |
+| One repository, several packages or services | `monorepo` | Tasks may declare `<meta><cwd>`, so verification runs in the right package instead of the root |
+| Several repositories | `multi-repo` | **`/breakdown` will refuse**, in Phase 1, with what would be needed |
+
+Say the third one *before* the interview continues if that is the answer — the refusal is real,
+and an hour of PRD authoring should not end at it. The check runs at `/breakdown` because that is
+where generation starts, but you know the answer here.
+
 **For Brownfield:**
 - Ask about existing tech stack that must be compatible
 - Ask about integration points (APIs, databases, auth systems)
@@ -286,6 +299,7 @@ thinking, and a slug collision should not be the reason it disappears.
 
   <tech-stack>
     <type>greenfield|brownfield</type>
+    <repo-structure>single|monorepo|multi-repo</repo-structure>
     <selected>
     {{Selected tech stack with components}}
     </selected>
