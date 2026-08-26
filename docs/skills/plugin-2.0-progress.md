@@ -3,7 +3,8 @@
 **Companion to** [`plugin-2.0-plan.md`](plugin-2.0-plan.md), which stays a specification. This
 file is the record of what has actually landed against it.
 
-**Branch:** `phase-1-live-defects`
+**Branches:** `phase-1-live-defects` (merged to main 2026-08-26), then
+`phase-2-make-it-testable`
 **Started:** 2026-08-25
 
 ---
@@ -595,6 +596,72 @@ that never fails, and restoring the old `test -e` prose to `/prd`.
 None. Item 9's own note — pass the plugin path as an argument, never write a bare relative path —
 was already settled by OQ1's probe and is followed: both invocations are
 `${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/…` with the target passed as an argument.
+
+---
+
+## Phase 2 — Make the rest testable.
+
+Plan order: `18` · `43` · `52` · `53`, on branch `phase-2-make-it-testable`.
+
+| Item | Status | Commit |
+|---|---|---|
+| **/execute smoke test** — Phase 1's execute-path changes, exercised | **Done** 2026-08-26 | `b54135f` |
+| **18** — per-feature analysis + size refusal | Not started | — |
+| **43** — a fixture per schema version | Not started | — |
+| **52** — a context check at `/prd` initialization | Not started | — |
+| **53** — declare `<repo-structure>`; refuse multi-repo early | Not started | — |
+
+### The smoke test, and what it took to run at all
+
+Phase 1 changed seven files on the execute path and nothing had run the pipeline. It has now.
+
+**Result: 0 failures.** `/breakdown` produced 13 tasks across four layers with a manifest carrying
+`toolchain_version: 2.0.0`; `/execute --task L0-001` then implemented, verified and merged it. The
+raw artefacts, read directly rather than through the checker:
+
+```
+ledger  {"task_id":"L0-001","commit":"0790495...","attempts":1,"verified":"task-steps"}
+
+git     *   0790495 Merge worktree-L0-001: Create project skeleton and dependency config
+        |\
+        | * dca9a16 [L0-001] Create project skeleton and dependency config
+        |/
+        * 868090f Initial commit
+
+state   schema 3.0, 17 root fields matching write-state.py's own dict literal
+```
+
+That confirms **item 55** (the ledger names what it verified), **item 60** (a merge happened at
+all — the loop it replaced scanned `merge_queue` for `"ready"`, which `write-state.py` never
+writes, so a run following it merges nothing), and **item 23a** at runtime rather than in docs.
+**Item 54**'s `<cwd>` is absent from this task, so the default branch — worktree root, behaviour
+unchanged — is the one exercised, which is the branch that matters for regression.
+
+Afterwards: `git status` clean in the checkout, and `setup_fixture.py --verify` PASS with root
+commit `868090f` intact.
+
+### Three attempts, and two of them were about permissions rather than the toolchain
+
+**1. `--plugin-dir` loads a plugin; it does not make the plugin readable.** `/breakdown` stopped in
+Phase 1 because `resolve-output.sh`, `check-references.py` and `build-manifest.py` were outside the
+session's allowed directories. The agent verified both *guard* scripts would have passed by hand,
+refused to substitute for the one *generator* — *"hand-writing it would produce an artifact that
+looks complete and is knowably not"* — and removed the directory it had created. Fixed in
+`setup_fixture.py`'s printed sequence and in `CLAUDE.md`.
+
+**2. A permission failure was reported as a missing repository.** `/execute` refused with *"the
+target is not a git repository"* while `app/.git` existed and its root commit was intact. Every
+`git` and `sh` call had been rejected under `acceptEdits`, so it fell back to `Glob`, which does
+not match hidden directories, got nothing, and stated the repository was absent — then speculated
+from a stale settings entry that something had deleted it.
+
+*Stopping was right; the stated reason was not.* This is the phase's own lesson arriving from
+outside: **a negative result whose instrument has not been checked is not a result.** The fixture's
+`--verify` settles the question in two seconds and was not consulted.
+
+**3. `bypassPermissions`, with the checkout committed first** so any stray edit would show in
+`git status`, the target being a throwaway fixture with no remote and a recorded root commit, and
+the prompt bounding the agent to the workspace. Both after-checks were run, not assumed.
 
 ---
 
