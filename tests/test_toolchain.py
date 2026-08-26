@@ -536,6 +536,73 @@ def _():
                      "instead:\n    " + "\n    ".join(bad))
 
 
+@check("`/prd` asks what the repository knows before asking the user", finding="P34")
+def _():
+    # Item 52. /crd has opened with this check since it was written; commands/prd.md mentioned
+    # PROJECT.md zero times, so the two paths disagreed about whether knowing the project
+    # matters. Greenfield describes the DOCUMENT, not the repository it lands in.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-project-context.py")
+    assert os.path.isfile(script), "check-project-context.py is missing"
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    init = prd[prd.find("## Initialization"):prd.find("## Workflow Phases")]
+    assert "check-project-context.py" in init, (
+        "the context check is not in Initialization, so it can be reached only after the "
+        "interview has already asked what the stack should be")
+    flat = " ".join(prd.split())
+    assert re.search(r"follow\s*/\s*extend\s*/\s*override", flat, re.I), (
+        "/prd never says what to do with context it finds")
+    assert re.search(r"regardless of how Phase 2", flat, re.I), (
+        "the check is not stated as unconditional, so it can be skipped by answering "
+        "'greenfield' -- which is the omission a --greenfield flag would have caused")
+
+    root = tempfile.mkdtemp(prefix="prd-ctx-")
+    try:
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+        p = subprocess.run([sys.executable, script, empty], capture_output=True, text=True)
+        assert p.returncode == 0, f"an empty directory did not exit 0 (got {p.returncode})"
+
+        # Context present, and current. Exit 3 is a branch, not a verdict: a PRD is never
+        # refused because the repository has a PROJECT.md.
+        ctx = os.path.join(root, "ctx")
+        os.makedirs(ctx)
+        for args_ in (["init", "-q"], ["config", "user.email", "t@e.invalid"],
+                      ["config", "user.name", "T"],
+                      ["commit", "-q", "--allow-empty", "-m", "base"]):
+            subprocess.run(["git"] + args_, cwd=ctx, capture_output=True)
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ctx,
+                              capture_output=True, text=True).stdout.strip()
+        with open(os.path.join(ctx, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"<project-context><meta><name>Billing</name>"
+                    f"<last-context-hash>{head}</last-context-hash></meta></project-context>\n")
+        p = subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert p.returncode == 3, f"context present did not exit 3 (got {p.returncode})"
+        assert "Billing" in p.stdout, "the report does not name the project it found"
+        assert "STALE" not in p.stdout, "a current PROJECT.md was reported as stale"
+
+        # Stale must be named as stale -- a PRD written against an old description can
+        # contradict code that already exists.
+        with open(os.path.join(ctx, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write("<project-context><meta><name>Billing</name>"
+                    "<last-context-hash>" + "0" * 40 + "</last-context-hash></meta>"
+                    "</project-context>\n")
+        p = subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert p.returncode == 3 and "STALE" in p.stdout, (
+            f"a stale PROJECT.md was not reported as stale:\n{p.stdout}")
+
+        # It must never write. Updating PROJECT.md is /crd's job.
+        before = open(os.path.join(ctx, "PROJECT.md"), "rb").read()
+        subprocess.run([sys.executable, script, ctx], capture_output=True, text=True)
+        assert open(os.path.join(ctx, "PROJECT.md"), "rb").read() == before, (
+            "the context check modified PROJECT.md; it reports and never repairs")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def schema_registry():
     path = os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json")
     return path, json.load(open(path, encoding="utf-8"))

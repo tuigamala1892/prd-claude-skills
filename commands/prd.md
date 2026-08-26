@@ -81,6 +81,30 @@ prose guards in this repository became programs after being documented and then 
 `--resume` with no incomplete PRD is not an error, it just means there is nothing to resume.
 Offer the complete ones and the option to start fresh.
 
+### Then ask what the repository already knows about itself
+
+**Unconditionally, and regardless of how Phase 2's greenfield question will be answered:**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-project-context.py .
+```
+
+- **Exit 0** — no `PROJECT.md`, no `architecture.md`. Ask about the stack and the architecture
+  as usual.
+- **Exit 3** — this repository already describes itself, and stdout says how. **Not a failure.**
+  Report what is there, then offer to **follow / extend / override** it rather than asking from
+  scratch. If it reports `STALE`, say so: `PROJECT.md` describes an older commit, so a PRD
+  written against it may contradict code that already exists.
+
+**Why a check and not a `--greenfield` flag.** A flag can be missed by omission, and *greenfield*
+describes the **document**, not the repository it lands in — a PRD for a new product inside an
+existing monorepo is ordinary. `/crd` has opened with this check since it was written; `/prd`
+mentioned `PROJECT.md` zero times (**P34**), so the two paths disagreed about whether knowing the
+project matters.
+
+This never writes. Updating `PROJECT.md` is `/crd`'s job, and a PRD interview is not the place to
+silently revise a description of the codebase.
+
 **If no PRD exists, or the user chooses to start a new one:**
 1. Greet briefly and ask the user to describe their idea in their own words
 2. If they provided text after `/prd`, use that as their initial pitch
@@ -106,6 +130,13 @@ Capture:
 ### Phase 2: Project Type & Tech Stack
 
 Ask: *"Is this a greenfield project (starting fresh) or brownfield (integrating with existing systems)?"*
+
+**If Initialization's context check exited 3, that answer does not override what it found.** A
+greenfield product inside an existing repository is still landing in that repository: the stack is
+already chosen, and asking as though it were not produces a PRD that contradicts the code beside
+it. Present what `PROJECT.md` declares and ask which of **follow / extend / override** applies —
+`override` is a legitimate answer and wants a stated reason, because someone will read this PRD
+later and wonder why it disagrees with the project it sits in.
 
 **For Greenfield:**
 - Ask about any tech preferences or constraints
