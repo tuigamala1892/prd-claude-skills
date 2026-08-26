@@ -606,14 +606,20 @@ def _():
 
     root = tempfile.mkdtemp(prefix="prd-p1-")
     try:
-        def task(where, tid, text):
+        def task(where, tid, objective, requirements=""):
+            # A task is attributed by its <name> and <objective> only. <requirements> is
+            # written separately here because that is where a real run put "Do NOT add a
+            # telemetry table", and counting that as derivation inverts the result.
             os.makedirs(where, exist_ok=True)
             with open(os.path.join(where, f"{tid}.xml"), "w", encoding="utf-8",
                       newline="\n") as f:
-                f.write(f"<task><meta><id>{tid}</id></meta><context>{text}</context></task>\n")
+                f.write(f"<task><meta><id>{tid}</id><name>{objective}</name></meta>"
+                        f"<objective>{objective}</objective>"
+                        f"<requirements>{requirements}</requirements></task>\n")
 
         clean = os.path.join(root, "clean")
-        task(clean, "L1-001", "zebra-signin stores a password hash")
+        task(clean, "L1-001", "zebra-signin stores a password hash",
+             "Do NOT add a quokka-telemetry table; that feature is excluded")
         task(clean, "L2-001", "walrus-export returns text/csv")
 
         dirty = os.path.join(root, "dirty")
@@ -626,6 +632,8 @@ def _():
         empty = os.path.join(root, "empty")
         os.makedirs(empty)
 
+        # `clean` carries a negative requirement naming the rejected feature and must still
+        # grade 0: an instruction not to build something is not building it.
         expected = {clean: 0, dirty: 1, nomust: 2, empty: 2}
         for where, code in expected.items():
             p = subprocess.run([sys.executable, probe, "--grade", where],

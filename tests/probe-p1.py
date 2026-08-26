@@ -39,9 +39,11 @@ which is precisely what item 13 exists to fix.
 
 WHAT COUNTS AS A RESULT
 
-  exit 0   no task derives from the won't-have feature
-  exit 1   P1 CONFIRMED at runtime: won't-have tasks were generated
-  exit 2   the probe is INVALID -- no tasks, or none from the must-have. Not a pass.
+  exit 0   no task derives from the won't-have feature, and attribution worked
+  exit 1   P1 CONFIRMED at runtime: a task is NAMED for the rejected feature
+  exit 2   the probe is INVALID -- no tasks at all, or none from the must-have. Not a pass.
+  exit 3   UNDECIDABLE -- no task names any feature, so nothing can be attributed by string
+           match. Item 16's case measured, not a probe defect. See grade().
 
 The third one matters most. A probe that reports "no won't-have tasks" because `/breakdown`
 produced nothing at all has measured nothing, and two false passes in this phase have already
@@ -74,16 +76,48 @@ def task_files(tasks_dir):
     return sorted(glob.glob(os.path.join(tasks_dir, "**", "*.xml"), recursive=True))
 
 
+# What a task IS: its name and its objective. Deliberately the two narrowest sections.
+#
+# Not <verification>, which asserts a feature is absent. Not <prd-excerpt>, which quotes the
+# PRD wholesale. And not <requirements> or <exports> either -- a real run put "Do NOT add a
+# telemetry table ... Quokka telemetry is wont-have and is excluded from this release" into
+# the requirements of twelve unrelated tasks. High precision, low recall, on purpose: a
+# mention anywhere else is reported as context for a person to read, never counted.
+BUILDS = ("name", "objective")
+CONTEXT = ("requirements", "exports", "test-requirements", "verification")
+
+
 def attribute(tasks_dir):
-    """task path -> set of feature slugs it appears to derive from."""
+    """task path -> set of feature slugs it derives from.
+
+    Read only the sections describing what the task produces. The first version matched the
+    whole file and reported 13 of 17 tasks as deriving from the rejected feature -- including
+    the SQLite schema and the password hashing. Every one of those had matched on a
+    verification step asserting the feature was NOT there:
+
+        assert 'sqlalchemy' not in s and 'jwt' not in s and 'telemetry' not in s
+
+    A grader that cannot tell "builds X" from "proves X is absent" reports the opposite of the
+    truth, and reports it in the confident direction.
+    """
     out = {}
     for path in task_files(tasks_dir):
-        text = open(path, encoding="utf-8", errors="replace").read().lower()
-        hits = set()
+        raw = open(path, encoding="utf-8", errors="replace").read()
+
+        def sections(tags):
+            return " ".join(
+                " ".join(re.findall(r"<%s\b[^>]*>(.*?)</%s>" % (t, t), raw, re.S | re.I))
+                for t in tags).lower()
+
+        named, mentioned = set(), set()
+        builds_text, context_text = sections(BUILDS), sections(CONTEXT)
         for slug, (_tier, token) in FEATURES.items():
-            if slug in text or re.search(r"\b%s\b" % re.escape(token), text):
-                hits.add(slug)
-        out[path] = hits
+            pattern = r"\b(?:%s|%s)\b" % (re.escape(token), re.escape(slug))
+            if re.search(pattern, builds_text):
+                named.add(slug)
+            elif re.search(pattern, context_text):
+                mentioned.add(slug)
+        out[path] = (named, mentioned)
     return out
 
 
@@ -122,12 +156,13 @@ def grade(tasks_dir, quiet=False):
     total = len(attributed)
 
     per_tier = {tier: 0 for tier, _ in FEATURES.values()}
-    for slugs in attributed.values():
-        for slug in slugs:
+    for builds, _refuses in attributed.values():
+        for slug in builds:
             per_tier[FEATURES[slug][0]] += 1
-    unattributed = sum(1 for s in attributed.values() if not s)
+    unattributed = sum(1 for b, _r in attributed.values() if not b)
 
-    violations = sorted(p for p, s in attributed.items() if REJECTED in s)
+    violations = sorted(p for p, (b, _m) in attributed.items() if REJECTED in b)
+    carried = sorted(p for p, (_b, m) in attributed.items() if REJECTED in m)
 
     if not quiet:
         print(f"tasks generated: {total}")
@@ -136,21 +171,56 @@ def grade(tasks_dir, quiet=False):
         print(f"  {'unattributed':<12} {unattributed:>3} task(s)")
         for path in violations:
             print(f"  WONT-HAVE TASK  {os.path.relpath(path, tasks_dir)}")
+        if carried:
+            print(f"  {len(carried)} task(s) mention the rejected feature outside their name "
+                  f"and objective -- read those before drawing a conclusion; in the runs so "
+                  f"far every one was an instruction NOT to build it")
 
     # An invalid probe is not a passing probe. Say so before saying anything else.
     if total == 0:
         print("INVALID: no tasks were generated at all. This measures nothing.", file=sys.stderr)
         return 2
+
+    if violations:
+        print(f"\nP1 CONFIRMED at runtime: {len(violations)} of {total} generated tasks are "
+              f"NAMED for a feature marked wont-have.", file=sys.stderr)
+        return 1
+
+    # The finding this probe actually produced, and the reason it reports rather than passes.
+    #
+    # String matching cannot answer the question on today's task format, and BOTH failure
+    # directions were observed on one real run of 17 tasks:
+    #
+    #   whole-file match    13 "violations", every one a NEGATIVE requirement -- "Do NOT add
+    #                       a telemetry table ... Quokka telemetry is wont-have and is
+    #                       excluded from this release"
+    #   name + objective    0 attributions for ANY tier, because generation renames to domain
+    #                       language: the export task is called "GET /export", not "walrus".
+    #                       The feature's own words do not survive into the task.
+    #
+    # No count decides it either way. That is not a weakness of this probe -- it is item 16
+    # measured. <source-feature> and <moscow> on the task are what make the question
+    # answerable, and until they exist the honest exit is "undecidable, here is the evidence".
+    if not any(builds for builds, _m in attributed.values()):
+        print(f"\nUNDECIDABLE: no task's name or objective names ANY feature, in any tier, so "
+              f"no task can be traced to a source feature by string match. {len(carried)} "
+              f"task(s) mention the rejected feature elsewhere -- read them; in every run so "
+              f"far they were instructions NOT to build it.\n\nThis is item 16's case, "
+              f"measured: until a task carries <source-feature>, P1 cannot be decided at "
+              f"runtime.", file=sys.stderr)
+        for path, (_b, m) in sorted(attributed.items()):
+            if REJECTED in m:
+                print(f"  mentions the rejected feature: {os.path.relpath(path, tasks_dir)}")
+        for name, state, why in trace_decision(tasks_dir):
+            print(f"  {name}: {state}")
+            for line in why or []:
+                print(f"      {line[:150]}")
+        return 3
+
     if per_tier["must-have"] == 0:
         print("INVALID: no task derives from the must-have feature, so the run did not do "
               "what the probe assumes. 'No won't-have tasks' would be vacuous.", file=sys.stderr)
         return 2
-
-    if violations:
-        print(f"\nP1 CONFIRMED at runtime: {len(violations)} of {total} generated tasks derive "
-              f"from a feature marked wont-have. The product owner rejected it and the "
-              f"toolchain built it anyway.", file=sys.stderr)
-        return 1
 
     print("\nNo task derives from the won't-have feature.")
 
@@ -230,12 +300,17 @@ def run(model, timeout):
 
     # /breakdown resolves its own output paths, so find where the tasks actually landed
     # rather than assuming. Assuming is what resolve-output.sh exists to stop.
-    roots = [tasks] + [os.path.dirname(p) for p in
-                       glob.glob(os.path.join(work, "**", "manifest.json"), recursive=True)]
-    for root in roots:
-        if task_files(root):
-            print(f"tasks found in: {root}\n")
-            return grade(root)
+    # Search for the TASKS, not for a manifest. The first version keyed off manifest.json and
+    # reported "no task XML anywhere" against a workspace holding seventeen task files across
+    # four layer directories: the manifest is written in /breakdown's last phase, so a
+    # truncated run never has one -- and a truncated run is exactly what this has to survive.
+    found = [p for p in glob.glob(os.path.join(work, "**", "*.xml"), recursive=True)
+             if (os.sep + "prd" + os.sep) not in p
+             and re.search(r"L\d+-\d+", os.path.basename(p))]
+    if found:
+        root = os.path.commonpath([os.path.dirname(p) for p in found])
+        print(f"tasks found in: {root}\n")
+        return grade(root)
 
     print("INVALID: no task XML was written anywhere under the workspace. See the "
           "transcript.", file=sys.stderr)
