@@ -47,22 +47,29 @@ rather than a silent file move; the script's final line is written to be pasted 
 **Always look for existing PRDs first — before anything else, and regardless of arguments.**
 
 ```bash
-ls -d docs/prd/*/ 2>/dev/null
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/list-prds.py docs/prd
 ```
 
 A PRD represents a long conversation the user has already had. Starting a fresh interview on
 top of one, and then writing to `docs/prd/[slug]/` in Phase 8, can overwrite that work. The
 check costs one command; the mistake costs the interview.
 
-For each directory found, read the status marker from **either** file:
+One line per PRD: slug, feature count, status, and **which file declares it**. Both `index.md`
+and `what-next.md` are read deliberately — new PRDs carry the marker in `what-next.md`, older
+ones only in `index.md`, and a PRD that cannot be found is a PRD that gets silently replaced
+(**F3**).
 
-```bash
-grep -l "<status>in-progress</status>" docs/prd/*/what-next.md docs/prd/*/index.md 2>/dev/null
-```
+Two verdicts need you to stop and say something rather than carry on:
 
-Both locations are checked deliberately. New PRDs carry the marker in `what-next.md`, but
-artefacts written before that template settled carry it only in `index.md`, and a PRD that
-cannot be found is a PRD that gets silently replaced.
+- **`DISAGREE`** — the two files declare different statuses. Whether a resume finds this PRD
+  depends on which file it looks in first. Report it and offer to fix it before doing anything
+  else with that slug.
+- **`NO MARKER`** — neither file declares a status, so `--resume` cannot see it and a new PRD on
+  that slug would replace it without warning. Say so.
+
+This used to be a `grep -l` and a paragraph of instructions. It is a script because five other
+prose guards in this repository became programs after being documented and then ignored
+(**P16**).
 
 **If any PRD directory exists:**
 1. Present a numbered list — slug, name, status, and when it was last modified
@@ -195,24 +202,30 @@ docs/prd/[project-slug]/
     [feature-slug].md (one per feature with detailed specs)
 ```
 
-**Check before writing, every time:**
+**Check before writing, every time. This is a script and its exit code is binding:**
 
 ```bash
-test -e docs/prd/[project-slug]/index.md && echo EXISTS
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py docs/prd/{slug}
 ```
 
-If anything is already there, **stop and ask** — naming the files that would be replaced and
-offering a different slug. Do not overwrite `index.md`, `what-next.md` or anything under
-`features/` on the strength of having reached this phase.
+- **Exit 0** — nothing would be lost. Write.
+- **Exit 1** — `REFUSED`, and stderr lists every file that would be replaced with its size and
+  age. **Stop.** Show that list to the user, then either take a different slug or, once they
+  confirm this is the PRD they meant, re-run with `--resume` and proceed.
 
-Two different situations end up here, and only one of them is safe:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py docs/prd/{slug} --resume
+```
 
-- **Resuming a PRD** you loaded in Initialization: writing back is the point. Proceed.
-- **A new PRD that happens to collide** with an existing slug: two projects with similar names
-  produce the same slug, and the second silently destroys the first. Ask.
+Two situations end up here and only one is safe. **The script cannot tell them apart — only you
+can** — which is why refusing is the default and `--resume` has to be stated:
 
-If the interview was long, say what is about to be replaced *before* replacing it. A PRD is an
-hour of someone's thinking; a slug collision should never be the reason it disappears.
+- **Resuming a PRD** you loaded in Initialization: writing back is the point.
+- **A new PRD that collides** with an existing slug: two projects with similar names produce the
+  same slug, and the second silently destroys the first.
+
+Never pass `--resume` to get past a refusal you did not expect. A PRD is an hour of someone's
+thinking, and a slug collision should not be the reason it disappears.
 
 ## Output Formats
 

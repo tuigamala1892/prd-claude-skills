@@ -473,22 +473,30 @@ def _():
     assert re.search(r"regardless of arguments", init, re.I), (
         "Initialization does not state the existing-PRD check is unconditional, so the "
         "no-argument path can still start a fresh interview over an existing PRD")
-    assert re.search(r"ls -d docs/prd/\*/", init), (
+    # Item 9 replaced `ls -d docs/prd/*/` and the two-file grep with list-prds.py, which
+    # enumerates the same directories and additionally reports which file carries each status
+    # marker -- the half of F3 the grep could only hint at.
+    assert re.search(r"list-prds\.py\s+docs/prd", init), (
         "Initialization has no command that enumerates existing PRD directories")
 
-    # Both marker locations in one command, so PRDs predating the template are still found.
-    marker = re.search(r"grep[^\n]*status[^\n]*\n?[^\n]*", init)
-    assert marker, "Initialization has no grep for the in-progress status marker"
-    assert "what-next.md" in marker.group(0) and "index.md" in marker.group(0), (
-        "the status-marker search does not cover both what-next.md and index.md; a PRD it "
-        "cannot find is a PRD it will silently replace")
+    # Both marker locations must still be covered, and after item 9 that is a property of the
+    # script rather than of a sentence -- so assert it where it is now true. A PRD the lookup
+    # cannot find is a PRD it will silently replace.
+    lister = open(os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py"),
+                  encoding="utf-8").read()
+    assert "index.md" in lister and "what-next.md" in lister, (
+        "list-prds.py does not read both marker locations; PRDs predating the template carry "
+        "the marker only in index.md")
 
-    # The write path must refuse on its own, not rely on care taken earlier.
+    # The write path must refuse on its own, not rely on care taken earlier. It is now an exit
+    # code, and the command must treat it as binding rather than advisory.
     phase8 = text[text.find("### Phase 8"):text.find("## Output Formats")]
-    assert re.search(r"test -e docs/prd/", phase8), (
-        "Phase 8 writes docs/prd/[slug]/ without a command that checks whether it exists")
-    assert re.search(r"\*\*stop and ask\*\*", phase8), (
-        "Phase 8 does not require stopping to ask before replacing an existing PRD")
+    assert re.search(r"check-writable\.py docs/prd/", phase8), (
+        "Phase 8 writes docs/prd/[slug]/ without running the overwrite guard")
+    assert re.search(r"exit code is binding|\*\*Exit 1\*\*", phase8, re.I), (
+        "Phase 8 runs the guard without saying its refusal stops the write")
+    assert re.search(r"\bStop\b", phase8), (
+        "Phase 8 does not require stopping before replacing an existing PRD")
 
 
 @check("execute-state.json is written by a script, never by hand", finding="F21")
@@ -526,6 +534,89 @@ def _():
                 bad.append(f"{rel}:{i}: {line.strip()[:90]}")
     assert not bad, ("mutate execute-state.json by hand; call write-state.py "
                      "instead:\n    " + "\n    ".join(bad))
+
+
+@check("`/prd`'s overwrite guard is an exit code, not a paragraph", finding="P16")
+def _():
+    # Item 9. Five prose guards in this repository became programs after being documented and
+    # then ignored; /prd's Phase 8 pre-write check was the largest one left. Run both scripts
+    # rather than reading them -- "the command mentions test -e" is a property the ignored
+    # version also had.
+    import shutil
+    import tempfile
+
+    writable = os.path.join(SKILLS, "breakdown", "scripts", "check-writable.py")
+    listing = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+    for path in (writable, listing):
+        assert os.path.isfile(path), f"{os.path.basename(path)} is missing"
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "check-writable.py" in prd, "/prd never runs the overwrite guard"
+    assert "list-prds.py" in prd, "/prd never runs the PRD listing"
+    # The prose it replaced must be gone, or both exist and the model may follow either.
+    assert "test -e docs/prd/" not in prd, (
+        "the old inline `test -e` guard is still in /prd; a guard and its replacement both "
+        "present is worse than either alone")
+    assert 'grep -l "<status>in-progress</status>"' not in prd, (
+        "the old two-file grep is still in /prd")
+
+    root = tempfile.mkdtemp(prefix="prd-guard-")
+    try:
+        def prd_dir(slug, index_status=None, next_status=None, features=0):
+            d = os.path.join(root, "docs", "prd", slug)
+            os.makedirs(os.path.join(d, "features"), exist_ok=True)
+            if index_status is not None:
+                open(os.path.join(d, "index.md"), "w", encoding="utf-8", newline="\n").write(
+                    f"<prd><meta><name>{slug}</name>"
+                    f"<status>{index_status}</status></meta></prd>\n")
+            if next_status is not None:
+                open(os.path.join(d, "what-next.md"), "w", encoding="utf-8",
+                     newline="\n").write(f"<what-next><status>{next_status}</status>"
+                                         f"</what-next>\n")
+            for i in range(features):
+                open(os.path.join(d, "features", f"f{i}.md"), "w", encoding="utf-8",
+                     newline="\n").write("<feature/>\n")
+            return d
+
+        live = prd_dir("live-prd", "in-progress", "in-progress", features=2)
+        fresh = os.path.join(root, "docs", "prd", "brand-new")
+
+        # The guard refuses a collision, names what would go, and says how many.
+        p = subprocess.run([sys.executable, writable, live], capture_output=True, text=True)
+        assert p.returncode == 1, "the guard did not refuse an existing PRD"
+        assert "REFUSED" in p.stderr and "index.md" in p.stderr and "f0.md" in p.stderr, (
+            f"the refusal does not name the files at risk:\n{p.stderr}")
+
+        # --resume is the only way past, and it has to be stated.
+        p = subprocess.run([sys.executable, writable, live, "--resume"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "--resume did not permit writing back"
+
+        # A slug nobody has used is not a refusal.
+        p = subprocess.run([sys.executable, writable, fresh], capture_output=True, text=True)
+        assert p.returncode == 0, "the guard refused a PRD directory that does not exist"
+
+        # F3 as a data defect: the two files disagreeing means a resume finds whichever it
+        # reads first. --check has to fail on that, and on a PRD with no marker at all.
+        prd_dir("split-brain", "in-progress", "defined")
+        prd_dir("silent2", "defined", None)  # one file only is fine, not a disagreement
+        # A PRD whose index.md exists but declares no status at all. Not the same as an empty
+        # directory, which is correctly invisible: this one is a real PRD that `--resume`
+        # cannot see.
+        silent = os.path.join(root, "docs", "prd", "silent")
+        os.makedirs(silent, exist_ok=True)
+        open(os.path.join(silent, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd><meta><name>Silent</name></meta></prd>\n")
+        p = subprocess.run([sys.executable, listing, os.path.join(root, "docs", "prd"),
+                            "--check"], capture_output=True, text=True)
+        assert p.returncode == 1, "a self-contradicting PRD passed --check"
+        assert "split-brain" in p.stderr and "silent" in p.stderr
+        assert "silent2" not in p.stderr, (
+            "a PRD declaring its status in one file only was reported as a defect; that is "
+            "the normal older layout F3 exists to keep readable")
+        assert "DISAGREE" in p.stdout and "NO MARKER" in p.stdout
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 @check("the P1 fixture reads as a product, not as a test", finding="P1")
