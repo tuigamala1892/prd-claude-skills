@@ -37,12 +37,12 @@ Plan order: `23a` · `39` · `54` · `55` · `42` · `21` · `9`
 | **54** — a working directory for verification | **Landed** 2026-08-25 | `fce02c9` |
 | **55** — the ledger states what it verified | **Landed** 2026-08-25 | `2b12720` |
 | **42** — rename with a checkable postcondition | **Landed** 2026-08-25 | `083c70e` |
-| **21** — runtime test for P1, and the authoring baseline | Not started | — |
+| **21** — runtime test for P1, and the authoring baseline | **Landed** 2026-08-26, *result is UNDECIDABLE by design* | `14545f9` |
 | **9** — `/prd`'s prose guards become scripts | Not started | — |
 
 Item 60 is new; it was found while doing 23a and is specified in the plan alongside P38.
 
-**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55) → **46** (42).
+**Suite:** 39 checks at branch point → **40** (23a) → **42** (39) → **43** (54) → **45** (55) → **46** (42) → **48** (21).
 
 ---
 
@@ -452,3 +452,89 @@ removed, and a version that rewrites prose.
 `rename-feature.py`), one of which `/prd` calls and `/breakdown` does not. That is slightly wrong
 and deliberately not fixed mid-phase: item 22's `check-artefacts.py` is where these consolidate,
 and inventing a directory now would mean moving them twice.
+
+---
+
+## 21 — the runtime probe, and what it actually established
+
+**Commits:** `5a4c1b4`, `2630cb1`, `65c8a63`, `14545f9` · **Addresses:** P1 · **Files:**
+`tests/fixture/prd/staff-service/` (new), `tests/probe-p1.py` (new), `tests/test_toolchain.py`
+
+### The result
+
+Run 3, on the decontaminated fixture: **17 tasks across four layers** before a 45-minute
+timeout. No task is named or aimed at the rejected feature. Thirteen mention it in their
+requirements and **every one is a negative instruction** — *"Do NOT add a telemetry table … Quokka
+telemetry is wont-have and is excluded from this release."*
+
+The decision artefacts show the path it took:
+
+| Artefact | What it did with the won't-have |
+|---|---|
+| `analysis.json` | Carried it **in full** — description, both criteria — and derived a `TelemetryOptOut` model and a `/telemetry` endpoint from it, each tagged `wont-have` |
+| `layer_plan.json` | Dropped it, under `"excluded"` and `"features_excluded"` — **keys that exist in no schema in this repository** |
+
+**So `/breakdown` did not build the rejected feature, and nothing filtered it either.** The model
+read `priority="wont-have"`, decided on its own, and invented JSON keys to record the decision.
+P1's *mechanism* claim stands exactly as written — no consumer reads priority — while P1's
+predicted *consequence* did not occur, because a model declined work the toolchain would have
+allowed. That is a quieter failure mode than the one P1 predicts, and it is item 13's real case:
+make the exclusion **enforced** rather than hoped for.
+
+### The instrument was wrong three times, each differently
+
+This is the part worth carrying forward.
+
+| Attempt | Reported | Why it was wrong |
+|---|---|---|
+| Whole-file match | **13 of 17 derive from the won't-have** | Counted `assert 'telemetry' not in s`. It could not tell *builds X* from *proves X absent*, and failed in the confident direction |
+| Name + objective | **0 attributions, every tier** | Generation renames to domain language — the export task is `GET /export`, not `walrus`. The feature's own words do not survive into the task |
+| Either, for several iterations | nothing matched at all | A heredoc collapsed `\b` into a literal `0x08` byte, silently disabling both word-boundary anchors. I was debugging the layer above the defect |
+
+**What that establishes is worth more than the original question.** String-match attribution
+**cannot decide P1 on today's task format** — both failure directions were observed on a single
+real run. That is **item 16 measured**: until a task carries `<source-feature>`, this question has
+no runtime answer. The grader therefore exits `3 UNDECIDABLE` with its evidence rather than
+emitting a number nobody should trust.
+
+### Three probe defects the runs exposed, in order
+
+1. **No `--add-dir`** (run 1). The workspace comes from `mkdtemp()`, so it can never be
+   pre-authorised; every read and `mkdir` was refused. **The agent under test diagnosed this
+   itself**, named the argv line, and declined to hand back a result it could not vouch for.
+2. **A timeout discarded the run** (run 2). It killed a 25-minute `/breakdown` that had already
+   written nine tasks, a layer plan and an analysis, and threw all of it away with the transcript.
+3. **Root discovery keyed off `manifest.json`** (run 3), which `/breakdown` writes in its last
+   phase — so it reported "no task XML anywhere" against a workspace holding 17 tasks. A
+   truncated run is precisely the run it has to survive.
+
+### The fixture explained the experiment to the subject
+
+Run 2 came back clean and was worthless. `analysis.json` wrote back my own commentary:
+
+```
+"feature_naming": "Deliberately obscure animal names (zebra, walrus, narwhal, quokka)
+ chosen to prevent accidental coincidental matching."
+"wont_have_handling": "... must not appear in generated tasks. It is fully specified to
+ ensure /breakdown cannot skip it for being incomplete."
+```
+
+The overview named the finding under test; the won't-have carried *"**This feature is rejected and
+must not be built**"*. **A fixture that describes the experiment is part of the experiment.**
+
+Rewritten as a plain PRD for a plain product, `tier-probe` renamed to `staff-service` so even the
+slug stops signalling, and rejection declared by `<priority>wont-have</priority>` and nothing else.
+The check had the assertion *backwards* — it used to **require** "must not be built" in the
+won't-have. It now forbids that and five similar instructions, requires the won't-have to be no
+thinner than the thinnest other feature, and scans every PRD file for words describing the
+experiment.
+
+### Deviation from the plan
+
+**The authoring measure is half-delivered and says so.** `--baseline` reports size — 394 words, 8
+criteria, 64 elements across four features — which is the instrument the after-measurement compares
+against. *"Is this still tolerable to write?"* is a stopwatch against a person and no script can
+take it. Recorded in the plan's item 21 rather than reported as done.
+
+**And a datum for item 18:** a **four-feature** PRD did not finish `/breakdown` in 45 minutes. P5
+says `analyze-prd` is handed 174k tokens of corpus; this is what the small end already costs.
