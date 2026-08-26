@@ -503,7 +503,12 @@ def _():
 
     # The write path must refuse on its own, not rely on care taken earlier. It is now an exit
     # code, and the command must treat it as binding rather than advisory.
-    phase8 = text[text.find("### Phase 8"):text.find("## Output Formats")]
+    # Located by CONTENT, not by number. This was pinned to "### Phase 8" and item 51
+    # inserted a Design phase ahead of it, renumbering the output phase to 9. A check
+    # pinned to a heading number fails on a renumber, which is not a change in meaning.
+    m_out = re.search(r"### Phase \d+: Output", text)
+    assert m_out, "/prd has no Output phase"
+    phase8 = text[m_out.start():text.find("## Output Formats")]
     assert re.search(r"check-writable\.py docs/prd/", phase8), (
         "Phase 8 writes docs/prd/[slug]/ without running the overwrite guard")
     assert re.search(r"exit code is binding|\*\*Exit 1\*\*", phase8, re.I), (
@@ -2787,6 +2792,115 @@ def _():
             "check-references.py still advertises principles as not checked")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+@check("architecture.md has a producer, and it runs before dependencies", finding="P17")
+def _():
+    """Item 51. Items 25 and 28 gave the file a home, a schema and four readers, and no writer.
+
+    A reader with no producer is the mirror of this plan's own central finding, and it went
+    unnoticed for twenty-six items. So this asserts the property in BOTH directions -- the thing
+    item 23 says every element needs -- rather than only checking that a Design phase exists.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+
+    # --- the producer exists, and is placed where its inputs are ready ----------------
+    phases = re.findall(r"### Phase (\d+): ([^\n]+)", prd)
+    numbers = [int(n) for n, _t in phases]
+    assert numbers == sorted(numbers) and len(set(numbers)) == len(numbers), (
+        f"/prd's phases are not a clean ascending sequence: {phases}")
+
+    by_name = {t.lower(): int(n) for n, t in phases}
+    design = [n for t, n in by_name.items() if "design" in t]
+    features = [n for t, n in by_name.items() if "feature" in t]
+    deps = [n for t, n in by_name.items() if "dependenc" in t]
+    assert design, "/prd has no Design phase, so architecture.md has no producer (item 51)"
+    assert features and deps, f"/prd lost its Features or Dependencies phase: {phases}"
+    assert features[0] < design[0] < deps[0], (
+        f"Design is at phase {design[0]}, Features at {features[0]}, Dependencies at {deps[0]}. "
+        f"Design must follow features (so the conversation knows what is being built) and "
+        f"precede dependencies (which are partly DECIDED by the architecture -- asking them "
+        f"first inverts the causality)")
+
+    design_body = prd[prd.find(f"### Phase {design[0]}:"):
+                      prd.find(f"### Phase {design[0] + 1}:")]
+    assert design_body.strip(), "the Design phase is a heading with no body"
+
+    # --- it must actually write the file, and validate what it wrote ------------------
+    assert "architecture.md" in design_body, (
+        "the Design phase never names architecture.md, so it produces nothing")
+    assert "check-architecture.py" in design_body, (
+        "the Design phase writes a rule file and never validates it. /prd is the one moment the "
+        "person who made the decision is still in the conversation to fix it")
+    assert "${CLAUDE_PLUGIN_ROOT}" in design_body, (
+        "the script is invoked without ${CLAUDE_PLUGIN_ROOT}. OQ1's probe established that a "
+        "bare relative path fails -- cwd is the project, not the plugin")
+
+    # --- the default branch must write nothing AND be recorded -----------------------
+    flat = prose(design_body)
+    assert prose("Write no architecture.md") in flat, (
+        "the Design phase does not say that taking the default writes nothing. A PRD with no "
+        "rule file must stay a valid PRD, or item 28 breaks every artefact on the day it lands")
+    # Asserted as a structure inside the phase, not as the string "what-next.md" -- that
+    # filename appears three times in this section, so removing the instruction that records
+    # the decision leaves the word behind. Third time this class of check has been caught out
+    # in this phase: scope to the region that owns the claim, and assert a shape.
+    recorded = re.search(r"```xml\s*\n\s*<step\b[^>]*\bkind=[\"']decision[\"'][^>]*>",
+                         design_body)
+    assert recorded, (
+        "the Design phase's default branch writes no recorded decision. 'Defaults, "
+        "deliberately' and 'nobody was asked' must be distinguishable later, and an absent "
+        "architecture.md cannot tell them apart -- so declining has to leave a mark somewhere")
+    assert "what-next.md" in design_body[:recorded.start()], (
+        "the decision record is not attributed to what-next.md, so nothing says where it lands")
+
+    # --- it must read before it writes (item 52's check, used rather than duplicated) --
+    assert re.search(r"follow\s*/\s*extend\s*/\s*override", flat, re.I), (
+        "the Design phase does not offer follow / extend / override, so a repository that "
+        "already declares an architecture gets asked from a blank page (P34)")
+
+    # --- and the whole point: a producer whose output has readers --------------------
+    readers = {
+        "breakdown/SKILL.md": os.path.join(SKILLS, "breakdown", "SKILL.md"),
+        "breakdown-plan-layers/SKILL.md": os.path.join(
+            SKILLS, "breakdown-plan-layers", "SKILL.md"),
+        "breakdown-analyze-prd/SKILL.md": os.path.join(
+            SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+        "breakdown-generate-tasks/SKILL.md": os.path.join(
+            SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+    }
+    # A reader must devote a HEADING or a numbered step to the file -- the word appearing
+    # somewhere in a 400-line skill is not evidence that anything reads it. `plan-layers` is
+    # exempt from the heading rule because its own check already compares the documented JSON
+    # against live producer output, which is far stronger than any prose assertion here.
+    unread = []
+    for label, path in readers.items():
+        text = open(path, encoding="utf-8").read()
+        if "plan-layers" in label:
+            if "architecture.json" not in text:
+                unread.append(f"{label} (no architecture.json)")
+            continue
+        owns = re.search(r"^#{2,4} [^\n]*architecture", text, re.M | re.I) or \
+            re.search(r"^\d+\. \*\*[^\n]*(architecture|project's own rules)", text, re.M | re.I)
+        if not owns:
+            unread.append(f"{label} (no section owning it)")
+    assert not unread, (
+        "architecture.md now has a producer and these named readers give it no section of their "
+        "own: " + ", ".join(unread) + ". A producer with no reader is P4, and this plan's "
+        "closing argument is that neither half may stand alone")
+
+    # --- the template it writes must be the one the validator accepts ----------------
+    fmt = os.path.join(SKILLS, "breakdown", "references", "architecture-format.md")
+    assert os.path.isfile(fmt)
+    assert "architecture-format.md" in design_body, (
+        "the phase that WRITES architecture.md does not cite the format specification. A "
+        "citation elsewhere in the file is not the same thing: the producer and the schema drift "
+        "apart exactly where the writing happens, which is P30 by construction")
+    # And the citation must resolve, or it is a pointer to nothing.
+    for link in re.findall(r"\]\(([^)]*architecture-format\.md)\)", design_body):
+        target = os.path.normpath(os.path.join(COMMANDS, link))
+        assert os.path.isfile(target), f"the format link does not resolve: {link} -> {target}"
+
 
 
 # ------------------------------------------------------------------- behavioural

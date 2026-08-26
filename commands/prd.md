@@ -51,7 +51,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/list-prds.py docs/prd
 ```
 
 A PRD represents a long conversation the user has already had. Starting a fresh interview on
-top of one, and then writing to `docs/prd/[slug]/` in Phase 8, can overwrite that work. The
+top of one, and then writing to `docs/prd/[slug]/` in Phase 9, can overwrite that work. The
 check costs one command; the mistake costs the interview.
 
 One line per PRD: slug, feature count, status, and **which file declares it**. Both `index.md`
@@ -177,7 +177,116 @@ For each priority level:
 If "now": Write Given/When/Then acceptance criteria together.
 If "later": Mark as TBD in what-next.md
 
-### Phase 4: Dependencies
+### Phase 4: Design (Architecture)
+
+**Between features and dependencies, and the order is the argument.** After Phase 3, so the
+conversation knows what is being built. **Before** dependencies, because Phase 5 asks *"what
+external services will this depend on?"* — and dependencies are partly **decided by** the
+architecture, so asking them first inverts the causality.
+
+Items 25 and 28 specify where `architecture.md` lives, its schema, who reads it and what happens
+to it after `/execute`. **No item said who writes it.** This phase is that producer.
+
+#### It opens with a question answerable in one word
+
+> *"Do you want to discuss architecture for this project, or take the default layering?"*
+
+**Read before you ask it.** Initialization already ran `check-project-context.py`. If it exited
+3, this repository describes itself, and the question becomes **follow / extend / override**
+rather than a blank page:
+
+| Already present | Ask |
+|---|---|
+| `architecture.md` | *"This project declares a layer graph and a test policy. Follow it, extend it, or override it for this PRD?"* |
+| `PROJECT.md` only | *"This codebase has an established architecture. Should the new work follow it?"* |
+| neither | the one-word question above |
+
+**Overriding is a project-scoped act and must be named as one.** `architecture.md` sits at the
+project root, not under `docs/prd/{slug}/`, because layer graphs and test policies are properties
+of the codebase. Two PRDs in one repository — which `/prd` explicitly supports — cannot hold two
+architectures. So *override* means **changing the project's file**, and the user has to be told
+that in those words.
+
+#### Taking the default
+
+**Write no `architecture.md`.** The shipped five-tier graph applies, `/breakdown` takes its
+defaults, and a PRD with no rule file stays a valid PRD — which is what keeps every existing
+artefact working.
+
+**But record that the phase ran**, in `what-next.md`:
+
+```xml
+<step kind="decision" status="done">
+Architecture: default layering taken deliberately, not asked about. {{date}}
+</step>
+```
+
+*"Defaults, deliberately"* and *"nobody was asked"* must be distinguishable later, and an absent
+file cannot tell them apart. The note goes in `what-next.md` rather than in a stub
+`architecture.md`, because a rule file that declares nothing is a rule file `/breakdown` must
+still parse and a reader must still interpret — and item 25's own test is that structure earns
+its place by what a machine must *do* with it. Nothing does anything with an empty one.
+
+#### Discussing it
+
+**One producer, one file, one phase.** Capture all of `<rules>` here — not conventions at Phase 2
+where the stack is chosen and layering here. Two producers for one file is how two producers for
+one file drift.
+
+Walk these in order, and **skip any the user has no opinion on**; every element is optional and
+an omitted one means the default:
+
+| Ask about | Writes | Default if skipped |
+|---|---|---|
+| the tiers work actually moves through | `<layers>` | the shipped five |
+| whether tests come first, and what runs them | `<testing>` | `tdd`, one runner |
+| how many files one task may touch | `<task-limits>` | 3 |
+| what the codebase must never do | `<banned>` | nothing banned |
+| where the starting template lives | `<scaffold>` | the template chosen in Phase 2 |
+| file organisation, naming, import patterns | `<principles>` | none |
+
+**Four things worth asking well:**
+
+- **Layers are a DAG, not a chain.** *"Does anything here happen in parallel — two kinds of work
+  that both wait on the same thing but not on each other?"* If yes, `depends-on` is a comma list
+  and both name the same prerequisite. A chain is the answer for a CRUD web app and wrong for
+  anything event-driven.
+- **One runner is usually not enough.** The default project this toolchain was built for needs
+  pytest behind and vitest in front, so ask *"is it all one test command?"* rather than assuming.
+- **Every banned rule needs a `kind` and a `reason`**, and the reason is quoted verbatim to
+  whoever hits it. *"No HTTP between contexts"* is not actionable; *"ADR-004: contexts
+  communicate by event, never by call"* is. If a rule cannot be reduced to a symbol, a path, a
+  diff or a regex, it is `kind="judgement"` and **reports rather than refuses** — say so, so the
+  user is not told a thing is enforced when it is weighed.
+- **A rule with no exceptions is usually a rule nobody has tested.** Ask *"where does this
+  legitimately not apply?"* and write `<except>` on the rule. Exceptions belong to the rule
+  because a per-task exemption is unreviewable and accumulates.
+
+#### Write it, then check it
+
+Write `{project_root}/architecture.md` in the format at
+[`architecture-format.md`](../skills/breakdown/references/architecture-format.md), then:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-architecture.py {project_root}
+```
+
+- **Exit 0** — report the summary line so the user sees what is now in force.
+- **Exit 1** — it names the element and the cause. **Fix it here, in the conversation**, while
+  the person who made the decision is still present.
+
+This is the producer-side half of the split: `/breakdown` **refuses** on the same script, because
+a defect is cheapest at its source and unusable at its destination.
+
+#### What this phase must not do
+
+- **Do not invent an architecture the user did not state.** A skipped element is a default, and a
+  default is a correct answer. Writing a `<layers>` block nobody discussed vendors an opinion
+  back in one level up from where item 28 just removed it.
+- **Do not write `PROJECT.md`.** That file is descriptive and belongs to `/crd` and to
+  `/execute`'s finalizer. This one is prescriptive.
+
+### Phase 5: Dependencies
 
 Ask: *"What external services, APIs, or libraries will this project depend on?"*
 
@@ -186,7 +295,7 @@ For each dependency capture:
 - Version requirements (if known)
 - Purpose/usage
 
-### Phase 5: Optional Sections
+### Phase 6: Optional Sections
 
 For each optional section, ask if they want to include it:
 
@@ -200,7 +309,7 @@ For each optional section, ask if they want to include it:
 *"Are there specific performance, security, or scalability requirements we should document?"*
 - Only include if they mention specific concerns
 
-### Phase 6: Validation
+### Phase 7: Validation
 
 Before finalizing, run consistency checks:
 - Do the chosen technologies support all must-have features?
@@ -225,7 +334,7 @@ one is early warning, at the moment the person who knows the answer is present.
 
 This never edits the open-questions register. It is maintained by hand and outlives the PRD.
 
-### Phase 7: Interactive Review
+### Phase 8: Interactive Review
 
 Present a summary of each section:
 *"Let me summarize what we've captured. Tell me if anything needs revision:"*
@@ -234,7 +343,7 @@ Go through each section briefly. Ask: *"Would you like to revise anything?"*
 
 If yes, make revisions interactively.
 
-### Phase 8: Output
+### Phase 9: Output
 
 Create the folder structure and files:
 
@@ -405,6 +514,55 @@ thinking, and a slug collision should not be the reason it disappears.
   </notes>
 </feature>
 ```
+
+### `architecture.md` (project root, only when Phase 4 was discussed)
+
+Not under `docs/prd/{slug}/`: it describes the **codebase**, and `/prd` supports several PRDs in
+one repository. Full element reference in
+[`architecture-format.md`](../skills/breakdown/references/architecture-format.md).
+
+```markdown
+# Architecture: {{Project Name}}
+
+## Overview
+{{prose a human reads; the toolchain never parses this}}
+
+## Machine-Readable Section
+<architecture version="1.0">
+  <rules>
+    <layers>
+      <layer id="1" name="foundation" depends-on=""/>
+      <layer id="2" name="backend"    depends-on="1"/>
+      <layer id="3" name="frontend"   depends-on="2"/>
+      <layer id="4" name="integration" depends-on="2,3"/>
+    </layers>
+    <testing default="tdd" runner="pytest">
+      <policy match="web/**" kind="component" runner="vitest"/>
+    </testing>
+    <task-limits default="3"/>
+    <repo-structure>single</repo-structure>
+    <banned>
+      <rule kind="import" match="core/**" symbol="requests|httpx"
+            reason="ADR-002: core must be usable as a library">
+        <except match="core/adapters/**" reason="adapters exist to call out"/>
+      </rule>
+    </banned>
+    <scaffold template="python" path="webapps/backends/python"/>
+  </rules>
+  <principles>
+    <principle id="P-001">{{a rule with no alternatives weighed}}</principle>
+  </principles>
+  <api-registry/>
+  <schema-registry/>
+</architecture>
+```
+
+**`<rules>` is obeyed; `<principles>` is read.** Something written as a principle when it needed
+to be a constraint gets weighed rather than enforced, while the author believes it is in force.
+
+**Registries may be any set the architecture needs** — `<event-registry>`, `<command-registry>`,
+`<service-registry>`, `<screen-registry>` — not only the REST-and-relational pair. Leave them
+empty at PRD time: they are filled from the code after `/execute`.
 
 ## Tone & Style
 
