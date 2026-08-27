@@ -60,7 +60,13 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "staff-service")
+# Which schema version the probe reads is SCHEMAS.json's to declare, not this file's. The
+# probe measures the CURRENT toolchain; pointing it at a superseded fixture would measure a
+# schema nothing writes any more and report the number as if it were live.
+with open(os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json"), encoding="utf-8") as _f:
+    _SCHEMA = json.load(_f)["current"]
+
+FIXTURE = os.path.join(REPO, "tests", "fixture", "prd", _SCHEMA, "staff-service")
 
 # slug -> (tier, the token that cannot appear by accident)
 FEATURES = {

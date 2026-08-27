@@ -35,8 +35,8 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/rename-feature.py {prd_dir
 `MENTION` lines are prose that names the old slug in a sentence. They are not rewritten — a
 script editing English is a worse failure than a stale sentence — so read them and decide.
 
-**A rename is not a supersession.** `<status>superseded</status>` is for a feature merged into
-another; using it here would claim two features existed where there was always one. The script
+**A rename is not a supersession.** `<definition>superseded</definition>` is for a feature merged
+into another; using it here would claim two features existed where there was always one. The script
 never touches a status, and refuses to rename onto an existing feature for the same reason.
 
 **A rename is a decision.** Where it accompanies a change of scope it wants a decision record
@@ -397,8 +397,8 @@ is silent:
 
 - **Feature priority is written on the `index.md` entry, not in the feature file.** A ranking has
   no meaning inside the thing being ranked.
-- **A feature's `<status>` is how completely it is *defined*, never how much of it is built.**
-  Nothing has been built when `/prd` runs.
+- **A feature's `<definition>` is how completely it is *defined*, never how much of it is built.**
+  Nothing has been built when `/prd` runs, which is why the tag stopped being called `<status>`.
 
 ## Tone & Style
 

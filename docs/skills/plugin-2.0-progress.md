@@ -998,7 +998,8 @@ can land until the transformation is specified and checkable.
 
 | Item | Status | Commit |
 |---|---|---|
-| **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `_` |
+| **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `9fc531c` |
+| **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -1126,6 +1127,145 @@ intermediary by joining its basename to `schema/` — correct for `prd-format.md
 mutation round could start. Resolving the hop from the *citing document's own link* is both
 correct and the smaller assumption: only the citing file knows where its intermediary is.
 
+---
+
+## 45 — three renames, and the word one of them gets to keep
+
+**Addresses:** P29 · **Files:** `schema/core.md`, `schema/prd-format.md`, `commands/prd.md`,
+`commands/crd.md`, `skills/crd/SKILL.md`, `skills/crd/references/crd-format.md`,
+`skills/crd/references/project-format.md`, `skills/crd-context-update/SKILL.md`,
+`skills/breakdown/scripts/rename-feature.py`, `agents/crd-investigator.md`,
+`agents/crd-context-updater.md`, `agents/crd-impact-analyzer.md`,
+`agents/project-context-finalizer.md`, `tests/fixture/prd/schema-2/**` (new),
+`tests/fixture/prd/SCHEMAS.json`, `tests/fixture/setup_fixture.py`, `tests/probe-p1.py`,
+`tests/test_toolchain.py`, `tests/mutants/phase4-45.py` (new), `CLAUDE.md`
+
+### What landed
+
+`<status>` → `<definition>` on a PRD feature, `<status>` → `<workflow>` on a CRD's `<meta>`,
+`status=` → `built=` on a `PROJECT.md` feature. Values unchanged in all three, so a diff against
+the previous fixture shows the rename and nothing else — which is deliberate, because item 41's
+golden comparison then has exactly one transformation to account for.
+
+### The fourth vocabulary, and why it is not a gap in the plan
+
+The plan's item 45 names three. **There are four tags spelled `status`**, and the fourth is the
+document-level one in `index.md` and `what-next.md` that records how far the interview got.
+
+The plan does not mention it, and the reason it does not need to is the interesting part: the
+rename does not leave one tag ambiguous, **it frees the word.** Once its three namesakes have
+names of their own, `<status>` means exactly one thing — and that one thing is the only member of
+the set with a shipped reader (`list-prds.py`, which makes `--resume` work). Renaming it would
+have cost a migration and a behaviour change to buy nothing.
+
+A fifth, `<step status="done">` in `what-next.md`, is an *attribute* and cannot collide with an
+element. It is named in the core and defined in `prd-format.md`.
+
+### Deviations from the plan
+
+- **The `<definition>` enum is not extended here.** Item 45's table lists five values including
+  `excluded` and `superseded`; the template ships three. Extending the value set is a different
+  act from renaming the tag, and doing both in one commit makes the two indistinguishable in a
+  diff — which matters more than usual when the diff is the migration's evidence. Items 1 and 4
+  own the extension; core §3 says so in place.
+
+- **A backward-read policy, which item 45 does not specify.** *Accepted on read; never written.*
+  This is the rule item 57 already set for `<affected-apis>`, stated once in the core so that
+  three renames share one policy instead of each reader inventing its own. The exception is the
+  fourth row: `<status>` was never renamed, so a `<definition>` at document level is not an old
+  artefact, it is a mistake.
+
+- **`--status` stays a flag on `/crd` while the element becomes `<workflow>`.** *"What is the
+  status of this change request"* is what a person asks. The collision was between elements
+  inside documents, and renaming a published flag to fix it would change an interface for no
+  reason.
+
+- **`setup_fixture.py` stops hardcoding the version, against item 43's stated preference.** That
+  file carried a comment explaining that a hand-edited constant was chosen over a glob, because a
+  glob would silently pick whichever directory sorted last. The argument is right about a glob
+  and does not apply to reading `SCHEMAS.json`, which is an explicit declaration and the one the
+  suite already trusts. Two places declaring which schema is current is the duplication this
+  phase exists to remove — and item 45 proved it, because the constant did not move when the
+  second version arrived.
+
+### The debt this closed, and the signal that fired on schedule
+
+**`SCHEMAS.json`'s frozen-fixture rule now has content hashes.** Item 43 wrote rule 2 — a
+non-current fixture changes only when the migration's expected output changes — and had nothing
+to enforce it with, because nothing was frozen yet. Item 45 created the first frozen fixture, so
+the hash and its check land here rather than as a standing debt.
+
+**And the `expect_fail="item 1"` golden-pair check fired exactly as designed.** Registering
+schema-2 turned it green, the run failed with `fixed 1`, and that was the signal to delete the
+marker rather than a breakage. It is now a permanent regression guard. The migration comparison
+it unblocks is item 41's, which is next.
+
+### A fixture defect, recorded because item 41 needs it
+
+`staff-service/index.md` and its `what-next.md` both declare `<status>defined</status>` at
+**document** level, where the enum is `in-progress|complete`. `defined` is a *feature* value.
+Both fixtures were carried into schema-2 unchanged rather than corrected, deliberately: schema-1
+is frozen and the copy must differ from it by the rename alone.
+
+It is a good case for item 41 to have. A migration that "fixes" it is doing more than a rename;
+the correct behaviour is the one item 41 already specifies for a file matching no precondition —
+**stop and report this file**, never transform it anyway.
+
+### Verification
+
+Three checks. Suite 68 → **72**, and `known` back to 0.
+
+**`three status vocabularies, three distinct names -- and the fourth keeps the word`** reads core
+§3's table as data: four rows, four distinct tags, exactly one still spelled `<status>`,
+`in-progress` present in at least three of the four value sets, and the rename reaching every
+template in each defining document.
+
+**`a frozen fixture is frozen -- by hash, not by intention`** recomputes the digest and prints
+the actual value when it disagrees, so a deliberate change is a copy-paste and an accidental one
+is a named failure.
+
+**`nothing hardcodes a schema fixture version`** scans the test harness for a literal
+`"schema-N"`.
+
+Mutation: **10/10 caught** against a stated-green baseline (`tests/mutants/phase4-45.py`) — but
+only after the round found two assertions that were satisfied at more sites than they checked.
+
+### The same defect twice more, and it now has a name
+
+Item 44's round found one assertion that could not be falsified by a single edit. Item 45's found
+two more, in a check I had written *after* learning that lesson:
+
+| Assertion | Sites satisfying it | Mutant that survived |
+|---|---|---|
+| *some pair of vocabularies shares a value* | 6 pairs | changing one vocabulary's values |
+| *some template in this file writes the new tag* | 4 `<feature>` entries | changing one of them back |
+
+Both are `any()` where the claim was universal. The fixes are the claim stated properly:
+`in-progress` appears in **at least three of four** — the specific overlap that made the collision
+dangerous rather than untidy — and **every** feature entry in `project-format.md` carries
+`built=`.
+
+> **The rule, now stated once for the phase.** Before a check is finished, count the sites that
+> satisfy it. If more than one does, no single edit can break it, and it will pass through
+> exactly the regression it was written to catch. `any()` over a document is the usual shape;
+> the fix is usually `all()`, or naming the one site that carries the claim.
+
+This is Phase 3's *scope to the region that owns the claim*, arrived at from the other side.
+Phase 3 learned it by watching a mutant survive overnight; here it cost three mutants across two
+items, which is the cheap version.
+
+### Two instrument failures, both the same one, and both already in memory
+
+`\b` in a check's regex was written through a shell heredoc and arrived as byte `0x08`; `\0` in
+the fixture-digest helper arrived as a NUL, which made the suite file **binary** and unparseable.
+Both are the failure recorded after item 21's grading, where a stray `0x08` had silently disabled
+two word-boundary anchors and produced a confident 0-of-17.
+
+The lesson was already written down and it did not prevent a repeat, so the operational form is
+worth stating: **write files containing regex escapes with a file-writing tool, not through a
+heredoc.** A repo-wide scan for `[\0\a\b\v\f]` now runs after any such edit — it takes a second
+and it is the only thing that makes this class of defect visible at all, since `grep` prints
+`Binary file matches` and moves on.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

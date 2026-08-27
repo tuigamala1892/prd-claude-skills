@@ -75,7 +75,8 @@ find {project_path}/docs/crd -name "*.md" -type f 2>/dev/null
 Parse and display CRDs, then exit.
 
 **If `--status <slug>`:**
-Read `{project_path}/docs/crd/{slug}.md`, extract status, display, exit.
+Read `{project_path}/docs/crd/{slug}.md`, extract `<meta><workflow>` — accepting `<status>`
+from a CRD written before item 45 — display, exit.
 
 ### Phase 4: Change Capture
 

@@ -131,7 +131,7 @@ Add new entries to appropriate sections:
 ```xml
 <features>
   <!-- existing features -->
-  <feature id="dark-mode" status="complete">
+  <feature id="dark-mode" built="complete">
     <name>Dark Mode Toggle</name>
     <files>src/components/ThemeToggle.tsx, src/hooks/useTheme.ts, src/api/settings.py</files>
     <crd-ref>docs/crd/dark-mode-toggle.md</crd-ref>
@@ -213,7 +213,7 @@ If an endpoint/feature already exists:
 
 If a feature is modified:
 ```xml
-<feature id="settings" status="complete">
+<feature id="settings" built="complete">
   <name>User Settings</name>
   <files>src/api/settings.py, src/components/SettingsModal.tsx, src/hooks/useTheme.ts</files>
   <!-- Add new files to list -->

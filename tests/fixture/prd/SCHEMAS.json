@@ -15,31 +15,43 @@
     "anyone can update them -- they are a speed bump that turns an accidental edit into a",
     "failing check with a name on it.",
     "",
+    "  frozen_sha256 = sha256 over every file in the version directory, in sorted",
+    "  relative-POSIX-path order, hashing `path + NUL + bytes + NUL` for each. The suite",
+    "  recomputes it and prints the actual digest when it disagrees, so a DELIBERATE change",
+    "  to a frozen fixture is a copy-paste and an accidental one is a named failure.",
+    "",
     "A non-current fixture is not decoration under these rules: it is the INPUT to item 41's",
     "migration test and to item 24's compatibility comparison, so it is exercised on every",
     "run rather than merely stored."
   ],
 
-  "current": "schema-1",
+  "current": "schema-2",
 
   "versions": {
     "schema-1": {
+      "status": "accepted",
+      "description": "The schema as shipped in plugin 2.0.0: <criterion> with given/when/then, MoSCoW priority duplicated between index and feature file, and a feature's definition completeness recorded in a <status> element sharing its name with three other things.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": true,
+      "frozen_sha256": "f8d4e3bd31a6cc8b1aada39f2f475a3cdc5c8f9a53978e1b6da797949d8b122f",
+      "notes": "Superseded by schema-2 at item 45. Kept because it is the INPUT to item 41's migration comparison and the only artefact of an older schema in the repository -- which is what item 24's 'refuse on a known incompatibility' needs to be testable at all."
+    },
+    "schema-2": {
       "status": "current",
-      "description": "The schema as shipped in plugin 2.0.0: <criterion> with given/when/then, MoSCoW priority duplicated between index and feature file, <status> limited to the template enum.",
+      "description": "Item 45's rename: a PRD feature's <status> becomes <definition>, a CRD's <meta><status> becomes <workflow>, and PROJECT.md's <feature status=> becomes built=. Values are unchanged; only the tags differ, so a diff against schema-1 shows the rename and nothing else.",
       "projects": ["link-shelf", "staff-service"],
       "frozen": false,
-      "notes": "link-shelf is the §5.1 end-to-end fixture; staff-service is item 21's tier probe."
+      "notes": "link-shelf is the §5.1 end-to-end fixture; staff-service is item 21's tier probe. Both carried over from schema-1 with the rename applied and no other edit -- deliberately, so that item 41's golden comparison has exactly one transformation to account for."
     }
   },
 
   "planned": {
-    "schema-2": {
-      "arrives_with": ["item 1", "item 2", "item 5", "item 11", "item 33", "item 34", "item 35"],
-      "description": "Each Phase 4 schema item lands by ADDING its change to a schema-2 fixture beside schema-1, so the suite stays green through the transition instead of breaking in the same commit as the schema change.",
+    "schema-3": {
+      "arrives_with": ["item 1", "item 2", "item 5", "item 33", "item 34", "item 35"],
+      "description": "The remaining Phase 4 schema items -- EARS criteria, criterion priority, <gaps>, the <notes> split, <user-story>, the removal of <phases> and of the duplicated feature <priority>. They land together rather than one version per item: item 41's migration is written once against a whole schema, and a fixture per item would be six copies of one project.",
       "unblocks": [
-        "item 41 -- run the migration over schema-1 and assert the result equals schema-2; a golden comparison catches losses nobody thought to assert",
-        "item 24 -- 'warn on mismatch, refuse on a known incompatibility' cannot be tested without an artefact of an older schema, and none exists in the repository today",
-        "backward-read behaviour -- whatever /breakdown should do with an older PRD becomes a decision with a test rather than an assumption"
+        "item 41 -- the second half of the migration, over content rather than tag names",
+        "item 24 -- a THIRD version makes 'select the right migration, not the newest one' testable, which two cannot show"
       ]
     }
   }

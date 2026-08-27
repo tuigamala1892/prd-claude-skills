@@ -106,7 +106,7 @@ For each section with changes:
 ```xml
 <features>
   <!-- existing features unchanged -->
-  <feature id="theme" status="complete">
+  <feature id="theme" built="complete">
     <name>Theme Support</name>
     <files>src/hooks/useTheme.ts, src/components/ThemeToggle.tsx</files>
   </feature>
@@ -115,7 +115,7 @@ For each section with changes:
 
 **Updating existing entries:**
 ```xml
-<feature id="settings" status="complete">
+<feature id="settings" built="complete">
   <name>User Settings</name>
   <files>src/api/settings.py, src/components/SettingsModal.tsx, src/api/theme.py</files>
   <!-- Added new file to existing feature -->

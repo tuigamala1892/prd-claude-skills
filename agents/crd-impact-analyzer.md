@@ -51,7 +51,7 @@ From PROJECT.md, find related:
 
 **Features:**
 ```xml
-<feature id="settings" status="complete">
+<feature id="settings" built="complete">
   <name>User Settings</name>
   <files>src/api/settings.py, src/components/SettingsModal.tsx</files>
 </feature>

@@ -51,11 +51,20 @@ def rmtree(path):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-# The fixture PRD lives under the schema version it is written in (item 43). This is the
-# CURRENT one; when a schema-2 fixture exists, changing this line is how the end-to-end
-# fixture moves to it -- deliberately one line, and deliberately not a glob that would
-# silently pick whichever directory sorted last.
-PRD_SCHEMA = "schema-1"
+# The fixture PRD lives under the schema version it is written in (item 43), and WHICH one is
+# current is declared in SCHEMAS.json rather than here.
+#
+# Item 43 wrote this as a hand-edited constant, on the argument that a glob would silently pick
+# whichever directory sorted last. That argument is right about a glob and does not apply to
+# reading the registry: the registry is an explicit declaration, and it is the one the suite
+# already trusts. Item 45 added the second version and this line did not move -- two places
+# declaring which schema is current is the duplication this phase exists to remove.
+def _current_schema():
+    with open(os.path.join(HERE, "prd", "SCHEMAS.json"), encoding="utf-8") as f:
+        return json.load(f)["current"]
+
+
+PRD_SCHEMA = _current_schema()
 PRD_SRC = os.path.join(HERE, "prd", PRD_SCHEMA)
 SLUG = "link-shelf"
 

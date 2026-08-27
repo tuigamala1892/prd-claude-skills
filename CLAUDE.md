@@ -323,6 +323,13 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
 - TDD is mandatory: `<test-requirements>` is a required section in `task-format-spec.md` and a
   critical criterion in `review-criteria.md`; `execute-batch` runs the red/green cycle
 - Run `tests/test_toolchain.py` before and after any change to skill frontmatter or git commands
+- **Four things used to be called `status`; three were renamed at item 45.** A PRD feature's
+  definition completeness is `<definition>`, a CRD's process position is `<workflow>`, and a
+  `PROJECT.md` feature's build state is `built=`. The document-level `<status>` in `index.md` and
+  `what-next.md` kept the word — it is the only one with a shipped reader. All three old
+  spellings are **accepted on read and never written**. Core §3 is the definition.
+- **Nothing hardcodes a fixture schema version.** `tests/fixture/prd/SCHEMAS.json` declares which
+  is `current`; a superseded fixture is frozen and its content hash is checked.
 - **Artefact templates do not live in command files.** `commands/prd.md` and `commands/crd.md`
   cite `schema/prd-format.md` and `skills/crd/references/crd-format.md`; both cite
   `schema/core.md`, which is the single definition of every element the two paths share. A

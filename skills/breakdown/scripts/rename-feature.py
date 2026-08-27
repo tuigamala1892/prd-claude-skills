@@ -32,9 +32,10 @@ them is half-done in a way the operator should choose to accept.
 
 WHAT THIS IS NOT
 
-A rename is **not** a supersession. `<status>superseded</status>` is for a feature merged into
-another, and using it here would claim two features existed where there was always one. This
-script never touches a status.
+A rename is **not** a supersession. `<definition>superseded</definition>` is for a feature merged
+into another, and using it here would claim two features existed where there was always one. This
+script never touches a `<definition>` -- and it read `<status>` until item 45 renamed the tag,
+which changes nothing here because the script never read it either way.
 
 A rename IS a decision, and where it accompanies a change of scope it wants a decision record
 (item 36) rather than a silent file move. The summary line printed at the end is written to be

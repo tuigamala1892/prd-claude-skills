@@ -713,6 +713,33 @@ def schema_registry():
     return path, json.load(open(path, encoding="utf-8"))
 
 
+def current_fixture(project):
+    """The named fixture project, in whichever schema version the registry calls current.
+
+    Nothing may hardcode a version. Item 45 added a second one, and every path that named
+    `schema-1` would have gone on testing the superseded copy while reporting on the current
+    schema -- the registry exists to stop exactly that, and cannot if its readers ignore it.
+    """
+    _path, reg = schema_registry()
+    return os.path.join(REPO, "tests", "fixture", "prd", reg["current"], project)
+
+
+def fixture_digest(version):
+    """sha256 over a version directory: sorted relative paths, `path NUL bytes NUL` each."""
+    import hashlib
+    root = os.path.join(REPO, "tests", "fixture", "prd", version)
+    files = []
+    for dirpath, _dirs, names in os.walk(root):
+        for n in names:
+            full = os.path.join(dirpath, n)
+            files.append((os.path.relpath(full, root).replace(os.sep, "/"), full))
+    h = hashlib.sha256()
+    for rel, full in sorted(files):
+        h.update(rel.encode("utf-8") + b"\0")
+        h.update(open(full, "rb").read() + b"\0")
+    return h.hexdigest()
+
+
 @check("exactly one PRD schema is current, and each has its fixture", finding="P28")
 def _():
     # Item 43. The fixture directory is versioned so that Phase 4's schema items can each land
@@ -787,15 +814,16 @@ def _():
 
 
 @check("the golden pair exists: a fixture in the previous schema and the current one",
-       finding="P28", expect_fail="item 1")
+       finding="P28")
 def _():
     # The pair is what makes item 41's migration testable by COMPARISON -- run it over the old
     # fixture, assert the result equals the new one -- and item 24 exercisable at all, since
     # no artefact of an older schema exists anywhere in the repository today.
     #
-    # Marked expect_fail because schema-2 arrives with Phase 4's first schema item, not with
-    # item 43. When it lands this reports FIXED and fails the run, which is the signal to
-    # delete the marker and write the migration comparison against it.
+    # This was marked expect_fail until item 45, which is the schema item that created the
+    # second version. It fired as designed: registering schema-2 turned the check green, the
+    # run failed with FIXED, and that was the signal to delete the marker rather than a
+    # breakage. The comparison it unblocks is item 41's.
     _path, reg = schema_registry()
     versions = reg.get("versions") or {}
     assert len(versions) >= 2, (
@@ -987,7 +1015,7 @@ def _():
     # generated tasks". The subject knew what was being measured and what a good answer
     # looked like, so the result was worthless. A fixture that describes the experiment is
     # part of the experiment.
-    probe = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "staff-service")
+    probe = current_fixture("staff-service")
     index = open(os.path.join(probe, "index.md"), encoding="utf-8").read()
 
     entries = re.findall(r'<feature priority="([a-z-]+)" file="features/([a-z-]+)\.md">', index)
@@ -1112,7 +1140,7 @@ def _():
 
     script = os.path.join(SKILLS, "breakdown", "scripts", "rename-feature.py")
     assert os.path.isfile(script), "skills/breakdown/scripts/rename-feature.py is missing"
-    src = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
+    src = current_fixture("link-shelf")
     assert os.path.isdir(src), "the §5.1 fixture PRD is missing"
 
     root = tempfile.mkdtemp(prefix="prd-rename-")
@@ -2312,8 +2340,8 @@ def _():
     # The fixture is only useful if /breakdown can parse it. Validating here means a
     # drifting fixture fails the fast suite rather than an end-to-end run.
     import xml.etree.ElementTree as ET
-    base = os.path.join(REPO, "tests", "fixture", "prd", "schema-1", "link-shelf")
-    assert os.path.isdir(base), "tests/fixture/prd/schema-1/link-shelf is missing"
+    base = current_fixture("link-shelf")
+    assert os.path.isdir(base), f"{base} is missing"
 
     root = ET.parse(os.path.join(base, "index.md")).getroot()
     assert root.tag == "prd", f"index.md root is <{root.tag}>, expected <prd>"
@@ -3394,6 +3422,11 @@ def md_links(text):
     return out
 
 
+def xml_bodies(text):
+    """The body of every ```xml fenced block, in order."""
+    return re.findall(r"```xml\n(.*?)```", text, re.S)
+
+
 def xml_blocks(text):
     """Root element name of every ```xml fenced block, in order."""
     roots = []
@@ -3519,6 +3552,160 @@ def _():
     assert not cites, (
         "a command that writes an artefact must name where the artefact is defined, or the "
         "template comes back:\n    " + "\n    ".join(cites))
+# ------------------------------------------------------- status vocabularies (45)
+
+# The four tags core §3 names, and the file each belongs to. `<status>` is deliberately not a
+# key: it survived the rename, and it is the only one of the four with a shipped reader.
+RENAMED_TAGS = {
+    "definition": "a PRD feature file's <meta>",
+    "workflow": "a CRD's <meta>",
+    "built": "PROJECT.md's <feature>",
+}
+
+
+@check("a frozen fixture is frozen -- by hash, not by intention", finding="P28")
+def _():
+    """Item 43's rule 2, which had no enforcement until item 45 created something to freeze.
+
+    A superseded fixture is item 41's migration INPUT. If it drifts, the migration is compared
+    against an output whose input has quietly moved, and the comparison still passes -- which is
+    the worst available failure, because it looks like proof.
+    """
+    _path, reg = schema_registry()
+    frozen = {n: v for n, v in (reg.get("versions") or {}).items() if v.get("frozen")}
+    assert frozen, "no fixture is frozen, so rule 2 guards nothing"
+
+    for name, v in frozen.items():
+        recorded = v.get("frozen_sha256") or ""
+        assert re.fullmatch(r"[0-9a-f]{64}", recorded), (
+            f"{name} is marked frozen but records no sha256. Rule 2 is a comment until the "
+            f"digest is written down")
+        actual = fixture_digest(name)
+        assert actual == recorded, (
+            f"{name} is frozen and has changed.\n"
+            f"      recorded {recorded}\n"
+            f"      actual   {actual}\n"
+            f"    If the change is deliberate -- the migration's expected output moved -- paste "
+            f"the actual digest into SCHEMAS.json. If it is not, this is the edit rule 2 exists "
+            f"to catch")
+
+
+@check("three status vocabularies, three distinct names -- and the fourth keeps the word",
+       finding="P29")
+def _():
+    """Item 45.
+
+    The defect was one word meaning four things, so the check has to be about the *set* of
+    names, not about any one document's wording. It reads core §3's table as data -- the tag,
+    the file it lives in, and its values -- and asserts against that:
+
+      1. the four rows carry four distinct tags, and exactly one is still `<status>`;
+      2. no two rows share a value set, or the rename bought nothing;
+      3. the three renamed tags actually appear in the documents that define them, and the
+         old spelling does not survive as a template anyone would copy.
+
+    (1) is what the item is. (2) is why it was worth doing -- three of the four vocabularies
+    contain `in-progress`, which is what made reading the wrong tag return a plausible answer
+    rather than an error.
+    """
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("## 3. Status", 1)
+    assert len(region) == 2, "schema/core.md has no status section"
+    region = region[1].split("\n## ", 1)[0]
+
+    rows = [r.strip() for r in region.splitlines() if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r]
+    assert len(rows) == 4, f"core §3 lists {len(rows)} status vocabularies; item 45 names four"
+
+    tags, valuesets = [], []
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        tag = re.search(r"`([^`]+)`", cells[0])
+        assert tag, f"a status row names no tag: {row}"
+        tags.append(tag.group(1))
+        valuesets.append(frozenset(re.findall(r"`([a-z-]+)`", cells[3])))
+
+    assert len(set(tags)) == 4, (
+        f"core §3's four rows carry {len(set(tags))} distinct tags ({tags}). One word for two "
+        f"things is the whole defect item 45 exists to remove")
+    survivors = [t for t in tags if t == "<status>"]
+    assert len(survivors) == 1, (
+        f"{len(survivors)} rows still spell the tag `<status>`. Exactly one keeps the word -- "
+        f"the document-level one, which is the only one with a shipped reader")
+
+    # If the vocabularies were disjoint, sharing a tag would have been merely untidy. The
+    # specific overlap is the argument: `in-progress` means three different things in three of
+    # the four, so reading the wrong tag returned a PLAUSIBLE answer rather than an error.
+    #
+    # "some pair overlaps" was the first version of this assertion and it could not be broken
+    # by any single edit -- six pairs satisfied it. Naming the value and the count makes it a
+    # claim about the thing that actually motivated the rename.
+    shared = [v for v in valuesets if "in-progress" in v]
+    assert len(shared) >= 3, (
+        f"`in-progress` now appears in {len(shared)} of the four status vocabularies. Core §3 "
+        f"no longer records why one word for four things was dangerous rather than untidy")
+
+    # And the rename must have reached every template, not just the table describing them.
+    # UNIVERSALLY quantified, per document: `any(...)` passed while half the templates in
+    # project-format.md still wrote the old attribute, because the other half satisfied it.
+    prd_fmt = open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read()
+    feature_templates = [b for b in xml_bodies(prd_fmt) if b.lstrip().startswith("<feature>")]
+    assert feature_templates, "schema/prd-format.md carries no <feature> template"
+    for b in feature_templates:
+        assert "<definition>" in b, (
+            "a <feature> template in schema/prd-format.md does not write <definition>. A "
+            "rename that reaches the prose and not the template is a rename nobody will follow")
+
+    crd_fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+                   encoding="utf-8").read()
+    meta_templates = [b for b in xml_bodies(crd_fmt) if "<created>" in b]
+    assert meta_templates, "crd-format.md carries no CRD <meta> template"
+    for b in meta_templates:
+        assert "<workflow>" in b, (
+            "a CRD <meta> template in crd-format.md does not write <workflow>")
+
+    proj_fmt = open(os.path.join(SKILLS, "crd", "references", "project-format.md"),
+                    encoding="utf-8").read()
+    entries = re.findall(r"<feature id=\"[^\"]+\"[^>]*>", proj_fmt)
+    assert entries, "project-format.md carries no <feature> entry"
+    for e in entries:
+        assert "built=" in e, (
+            f"a PROJECT.md feature entry still writes the old attribute: {e}")
+
+    # Backward read is a policy, and a policy with no statement is a guess made per reader.
+    flat = prose(core)
+    assert re.search(r"Accepted on read; never written", flat), (
+        "core §3 does not say what a reader does with an artefact written before the rename, "
+        "so each reader decides separately -- which is how two of them disagree")
+
+
+@check("nothing hardcodes a schema fixture version", finding="P28")
+def _():
+    """Item 45 created the second version, and every path naming `schema-1` would have gone on
+    exercising the superseded copy while reporting on the current schema.
+
+    The registry cannot keep the fixture set honest if its readers route around it. Scoped to
+    the test harness, because that is who reads fixtures.
+    """
+    offenders = []
+    for name in sorted(os.listdir(os.path.join(REPO, "tests"))):
+        if not name.endswith(".py"):
+            continue
+        path = os.path.join(REPO, "tests", name)
+        for i, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
+            if re.search(r'"schema-\d+"', line) and "reg[" not in line:
+                offenders.append(f"tests/{name}:{i}: {line.strip()}")
+    for name in sorted(os.listdir(os.path.join(REPO, "tests", "fixture"))):
+        if not name.endswith(".py"):
+            continue
+        path = os.path.join(REPO, "tests", "fixture", name)
+        for i, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
+            if re.search(r'"schema-\d+"', line):
+                offenders.append(f"tests/fixture/{name}:{i}: {line.strip()}")
+
+    assert not offenders, (
+        "these name a schema version directly instead of asking SCHEMAS.json which is "
+        "current:\n    " + "\n    ".join(offenders))
 
 # ------------------------------------------------------------------- behavioural
 

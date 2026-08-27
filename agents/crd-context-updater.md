@@ -88,7 +88,7 @@ Read current PROJECT.md, then update affected sections:
 ```xml
 <features>
   <!-- existing features -->
-  <feature id="new-feature" status="complete">
+  <feature id="new-feature" built="complete">
     <name>New Feature Name</name>
     <files>src/api/new_feature.py, src/components/NewFeature.tsx</files>
   </feature>

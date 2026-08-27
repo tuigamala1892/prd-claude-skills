@@ -111,13 +111,13 @@ seeding a subtree **copy** rather than a transform.
 
 ```xml
 <features>
-  <feature id="auth" status="complete">
+  <feature id="auth" built="complete">
     <name>User Authentication</name>
     <files>src/api/auth.py, src/services/auth.py, src/models/user.py</files>
     <crd-ref>docs/crd/auth-enhancement.md</crd-ref>  <!-- optional -->
   </feature>
 
-  <feature id="settings" status="complete">
+  <feature id="settings" built="complete">
     <name>User Settings</name>
     <files>src/api/settings.py, src/components/SettingsModal.tsx</files>
   </feature>
@@ -127,16 +127,21 @@ seeding a subtree **copy** rather than a transform.
 | Attribute/Element | Required | Description |
 |-------------------|----------|-------------|
 | `id` | Yes | Unique slug identifier — core [§1](../../../schema/core.md#1-identity) |
-| `status` | Yes | `complete`, `partial`, `planned` — core [§3](../../../schema/core.md#3-status), fourth row |
+| `built` | Yes | `complete`, `partial`, `planned` — core [§3](../../../schema/core.md#3-status), fourth row |
 | `name` | Yes | Human-readable feature name |
 | `files` | Yes | Comma-separated list of primary files |
 | `crd-ref` | No | Reference to CRD that created/modified this feature |
 
-**This `status` records how much of the feature exists in code, and it is the only one of the
-four that does.** A PRD feature file's `<status>` says how completely the feature is *defined* —
-a fully specified feature that nobody has started is `defined` there and `planned` here, and both
-are correct at once. `PROJECT.md` is descriptive: it is written from the code, so a value here
-that the code does not support is a bug in the investigation, not a plan.
+**`built=` records how much of the feature exists in code, and it is the only one of core §3's
+four that does.** A PRD feature file's `<definition>` says how completely the feature is
+*specified* — a fully specified feature that nobody has started is `defined` there and `planned`
+here, and both are correct at once. `PROJECT.md` is descriptive: it is written from the code, so
+a value here that the code does not support is a bug in the investigation, not a plan.
+
+**It was `status=` until item 45**, which is exactly the pair that made the collision worth
+fixing: `status="planned"` on a feature whose specification is finished reads as a contradiction,
+and `built="planned"` does not. A `PROJECT.md` that still says `status=` is read as `built=` and
+rewritten by item 41's migration, never refused.
 
 ### API Registry Section
 
@@ -248,11 +253,11 @@ src/
   </meta>
 
   <features>
-    <feature id="auth" status="complete">
+    <feature id="auth" built="complete">
       <name>User Authentication</name>
       <files>src/api/auth.py, src/models/user.py, src/frontend/pages/Login.tsx</files>
     </feature>
-    <feature id="products" status="complete">
+    <feature id="products" built="complete">
       <name>Product Catalog</name>
       <files>src/api/products.py, src/models/product.py, src/frontend/pages/Products.tsx</files>
     </feature>

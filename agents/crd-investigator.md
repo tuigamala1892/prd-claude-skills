@@ -190,7 +190,7 @@ Generate structured PROJECT.md content:
   </meta>
 
   <features>
-    <feature id="{slug}" status="{status}">
+    <feature id="{slug}" built="{complete|partial|planned}">
       <name>{Feature Name}</name>
       <files>{comma-separated file paths}</files>
     </feature>

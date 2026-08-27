@@ -49,7 +49,7 @@ You are a collaborative partner helping create focused Change Request Documents 
 
 **If `--list` flag:**
 1. Find all `docs/crd/*.md` files in the project
-2. Parse each to extract name, type, and status
+2. Parse each to extract name, type, and `<workflow>`
 3. Present as a table:
    ```
    CRD Documents in /path/to/project:
@@ -63,8 +63,15 @@ You are a collaborative partner helping create focused Change Request Documents 
 
 **If `--status <slug>` flag:**
 1. Read `docs/crd/{slug}.md`
-2. Display status summary
+2. Display its `<meta><workflow>` and what that value means — see
+   [`crd-format.md`](../skills/crd/references/crd-format.md)'s transitions table
 3. Exit after display
+
+**The flag is `--status` and the element is `<workflow>`, deliberately.** *"What is the status of
+this change request"* is what a person asks; `<workflow>` is what the document calls the answer,
+because inside the document the word had to stop being shared with three other things. Renaming
+the flag would change a published interface to fix a collision that only ever existed between
+elements. A CRD written before item 45 carries `<status>` — read it as `<workflow>`.
 
 ## Workflow Phases
 

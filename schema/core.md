@@ -10,7 +10,7 @@ it.** Where a format document needs to show a shared element it shows an *exampl
 attributes, the legal values and the meaning live here.
 
 ```xml
-<schema-core version="schema-1"/>
+<schema-core version="schema-2"/>
 ```
 
 The version above is the artefact schema the toolchain currently writes. It is the same string
@@ -110,36 +110,60 @@ meaning, which is what lets `breakdown-generate-tasks` read either without a bra
 
 ## 3. Status
 
-**Four tags are spelled `status` in this toolchain and no two of them mean the same thing.** They
-are listed together because the collision is the point: a script that reads the right tag from
-the wrong file gets a plausible answer.
+**Four things used to be spelled `status`, and no two of them meant the same thing.** Three now
+have names of their own. The fourth kept the word, which is the point of the rename rather than
+an exception to it: after item 45, `<status>` means exactly one thing.
 
 | Tag | Lives in | Records | Values |
 |---|---|---|---|
 | `<status>` | `index.md`, `what-next.md` | how far the **interview** got | `in-progress`, `complete` |
-| `<status>` | a PRD feature file's `<meta>` | how completely the feature is **defined** | `tbd`, `in-progress`, `defined` |
-| `<status>` | a CRD's `<meta>` | where the change is in the **process** | `draft`, `ready`, `in-progress`, `complete`, `abandoned` |
-| `status=` | `PROJECT.md`'s `<feature>` | how much **exists in code** | `complete`, `partial`, `planned` |
+| `<definition>` | a PRD feature file's `<meta>` | how completely the feature is **defined** | `tbd`, `in-progress`, `defined` |
+| `<workflow>` | a CRD's `<meta>` | where the change is in the **process** | `draft`, `ready`, `in-progress`, `complete`, `abandoned` |
+| `built=` | `PROJECT.md`'s `<feature>` | how much **exists in code** | `complete`, `partial`, `planned` |
 
-Three of the four also carry `in-progress` or `complete`, with three different meanings.
+Three of the four still carry `in-progress` or `complete`, with three different meanings — which
+is why the *tags* had to differ. A shared value set across distinct tags is ordinary; a shared
+tag across distinct value sets is a script reading the right name from the wrong file and getting
+a plausible answer.
 
 **A fifth is not in the table, deliberately.** `what-next.md`'s `<step status="done">` records
 whether one recorded step has happened. It is PRD-only, so it is defined in
 [`prd-format.md`](prd-format.md) rather than here — but it is named, because *"four things are
 called status"* would have been the wrong count and this file is where someone comes to get that
-count right.
+count right. It is also the reason the rename stopped at three: `<step>`'s attribute cannot
+collide with a document's element.
 
 **Definition completeness is not build progress.** A feature whose criteria are fully written is
-`defined` whether or not a line of it exists; a feature that is half-built is still `defined`.
-The second row records what the *document* says, and the fourth records what the *code* says.
+`<definition>defined` whether or not a line of it exists; a feature that is half-built is still
+`defined`. The second row records what the *document* says, and the fourth records what the
+*code* says. Naming them differently is what stops one being read for the other.
 
-**Only the first row has a shipped reader today**: `list-prds.py` takes the first `<status>` in
-`index.md` and in `what-next.md`, and reports `DISAGREE` when they differ — which is possible
-precisely because two files carry the same tag.
+**Why the first row keeps the word.** It is the only one of the four with a shipped reader —
+`list-prds.py` takes the first `<status>` in `index.md` and in `what-next.md` and reports
+`DISAGREE` when they differ. It is also the tag that makes `--resume` work at all. Renaming it
+would have cost a migration and a behaviour change to buy nothing, because once its three
+namesakes are gone it is no longer ambiguous.
 
-> **Three of these four are renamed by item 45**, to `<definition>`, `<workflow>` and `built=`
-> respectively. The first row keeps the word, and keeping it is the point: once the other three
-> have names of their own, `<status>` means exactly one thing.
+**`<definition>` extends to `excluded` and `superseded` at items 1 and 4.** Those values exist in
+authored PRDs today and not in the template; adding them is a change to the *value set*, which is
+a different act from renaming the tag, and doing both at once would make one migration
+indistinguishable from the other in a diff.
+
+### Reading an artefact written before the rename
+
+**Accepted on read; never written.** A reader that finds `<status>` where it expects
+`<definition>`, `<workflow>` or `built=` treats it as that element and carries on. A producer
+writes only the new name.
+
+This is the rule item 57 already set for `<affected-apis>`, stated once here so that three
+renames share one policy rather than inventing three. The reason is the same in both cases: a
+document is often authored in one place and read in another, and a hard cutover strands whatever
+is in flight. Item 41's migration rewrites them; until it has run everywhere, refusing would
+break artefacts that are not wrong, only old.
+
+**One exception, and it is the first row.** `<status>` in `index.md` and `what-next.md` was never
+renamed, so there is nothing to accept — a `<definition>` at document level is not an old
+artefact, it is a mistake.
 
 ---
 

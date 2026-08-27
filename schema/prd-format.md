@@ -152,7 +152,7 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
     <name>{{Feature Name}}</name>
     <slug>{{feature-slug}}</slug>
     <priority>must-have|should-have|could-have</priority>
-    <status>defined|tbd|in-progress</status>
+    <definition>defined|tbd|in-progress</definition>
   </meta>
 
   <description>
@@ -178,8 +178,9 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
 behaviour; `id` is stable and citable. Nothing about it is PRD-specific, which is exactly why it
 is not defined here.
 
-**`<status>` is core §3's second row** — how completely this feature is *defined*, never how much
-of it is built.
+**`<definition>` is core §3's second row** — how completely this feature is *defined*, never how
+much of it is built. It was called `<status>` until item 45; a feature file that still says
+`<status>` is read as `<definition>` and rewritten by item 41's migration, never refused.
 
 **`<priority>` in `<meta>` duplicates the index entry, and the index is the one that counts.**
 Two writers for one fact, with nothing keeping them in step and no check that they agree. Item 1

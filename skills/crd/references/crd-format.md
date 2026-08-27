@@ -35,7 +35,7 @@ copies of the criterion shape before the core existed, and they had already drif
   <slug>dark-mode-toggle</slug>
   <type>feature-add</type>
   <created>2026-01-12</created>
-  <status>ready</status>
+  <workflow>ready</workflow>
 </meta>
 ```
 
@@ -45,12 +45,16 @@ copies of the criterion shape before the core existed, and they had already drif
 | `slug` | Yes | String | URL-safe identifier (lowercase, hyphens) |
 | `type` | Yes | `feature-add`, `feature-modify`, `feature-remove`, `refactor` | Change type |
 | `created` | Yes | YYYY-MM-DD | Creation date |
-| `status` | Yes | see [core §3](../../../schema/core.md#3-status) | Where this change is in the process |
+| `workflow` | Yes | see [core §3](../../../schema/core.md#3-status) | Where this change is in the process |
 
-**`<slug>` and `<status>` are core elements.** The slug is core §1 — stable, global, and the
-filename under `docs/crd/`. The status is core §3's *third* row: it records where the change is
-in the **process**, which is not what the same tag means in a PRD feature file. The values and
-their transitions are at the foot of this document.
+**`<slug>` and `<workflow>` are core elements.** The slug is core §1 — stable, global, and the
+filename under `docs/crd/`. `<workflow>` is core §3's *third* row: it records where the change is
+in the **process**. Its values and their transitions are at the foot of this document.
+
+**It was `<status>` until item 45.** The word was shared with a PRD feature's tag, which records
+something else entirely — how completely a feature is *specified* — and a script reading the
+right name from the wrong file got a plausible answer rather than an error. A CRD that still says
+`<status>` is read as `<workflow>` and rewritten by item 41's migration, never refused.
 
 ### Context Section
 
@@ -230,7 +234,7 @@ The examples above are examples; the rules are in the core.
     <slug>dark-mode-toggle</slug>
     <type>feature-add</type>
     <created>2026-01-12</created>
-    <status>ready</status>
+    <workflow>ready</workflow>
   </meta>
 
   <context>
@@ -314,14 +318,14 @@ The breakdown skill:
 4. Generates fewer layers (typically 2-3 vs 5 for PRD)
 5. Tasks reference existing code from PROJECT.md context
 
-## Status Transitions
+## Workflow Transitions
 
 ```
 draft → ready → in-progress → complete
               ↘ abandoned
 ```
 
-| Status | Meaning |
+| `<workflow>` | Meaning |
 |--------|---------|
 | `draft` | Still being edited, not ready for implementation |
 | `ready` | Approved for implementation, can run /breakdown |
