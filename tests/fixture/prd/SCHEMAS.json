@@ -30,7 +30,7 @@
     "run rather than merely stored."
   ],
 
-  "current": "schema-4",
+  "current": "schema-5",
 
   "versions": {
     "schema-1": {
@@ -62,20 +62,31 @@
       "notes": "The first step that is not fully mechanical. `priority` and `derived-from` are the script's; the EARS sentence and its `pattern` are judgements the guide forbids a machine to make, so migrate.py reports PARTIAL and --check refuses the tree. The golden comparison for this step therefore asserts the mechanical half exactly and the judgement half not at all -- see the suite."
     },
     "schema-4": {
-      "status": "current",
+      "status": "accepted",
       "description": "Items 1, 2, 5, 11, 12, 27, 29 and 35: the rest of the feature template, and what-next.md's parseable skeleton. <user-story> before the description, <depends-on slug= kind=> after it, <gaps> between the criteria and the notes, <notes> split into <data-model> and <considerations>, an optional <architecturally-significant> in <meta>, and the duplicated <priority> removed from <meta>. No <phases> element, deliberately.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": true,
+      "frozen_sha256": "7e2f79cf58e45be84b83e60d790e91c8baaceb415e80f39a3fa82ca06bd30b8a",
+      "migration_from_previous": "mixed",
+      "judgement_elements": ["user-story", "depends-on", "gaps", "architecturally-significant", "data-model", "definition", "prd-slug", "next-command", "tbd-items", "authoring-gaps", "step"],
+      "notes": "quokka-telemetry is where the specification-gap bar first fires: it carries a <gap kind=\"specification\"> and is therefore in-progress rather than defined. Item 43 recorded that rule as sound in principle and unexercised in fact; this is the fixture exercising it. link-shelf/crd/archive-links.md is the first structured CRD in the corpus and arrives HERE rather than at schema-1: until item 46 the CRD path had nothing this plan had changed, and back-filling it into three frozen versions to give it a history it did not have would have broken rule 2 to buy nothing."
+    },
+    "schema-5": {
+      "status": "current",
+      "description": "Items 46, 47 and 48: the CRD path takes the parity changes. <requirements> is retired and each entry becomes a criterion in the single list, renumbered and carrying derived-from=\"requirement-N\"; requirement-level MoSCoW becomes P0|P1|P2 one to one; <meta> gains a document-level MoSCoW <priority>; and <gaps> arrives. PRD features, PROJECT.md and what-next.md are unchanged and are named as unchanged.",
       "projects": ["link-shelf", "staff-service"],
       "frozen": false,
       "migration_from_previous": "mixed",
-      "judgement_elements": ["user-story", "depends-on", "gaps", "architecturally-significant", "data-model", "definition", "prd-slug", "next-command", "tbd-items", "authoring-gaps", "step"],
-      "notes": "quokka-telemetry is where the specification-gap bar first fires: it carries a <gap kind=\"specification\"> and is therefore in-progress rather than defined. Item 43 recorded that rule as sound in principle and unexercised in fact; this is the fixture exercising it."
+      "judgement_elements": ["acceptance-criteria", "gaps", "priority"],
+      "notes": "The first step whose mechanical half MOVES content rather than relabelling it, which is why the criterion-id invariant had to be widened from equality to a prefix -- an existing id must still resolve, but appending is now legitimate. The judgement surface is wide because three of the four changes have no mechanical half at all: the EARS sentence and `pattern` for a migrated requirement, the document tier, and the gaps. A `wont-have` requirement is an ESCALATION rather than a mapping -- P0|P1|P2 has no `not building this` level by design -- and that path is exercised separately from the golden comparison."
     }
   },
 
   "planned": {
-    "schema-5": {
-      "arrives_with": ["item 11", "item 46", "item 47", "item 48"],
-      "description": "what-next.md gains a parseable skeleton with a derived <authoring-gaps> block (item 11), and the CRD path takes the parity changes -- <requirements> retired into EARS criteria, MoSCoW migrated to P0|P1|P2, <gaps> adopted.",
+    "_comment": "Item 11 was listed here as arriving with schema-5 and in fact landed in schema-4, with what-next.md's skeleton. Recorded rather than quietly deleted: a planned entry that turns out to be wrong about WHEN is the normal case, and the correction is the only evidence the entry was ever checked.",
+    "schema-6": {
+      "arrives_with": ["item 16", "item 17"],
+      "description": "Traceability from a feature or a change request through to the task that implements it -- <source-feature> and `moscow` on tasks, and the criteria and data model carried structurally rather than summarised.",
       "unblocks": [
         "item 30 -- coverage between /breakdown and /execute, which needs the traceability items first",
         "item 38 -- the gate, which reads gaps, significance and coverage together"

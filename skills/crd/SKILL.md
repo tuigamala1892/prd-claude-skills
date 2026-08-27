@@ -72,7 +72,9 @@ Only on exit 3, invoke the context update:
 ```bash
 find {project_path}/docs/crd -name "*.md" -type f 2>/dev/null
 ```
-Parse and display CRDs, then exit.
+Parse and display CRDs, then exit. **Show `<meta><priority>` as a column** — a change request's
+MoSCoW tier (item 47). `--list` is the CRD path's only survey view, and a survey that cannot show
+tiers is the reason the tier lives on the document at all.
 
 **If `--status <slug>`:**
 Read `{project_path}/docs/crd/{slug}.md`, extract `<meta><workflow>` — accepting `<status>`
@@ -93,7 +95,8 @@ Confirm type with user.
 Capture:
 - Summary (1-2 sentences)
 - Motivation
-- Priority
+- **`<meta><priority>`** — MoSCoW, for the change request as a whole. This is the document's only
+  MoSCoW value; criterion priorities in Phase 6 are `P0|P1|P2` (item 47)
 
 ### Phase 5: Impact Analysis
 
@@ -106,14 +109,24 @@ Present results to user for confirmation.
 
 ### Phase 6: Requirements
 
-Interactively capture requirements:
-- ID
-- Description
-- Priority (must-have, should-have, could-have)
+**Capture one list, not two.** There is no `<requirements>` element — item 46 retired it, because
+an EARS criterion *is* a requirement and the split existed only to work around Given/When/Then
+being a scenario format. Asking for requirements and then criteria for each gets the same content
+twice under two ids.
 
-Optionally capture acceptance criteria — one EARS sentence each, per
-[`core.md`](../../schema/core.md#2-acceptance-criteria). Ask for the unwanted case
-explicitly, or every criterion comes back `event-driven`.
+Interactively capture criteria:
+- `id`
+- One EARS sentence, per [`core.md`](../../schema/core.md#2-acceptance-criteria)
+- `pattern` — yours to assign, with the person who described the behaviour present
+- `priority` — `P0`, `P1` or `P2`. **Write it in even when it is the `P1` default**, or
+  *unassigned* and *deliberately P1* become indistinguishable
+
+Ask for the unwanted case explicitly, or every criterion comes back `event-driven`.
+
+**Then ask what is still open**, and record each as a `<gap>` with a `kind` and a `raised` date
+(item 48). A deferred criterion is `kind="specification"` and bars `<workflow>ready</workflow>`;
+core [§6](../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing) has the other four
+and says which block and which only warn.
 
 ### Phase 7: Generate CRD
 
@@ -121,6 +134,14 @@ Create directory if needed:
 ```bash
 mkdir -p {project_path}/docs/crd
 ```
+
+**Then check what would be lost, before writing** (item 48):
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py {project_path}/docs/crd/{slug}.md
+```
+Exit 1 is a refusal: show the user what would be replaced and stop. `--resume` is the only way
+past and the caller has to state it. This path was documented as stateless and had F3's hole
+exactly; it had simply not been caught by it yet.
 
 Write the CRD at `{project_path}/docs/crd/{slug}.md` **against
 [`references/crd-format.md`](references/crd-format.md)**, which defines every section, and which
@@ -138,6 +159,8 @@ come with it — both are required, and neither is yours to invent if the analys
 
 Report success with next steps:
 - Path to generated CRD
+- **Every open `<gap>`, by id and kind.** Not a count, and not "some things are TBD" — a gap
+  reported vaguely is one nobody returns to
 - Command to run /breakdown
 - Command to run /execute
 

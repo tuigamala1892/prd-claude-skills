@@ -20,8 +20,8 @@ copies of the criterion shape before the core existed, and they had already drif
   <context>...</context>
   <change-request>...</change-request>
   <impact-analysis>...</impact-analysis>
-  <requirements>...</requirements>
   <acceptance-criteria>...</acceptance-criteria>
+  <gaps>...</gaps>
 </crd>
 ```
 
@@ -36,6 +36,7 @@ copies of the criterion shape before the core existed, and they had already drif
   <type>feature-add</type>
   <created>2026-01-12</created>
   <workflow>ready</workflow>
+  <priority>should-have</priority>
 </meta>
 ```
 
@@ -46,6 +47,18 @@ copies of the criterion shape before the core existed, and they had already drif
 | `type` | Yes | `feature-add`, `feature-modify`, `feature-remove`, `refactor` | Change type |
 | `created` | Yes | YYYY-MM-DD | Creation date |
 | `workflow` | Yes | see [core §3](../../../schema/core.md#3-status) | Where this change is in the process |
+| `priority` | Yes | Core [§4](../../../schema/core.md#4-priority) — MoSCoW | Whether this change request is in scope at all |
+
+**`<priority>` is the whole document's, and it is the only MoSCoW in the file.** Change requests
+compete for attention the way features compete for a release, and `--list` is the survey that
+shows the competition — a listing that cannot show tiers is a worse listing. It arrived at item
+47 together with the retirement of requirement-level MoSCoW, which is what made the word
+unambiguous here: within a CRD, MoSCoW now means exactly one thing.
+
+**This is core §4.1's rule and not an exception to it.** On the PRD path the index owns feature
+priority because a ranking has no meaning inside the thing ranked. A change request has no index
+— `/crd --list` is the survey, derived by scanning — and the document *is* the planning unit, so
+the two coincide and it carries its own.
 
 **`<slug>` and `<workflow>` are core elements.** The slug is core §1 — stable, global, and the
 filename under `docs/crd/`. `<workflow>` is core §3's *third* row: it records where the change is
@@ -159,39 +172,34 @@ equivalent to `<affected-contracts>` holding only `kind="api"` entries. Item 41'
 rewrites them.
 
 
-### Requirements Section
+### Requirements Section — retired at item 46
 
-```xml
-<requirements>
-  <requirement id="1" priority="must-have">
-    Toggle switch component in settings modal under new "Appearance" section
-  </requirement>
-  <requirement id="2" priority="must-have">
-    Theme preference persisted to user settings via existing PUT /api/settings endpoint
-  </requirement>
-  <requirement id="3" priority="must-have">
-    CSS custom properties (variables) for light and dark color schemes
-  </requirement>
-  <requirement id="4" priority="should-have">
-    Respect system preference (prefers-color-scheme) on first load if no saved preference
-  </requirement>
-  <requirement id="5" priority="could-have">
-    Smooth transition animation when switching themes
-  </requirement>
-</requirements>
-```
+**There is no `<requirements>` element. Its entries are criteria.**
 
-| Attribute | Required | Values | Description |
-|-----------|----------|--------|-------------|
-| `id` | Yes | Core [§1](../../../schema/core.md#1-identity) — integer, unique within `<requirements>` | Citable requirement ID |
-| `priority` | Yes | Core [§4](../../../schema/core.md#4-priority) — MoSCoW | Which requirements are in scope |
+A CRD used to carry `<requirements>` *and* `<acceptance-criteria>` as two separate, unlinked
+lists. The split was not a design; it was a consequence of Given/When/Then being a **scenario**
+format. A scenario says what happens in one case, so it cannot state an obligation, so a second
+list was needed to hold the obligations. Item 33 removed the cause: an EARS criterion *is* a
+requirement — *"When the user toggles the dark mode switch on, the system shall apply the dark
+theme immediately"* is not a scenario about a toggle, it is a thing the system must do.
 
-**This list is CRD-only, and it exists because Given/When/Then cannot state a requirement.** A
-scenario says what happens in one case; a requirement says what the system must do. The PRD path
-has no equivalent list because it has no equivalent need — it carries criteria alone.
+So the two lists became one, with one id space, and P31's unanswerable question — *which criteria
+discharge requirement 3?* — is dissolved rather than answered: there is no requirement 3 that is
+not itself a criterion.
 
-Item 46 retires this section once item 33 lands: an EARS criterion *is* a requirement, so the
-split stops being necessary and the two unlinked lists become one with one id space.
+**The resolution deletes a CRD concept rather than adding a PRD one, and that was the decision.**
+The alternative — giving PRD features a `<requirements>` layer above their criteria — was
+considered and rejected: it would add a level to 64 features to accommodate a split that exists
+only because of a format both paths have left. This is recorded here rather than buried in the
+plan, because it is the change most likely to be questioned by someone reading the CRD schema
+first and seeing a layer removed. **The layer was never carrying meaning of its own.** It was
+carrying the requirements Given/When/Then had no way to state.
+
+**Accepted on read; never written.** A CRD that still has `<requirements>` is read as though each
+entry were a criterion with no `pattern` — the same policy core §2 and §3 apply to the other
+pre-migration shapes, and for the same reason: a document is authored in one place and broken
+down in another, and a hard cutover strands whatever is in flight. Item 41's migration rewrites
+them, converting each requirement's MoSCoW priority to `P0|P1|P2` on the way.
 
 ### Acceptance Criteria Section
 
@@ -226,10 +234,46 @@ on contained no `optional-feature` criteria at all. A CRD written before item 33
 `<given>`/`<when>`/`<then>`; it is read as one requirement with no `pattern`, and item 41's
 migration rewrites it.
 
-**Priority on a criterion is `P0|P1|P2`, and the `<requirements>` list above is still MoSCoW.**
-Two vocabularies for one concept, which is exactly what item 47 resolves by migrating the
-requirement priorities and retiring the list. Until then, a CRD carries both — recorded here
-rather than left to be discovered.
+**Priority on a criterion is `P0|P1|P2`, and it is the only requirement-level priority in the
+file.** Until item 47 a CRD carried two vocabularies for one concept — MoSCoW on `<requirement>`,
+`P0|P1|P2` on `<criterion>` — which is what made `/breakdown --requirement-level` select nothing
+here. MoSCoW survives one level up, on the document, where the judgement is across whole items.
+
+**This list is now the CRD's requirements.** Everything `<requirements>` used to hold is here,
+which means it is also what `/breakdown` reads for task generation — not a supplementary list of
+tests beside a list of obligations, but the obligations themselves.
+
+### Gaps Section
+
+```xml
+<gaps>
+  <gap id="1" kind="specification" raised="2026-01-12">
+  Whether an archived link keeps its position in a manually ordered list is undecided.
+  </gap>
+  <gap id="2" kind="dependency" raised="2026-01-12">
+  Restoring depends on the soft-delete column added by change request `soft-delete-links`,
+  which is not merged.
+  </gap>
+</gaps>
+```
+
+**Defined in [core §6](../../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing),
+identically to the PRD path's.** Same element, same five kinds, same rules about what blocks and
+what warns. The examples above are examples.
+
+**Arrived at item 48, and what it replaced was nothing at all.** Before it, a CRD interview that
+ended with *"we'll define that later"* left no trace: a change request that had deferred half its
+behaviour was indistinguishable from one that had none, and the deferral surfaced as a task with
+nothing to build. The PRD path had `<gaps>` and `what-next.md`; the CRD path had neither.
+
+**A deferred criterion becomes a `<gap kind="specification">`, not an absence.** That is the whole
+mechanism. It also gives `<workflow>` the mechanical test it lacked — see the transitions table at
+the foot of this document.
+
+**There is no `what-next.md` equivalent, and that is deliberate.** A CRD is one document about one
+change; the deferral belongs in `<gaps>` inside it and the next command belongs in `<meta>`. The
+symmetric answer — a `what-next` file per CRD — is the wrong one, and is recorded here because it
+is the obvious thing to reach for.
 
 ## Complete Example
 
@@ -241,6 +285,7 @@ rather than left to be discovered.
     <type>feature-add</type>
     <created>2026-01-12</created>
     <workflow>ready</workflow>
+    <priority>should-have</priority>
   </meta>
 
   <context>
@@ -270,21 +315,6 @@ rather than left to be discovered.
     <confidence>high</confidence>
   </impact-analysis>
 
-  <requirements>
-    <requirement id="1" priority="must-have">
-      Toggle switch in settings modal under "Appearance" section
-    </requirement>
-    <requirement id="2" priority="must-have">
-      Theme preference saved to user settings via existing API
-    </requirement>
-    <requirement id="3" priority="must-have">
-      CSS variables for light/dark themes
-    </requirement>
-    <requirement id="4" priority="should-have">
-      Respect system preference on first load
-    </requirement>
-  </requirements>
-
   <acceptance-criteria>
     <criterion id="1" pattern="event-driven" priority="P0">
       When the user toggles the dark mode switch on, the system shall apply the dark theme
@@ -293,7 +323,25 @@ rather than left to be discovered.
     <criterion id="2" pattern="state-driven" priority="P0">
       While a saved theme preference exists, the system shall apply it on every page load.
     </criterion>
+    <criterion id="3" pattern="event-driven" priority="P0">
+      When the user changes the theme, the system shall persist the preference through the
+      existing settings endpoint.
+    </criterion>
+    <criterion id="4" pattern="optional-feature" priority="P1">
+      Where no saved preference exists, the system shall follow the operating system's dark
+      mode setting.
+    </criterion>
+    <criterion id="5" pattern="unwanted-behaviour" priority="P1">
+      If the settings endpoint rejects the write, then the system shall keep the theme applied
+      for the session and report that the preference was not saved.
+    </criterion>
   </acceptance-criteria>
+
+  <gaps>
+    <gap id="1" kind="decision" raised="2026-01-12">
+    Whether the toggle also appears in the top bar, or only in settings, is undecided.
+    </gap>
+  </gaps>
 </crd>
 ```
 
@@ -303,11 +351,18 @@ CRD format is designed to be processable by `/breakdown`:
 
 | CRD Section | Maps to /breakdown |
 |-------------|-------------------|
-| `<requirements>` | Feature requirements for task generation |
-| `<acceptance-criteria>` | Test requirements for tasks |
+| `<acceptance-criteria>` | **Both** the requirements a task implements and its test requirements — one list, since item 46 |
+| `<meta><priority>` | `--priority <threshold>`: whether this change request is broken down at all |
+| `<criterion priority=>` | `--requirement-level <P0\|P1\|P2>`: which criteria within it are built |
+| `<gaps>` | Reported, and a `specification` gap blocks; core §6 says which kinds warn |
 | `<impact-analysis>` | Layer planning (which files/features affected) |
 | `<context>` | Project context for task generation |
 | `<affected-files>` | File scope for tasks |
+
+**The first row is the item 46 change seen from the consumer's end.** `/breakdown` used to read
+two lists and had no way to link them; it now reads one, and a criterion arrives at a task as both
+the thing to build and the thing to test. That is the same shape the PRD path has always had,
+which is what lets `breakdown-generate-tasks` read either without a branch.
 
 When running `/breakdown` on a CRD:
 ```bash
@@ -335,3 +390,17 @@ draft → ready → in-progress → complete
 | `in-progress` | Tasks generated and being executed |
 | `complete` | All tasks finished, PROJECT.md updated |
 | `abandoned` | Cancelled, not implemented |
+
+**`draft` versus `ready` has a mechanical test since item 48**, and it is core §6's rule with one
+word changed: **a CRD marked `ready` must not carry a `<gap kind="specification">`.** *Ready for
+implementation* and *the specification is incomplete* cannot both be true.
+
+It runs one way only, exactly as the `<definition>` rule does. The absence of a gap proves
+nothing, so nothing is ever promoted **to** `ready` by this check — an author holding a change at
+`draft` for a reason the document cannot express is never contradicted upward. What is caught is
+the contradiction, and only that.
+
+**`complete` and `abandoned` are records of the past.** Item 41's migration rewrites their shape
+but never re-reviews their content: turning their criteria into EARS is a formatting change, and
+treating it as a re-specification invites an agent to improve the record of something that already
+happened.

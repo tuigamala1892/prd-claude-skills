@@ -48,7 +48,7 @@ import os
 import re
 import sys
 
-VERSIONS = ["schema-1", "schema-2", "schema-3", "schema-4"]
+VERSIONS = ["schema-1", "schema-2", "schema-3", "schema-4", "schema-5"]
 
 # ---------------------------------------------------------------- artefact kinds
 
@@ -66,6 +66,16 @@ ROOTS = (
 
 META = re.compile(r"<meta>(.*?)</meta>", re.S)
 FEATURE_ENTRY = re.compile(r"<feature\s+id=\"[^\"]+\"[^>]*>")
+REQUIREMENTS = re.compile(r"( *)<requirements>(.*?)</requirements>\n?", re.S)
+REQUIREMENT = re.compile(r"<requirement\b([^>]*)>(.*?)</requirement>", re.S)
+CRITERIA_BLOCK = re.compile(r"( *)<acceptance-criteria>(.*?)( *)</acceptance-criteria>", re.S)
+
+# Item 47. One to one, and the fourth MoSCoW value is deliberately absent: P0|P1|P2 has no "not
+# building this" level, because that judgement belongs to the whole item -- which on this path is
+# the document, in <meta><priority>. A `wont-have` requirement therefore has no honest target and
+# is an escalation rather than a mapping. See migration.md.
+MOSCOW_TO_P = {"must-have": "P0", "should-have": "P1", "could-have": "P2"}
+
 CRITERION = re.compile(r"<criterion\b([^>]*)>", re.S)
 
 
@@ -188,6 +198,79 @@ def _wrap_what_next_meta(text):
     inner = "\n".join(f"{base}  {ln.strip()}" for ln in m.group(0).strip().splitlines()
                        if ln.strip())
     return text[:m.start()] + f"{base}<meta>\n{inner}\n{base}</meta>" + text[m.end():]
+
+
+def _requirements_to_criteria(text):
+    """R10 (items 46, 47): every <requirement> becomes a <criterion>, and the list is removed.
+
+    The two id spaces merge here, so the migrated requirements are RENUMBERED to continue after
+    the highest existing criterion id -- never the other way round. An existing criterion id may
+    already be cited from a commit message or a task file, and `id` exists precisely so such a
+    citation still resolves; a requirement id was only ever local to a list that is ceasing to
+    exist. `derived-from="requirement-N"` keeps the other half readable, and it is prefixed
+    rather than bare because after this step a bare `3` is ambiguous between the two former
+    spaces.
+
+    No `pattern` is assigned and no sentence is rewritten. A requirement body is prose someone
+    wrote to be read, not an EARS sentence waiting to be extracted -- the same boundary R4 and R5
+    draw, arriving through a different door.
+    """
+    block = REQUIREMENTS.search(text)
+    if not block:
+        return text
+    entries = REQUIREMENT.findall(block.group(2))
+    if not entries:
+        return text[:block.start()] + text[block.end():]
+
+    ids = [int(i) for i in criterion_ids(text) if i and i.isdigit()]
+    nxt = (max(ids) + 1) if ids else 1
+
+    criteria = CRITERIA_BLOCK.search(text)
+    indent = (criteria.group(1) if criteria else block.group(1)) + "  "
+
+    rendered = []
+    for attrs, body in entries:
+        old = re.search(r'id="([^"]*)"', attrs)
+        moscow = re.search(r'priority="([^"]*)"', attrs)
+        priority = MOSCOW_TO_P.get(moscow.group(1) if moscow else "", "P1")
+        derived = ' derived-from="requirement-%s"' % old.group(1) if old else ""
+        prose = " ".join(body.split())
+        rendered.append('%s<criterion id="%d" priority="%s"%s>\n%s  %s\n%s</criterion>'
+                        % (indent, nxt, priority, derived, indent, prose, indent))
+        nxt += 1
+    added = "\n".join(rendered)
+
+    if not criteria:
+        base = block.group(1)
+        return (text[:block.start()]
+                + "%s<acceptance-criteria>\n%s\n%s</acceptance-criteria>\n" % (base, added, base)
+                + text[block.end():])
+
+    text = (text[:criteria.end(2)].rstrip("\n") + "\n" + added + "\n" + text[criteria.start(3):])
+    block = REQUIREMENTS.search(text)
+    return text[:block.start()] + text[block.end():]
+
+
+def crd_problems(text):
+    """Escalations about a CRD itself rather than about a transformation (item 47).
+
+    A `wont-have` requirement cannot be placed. Sending it to P2 would make it buildable by
+    default, since `--requirement-level` defaults to P2; dropping it would delete something a
+    person wrote down. Both are decisions about the change rather than about its format, so the
+    file is named and nothing is written -- the escalation path that already exists, used for the
+    reason it exists.
+    """
+    problems = []
+    for attrs, _body in REQUIREMENT.findall(text):
+        moscow = re.search(r'priority="([^"]*)"', attrs)
+        if moscow and moscow.group(1) not in MOSCOW_TO_P:
+            rid = re.search(r'id="([^"]*)"', attrs)
+            problems.append(
+                "R10: requirement %s is `%s`, which has no P0|P1|P2 equivalent. P2 would make it "
+                "buildable by default and dropping it would delete a decision -- neither is a "
+                "formatting change, so the tier belongs on <meta><priority> and this requirement "
+                "needs a person" % (rid.group(1) if rid else "?", moscow.group(1)))
+    return problems
 
 
 def _definition(text):
@@ -324,6 +407,18 @@ RULES = [
      lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S))
                and "<prd-slug>" in t and "<tbd-items>" not in t),
 
+    # R10 is mixed for the same reason R4 and R5 are, and it is the first rule that MOVES
+    # content rather than relabelling it. The move is mechanical; the EARS sentence, the
+    # `pattern`, <meta><priority> and <gaps> are not. `done` names all of them, so a CRD that has
+    # only had the move applied reports PARTIAL rather than MIGRATED.
+    ("R10", "schema-5", "crd",
+     lambda t: "<requirements>" in t,
+     _requirements_to_criteria,
+     lambda t: "<requirements>" not in t
+               and not _criteria_lacking(t, "priority")
+               and not _criteria_lacking(t, "pattern")
+               and _meta_has(t, "priority")),
+
     ("R6", "schema-4", "feature",
      lambda t: _meta_has(t, "priority") or ("<notes>" in t and "<considerations>" not in t)
                or "<user-story>" not in t,
@@ -342,6 +437,7 @@ PARTIAL_OF = {
     "R6": lambda t: not _meta_has(t, "priority")
                     and ("<notes>" not in t or "<considerations>" in t),
     "R9": lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S)),
+    "R10": lambda t: "<requirements>" not in t and not _criteria_lacking(t, "priority"),
 }
 
 # Artefacts a step does not change. Named rather than defaulted: "no rule matched" and "no rule
@@ -350,6 +446,7 @@ UNCHANGED = {
     "schema-2": {"prd", "what-next"},
     "schema-3": {"prd", "what-next", "project-context"},
     "schema-4": {"prd", "project-context", "crd"},
+    "schema-5": {"prd", "project-context", "what-next", "feature"},
 }
 
 
@@ -433,8 +530,14 @@ def apply_steps(text, kind, current, target):
             before = text
             text = transform(text)
             applied.append(rid)
-            if criterion_ids(text) != criterion_ids(before):
-                problems.append(f"{rid}: criterion ids changed -- count in must equal count out")
+            # Every id that resolved before the step must still resolve after it, in place.
+            # Equality was the rule until R10, which APPENDS migrated requirements as criteria;
+            # a prefix check is strictly stronger for every rule that adds none, and is the
+            # actual property worth holding -- `id` exists so a citation survives.
+            was = criterion_ids(before)
+            if criterion_ids(text)[:len(was)] != was:
+                problems.append(f"{rid}: an existing criterion id changed -- a citation that "
+                                f"resolved before this step must resolve after it")
             if not done(text):
                 if rid in PARTIAL_OF and PARTIAL_OF[rid](text):
                     partial = True
@@ -497,6 +600,16 @@ def main():
             broken = convention_problems(text, path, index_slugs)
             if broken:
                 failures.append(f"{rel}: " + "; ".join(broken) + " -- NOT WRITTEN")
+                continue
+
+        # Asserted before the steps rather than inside R10, so that `detect` stays honest: a CRD
+        # holding a `wont-have` requirement IS a valid schema-4 artefact, it just cannot be
+        # carried to schema-5 by a machine. Making R10's precondition exclude it would have made
+        # detect() call the file unplaceable, which is a different and wrong answer.
+        if kind == "crd" and VERSIONS.index(args.target) >= VERSIONS.index("schema-5"):
+            broken = crd_problems(text)
+            if broken:
+                escalations.append(f"{rel}: " + "; ".join(broken) + " -- NOT WRITTEN")
                 continue
 
         if VERSIONS.index(current) >= VERSIONS.index(args.target):
@@ -566,11 +679,11 @@ def applied_adds_values(applied):
     """True when a step legitimately introduces new attribute values.
 
     R4/R5 add `priority` and `derived-from`; R6 removes a duplicated <priority> and re-nests
-    note prose. So the rename invariant -- values identical before and after -- does not hold
+    note prose; R10 maps MoSCoW onto P0|P1|P2, which replaces one value with another by design. So the rename invariant -- values identical before and after -- does not hold
     for them and must not be asserted. Stated per rule rather than switched off globally,
     because the invariant is the only thing standing between a rename and an edit for R1-R3.
     """
-    return any(rid in ("R4", "R5", "R6", "R9") for rid in applied)
+    return any(rid in ("R4", "R5", "R6", "R9", "R10") for rid in applied)
 
 
 if __name__ == "__main__":

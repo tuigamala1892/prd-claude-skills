@@ -10,7 +10,7 @@ it.** Where a format document needs to show a shared element it shows an *exampl
 attributes, the legal values and the meaning live here.
 
 ```xml
-<schema-core version="schema-4"/>
+<schema-core version="schema-5"/>
 ```
 
 The version above is the artefact schema the toolchain currently writes. It is the same string
@@ -90,13 +90,20 @@ misled.
 format, and a scenario cannot state a requirement, which is why the CRD path needed a second
 list to hold requirements at all.
 
+**That second list is gone, and this one holds both.** An EARS criterion *is* a requirement —
+*"When the user toggles the theme, the system shall persist the preference"* states an obligation,
+not a scenario — so at item 46 the CRD's `<requirements>` was retired and its entries became
+criteria here. One list, one id space, on both paths. The question that used to be unanswerable —
+*which criteria discharge requirement 3?* — is not answered but dissolved: there is no requirement
+3 that is not itself a criterion.
+
 | Part | Required | Holds |
 |---|---|---|
 | `id` | Yes | Integer, unique within `<acceptance-criteria>`; core §1 |
 | `pattern` | Yes for `defined` | One of the six EARS patterns, below |
 | `priority` | Yes | `P0`, `P1` or `P2`; core §4 |
 | body | Yes | One sentence, containing the word **shall** |
-| `derived-from` | Migration only | The id this criterion was migrated from, until sign-off |
+| `derived-from` | Migration only | Where this criterion came from, until sign-off: a criterion id, or `requirement-N` where a CRD `<requirement>` became one at item 46 |
 
 ### The six patterns
 
@@ -204,12 +211,18 @@ ever be ambiguous about which one it means.
 
 | Level | Where | Vocabulary | Selects |
 |---|---|---|---|
-| Feature | `priority=` on the `index.md` feature entry | MoSCoW: `must-have` · `should-have` · `could-have` · `wont-have` | which features are in scope |
-| Requirement | `priority=` on each `<criterion>` | `P0` · `P1` · `P2` | which criteria within them are built |
+| Whole item | PRD: `priority=` on the `index.md` feature entry · CRD: `<priority>` in `<meta>` | MoSCoW: `must-have` · `should-have` · `could-have` · `wont-have` | which features, or which change requests, are in scope |
+| Requirement | `priority=` on each `<criterion>`, both paths | `P0` · `P1` · `P2` | which criteria within them are built |
 
 **On the PRD path the index owns the feature level, and the feature file does not carry a copy.**
 Priority is a judgement *across* features — a ranking has no meaning inside the thing being
 ranked — so it lives where the comparison is made.
+
+**On the CRD path the document carries it, and that is the same rule rather than an exception.**
+A change request is the planning unit *and* the thing being planned, and there is no index for it
+to live in — `/crd --list` is the survey view, derived by scanning. §4.1's actual test is
+*"anything finer than the planning unit belongs where the thing itself is"*, and here the two
+coincide.
 
 `/breakdown --priority <threshold>` filters the first; `--requirement-level <P0|P1|P2>` filters
 the second, and is applied **after** it. `wont-have` is skipped unconditionally.
@@ -235,9 +248,31 @@ A corpus where everything is `P0` says nothing, and neither does one where nothi
 ### What is still MoSCoW, and where
 
 MoSCoW survives **only where the judgement is across whole items**. On the PRD path that is the
-feature, in the index. On the CRD path the document is the unit and there is no index, so
-`<meta>` carries it — that, and the migration of the CRD's requirement-level MoSCoW to
-`P0|P1|P2`, are item 47's and have not landed.
+feature, in the index; on the CRD path it is the document, in `<meta>`. Below that level there is
+one vocabulary, `P0|P1|P2`, on both paths.
+
+**Landed at item 47, and it removed a vocabulary rather than adding one.** The CRD used to carry
+requirement-level priority in MoSCoW, so a toolchain reading both paths had two vocabularies for
+one concept — exactly what item 29 refused when it retired `<needs-clarification>` rather than run
+it beside `<gaps>`. Existing CRD requirement priorities migrate under item 41, one to one:
+
+| Was | Becomes |
+|---|---|
+| `must-have` | `P0` |
+| `should-have` | `P1` |
+| `could-have` | `P2` |
+| `wont-have` | **nothing — the migration stops and names the file** |
+
+**The fourth row is the interesting one, and it is an escalation rather than a mapping.**
+`P0|P1|P2` has no *"we are not building this"* value, deliberately: that judgement belongs to the
+whole item, and on this path the whole item is the document. So a `wont-have` requirement has no
+honest target. Sending it to `P2` would make it buildable by default — `--requirement-level`
+defaults to `P2` — and dropping it would delete something a person wrote down. Both are decisions
+about the change, not about its format, so the migration refuses the file and says why. See
+[`migration.md`](migration.md).
+
+The consequence worth naming: **`/breakdown --priority <threshold>` now means something on the CRD
+path**, where it previously had nothing to read. A could-have change request can be declined.
 
 ---
 
@@ -304,6 +339,13 @@ to be fully specified while declaring the specification incomplete — and it is
 a script can enforce without judgement. It runs one way only: the absence of a gap proves
 nothing, so nothing is ever promoted *to* `defined` by this rule.
 
+**The same rule, one word different, is what `<workflow>` was missing.** A CRD marked `ready`
+must not carry a `specification` gap — *ready for implementation* and *the specification is
+incomplete* cannot both be true. Before item 48 the CRD had no `<gaps>` at all, so `draft` versus
+`ready` rested entirely on the author's say-so; it now has the same one-way mechanical test
+`<definition>` has, and for the same reason. §3's second row and third row are checked by one
+rule with two names for its subject.
+
 **One element, not two.** `<confidence>` (§5) grades a whole analysis; a `<gap>` marks one
 specific unresolved point. They feed the same gate and the same report line, and neither is a
 substitute for the other — but a second element meaning *"something here is unknown"* would be
@@ -314,6 +356,11 @@ the drift this file exists to prevent.
 **In the interview, wherever possible.** `/prd`'s phases and `/crd`'s change capture are better
 resolution mechanisms than anything downstream, because a human is answering. A gap is for what
 the interview *failed* to resolve — never a licence to stop asking.
+
+**A deferred criterion is a gap, not an absence.** This is the CRD path's most common case and the
+reason item 48 exists: *"we'll define that later"* used to leave nothing behind at all, so a CRD
+that had deferred half its behaviour was indistinguishable from one that had none. It is now a
+`<gap kind="specification">`, which bars `ready` and blocks execution.
 
 **A resolved gap is annotated, not deleted.** The `id` may already have been cited from a commit
 message or a review, and a deleted gap turns those citations into nothing. Say what resolved it

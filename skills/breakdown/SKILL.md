@@ -23,13 +23,19 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 
 Two filters, two levels, and they compose in one direction only:
 
-| Filter | Selects | Vocabulary |
-|---|---|---|
-| `--priority` (item 14, not yet built) | which **features** are in scope | MoSCoW |
-| `--requirement-level` | which **criteria** within them are built | `P0` · `P1` · `P2` |
+| Filter | Selects | Reads | Vocabulary |
+|---|---|---|---|
+| `--priority` (item 14, not yet built) | which **whole items** are in scope | PRD: `priority=` in `index.md` · CRD: `<meta><priority>` | MoSCoW |
+| `--requirement-level` | which **criteria** within them are built | `priority=` on each `<criterion>`, both paths | `P0` · `P1` · `P2` |
 
-**Applied second, always.** `--priority` chooses the features; `--requirement-level` then chooses
-inside them. Running it the other way round would filter criteria out of features that were about
+**Both columns now have something to read on both paths.** Until item 47 a CRD carried MoSCoW at
+the *requirement* level and nothing at the document level, so `--requirement-level` selected
+nothing here and `--priority` had no field to threshold against. The vocabularies swapped levels:
+MoSCoW moved up to `<meta><priority>`, and the criteria took `P0|P1|P2` — one vocabulary per
+level, on both paths.
+
+**Applied second, always.** `--priority` chooses the features or the change request;
+`--requirement-level` then chooses inside them. Running it the other way round would filter criteria out of features that were about
 to be dropped whole, which changes nothing and costs a pass.
 
 **Default `P2` — everything.** No existing invocation changes behaviour, which is the point of
@@ -281,8 +287,12 @@ for its batch, for the same reason.
 
 **For CRD:**
 Extract directly from CRD structure:
-- Requirements from `<requirements>` section
-- Acceptance criteria from `<acceptance-criteria>` section
+- **Criteria from `<acceptance-criteria>` — one list, which is both the requirements and the
+  tests.** There is no `<requirements>` section; item 46 retired it, because an EARS criterion
+  *is* a requirement. A CRD written before that carries one, and it is **read** as criteria with
+  no `pattern` rather than refused — the same policy the other pre-migration shapes get
+- Document tier from `<meta><priority>` — MoSCoW, what `--priority` thresholds against
+- Open gaps from `<gaps>`, reported with the PRD path's, below
 - Affected files from `<impact-analysis><affected-files>`
 - Affected features from `<impact-analysis><affected-features>`
 - Tech stack from PROJECT.md context

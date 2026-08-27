@@ -1854,13 +1854,208 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 
 | Item | Status | Commit |
 |---|---|---|
-| **46 + 47 + 48 + 49 + 50** — the parity pass | *In progress* | — |
+| **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `b56c93c` |
+| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | *In progress* | — |
 | **13 + 14 + 15 + 19 + 20** — the filters | *Not started* | — |
 | **16 + 17 + 30 + 59** — the carry | *Not started* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
 
 **Suite at branch point:** 86 checks, `failed 0`, `known 0`.
+
+---
+
+## 46 + 47 + 48 — the CRD path takes the parity changes, and becomes schema-5
+
+**Commit:** `b56c93c` · **Addresses:** P31, P32 · **Files:** `schema/core.md`,
+`schema/migration.md`, `schema/scripts/migrate.py`, `skills/crd/references/crd-format.md`,
+`commands/crd.md`, `skills/crd/SKILL.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/check-writable.py`, `tests/fixture/prd/SCHEMAS.json`,
+`tests/fixture/prd/schema-4/link-shelf/crd/archive-links.md`, `tests/fixture/prd/schema-5/`,
+`tests/mutants/crd_parity.py`, `tests/test_toolchain.py`
+
+### Why three items are one commit, and one schema version
+
+The plan groups 46 and 47 as *"the same change reaching the CRD path"* and says they should land
+immediately after 33 and 34, which they did not — they lagged by four commits, which is exactly
+the interval in which two vocabularies acquire consumers. 48 joins them because all three rewrite
+the same document and a schema version is the unit a migration can be written against. Splitting
+them would have meant three migrations over one file, or two versions nobody could name.
+
+`SCHEMAS.json` had already predicted this, listing 46, 47 and 48 under a `planned` schema-5 — and
+listing item 11 with them, which had in fact landed in schema-4. That correction is recorded in
+the file rather than deleted: a planned entry being wrong about *when* is the normal case, and the
+correction is the only evidence anyone ever checked.
+
+### What landed
+
+- **46** — `<requirements>` is retired. Its entries are criteria, in one list with one id space.
+  P31's unanswerable question, *which criteria discharge requirement 3?*, is dissolved rather than
+  answered: there is no requirement 3 that is not itself a criterion.
+- **47** — requirement-level MoSCoW becomes `P0|P1|P2`, and MoSCoW moves **up** to
+  `<meta><priority>`. The vocabularies swapped levels rather than one absorbing the other. Both
+  of `/breakdown`'s filters now have something to read on this path; before, `--requirement-level`
+  selected nothing and `--priority` had no field to threshold against.
+- **48** — `<gaps>` reaches the CRD, and with it a mechanical test for `draft` versus `ready`:
+  a CRD marked `ready` must not carry a `<gap kind="specification">`. That is core §6's
+  `<definition>` rule with one word changed, and it runs one way only, so nothing is ever promoted
+  **to** `ready` by it.
+- **48, the other half** — `/crd` gained a pre-write guard and `--resume`.
+
+### The guard was generalised, not duplicated — and that is the repository's most repeated lesson
+
+`/crd` was documented as stateless and wrote `docs/crd/{slug}.md` with no check at all. That is F3,
+which cost an interview on the PRD path before item 9 turned the guard into a program. The CRD path
+had the identical hole and had simply not been caught by it yet.
+
+The obvious implementation was a second script. Instead `check-writable.py` now takes **a PRD
+directory or a single file**, because the problem it solves — *an artefact representing a long
+conversation is about to be replaced* — was never PRD-specific. This ledger has recorded the same
+shape three times now: `keep_awake` written inside one caller with its own docstring describing the
+identical failure it was written for; item 60, a rule added without removing what it contradicted;
+P18's TDD mandate enforced in three places and documented in a fourth. **A fix applied at the site
+of discovery rather than at the level of the problem** is this repository's characteristic defect,
+and this is the first time it was caught before shipping rather than after.
+
+### The `wont-have` requirement has no honest target, and that is an escalation
+
+The plan says only that CRD requirement priorities *"migrate from MoSCoW under item 41"*. Writing
+the map exposed a value the plan had not considered.
+
+`must-have → P0`, `should-have → P1`, `could-have → P2` are one to one. `wont-have` is not:
+**`P0|P1|P2` has no *"not building this"* level, deliberately**, because that judgement belongs to
+the whole item — which on this path is the document, in the MoSCoW that item 47 just put there.
+So sending it to `P2` would make a declined requirement buildable by default, since
+`--requirement-level` defaults to `P2`; and dropping it would delete something a person wrote down.
+Both are decisions about the change rather than about its format.
+
+**It escalates**, using machinery that already existed: exit 2, the file named, nothing written.
+The first draft of core §4 collapsed `must-have` and `should-have` into `P0` and sent `wont-have`
+to `P2` — that was written, read back, and replaced before it reached a test. It is recorded here
+because a lossy map that looks tidy is the easy mistake, and the corpus would have carried it
+silently.
+
+### The first step whose mechanical half MOVES content, and the invariant it broke
+
+R10 is the first rule that creates elements rather than relabelling them, and it walked straight
+into an invariant `apply_steps` had held since item 41:
+
+    if criterion_ids(text) != criterion_ids(before):
+        "criterion ids changed -- count in must equal count out"
+
+Equality was correct for every rule that existed, and wrong as a statement of the property worth
+holding. What matters is that **an id which resolved before the step still resolves after it** —
+`id` exists so that a citation from a commit message or a task file survives. Appending is
+legitimate; renumbering an existing criterion is not. The invariant became a prefix check, which
+is strictly stronger for every rule that adds nothing and is the actual claim.
+
+That is also why the migration renumbers the **requirements** and not the criteria: an existing
+criterion id may already be cited, and a requirement id was only ever local to a list that is
+ceasing to exist. `derived-from="requirement-3"` carries the other half of the history, prefixed
+rather than bare because after the merge a bare `3` is ambiguous across the two former spaces.
+
+### Two of my own checks were wrong, and both in the same direction
+
+The suite went red twice on assertions that were true of every artefact that existed when they
+were written, and false the moment a new shape arrived. Both were **overreach**, and neither was a
+defect in the change:
+
+1. **`every criterion must carry derived-from`.** Core §2 says `derived-from` is *migration only*.
+   Until schema-5 every criterion in a mixed step came from a migration, so the sweep was
+   accidentally correct. The fixture CRD is the first artefact carrying **authored** criteria beside
+   **migrated** ones, and demanding the attribute on all six would have required back-dating a
+   provenance the authored pair does not have.
+2. **`no criterion may carry a pattern`.** Same shape: the authored criteria legitimately have one.
+
+Both are now asserted **per criterion, against the same criterion in the source, and only where
+the step touched it** — a criterion the step left byte-identical is the author's and is not the
+migration's to be judged on. This does not weaken the earlier steps: mutating R4/R5 so they stop
+writing `derived-from` still turns four checks red, which was measured rather than assumed.
+
+The third failure was `the two priority levels stay in two vocabularies`, which swept **every**
+table row in core §4 and reported eight levels once item 47 gave the section a second table. That
+is *prose checks need a region and a shape* arriving again — the region was right and the shape was
+missing. It now takes the first contiguous run of table rows.
+
+### The fixture problem, and the rule that decided it
+
+schema-5 changes CRDs and nothing else, and **there was no structured CRD anywhere in the corpus**.
+`tests/fixture/crd/change-request.md` is stakeholder prose — `/crd`'s *input*, deliberately
+unstructured — so the CRD rows in `migration.md`'s table had never been exercised by a golden
+comparison at all.
+
+The honest place for a first CRD was schema-1, so it would have a history like everything else.
+Item 43's rule 2 forbids it: *a non-current fixture is frozen, and needing something new to
+exercise is a reason to touch the current schema only.* Back-filling it into three frozen versions
+would have broken the rule that makes versioned fixtures affordable, to buy a provenance the file
+does not have. So `link-shelf/crd/archive-links.md` arrives at schema-4 and says so in the
+registry's notes.
+
+It is the same project as the existing prose fixture — archiving links rather than deleting them —
+which was not a coincidence worth avoiding: the two now sit either side of `/crd`, one the input
+and one the output.
+
+### Verification
+
+`python tests/test_toolchain.py` — **86 → 89**, `failed 0`, `known 0`.
+
+Three new checks, all of which run something:
+
+| Check | The mechanism it runs |
+|---|---|
+| a CRD carries one list, not two | migrates a synthetic CRD and asserts the merged id space, not the format document's prose |
+| requirement priority is `P0\|P1\|P2` on both paths | migrates one mappable CRD and one holding a `wont-have`; asserts exit 2 **and that the file is byte-identical afterwards** |
+| `/crd` cannot silently replace a CRD | runs the guard on a file three ways — refuse, `--resume`, absent |
+
+And the behaviour was watched before the checks were trusted:
+
+- **R10, run by hand** on the schema-4 fixture: `<requirements>` gone, ids continuing from 3,
+  `must/should/could` landing as `P0/P1/P2`, no `pattern` assigned, verdict `PARTIAL`.
+- **the escalation, run by hand**: exit 2, the requirement named, `<requirements>` still in the
+  file afterwards.
+- **the guard, run by hand** on a CRD file: refuse / `--resume` / absent.
+
+**Mutation round:** `tests/mutants/crd_parity.py`, seven mutants, **7/7 caught**, every file
+restored byte-for-byte. It took four attempts, and two of the three failures were instrument
+faults rather than results — recorded below, because one of them was a real hole.
+
+### The round found a hollow check, and it is the site-counting rule's fifth confirmation
+
+Round three reported `MISSED /crd stops running the overwrite guard -- NOT CAUGHT`. The mutant
+replaced `/crd`'s guard invocation with the `test -e` prose it was written to retire, and **the
+suite stayed green.**
+
+The check asserted `"check-writable.py" in text`. `/crd` names the script **twice** — once plainly
+and once with `--resume` — so breaking one invocation left the substring true. *If more than one
+site satisfies a check, no single edit can break it*, which this ledger has now recorded five
+times. The check asserts the invocation **with the path it guards**, both forms, and the absence
+of the prose guard beside it; the round then reported 7/7.
+
+**This is the one that would have shipped.** Every other mutant here broke something a reader
+would notice. That one restored a defect the item exists to fix, and the only thing that saw it
+was a mutant.
+
+### Two instrument faults, and both were the same one
+
+Rounds one and two reported `ANCHOR NOT FOUND -- mutant never applied` for that same mutant — the
+harness's guard 2 doing its job, distinguishing *"never ran"* from *"survived"*. Without it the
+round would have read 6/7 twice with a MISSED that meant nothing, and the real survivor in round
+three would have looked like the same benign line.
+
+Both faults were **backslashes eaten by a heredoc**, which is already in this session's memory and
+which I walked into twice more:
+
+1. Writing `commands/crd.md`, `\` before a newline reached Python as a **line continuation**, so
+   the two-line command collapsed into one with a doubled space — and the mutant's two-line anchor
+   could never match a file that no longer had two lines.
+2. Fixing the mutant file, the patch script's own search string was mangled the same way, its
+   `assert` fired, and — because it was a separate command rather than part of the `&&` chain —
+   the round ran anyway against an unchanged anchor.
+
+The fix both times was to stop routing text with backslashes through a shell: `Edit` for the
+mutant file, and **verifying the anchor matched exactly once before launching the round** rather
+than after. A harness that reports on an anchor it never applied is not lying, but it is a result
+that needs reading rather than skimming.
 
 ---
 

@@ -3929,11 +3929,32 @@ def _():
                     for n in sorted(fn):
                         got = open(os.path.join(dp, n), encoding="utf-8").read()
                         rel = os.path.relpath(os.path.join(dp, n), work)
+                        # Asserted per criterion, against the SAME criterion in the source, and
+                        # only where the step actually touched it. Both halves of this were once
+                        # asserted over every criterion in the file, which held while every
+                        # criterion in a mixed step came from a migration -- schema-5 is where
+                        # that stopped being true. Its fixture CRD carries two AUTHORED criteria,
+                        # which legitimately have a `pattern` and legitimately have no
+                        # `derived-from` (core §2: migration only), beside four migrated from
+                        # <requirement>, which are the opposite. Sweeping the file cannot tell
+                        # them apart; comparing to the source can, and it does not weaken the
+                        # earlier steps -- for schema-2 -> schema-3 the script rewrites every
+                        # criterion, so every one is still checked.
+                        source = open(os.path.join(REPO, "tests", "fixture", "prd", src_version,
+                                                   rel), encoding="utf-8").read()
+                        before = {}
+                        for t in re.findall(r"<criterion\b([^>]*)>", source):
+                            cid = re.search(r'id="([^"]*)"', t)
+                            before[cid.group(1) if cid else None] = t
                         for t in re.findall(r"<criterion\b([^>]*)>", got):
+                            cid = re.search(r'id="([^"]*)"', t)
+                            if before.get(cid.group(1) if cid else None) == t:
+                                continue  # the step did not touch it; it is the author\'s
                             assert 'priority="' in t and "derived-from=" in t, (
-                                f"{rel} has a criterion missing priority or derived-from. The "
-                                f"value is written in rather than defaulted, or a partly "
-                                f"assigned corpus cannot be told from a finished one")
+                                f"{rel} has a criterion this step wrote that is missing priority "
+                                f"or derived-from. The value is written in rather than "
+                                f"defaulted, or a partly assigned corpus cannot be told from a "
+                                f"finished one")
                             assert "pattern=" not in t, (
                                 f"{rel} has a criterion carrying a `pattern` the script "
                                 f"assigned. A pattern derived by the heuristics it exists to "
@@ -4129,9 +4150,19 @@ def _():
     assert len(region) == 2, "core.md has no priority section"
     region = region[1].split("\n## ", 1)[0]
 
-    rows = [r.strip() for r in region.splitlines() if r.strip().startswith("|")]
-    rows = [r for r in rows[2:] if r]
-    assert len(rows) == 2, f"core §4 lists {len(rows)} priority levels; item 34 defines two"
+    # The FIRST table only. §4 grew a second one at item 47 -- the MoSCoW -> P0|P1|P2 map --
+    # and sweeping every row in the section counted eight "levels", which is the shape of check
+    # this repository keeps getting wrong: a region without a shape. Take the first contiguous
+    # run of table rows, which is the one that is about levels.
+    table, seen = [], False
+    for line in region.splitlines():
+        if line.strip().startswith("|"):
+            table.append(line.strip())
+            seen = True
+        elif seen:
+            break
+    rows = [r for r in table[2:] if r]
+    assert len(rows) == 2, f"core §4's first table lists {len(rows)} levels; item 34 defines two"
 
     vocabs = []
     for row in rows:
@@ -4706,6 +4737,270 @@ def _():
         "decision-record.md's reader table names no reader that exists on disk. A template "
         "whose conventions nothing validates is a suggestion, and the two fields this one is "
         "built around already have a program that reads them")
+
+# ------------------------------------------------- the CRD parity pass (46/47/48, schema-5)
+
+
+def _crd(workflow="ready", requirements=None, meta_priority=None, gaps=""):
+    """A CRD in whatever shape the caller needs, built rather than stored.
+
+    Written as a helper because the three checks below each need a DIFFERENT shape -- one with
+    requirements, one with a `wont-have` among them, one already migrated -- and a fixture per
+    shape is four files to keep in step with a schema that is still moving.
+    """
+    reqs = ""
+    if requirements:
+        rows = "\n".join('    <requirement id="%d" priority="%s">Requirement %d.</requirement>'
+                         % (i, p, i) for i, p in enumerate(requirements, start=1))
+        reqs = "  <requirements>\n%s\n  </requirements>\n" % rows
+    prio = "    <priority>%s</priority>\n" % meta_priority if meta_priority else ""
+    return (
+        "<crd>\n  <meta>\n    <name>Probe</name>\n    <slug>probe</slug>\n"
+        "    <type>feature-modify</type>\n    <created>2026-08-27</created>\n"
+        "    <workflow>%s</workflow>\n%s  </meta>\n"
+        "%s"
+        '  <acceptance-criteria>\n'
+        '    <criterion id="1" pattern="ubiquitous" priority="P0">\n'
+        "    The system shall do the thing it already did.\n"
+        "    </criterion>\n"
+        "  </acceptance-criteria>\n%s</crd>\n" % (workflow, prio, reqs, gaps))
+
+
+@check("a CRD carries one list, not two -- and the migration moves it, by running it",
+       finding="P31")
+def _():
+    """Item 46.
+
+    An EARS criterion IS a requirement, so the CRD's second list had nothing of its own to
+    carry -- it existed because Given/When/Then is a scenario format and a scenario cannot state
+    an obligation. Item 33 removed the cause; this removes the effect.
+
+    Asserted by RUNNING the migration rather than by reading the format document, because "the
+    document says the element is retired" is a property the pre-item-46 document also had: it
+    said so in a paragraph about a future item.
+    """
+    import shutil
+    import tempfile
+
+    # The document SHAPE, not a mention. crd-format.md necessarily still says the word
+    # `<requirements>` -- the retirement note is where it explains itself -- so the claim worth
+    # asserting is that the structure block no longer contains one.
+    fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+               encoding="utf-8").read()
+    blocks = re.findall(r"```xml\n(.*?)```", fmt, re.S)
+    assert blocks, "crd-format.md carries no XML at all"
+    structure = next((b for b in blocks if "<crd>" in b and "..." in b), None)
+    assert structure, "crd-format.md has no document-structure block"
+    assert "<requirements>" not in structure, (
+        "crd-format.md's document structure still contains <requirements>. The element is "
+        "retired; a structure block that lists it is the instruction people actually follow")
+    assert "<gaps>" in structure, "the CRD structure gained no <gaps> (item 48)"
+
+    full = next((b for b in blocks if "<crd>" in b and "<impact-analysis>" in b
+                 and "..." not in b), None)
+    assert full, "crd-format.md has no complete example"
+    assert "<requirement " not in full and "<requirements>" not in full, (
+        "crd-format.md's complete example still authors a <requirements> list")
+
+    # And the interview no longer collects two lists.
+    for path in (os.path.join(COMMANDS, "crd.md"), os.path.join(SKILLS, "crd", "SKILL.md")):
+        text = prose(open(path, encoding="utf-8").read())
+        assert re.search(r"[Oo]ne list, not two", text), (
+            f"{os.path.basename(path)} does not say the interview captures one list. Asking for "
+            f"requirements and then criteria for each gets the same content twice under two ids")
+
+    # Now the mechanism: the migration MOVES the entries, renumbering them so that an id which
+    # resolved before the step still resolves after it.
+    _p, reg = schema_registry()
+    current = reg["current"]
+    root = tempfile.mkdtemp(prefix="crd-46-")
+    try:
+        path = os.path.join(root, "probe.md")
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            _crd(requirements=["must-have", "should-have", "could-have"],
+                 meta_priority="should-have"))
+        p = _run_migrate(path, "--to", current, "--quiet")
+        assert p.returncode == 0, (
+            f"migrating a CRD to {current} exited {p.returncode}: {p.stderr}")
+
+        out = open(path, encoding="utf-8").read()
+        assert "<requirements>" not in out and "<requirement " not in out, (
+            f"the migration left the retired list in place:\n{out}")
+        ids = re.findall(r'<criterion\b[^>]*\bid="([^"]*)"', out)
+        assert ids == ["1", "2", "3", "4"], (
+            f"the merged id space is {ids}; the existing criterion must keep id 1 and the "
+            f"migrated requirements must continue after it")
+        assert 'derived-from="requirement-1"' in out, (
+            "a migrated requirement carries no derived-from, so the citation it used to answer "
+            "resolves to nothing")
+        assert 'derived-from="1"' not in out.replace('derived-from="requirement-1"', ""), (
+            "a migrated requirement carries a BARE derived-from. After the merge a bare id is "
+            "ambiguous between the two former spaces, which is what the prefix exists to stop")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("requirement priority is P0|P1|P2 on both paths, and `wont-have` escalates -- by running it",
+       finding="P31")
+def _():
+    """Item 47.
+
+    The CRD had MoSCoW at the requirement level and P0|P1|P2 on criteria: two vocabularies for
+    one concept, which is what made `--requirement-level` select nothing here. The vocabularies
+    swap levels rather than one absorbing the other -- MoSCoW moves UP to the document.
+
+    The interesting half is the fourth MoSCoW value. `P0|P1|P2` has no `not building this`
+    level, deliberately, so `wont-have` has no honest target: P2 would make a declined
+    requirement buildable by default and dropping it would delete a decision. That is an
+    escalation, and it is asserted by running it -- a mapping table nobody executes is a
+    paragraph.
+    """
+    import shutil
+    import tempfile
+
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    section = core.split("## 4. Priority", 1)[1].split("\n## ", 1)[0]
+    assert "<meta><priority>" in section or "`<priority>` in `<meta>`" in section, (
+        "core §4 never says where a CRD's MoSCoW lives, so the level it moved to is undocumented")
+
+    # The map, as a shape: four MoSCoW values, and exactly one of them with no P-value.
+    rows = [r for r in section.splitlines() if r.strip().startswith("|") and "-have" in r]
+    mapped = {}
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        was = re.findall(r"`(\w+-have)`", cells[0])
+        if len(was) == 1:
+            mapped[was[0]] = set(re.findall(r"`(P[012])`", cells[1] if len(cells) > 1 else ""))
+    assert set(mapped) == {"must-have", "should-have", "could-have", "wont-have"}, (
+        f"core §4's MoSCoW map covers {sorted(mapped)}; all four values need an answer, "
+        f"including the one whose answer is that there is none")
+    assert not mapped["wont-have"], (
+        "core §4 gives `wont-have` a P-level. P0|P1|P2 has no `not building this` value by "
+        "design -- that judgement belongs to the whole item")
+    assert all(len(v) == 1 for k, v in mapped.items() if k != "wont-have"), (
+        "the MoSCoW map is not one to one; collapsing two tiers into one loses a distinction "
+        "someone made")
+
+    _p, reg = schema_registry()
+    current = reg["current"]
+    root = tempfile.mkdtemp(prefix="crd-47-")
+    try:
+        # Mapped one to one, and the values arrive on the criteria rather than being defaulted.
+        ok = os.path.join(root, "ok.md")
+        open(ok, "w", encoding="utf-8", newline="\n").write(
+            _crd(requirements=["must-have", "should-have", "could-have"],
+                 meta_priority="must-have"))
+        p = _run_migrate(ok, "--to", current, "--quiet")
+        assert p.returncode == 0, f"a mappable CRD exited {p.returncode}: {p.stderr}"
+        out = open(ok, encoding="utf-8").read()
+        got = dict(zip(re.findall(r'derived-from="requirement-(\d)"', out),
+                       [m for m in re.findall(r'<criterion\b[^>]*derived-from="requirement-\d"',
+                                              out)]))
+        assert re.search(r'priority="P0"[^>]*derived-from="requirement-1"', out), (
+            f"must-have did not become P0:\n{out}")
+        assert re.search(r'priority="P1"[^>]*derived-from="requirement-2"', out), (
+            f"should-have did not become P1:\n{out}")
+        assert re.search(r'priority="P2"[^>]*derived-from="requirement-3"', out), (
+            f"could-have did not become P2:\n{out}")
+
+        # And the escalation: exit 2, the requirement named, and NOTHING written.
+        bad = os.path.join(root, "bad.md")
+        source = _crd(requirements=["must-have", "wont-have"], meta_priority="could-have")
+        open(bad, "w", encoding="utf-8", newline="\n").write(source)
+        p = _run_migrate(bad, "--to", current, "--quiet")
+        assert p.returncode == 2, (
+            f"a CRD holding a `wont-have` requirement exited {p.returncode}, not 2. Exit 2 is "
+            f"the escalation path and it exists so that nothing is written for these files")
+        assert "wont-have" in p.stderr and "requirement 2" in p.stderr, (
+            f"the escalation does not name the requirement that caused it:\n{p.stderr}")
+        assert open(bad, encoding="utf-8").read() == source, (
+            "the escalated CRD was modified. Nothing is written for a file the migration "
+            "cannot place -- that is the difference between exit 2 and exit 1")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`/crd` cannot silently replace a CRD, and `ready` cannot outrank its gaps -- by running it",
+       finding="P32")
+def _():
+    """Item 48.
+
+    F3 cost an interview on the PRD path: `/prd` wrote over an existing PRD because the guard
+    was a paragraph. `/crd` had the identical hole -- documented as stateless, writing
+    docs/crd/{slug}.md with no check -- and had simply not been caught by it yet.
+
+    The guard is the PRD one generalised to take a FILE rather than a second script, which is
+    this repository's most repeated lesson: `keep_awake` was written inside one caller, item 60
+    was a rule added without removing what it contradicted. A fix belongs at the level of the
+    problem, and this problem was never PRD-specific.
+    """
+    import shutil
+    import tempfile
+
+    guard = os.path.join(SKILLS, "breakdown", "scripts", "check-writable.py")
+
+    # The INVOCATION, with the path it guards -- not the substring `check-writable.py`.
+    #
+    # That weaker form survived a mutation round: /crd names the script twice, once plainly and
+    # once with --resume, so replacing the first invocation with the `test -e` prose it was
+    # written to retire left the substring assertion true and the suite green. Two sites
+    # satisfying one check means no single edit can break it, which is the third time that shape
+    # has cost this repository a hollow pass.
+    for path in (os.path.join(COMMANDS, "crd.md"), os.path.join(SKILLS, "crd", "SKILL.md")):
+        text = open(path, encoding="utf-8").read()
+        name = os.path.basename(path)
+        assert "check-writable.py {project_path}/docs/crd/{slug}.md" in text, (
+            f"{name} never runs the overwrite guard on the file it is about to write, so a slug "
+            f"collision destroys the earlier CRD in silence -- which is F3 exactly")
+        assert "--resume" in text, f"{name} has no way past the guard"
+        # And the prose guard must not come back beside it. A documented check and an executable
+        # one both present is worse than either alone: the model may follow either.
+        assert "test -e" not in text, (
+            f"{name} carries a prose `test -e` guard beside the program. Five guards in this "
+            f"repository became programs because the documented version was ignored")
+
+    crd_md = open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read()
+    assert "check-writable.py {project_path}/docs/crd/{slug}.md --resume" in crd_md, (
+        "/crd names no --resume form of the guard, so a caller who meant to resume has only "
+        "the refusal and no stated way past it")
+
+    root = tempfile.mkdtemp(prefix="crd-48-")
+    try:
+        live = os.path.join(root, "archive-links.md")
+        open(live, "w", encoding="utf-8", newline="\n").write(_crd(meta_priority="should-have"))
+
+        p = subprocess.run([sys.executable, guard, live], capture_output=True, text=True)
+        assert p.returncode == 1, "the guard did not refuse an existing CRD file"
+        assert "REFUSED" in p.stderr and "archive-links.md" in p.stderr, (
+            f"the refusal does not name the document at risk:\n{p.stderr}")
+
+        p = subprocess.run([sys.executable, guard, live, "--resume"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "--resume did not permit writing a CRD back"
+
+        p = subprocess.run([sys.executable, guard, os.path.join(root, "new.md")],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "the guard refused a slug nobody has used"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # The other half of item 48: <gaps> reaches the CRD, and it gives <workflow> the mechanical
+    # test it lacked. Asserted as the RULE rather than as a sentence, because the rule is what
+    # a check can later become.
+    fmt = prose(open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+                     encoding="utf-8").read())
+    assert re.search(r'ready must not carry a <gap kind="specification">', fmt), (
+        "crd-format.md never states the draft/ready test. Before item 48 the distinction rested "
+        "entirely on the author's say-so, which is what <definition> had before item 29")
+    core = prose(open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read())
+    assert re.search(r"CRD marked ready must not carry a specification gap", core), (
+        "core §6 states the rule for <definition> and not for <workflow>, so the two rows are "
+        "checked by two rules that can drift")
+    crd = prose(open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read())
+    assert "kind=\"specification\"" in crd or 'kind="specification"' in crd, (
+        "/crd never tells the interview to record a deferral as a gap, so 'we'll define that "
+        "later' still leaves nothing behind")
+
 
 # ------------------------------------------------------------------- behavioural
 
