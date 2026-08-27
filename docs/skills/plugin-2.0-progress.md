@@ -1859,7 +1859,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
-| **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `PENDING` |
+| **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
 | **59** — the runtime test across the boundary | *Next* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
@@ -2294,7 +2294,7 @@ fenced block** rather than a filename that prose also satisfies.
 
 ## 16 + 17 + 30 + 19 + 20 — the pipeline stops discarding the document
 
-**Commit:** `PENDING` · **Addresses:** P1, P15, P20 · **Files:**
+**Commit:** `4bda3ca` · **Addresses:** P1, P15, P20 · **Files:**
 `skills/breakdown/references/task-format-spec.md`, `skills/breakdown-generate-tasks/SKILL.md`,
 `skills/breakdown/SKILL.md`, `skills/breakdown/scripts/build-manifest.py`,
 `skills/breakdown/scripts/check-coverage.py` (new), `skills/breakdown/scripts/check-scope.py`,
