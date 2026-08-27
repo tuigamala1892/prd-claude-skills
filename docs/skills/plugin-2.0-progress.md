@@ -1858,7 +1858,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 |---|---|---|
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
-| **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `PENDING` |
+| **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
 | **16 + 17 + 30 + 59 + 19 + 20** — the carry, and the two reporters that need it | *Next* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
@@ -2190,7 +2190,7 @@ anchors that never applied.
 
 ## 13 + 14 + 15 — `/breakdown` declines work, and names what it declined
 
-**Commit:** `PENDING` · **Addresses:** P1 · **Files:** `skills/breakdown/SKILL.md`,
+**Commit:** `134a424` · **Addresses:** P1 · **Files:** `skills/breakdown/SKILL.md`,
 `skills/breakdown/scripts/select-features.py` (new), `tests/mutants/filters.py`,
 `tests/test_toolchain.py`
 
