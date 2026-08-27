@@ -188,12 +188,21 @@ For each requirement, optionally capture acceptance criteria:
 
 *"Should we define acceptance criteria for this now, or mark it for later?"*
 
-If now:
+If now, write **one EARS sentence per criterion** — the six patterns and the rules are in
+[`core.md`](../schema/core.md#2-acceptance-criteria):
+
 ```
-Given: [context]
-When: [action]
-Then: [expected result]
+When <trigger>, the system shall <response>.          # event-driven
+While <state>, the system shall <response>.           # state-driven
+If <condition>, then the system shall <response>.     # unwanted-behaviour
 ```
+
+**Ask for the unwanted case explicitly.** *"What should happen when that goes wrong?"* An
+interview that only asks what should happen produces criteria that are all `event-driven`, and a
+feature that has said nothing about its failure modes reads as complete.
+
+`pattern` is yours to assign here, with the person who just described the behaviour present. It
+is the one attribute a migration is forbidden to guess.
 
 ### Phase 6: CRD Generation
 

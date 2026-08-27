@@ -75,9 +75,26 @@ These constraints are NON-NEGOTIABLE:
    for the paths this task touches into `<constraints>`, so the implementer runs the right
    runner rather than the default one.
 
-6. **No placeholders**: NEVER write "TODO", "TBD", "...", or any placeholder. If you don't know something, make a reasonable decision and document it.
+6. **One criterion, one test.** A `<criterion>` is one EARS sentence naming one behaviour, so it
+   becomes one `<test>`. Carry the criterion's `id` in the test so a failure names a requirement
+   rather than a function. Its `pattern` tells you what kind of test to write, and the mapping is
+   not decorative:
 
-7. **Concrete values**: Use specific names, paths, values. Never "appropriate" or "suitable".
+   | `pattern` | The test asserts |
+   |---|---|
+   | `ubiquitous` | an invariant — true after every operation, not just one |
+   | `state-driven` | the behaviour holds for as long as the state does, including across a reload |
+   | `event-driven` | one action produces one observable outcome |
+   | `optional-feature` | the behaviour under the configuration, **and** its absence without it |
+   | `unwanted-behaviour` | the error path — the thing that must NOT happen, does not |
+   | `complex` | split it, and say in the task that you did |
+
+   **A criterion with no `pattern` has not been migrated yet.** Write the test from the sentence
+   and say so in the task; do not infer a pattern to fill the gap.
+
+7. **No placeholders**: NEVER write "TODO", "TBD", "...", or any placeholder. If you don't know something, make a reasonable decision and document it.
+
+8. **Concrete values**: Use specific names, paths, values. Never "appropriate" or "suitable".
 
 ## `architecture.md`, and what to carry from it
 

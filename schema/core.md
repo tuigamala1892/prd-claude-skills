@@ -10,7 +10,7 @@ it.** Where a format document needs to show a shared element it shows an *exampl
 attributes, the legal values and the meaning live here.
 
 ```xml
-<schema-core version="schema-2"/>
+<schema-core version="schema-3"/>
 ```
 
 The version above is the artefact schema the toolchain currently writes. It is the same string
@@ -44,7 +44,7 @@ written to remove, and the surest way to grow one is to define it somewhere nobo
 | `<slug>`, `id=` | [1](#1-identity) | `/prd`, `/crd` | `rename-feature.py`, `list-prds.py`, `check-references.py`, `/breakdown` |
 | `<acceptance-criteria>` / `<criterion>` | [2](#2-acceptance-criteria) | `/prd`, `/crd` | `breakdown-generate-tasks`, as `<test-requirements>` |
 | status vocabularies | [3](#3-status) | `/prd`, `/crd`, `crd-investigate` | `list-prds.py`, `/breakdown`, `/crd` |
-| priority vocabularies | [4](#4-priority) | `/prd`, `/crd` | `/breakdown`'s `--priority` |
+| priority vocabularies | [4](#4-priority) | `/prd`, `/crd` | `/breakdown`'s `--priority` and `--requirement-level` |
 | `<scope>`, `<confidence>` | [5](#5-scope-and-confidence) | `crd-impact-analysis` | *(none yet — item 49)* |
 
 The empty cell in the last row is stated rather than hidden. `<scope>` and `<confidence>` are
@@ -79,32 +79,61 @@ misled.
 
 ```xml
 <acceptance-criteria>
-  <criterion id="1">
-    <given>{{Initial context}}</given>
-    <when>{{Action taken}}</when>
-    <then>{{Expected outcome}}</then>
+  <criterion id="1" pattern="event-driven" priority="P0">
+    When a user submits a link, the system shall store it and return the stored record.
   </criterion>
 </acceptance-criteria>
 ```
 
+**A criterion is one sentence in EARS form.** Not a Given/When/Then triple — that is a *scenario*
+format, and a scenario cannot state a requirement, which is why the CRD path needed a second
+list to hold requirements at all.
+
 | Part | Required | Holds |
 |---|---|---|
-| `id` | Yes | Integer, unique within `<acceptance-criteria>` |
-| `<given>` | Yes | The state the system is in before the action |
-| `<when>` | Yes | One action, by one actor |
-| `<then>` | Yes | One observable outcome |
+| `id` | Yes | Integer, unique within `<acceptance-criteria>`; core §1 |
+| `pattern` | Yes for `defined` | One of the six EARS patterns, below |
+| `priority` | Yes | `P0`, `P1` or `P2`; core §4 |
+| body | Yes | One sentence, containing the word **shall** |
+| `derived-from` | Migration only | The id this criterion was migrated from, until sign-off |
 
-**One criterion, one behaviour.** A `<then>` joined by *and* is two criteria that have not been
+### The six patterns
+
+| `pattern` | Shape | Reads |
+|---|---|---|
+| `ubiquitous` | The system shall … | always true, no trigger |
+| `state-driven` | While ‹state›, the system shall … | true for as long as a state holds |
+| `event-driven` | When ‹trigger›, the system shall … | in response to something happening |
+| `optional-feature` | Where ‹feature is included›, the system shall … | true only in some configurations |
+| `unwanted-behaviour` | If ‹condition›, then the system shall … | the error and abuse cases |
+| `complex` | a combination of the above | last resort, and a smell |
+
+**`pattern` is what makes "covers the edge cases" mechanical.** Counting patterns across a
+feature answers a question that no keyword heuristic could: a feature whose criteria are entirely
+`event-driven` has stated what happens when things go right and nothing else. That single fact is
+the signal item 3's derivation was missing, and it is the reason the taxonomy is an attribute
+rather than a report.
+
+**`pattern` is assigned by a person, never derived.** A pattern inferred by the same heuristics
+it exists to replace is circular. This is why a migration must not assign it — see
+[`migration.md`](migration.md).
+
+**One criterion, one behaviour.** A body joined by *and* is two criteria that have not been
 separated yet, and it reaches `/breakdown` as one test requirement covering two things.
 
 **Identical on both paths.** A PRD feature file and a CRD carry the same element with the same
 meaning, which is what lets `breakdown-generate-tasks` read either without a branch.
 
-> **This element is scheduled for replacement.** Item 33 adopts EARS — a single sentence with
-> `pattern` and `priority` attributes — in place of the Given/When/Then triple. It is recorded
-> here rather than in a footnote because *this file* is where that change lands: one definition,
-> one migration, both paths at once. That is the whole reason the core is extracted before the
-> items that rewrite it.
+### Reading a criterion written before EARS
+
+**Accepted on read; never written** — the same policy as §3. A `<criterion>` containing
+`<given>`, `<when>` and `<then>` is a schema-2 criterion: read the three parts as one requirement
+and treat it as having no `pattern`.
+
+**A criterion with no `pattern` is not an error, and this is deliberate.** It is precisely how a
+feature that has been migrated mechanically but not yet re-read is distinguishable from one that
+has — see `migration.md`'s `PARTIAL` state. A `defined` feature carrying pattern-less criteria is
+a contradiction; a `tbd` one is just unfinished.
 
 ---
 
@@ -169,23 +198,45 @@ artefact, it is a mistake.
 
 ## 4. Priority
 
-**MoSCoW — `must-have`, `should-have`, `could-have`, `wont-have`.** One vocabulary, two homes:
+**Two levels, in two vocabularies, deliberately.** No flag, report line or conversation should
+ever be ambiguous about which one it means.
 
-| Where | On | Selects |
-|---|---|---|
-| PRD | `priority=` on the **`index.md` feature entry** | which features are in scope |
-| CRD | `priority=` on each `<requirement>` | which requirements are in scope |
+| Level | Where | Vocabulary | Selects |
+|---|---|---|---|
+| Feature | `priority=` on the `index.md` feature entry | MoSCoW: `must-have` · `should-have` · `could-have` · `wont-have` | which features are in scope |
+| Requirement | `priority=` on each `<criterion>` | `P0` · `P1` · `P2` | which criteria within them are built |
 
-**On the PRD path the index owns it, and the feature file does not carry it.** Priority is a
-judgement *across* features — a ranking has no meaning inside the thing being ranked — so it
-lives where the comparison is made. A copy in the feature file is the duplication item 1 removes.
+**On the PRD path the index owns the feature level, and the feature file does not carry a copy.**
+Priority is a judgement *across* features — a ranking has no meaning inside the thing being
+ranked — so it lives where the comparison is made.
 
-`/breakdown --priority <threshold>` filters on this, and `wont-have` is skipped unconditionally.
+`/breakdown --priority <threshold>` filters the first; `--requirement-level <P0|P1|P2>` filters
+the second, and is applied **after** it. `wont-have` is skipped unconditionally.
 
-> **A second vocabulary arrives at items 34 and 47**: `P0|P1|P2` on individual criteria, on both
-> paths. It is deliberately not MoSCoW, so that no report line or flag is ambiguous about which
-> level it means. When it lands, the CRD's requirement-level MoSCoW migrates to it, and MoSCoW
-> survives only where it is a judgement across whole items.
+### Why the second level exists
+
+A must-have feature that depends on a could-have one used to make `--priority must-have` an
+**open** set: closing it pulled in the whole dependency, tier boundary and all. Criterion-level
+priority changes what closure costs — the must-have pulls in *that feature's `P0` criteria*, not
+the entire feature. "What does this filter actually build" becomes a computation rather than a
+guess.
+
+### The default is `P1`, and it is written down rather than implied
+
+An unassigned criterion is `P1`. **The migration writes it in rather than leaving it to the
+default**, which looks like noise and is not: *unassigned* and *deliberately P1* are
+indistinguishable when the attribute is absent, so a partly-assigned corpus cannot be told from a
+finished one. See `migration.md` — a transformation whose completion is invisible in the shape
+cannot be resumed.
+
+A corpus where everything is `P0` says nothing, and neither does one where nothing is set.
+
+### What is still MoSCoW, and where
+
+MoSCoW survives **only where the judgement is across whole items**. On the PRD path that is the
+feature, in the index. On the CRD path the document is the unit and there is no index, so
+`<meta>` carries it — that, and the migration of the CRD's requirement-level MoSCoW to
+`P0|P1|P2`, are item 47's and have not landed.
 
 ---
 

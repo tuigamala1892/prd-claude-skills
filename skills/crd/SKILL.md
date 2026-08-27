@@ -111,7 +111,9 @@ Interactively capture requirements:
 - Description
 - Priority (must-have, should-have, could-have)
 
-Optionally capture acceptance criteria (Given/When/Then).
+Optionally capture acceptance criteria — one EARS sentence each, per
+[`core.md`](../../schema/core.md#2-acceptance-criteria). Ask for the unwanted case
+explicitly, or every criterion comes back `event-driven`.
 
 ### Phase 7: Generate CRD
 

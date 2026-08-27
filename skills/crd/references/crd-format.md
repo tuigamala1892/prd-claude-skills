@@ -197,25 +197,20 @@ split stops being necessary and the two unlinked lists become one with one id sp
 
 ```xml
 <acceptance-criteria>
-  <criterion id="1">
-    <given>User is on the settings page</given>
-    <when>User toggles the dark mode switch to "on"</when>
-    <then>The entire UI immediately switches to dark theme colors</then>
+  <criterion id="1" pattern="event-driven" priority="P0">
+    When the user toggles the dark mode switch on, the system shall apply the dark theme
+    immediately.
   </criterion>
-  <criterion id="2">
-    <given>User has enabled dark mode</given>
-    <when>User refreshes the page or returns later</when>
-    <then>Dark mode is still active (persisted)</then>
+  <criterion id="2" pattern="state-driven" priority="P0">
+    While a saved theme preference exists, the system shall apply it on every page load.
   </criterion>
-  <criterion id="3">
-    <given>User is a new visitor with no saved preference</given>
-    <when>User's system is set to dark mode preference</when>
-    <then>App defaults to dark mode</then>
+  <criterion id="3" pattern="optional-feature" priority="P1">
+    Where no saved preference exists, the system shall follow the operating system's dark
+    mode setting.
   </criterion>
-  <criterion id="4">
-    <given>User has saved a theme preference</given>
-    <when>User's system preference changes</when>
-    <then>App maintains user's explicit choice, ignoring system</then>
+  <criterion id="4" pattern="unwanted-behaviour" priority="P1">
+    If the operating system's setting changes while a saved preference exists, then the
+    system shall keep the saved preference.
   </criterion>
 </acceptance-criteria>
 ```
@@ -224,6 +219,17 @@ split stops being necessary and the two unlinked lists become one with one id sp
 path's.** Same element, same attributes, same meaning — which is what lets
 `breakdown-generate-tasks` read a CRD's criteria and a feature file's criteria without a branch.
 The examples above are examples; the rules are in the core.
+
+**Four criteria, four patterns, and that is the point of the example.** Given/When/Then could
+express the first two and had to contort the other two, which is why the corpus it was measured
+on contained no `optional-feature` criteria at all. A CRD written before item 33 carries
+`<given>`/`<when>`/`<then>`; it is read as one requirement with no `pattern`, and item 41's
+migration rewrites it.
+
+**Priority on a criterion is `P0|P1|P2`, and the `<requirements>` list above is still MoSCoW.**
+Two vocabularies for one concept, which is exactly what item 47 resolves by migrating the
+requirement priorities and retiring the list. Until then, a CRD carries both — recorded here
+rather than left to be discovered.
 
 ## Complete Example
 
@@ -280,15 +286,12 @@ The examples above are examples; the rules are in the core.
   </requirements>
 
   <acceptance-criteria>
-    <criterion id="1">
-      <given>User is on settings page</given>
-      <when>User toggles dark mode switch</when>
-      <then>UI immediately switches to dark theme</then>
+    <criterion id="1" pattern="event-driven" priority="P0">
+      When the user toggles the dark mode switch on, the system shall apply the dark theme
+      immediately.
     </criterion>
-    <criterion id="2">
-      <given>User has dark mode enabled</given>
-      <when>User refreshes page or returns later</when>
-      <then>Dark mode is still active</then>
+    <criterion id="2" pattern="state-driven" priority="P0">
+      While a saved theme preference exists, the system shall apply it on every page load.
     </criterion>
   </acceptance-criteria>
 </crd>

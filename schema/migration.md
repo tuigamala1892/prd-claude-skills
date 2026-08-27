@@ -94,36 +94,83 @@ should know that the empty case exists.
 
 ---
 
-## schema-2 → schema-3: where the judgement lives
+## schema-2 → schema-3: the first step nobody can finish alone
 
-Not yet written — schema-3 arrives with items 1, 2, 5, 33, 34 and 35. What is settled now is the
-**boundary**, because the boundary is what stops an agent guessing.
+Items 33 and 34. A `<criterion>` stops being a Given/When/Then triple and becomes one EARS
+sentence carrying `pattern` and `priority`.
 
-**Mechanical, and `migrate.py`'s to perform:**
+**This is the first step that is part mechanical and part judgement**, and the split is the whole
+design of it.
+
+### The mechanical half — `migrate.py`'s
+
+| # | Precondition | Transformation | Postcondition |
+|---|---|---|---|
+| R4 | a PRD feature file with any `<criterion>` lacking `pattern` | every criterion lacking `priority` gains `priority="P1"`; every one lacking `derived-from` gains `derived-from="{{its id}}"` | every criterion carries both, and the id list is unchanged |
+| R5 | a CRD, same condition | as R4 | as R4 |
+
+**`priority="P1"` is written in rather than left to the documented default, and that is not
+noise.** An absent attribute and a deliberate `P1` are indistinguishable, so a partly-assigned
+corpus could not be told from a finished one — and the marker is the shape. This is the
+constraint the top of this file states, meeting its first real case.
+
+**`derived-from` is what makes the rewrite reviewable.** It carries until the migration is signed
+off, and it is the only way a reader can check a rewritten sentence against the triple it came
+from.
+
+**R4 and R5 are vacuously satisfied by an artefact with no criteria**, and that is correct rather
+than convenient. A feature carrying zero criteria is `excluded` or `superseded`; requiring at
+least one would turn a rule about criteria into a rule about features and escalate a legitimate
+file.
+
+### The judgement half — never the script's
+
+| Judgement | Why a machine must not |
+|---|---|
+| rewriting the triple into one EARS sentence | the mechanical part is large and the loss is concentrated in the few criteria that were never event-shaped. A count cannot find those |
+| assigning `pattern` | a pattern derived by the heuristics it exists to replace is circular |
+| raising `priority` above `P1` | `P1` is the safe default; anything else is a claim about importance |
+
+### PARTIAL: the third state, and why it has a name
+
+A file with the mechanical half applied and the judgements outstanding is **`PARTIAL`**, and it is
+detectable from its shape alone: `priority` present, `pattern` absent.
+
+- `migrate.py` reports it per file and exits **0** — the half it could do, it did.
+- **`--check` refuses the tree**, exit 1. *"The script ran"* and *"the migration finished"* are
+  different claims, and this is the difference.
+- A `defined` feature carrying pattern-less criteria is a contradiction; a `tbd` one is just
+  unfinished. That distinction belongs to item 3's derivation, not here.
+
+**Naming the state is what stops the boundary being crossed in either direction.** A script that
+stopped at it entirely would leave the mechanical work undone across 550 criteria; one that
+crossed it would invent the judgement it was written to protect. Neither failure announces
+itself, which is why the state is reported rather than inferred.
+
+### What is still to come
+
+The rest of the feature template — `<user-story>`, `<gaps>`, `<depends-on>`, the `<notes>` split,
+`<architecturally-significant>`, and the removal of the duplicated feature `<priority>` — lands
+together as **schema-4** with items 1, 2, 5, 27, 29 and 35. Its rules are drafted below, and the
+boundary is settled in advance because the boundary is what stops an agent guessing.
+
+**Mechanical, and `migrate.py`'s when schema-4 lands:**
 
 | Transformation | Rule over the old shape | Item |
 |---|---|---|
 | `<priority>` deleted from a feature's `<meta>` | only after the index entry is confirmed to carry it | 1 |
 | `<notes>` prose split | a bold `**Data model**` heading opens `<data-model>`; **everything else goes to `<considerations>` verbatim** | 2 |
 | `<phases>` removed, `phase=` dropped from criteria | a `phase="2"` becomes a `<gap>` only where the file states a reason; otherwise it is dropped and the drop is reported | 5 |
-| criterion `priority` assigned | **`P1` to every criterion lacking one** — total, so completion is visible | 34 |
 | `<affected-apis>` → `<affected-contracts kind="api">` | one contract element per api element | 57 |
 
 **Judgement, and never mechanical:**
 
 | Judgement | Why a machine must not | Item |
 |---|---|---|
-| assigning a criterion's EARS `pattern` | a pattern derived by the heuristics it is meant to replace is circular | 33 |
-| raising a criterion's `priority` above `P1` | `P1` is the safe default; anything else is a claim about importance | 34 |
+| writing a `<user-story>` | it is new content, not a transformation — nothing in the file to derive it from | 1 |
 | setting `<architecturally-significant>` | not derivable from any structural property — that is the point of the flag | 35 |
-| rewriting a Given/When/Then into EARS | the mechanical part is large and the loss is concentrated in the few criteria that were never event-shaped | 33 |
-
-**The guide's job here is to stop an agent guessing, not to help it.** Where a judgement is
-required and the agent is not confident, the answer is the escalation: stop and report this file.
-
-**Criterion count in equals criterion count out**, and every migrated criterion carries
-`derived-from="{{old id}}"` until the migration is signed off. That is the invariant that makes
-the EARS rewrite reviewable at all.
+| deciding a `<gap>`'s `kind` | the difference between a blocked dependency and an undecided question is what the gap is *for* | 29 |
+| declaring `<depends-on>` edges | a markdown link and a dependency are not the same thing, which is the defect item 27 exists to fix | 27 |
 
 ---
 
@@ -160,25 +207,39 @@ than three by design.
 ## Running it
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-2
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-2 --dry-run
 python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --detect
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-2 --check
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3 --dry-run
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3 --check
 ```
 
-`<path>` is a file or a directory; a directory is walked and each file decided on its own.
+`<path>` is a file or a directory; a directory is walked and **each file decided on its own** —
+including which schema it starts from, so a tree holding artefacts of three vintages migrates in
+one pass and each one takes only the steps it needs.
 
 | Exit | Means |
 |---|---|
-| **0** | every file is now in the target schema, and every postcondition holds |
-| **1** | a postcondition failed. **The file was restored**; nothing partly written survives |
+| **0** | every file reached the target, or reached `PARTIAL` and the half the script may do is done |
+| **1** | a postcondition failed, or `--check` found a file short of the target. Nothing partly written survives |
 | **2** | escalation — one or more files matched no precondition. Nothing was written for those, and each is named |
 | **3** | usage error |
 
+| Per-file verdict | Means |
+|---|---|
+| `MIGRATED` | every step reached its postcondition |
+| `PARTIAL` | the mechanical half is done and judgements are outstanding — `--check` will refuse |
+| `ALREADY` | the file is at or beyond the target |
+| `UNCHANGED` | the target's steps do not touch this kind of artefact |
+| `ESCALATE` | the file matched no precondition. **Nothing was written** |
+
 **`--check` writes nothing** and asserts the postconditions against files as they are. It is what
 makes *"the migration ran"* a different claim from *"the migration finished"*, and it is what the
-regression suite calls.
+regression suite calls. A `PARTIAL` tree fails it, deliberately.
 
-**Re-running is safe and is expected.** A file already in the target schema is reported
-`ALREADY` and left untouched, which is the same answer whether it was migrated a second ago or a
-release ago — because the marker is the shape.
+**`--detect` reports where each file already is**, and escalates rather than guessing when the
+answer is not one of the known versions. It is how an artefact selects the right migration rather
+than the newest one, until item 24 stamps `toolchain_version`.
+
+**Re-running is safe and is expected.** A file already in the target schema is reported `ALREADY`
+and left untouched, which is the same answer whether it was migrated a second ago or a release
+ago — because the marker is the shape.

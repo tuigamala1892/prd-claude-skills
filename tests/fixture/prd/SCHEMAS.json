@@ -25,11 +25,12 @@
     "run rather than merely stored."
   ],
 
-  "current": "schema-2",
+  "current": "schema-3",
 
   "versions": {
     "schema-1": {
       "status": "accepted",
+      "migration_from_previous": null,
       "description": "The schema as shipped in plugin 2.0.0: <criterion> with given/when/then, MoSCoW priority duplicated between index and feature file, and a feature's definition completeness recorded in a <status> element sharing its name with three other things.",
       "projects": ["link-shelf", "staff-service"],
       "frozen": true,
@@ -37,21 +38,31 @@
       "notes": "Superseded by schema-2 at item 45. Kept because it is the INPUT to item 41's migration comparison and the only artefact of an older schema in the repository -- which is what item 24's 'refuse on a known incompatibility' needs to be testable at all."
     },
     "schema-2": {
-      "status": "current",
+      "status": "accepted",
       "description": "Item 45's rename: a PRD feature's <status> becomes <definition>, a CRD's <meta><status> becomes <workflow>, and PROJECT.md's <feature status=> becomes built=. Values are unchanged; only the tags differ, so a diff against schema-1 shows the rename and nothing else.",
       "projects": ["link-shelf", "staff-service"],
-      "frozen": false,
+      "frozen": true,
+      "frozen_sha256": "c4e74f4b8f2ac0f48e928f76f8487784f9e4aa5fd96afd2f557ab45182ab7fc1",
+      "migration_from_previous": "mechanical",
       "notes": "link-shelf is the §5.1 end-to-end fixture; staff-service is item 21's tier probe. Both carried over from schema-1 with the rename applied and no other edit -- deliberately, so that item 41's golden comparison has exactly one transformation to account for."
+    },
+    "schema-3": {
+      "status": "current",
+      "description": "Items 33 and 34: a <criterion> is one EARS sentence carrying `pattern` and `priority`, replacing the Given/When/Then triple. Migrated criteria also carry `derived-from` until sign-off.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": false,
+      "migration_from_previous": "mixed",
+      "notes": "The first step that is not fully mechanical. `priority` and `derived-from` are the script's; the EARS sentence and its `pattern` are judgements the guide forbids a machine to make, so migrate.py reports PARTIAL and --check refuses the tree. The golden comparison for this step therefore asserts the mechanical half exactly and the judgement half not at all -- see the suite."
     }
   },
 
   "planned": {
-    "schema-3": {
-      "arrives_with": ["item 1", "item 2", "item 5", "item 33", "item 34", "item 35"],
-      "description": "The remaining Phase 4 schema items -- EARS criteria, criterion priority, <gaps>, the <notes> split, <user-story>, the removal of <phases> and of the duplicated feature <priority>. They land together rather than one version per item: item 41's migration is written once against a whole schema, and a fixture per item would be six copies of one project.",
+    "schema-4": {
+      "arrives_with": ["item 1", "item 2", "item 5", "item 27", "item 29", "item 35"],
+      "description": "The rest of the feature template: <user-story>, <gaps>, <depends-on>, the <notes> split into <data-model> and <considerations>, <architecturally-significant>, and the removal of the duplicated feature <priority>. They land together rather than one version per item -- a fixture per item would be six copies of one project.",
       "unblocks": [
-        "item 41 -- the second half of the migration, over content rather than tag names",
-        "item 24 -- a THIRD version makes 'select the right migration, not the newest one' testable, which two cannot show"
+        "item 4 -- reclassifying every feature's <definition> against the migrated content",
+        "item 24 -- 'select the right migration, not the newest one' now has three steps to choose between rather than two"
       ]
     }
   }

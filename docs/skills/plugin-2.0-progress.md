@@ -1000,7 +1000,8 @@ can land until the transformation is specified and checkable.
 |---|---|---|
 | **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `9fc531c` |
 | **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `145282d` |
-| **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `_` |
+| **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `28b85b9` |
+| **33 + 34** — EARS criteria, and criterion priority | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -1376,6 +1377,126 @@ the escalation assertion to the one line in each document that owns the claim.
 rule existing in the script and not in the guide is a bug in the script. That sentence is doing
 real work: it is what stops the guide becoming documentation of the program, which is the
 direction these pairs always drift when nobody says which one is upstream.
+---
+
+## 33 + 34 — the criterion becomes a requirement, and the migration meets its first judgement
+
+**Addresses:** P23, P1's residue · **Files:** `schema/core.md`, `schema/prd-format.md`,
+`schema/migration.md`, `schema/scripts/migrate.py`, `commands/prd.md`, `commands/crd.md`,
+`skills/crd/SKILL.md`, `skills/crd/references/crd-format.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown-generate-tasks/SKILL.md`, `tests/fixture/prd/schema-3/**` (new),
+`tests/fixture/prd/SCHEMAS.json`, `tests/test_toolchain.py`,
+`tests/mutants/phase4-33-34.py` (new)
+
+### Why the two are one commit
+
+Item 34's `priority` is an attribute on item 33's element. Landing them apart would mean writing
+the criterion schema twice, migrating twice, and versioning the fixture twice — and the second
+migration would have to be written against a shape that existed for one commit.
+
+### What landed
+
+`<criterion>` is one EARS sentence carrying `pattern` and `priority`, defined once in core §2 and
+cited by both paths. `/breakdown` gains `--requirement-level <P0|P1|P2>`, applied after the
+feature-level filter. `breakdown-generate-tasks` maps each pattern to the kind of test it implies
+— which is what makes the attribute a consumer's input rather than a label.
+
+**The interview asks for the unwanted case explicitly, on both paths.** Neither `/prd` nor `/crd`
+did, and the corpus that motivated item 33 contains **zero** `optional-feature` criteria — a
+number that says as much about the questions asked as about the format. A phase that only asks
+what should happen produces criteria that are entirely `event-driven`, and a feature that has
+described success and nothing else reads as complete.
+
+### The migration's first judgement boundary, and the state it forced
+
+schema-2 → schema-3 is **the first step that is not fully mechanical**. `priority` and
+`derived-from` are the script's; the EARS sentence and its `pattern` are judgements item 41's
+guide forbids a machine to make.
+
+A script that stopped at that boundary would leave 550 criteria un-stamped; one that crossed it
+would invent the attribute the whole taxonomy depends on. **Neither failure announces itself.** So
+the migration gained a third verdict:
+
+| Verdict | Shape that identifies it | `--check` |
+|---|---|---|
+| `MIGRATED` | every postcondition holds | passes |
+| **`PARTIAL`** | `priority` present, `pattern` absent | **refuses** |
+| `ALREADY` | at or beyond the target | passes |
+
+**`PARTIAL` is detectable from the file alone**, which is the marker rule from item 41 meeting
+its first hard case and surviving it. And `--check` refusing a `PARTIAL` tree is what stops *"the
+script ran"* being read as *"the migration finished"*.
+
+**`priority="P1"` is written into the file rather than left to the documented default.** It looks
+like noise and is not: an absent attribute and a deliberate `P1` are indistinguishable, so a
+partly-assigned corpus could not be told from a finished one. This is the constraint item 41's
+marker rule predicted, arriving one item later on the item that triggered it.
+
+### Deviations from the plan
+
+- **The golden comparison had to be split in two.** Item 43 promised one: migrate the old fixture,
+  assert the result equals the new one. That works only for a fully mechanical step. There are now
+  two checks — a byte-for-byte comparison over a step `SCHEMAS.json` calls `mechanical`, and an
+  invariants check over a step it calls `mixed` that asserts *everything the script was supposed
+  to do, it did; everything it was forbidden to do, it left*.
+
+  **Which step is which is declared in the registry, not in the suite.** Hardcoding
+  schema-1 → schema-2 would have quietly stopped exercising the comparison the moment a fourth
+  version arrived — the same defect item 45 found in `setup_fixture.py`, one file along.
+
+- **`migrate.py` became a chain rather than a single hop.** A file three versions behind takes
+  every step it needs in one pass, and each file in a tree is decided on its own. This is item
+  24's *"select the right migration, not the newest one"* arriving early, because two versions
+  could not have shown it and three can.
+
+- **A rule may be vacuously satisfied, and R4 is.** A feature with no criteria at all is
+  `excluded` or `superseded` — legitimate under the schema. The first version of R4 required at
+  least one criterion, which turned a rule about criteria into a rule about features and
+  escalated a valid file. Found by the escalation check, which had a feature with no criteria in
+  it for an unrelated reason.
+
+- **`schema-3` carries items 33 and 34 only.** The plan's own registry entry had six items
+  arriving together. Splitting it means the golden comparison has exactly one kind of change to
+  account for, which is the same argument item 45 made for keeping its rename clean. The rest —
+  1, 2, 5, 27, 29, 35 — is now `schema-4` in the registry's `planned` block.
+
+### Verification
+
+Suite 75 → **78**.
+
+**`a criterion is one EARS sentence with a pattern and a priority`** parses every criterion in
+every template on both paths as XML and asserts `pattern` is one of the six, `priority` matches
+`P[012]`, the body contains `shall`, and no `<given>` survives. It also asserts the taxonomy is
+enumerated where a person assigning one would read it, and that
+`breakdown-generate-tasks` says something different about each of the six — an attribute the
+consumer treats uniformly is decoration.
+
+**`the two priority levels stay in two vocabularies, and the filter says so`** reads core §4's
+table as data and asserts the two value sets are **disjoint**. That is item 34's actual design
+claim: not that `P0|P1|P2` exists, but that it shares nothing with MoSCoW, so no flag or report
+line is ambiguous about which level it means.
+
+**`a migration it may not finish does the half it can, and says which half`** runs the mixed step
+and asserts all three of: `PARTIAL` reported, `--check` refusing, and per criterion —
+`priority` and `derived-from` present, `pattern` **absent**. Two of those three passing without
+the third is exactly the failure that reads as success.
+
+Mutation: **15/15 caught** against a stated-green baseline (`tests/mutants/phase4-33-34.py`).
+
+### An instrument note: the round outgrew the tool's timeout
+
+The suite now takes ~42 seconds, because five checks run real subprocesses. Fifteen mutants plus a
+baseline is eleven minutes, and the shell tool caps at ten — the round was killed mid-mutant and
+left `migrate.py` modified.
+
+**It was recoverable only because the tree had been staged first.** `git restore --worktree`
+took the file back from the index, which held the correct content. Had it not been staged, the
+memory's own warning applies with full force: `git checkout --` would have reverted to HEAD and
+discarded the item's work along with the mutation.
+
+The operational fix is to run long rounds in the background rather than to shrink them. The
+standing rule against running the suite concurrently with a mutation round still holds, so the
+useful work while one runs is writing, not checking.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

@@ -327,6 +327,10 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
 - TDD is mandatory: `<test-requirements>` is a required section in `task-format-spec.md` and a
   critical criterion in `review-criteria.md`; `execute-batch` runs the red/green cycle
 - Run `tests/test_toolchain.py` before and after any change to skill frontmatter or git commands
+- **A `<criterion>` is one EARS sentence, not a Given/When/Then triple** (item 33). It carries
+  `pattern` — one of six — and `priority` in `P0|P1|P2`, which is deliberately not MoSCoW so that
+  no flag or report line is ambiguous about which level it means (item 34). `pattern` is assigned
+  by a person and a migration is forbidden to guess it. Core §2 is the definition.
 - **Four things used to be called `status`; three were renamed at item 45.** A PRD feature's
   definition completeness is `<definition>`, a CRD's process position is `<workflow>`, and a
   `PROJECT.md` feature's build state is `built=`. The document-level `<status>` in `index.md` and

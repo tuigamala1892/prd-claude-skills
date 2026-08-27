@@ -3,15 +3,24 @@
 
 The rules this executes are specified in ../migration.md, which is the authority. This file is
 its consumer, not a second statement of it: every rule below cites the identifier the guide
-gives it (R1, R2, R3), and a rule that exists here and not there is a bug in this file.
+gives it, and a rule that exists here and not there is a bug in this file.
 
 WHAT MAKES THIS SAFE TO RE-ENTER
 
 The marker of "already migrated" is the SHAPE, never a stamp. A feature file carrying
-<definition> is migrated; one carrying <status> is not. So re-running is safe by construction,
-a partly migrated tree is safe to re-enter, and there is no side-car that can disagree with the
-content. The cost is a constraint the guide states: a transformation whose completion is not
-visible in the shape has to be made total until it is.
+<definition> is past schema-1; a criterion carrying `pattern` is past schema-2. So re-running is
+safe by construction, a partly migrated tree is safe to re-enter, and there is no side-car that
+can disagree with the content. The cost is a constraint the guide states: a transformation whose
+completion is not visible in the shape has to be made total until it is -- which is why criterion
+`priority` is WRITTEN IN as P1 rather than left to a documented default.
+
+THE THIRD STATE
+
+Some steps are part mechanical and part judgement. schema-2 -> schema-3 is: the attributes are
+mechanical, and rewriting a Given/When/Then into an EARS sentence and assigning its `pattern` are
+not. A file that has had the mechanical half applied and not the judgements is PARTIAL -- and it
+is detectable, because `priority` is present and `pattern` is not. `--check` refuses a PARTIAL
+tree, which is what stops "the script ran" being mistaken for "the migration finished".
 
 WHAT IT REFUSES TO DO
 
@@ -21,14 +30,15 @@ so the tree is exactly as it was found.
 
 USAGE
 
-    migrate.py <path> --to schema-2 [--dry-run] [--quiet]
-    migrate.py <path> --to schema-2 --check      # assert postconditions, write nothing
+    migrate.py <path> --to schema-3 [--dry-run] [--quiet]
+    migrate.py <path> --to schema-3 --check      # assert postconditions, write nothing
     migrate.py <path> --detect                   # report each file's schema, write nothing
 
 EXIT CODES
 
-  0  every file is in the target schema and every postcondition holds
-  1  a postcondition failed; that file was RESTORED and the failure is named
+  0  every file reached the target schema and every postcondition holds
+  1  a postcondition failed, or --check found a file short of the target. Nothing partly
+     written survives: a file whose postconditions failed is left exactly as it was
   2  escalation -- one or more files matched no precondition. Nothing written for those
   3  usage error
 """
@@ -38,8 +48,7 @@ import os
 import re
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCHEMA_DIR = os.path.dirname(HERE)
+VERSIONS = ["schema-1", "schema-2", "schema-3"]
 
 # ---------------------------------------------------------------- artefact kinds
 
@@ -57,6 +66,7 @@ ROOTS = (
 
 META = re.compile(r"<meta>(.*?)</meta>", re.S)
 FEATURE_ENTRY = re.compile(r"<feature\s+id=\"[^\"]+\"[^>]*>")
+CRITERION = re.compile(r"<criterion\b([^>]*)>", re.S)
 
 
 def kind_of(text):
@@ -76,23 +86,16 @@ def write(path, text):
         f.write(text)
 
 
-# ------------------------------------------------------------------------ rules
-#
-# Each rule is (id, artefact kind, old-shape test, transform, postcondition).
-#
-# `applies` tests the OLD shape -- the precondition. `done` tests the NEW one, and is what makes
-# a second run a no-op rather than a second transformation. Together they are the file's own
-# record of where it is, which is why nothing needs stamping.
-
+# ------------------------------------------------------------------ transforms
 
 def _meta_swap(text, old, new):
     """Rename <old> to <new>, inside <meta> only, preserving content byte for byte."""
     m = META.search(text)
     if not m:
         return text
-    inner = m.group(1)
-    swapped = re.sub(r"<%s>(.*?)</%s>" % (old, old), r"<%s>\1</%s>" % (new, new), inner, flags=re.S)
-    return text[:m.start(1)] + swapped + text[m.end(1):]
+    inner = re.sub(r"<%s>(.*?)</%s>" % (old, old), r"<%s>\1</%s>" % (new, new),
+                   m.group(1), flags=re.S)
+    return text[:m.start(1)] + inner + text[m.end(1):]
 
 
 def _meta_has(text, tag):
@@ -104,31 +107,89 @@ def _entries_with(text, attr):
     return [e for e in FEATURE_ENTRY.findall(text) if re.search(r"\b%s=" % attr, e)]
 
 
+def _criteria_attrs(text):
+    return [dict(re.findall(r'([\w-]+)="([^"]*)"', a)) for a in CRITERION.findall(text)]
+
+
+def _criteria_lacking(text, attr):
+    return [a for a in _criteria_attrs(text) if attr not in a]
+
+
+def _stamp_criteria(text):
+    """Add priority="P1" and derived-from="{id}" to every criterion lacking them.
+
+    TOTAL, deliberately. An absent `priority` and a deliberate P1 are indistinguishable, so a
+    partly-assigned corpus could not be told from a finished one -- and a transformation whose
+    completion is invisible cannot be resumed. See migration.md.
+    """
+    def one(m):
+        attrs = m.group(1)
+        cid = re.search(r'id="([^"]*)"', attrs)
+        add = ""
+        if not re.search(r'\bpriority=', attrs):
+            add += ' priority="P1"'
+        if cid and not re.search(r'\bderived-from=', attrs):
+            add += ' derived-from="%s"' % cid.group(1)
+        return "<criterion%s%s>" % (attrs.rstrip(), add)
+    return CRITERION.sub(one, text)
+
+
+# ------------------------------------------------------------------------ rules
+#
+# (id, target version, artefact kind, precondition over the OLD shape, transform, postcondition)
+#
+# `applies` and `done` together are the file's own record of where it is, which is why nothing
+# needs stamping. A step whose `done` cannot be satisfied by the transform alone is PARTIAL --
+# see PARTIAL_OF below.
+
 RULES = [
-    ("R1", "feature",
+    ("R1", "schema-2", "feature",
      lambda t: _meta_has(t, "status"),
      lambda t: _meta_swap(t, "status", "definition"),
      lambda t: _meta_has(t, "definition") and not _meta_has(t, "status")),
 
-    ("R2", "crd",
+    ("R2", "schema-2", "crd",
      lambda t: _meta_has(t, "status"),
      lambda t: _meta_swap(t, "status", "workflow"),
      lambda t: _meta_has(t, "workflow") and not _meta_has(t, "status")),
 
-    ("R3", "project-context",
+    ("R3", "schema-2", "project-context",
      lambda t: bool(_entries_with(t, "status")),
      lambda t: FEATURE_ENTRY.sub(lambda m: re.sub(r"\bstatus=", "built=", m.group(0)), t),
      lambda t: not _entries_with(t, "status")
                and len(_entries_with(t, "built")) == len(FEATURE_ENTRY.findall(t))),
+
+    # R4 is the mixed one. The transform does the attributes; `pattern` and the sentence are
+    # judgements the guide forbids a machine to make, so `done` is not reachable from here.
+    # `done` is VACUOUSLY true for an artefact with no criteria, and that is correct rather
+    # than convenient: a feature carrying zero criteria is `excluded` or `superseded`, which
+    # the schema allows outright. Requiring at least one would have made a legitimate artefact
+    # unplaceable and escalated it -- turning a rule about criteria into a rule about features.
+    ("R4", "schema-3", "feature",
+     lambda t: bool(_criteria_lacking(t, "pattern")),
+     _stamp_criteria,
+     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
+
+    ("R5", "schema-3", "crd",
+     lambda t: bool(_criteria_lacking(t, "pattern")),
+     _stamp_criteria,
+     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
 ]
 
-# Artefacts the target schema does not change. Named rather than defaulted: "no rule matched"
-# and "no rule was needed" are different answers, and only the first is an escalation.
-UNCHANGED = {
-    "schema-2": {"prd", "what-next"},
+# Rules whose transform cannot reach their own postcondition, and what the mechanical half DOES
+# reach. Named rather than inferred: "the transform did not finish" and "the transform is broken"
+# are different answers and only one of them is a defect.
+PARTIAL_OF = {
+    "R4": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
+    "R5": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
 }
 
-TARGETS = {"schema-2"}
+# Artefacts a step does not change. Named rather than defaulted: "no rule matched" and "no rule
+# was needed" are different answers, and only the first is an escalation.
+UNCHANGED = {
+    "schema-2": {"prd", "what-next"},
+    "schema-3": {"prd", "what-next", "project-context"},
+}
 
 
 # ----------------------------------------------------------------- invariants
@@ -137,19 +198,20 @@ VALUE = re.compile(r">\s*([^<>\s][^<>]*?)\s*<|=\"([^\"]*)\"")
 
 
 def values(text):
-    """Every element body and attribute value, as a sorted list.
+    """Every element body and attribute value, sorted.
 
-    The rename invariant is that this is IDENTICAL before and after. A rename that alters a
-    value is not a rename, and asserting only the tag names would not have noticed.
+    A rename must leave this IDENTICAL. Asserting only the tag names would not have noticed a
+    transform that changed a value on the way past.
     """
-    out = []
-    for body, attr in VALUE.findall(text):
-        out.append(body or attr)
-    return sorted(v for v in out if v.strip())
+    return sorted(v for body, attr in VALUE.findall(text) for v in (body or attr,) if v.strip())
 
 
 def tag_counts(text):
     return len(re.findall(r"<[A-Za-z][\w-]*", text))
+
+
+def criterion_ids(text):
+    return [a.get("id") for a in _criteria_attrs(text)]
 
 
 # --------------------------------------------------------------------- driving
@@ -165,21 +227,59 @@ def artefacts(path):
                 yield os.path.join(dirpath, name)
 
 
-def plan_for(text, target):
-    """(kind, rule or None, verdict). Verdict is one of: MIGRATE, ALREADY, UNCHANGED, ESCALATE."""
-    kind = kind_of(text)
-    if kind is None:
-        return None, None, "ESCALATE"
-    if kind in UNCHANGED.get(target, ()):
-        return kind, None, "UNCHANGED"
-    for rid, rkind, applies, _t, done in RULES:
-        if rkind != kind:
+def rules_for(kind, version):
+    return [r for r in RULES if r[1] == version and r[2] == kind]
+
+
+def detect(text, kind):
+    """The highest version whose step is complete for this artefact, or None if unplaceable."""
+    reached = VERSIONS[0]
+    for version in VERSIONS[1:]:
+        if kind in UNCHANGED.get(version, ()):
+            reached = version
             continue
-        if applies(text):
-            return kind, rid, "MIGRATE"
-        if done(text):
-            return kind, rid, "ALREADY"
-    return kind, None, "ESCALATE"
+        governing = rules_for(kind, version)
+        if not governing:
+            reached = version
+            continue
+        if all(r[5](text) for r in governing):
+            reached = version
+        elif any(r[3](text) for r in governing) or any(
+                rid in PARTIAL_OF and PARTIAL_OF[rid](text) for rid, *_ in governing):
+            break
+        else:
+            return None
+    return reached
+
+
+def steps_to(kind, current, target):
+    lo, hi = VERSIONS.index(current), VERSIONS.index(target)
+    return [(v, rules_for(kind, v)) for v in VERSIONS[lo + 1:hi + 1]]
+
+
+def apply_steps(text, kind, current, target):
+    """Returns (new text, [rule ids applied], [problems], verdict)."""
+    applied, problems, partial = [], [], False
+    for version, rules in steps_to(kind, current, target):
+        if kind in UNCHANGED.get(version, ()):
+            continue
+        for rid, _v, _k, precond, transform, done in rules:
+            if done(text):
+                continue
+            if not precond(text):
+                problems.append(f"{rid}: no precondition matched at {version}")
+                continue
+            before = text
+            text = transform(text)
+            applied.append(rid)
+            if criterion_ids(text) != criterion_ids(before):
+                problems.append(f"{rid}: criterion ids changed -- count in must equal count out")
+            if not done(text):
+                if rid in PARTIAL_OF and PARTIAL_OF[rid](text):
+                    partial = True
+                else:
+                    problems.append(f"{rid}: postcondition does not hold after transforming")
+    return text, applied, problems, ("PARTIAL" if partial else "MIGRATED")
 
 
 def main():
@@ -199,68 +299,46 @@ def main():
         if not args.target:
             print("usage: --to <schema> is required unless --detect", file=sys.stderr)
             return 3
-        if args.target not in TARGETS:
-            print(f"usage: no migration to {args.target}. Known: {sorted(TARGETS)}",
-                  file=sys.stderr)
+        if args.target not in VERSIONS:
+            print(f"usage: unknown schema {args.target}. Known: {VERSIONS}", file=sys.stderr)
             return 3
 
-    escalations, failures, migrated, already = [], [], 0, 0
-    rules_by_id = {r[0]: r for r in RULES}
+    escalations, failures, short = [], [], []
+    migrated = already = partial = 0
+    root = args.path if os.path.isdir(args.path) else (os.path.dirname(args.path) or ".")
 
     for path in artefacts(args.path):
         text = read(path)
-        rel = os.path.relpath(path, args.path if os.path.isdir(args.path) else
-                              os.path.dirname(path) or ".")
+        rel = os.path.relpath(path, root)
+        kind = kind_of(text)
+
+        if kind is None:
+            escalations.append(f"{rel}: no artefact root element -- cannot select a migration")
+            continue
+
+        current = detect(text, kind)
+        if current is None:
+            escalations.append(
+                f"{rel}: a <{kind}> in no recognised schema -- no migration can be selected")
+            continue
 
         if args.detect:
-            kind = kind_of(text)
-            if kind is None:
-                escalations.append(f"{rel}: no artefact root element -- cannot select a migration")
-                continue
-            governed = [r for r in RULES if r[1] == kind]
-            if not governed:
-                state = "any"            # no rule touches this artefact; every schema fits
-            elif any(r[4](text) for r in governed):
-                state = "schema-2"
-            elif any(r[2](text) for r in governed):
-                state = "schema-1"
-            else:
-                # A governed artefact in neither shape cannot have a migration SELECTED for it,
-                # which is exactly the case item 41 says to stop on rather than guess at.
-                state = "UNKNOWN"
-                escalations.append(
-                    f"{rel}: a <{kind}> in neither the old shape nor the new one -- "
-                    f"no migration can be selected")
             if not args.quiet:
-                print(f"  {state:<10} {kind:<16} {rel}")
+                print(f"  {current:<10} {kind:<16} {rel}")
             continue
 
-        kind, rid, verdict = plan_for(text, args.target)
-
-        if verdict == "ESCALATE":
-            why = ("no artefact root element" if kind is None
-                   else f"a <{kind}> matching no precondition for {args.target}")
-            escalations.append(f"{rel}: {why} -- STOPPED, nothing written")
-            continue
-
-        if verdict in ("ALREADY", "UNCHANGED"):
+        if VERSIONS.index(current) >= VERSIONS.index(args.target):
             already += 1
             if not args.quiet:
-                print(f"  {verdict:<10} {rel}")
+                print(f"  {'ALREADY':<10} {rel}")
             continue
 
-        _rid, _kind, _applies, transform, done = rules_by_id[rid]
-        new = transform(text)
+        new, applied, problems, verdict = apply_steps(text, kind, current, args.target)
 
-        # Postconditions, all three, before anything is kept. The value invariant is the one
-        # that matters: it is what distinguishes a rename from an edit.
-        problems = []
-        if not done(new):
-            problems.append(f"{rid}'s postcondition does not hold after transforming")
-        if values(new) != values(text):
-            problems.append("values changed; a rename that alters a value is not a rename")
-        if tag_counts(new) != tag_counts(text):
-            problems.append(f"element count moved from {tag_counts(text)} to {tag_counts(new)}")
+        # Invariants that hold across every step, checked before anything is kept.
+        if verdict == "MIGRATED" and not problems:
+            if values(new) != values(text) and not applied_adds_values(applied):
+                problems.append("values changed; a rename that alters a value is not a rename")
 
         if problems:
             failures.append(f"{rel}: " + "; ".join(problems) + " -- RESTORED")
@@ -268,27 +346,27 @@ def main():
 
         if not args.check and not args.dry_run:
             write(path, new)
-        migrated += 1
+        if verdict == "PARTIAL":
+            partial += 1
+            short.append(f"{rel}: mechanically migrated; judgements outstanding "
+                         f"({', '.join(applied)}) -- a person or `schema-migrator` finishes it")
+        else:
+            migrated += 1
         if not args.quiet:
-            verb = "WOULD" if (args.dry_run or args.check) else "MIGRATED"
-            print(f"  {verb:<10} {rel}  [{rid}]")
+            verb = verdict if not (args.dry_run or args.check) else "WOULD " + verdict[:4]
+            print(f"  {verb:<10} {rel}  [{', '.join(applied) or '-'}]")
 
     if args.detect:
         for line in escalations:
             print(f"  ESCALATE   {line}", file=sys.stderr)
         return 2 if escalations else 0
 
-    # --check asks a different question from a run: not "can this be migrated" but "is it
-    # migrated". A file the run WOULD have transformed is a file that is not there yet.
-    if args.check and migrated:
-        print(f"\nCHECK FAILED: {migrated} file(s) are not yet in {args.target}",
-              file=sys.stderr)
-        return 1
-
     if not args.quiet:
-        print(f"\n{migrated} migrated, {already} already in {args.target}, "
+        print(f"\n{migrated} migrated, {partial} partial, {already} already in {args.target}, "
               f"{len(escalations)} escalated, {len(failures)} failed")
 
+    for line in short:
+        print(f"  PARTIAL    {line}", file=sys.stderr)
     for line in failures:
         print(f"  FAILED     {line}", file=sys.stderr)
     for line in escalations:
@@ -296,9 +374,28 @@ def main():
 
     if failures:
         return 1
+    # --check asks a different question from a run: not "can this be migrated" but "is it".
+    # A file the run WOULD transform, and a PARTIAL one, are both short of the target.
+    if args.check and (migrated or partial):
+        print(f"\nCHECK FAILED: {migrated + partial} file(s) are not yet in {args.target}",
+              file=sys.stderr)
+        return 1
     if escalations:
         return 2
+    if partial:
+        return 0
     return 0
+
+
+def applied_adds_values(applied):
+    """True when a step legitimately introduces new attribute values.
+
+    R4/R5 add `priority` and `derived-from`, so the rename invariant -- values identical before
+    and after -- does not hold for them and must not be asserted. Stated per rule rather than
+    switched off globally, because the invariant is the only thing standing between a rename and
+    an edit for R1-R3.
+    """
+    return any(rid in ("R4", "R5") for rid in applied)
 
 
 if __name__ == "__main__":

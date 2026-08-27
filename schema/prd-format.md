@@ -160,10 +160,11 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
   </description>
 
   <acceptance-criteria>
-    <criterion id="1">
-      <given>{{Initial context}}</given>
-      <when>{{Action taken}}</when>
-      <then>{{Expected outcome}}</then>
+    <criterion id="1" pattern="event-driven" priority="P0">
+      When {{trigger}}, the system shall {{response}}.
+    </criterion>
+    <criterion id="2" pattern="unwanted-behaviour" priority="P1">
+      If {{condition}}, then the system shall {{response}}.
     </criterion>
     <!-- More criteria -->
   </acceptance-criteria>
@@ -174,9 +175,14 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
 </feature>
 ```
 
-**`<acceptance-criteria>` is core §2 and is identical to the CRD's.** One criterion, one
-behaviour; `id` is stable and citable. Nothing about it is PRD-specific, which is exactly why it
-is not defined here.
+**`<acceptance-criteria>` is core §2 and is identical to the CRD's.** One EARS sentence per
+criterion, one behaviour; `id` is stable and citable; `pattern` is assigned by a person and
+`priority` defaults to `P1`. Nothing about it is PRD-specific, which is exactly why it is not
+defined here.
+
+**The second criterion above is not filler.** A feature whose criteria are all `event-driven` has
+said what happens when things go right and nothing else, and the template showing only that shape
+is how a corpus ends up with no `unwanted-behaviour` criteria in it at all.
 
 **`<definition>` is core §3's second row** — how completely this feature is *defined*, never how
 much of it is built. It was called `<status>` until item 45; a feature file that still says

@@ -17,6 +17,34 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 - `--output-dir <path>`: Target directory for greenfield projects (overrides default)
 - `--project-path <path>`: Existing project path for brownfield/CRD (overrides PRD value)
 - `--auto-setup`: Automatically execute Layer 0 tasks after generation (greenfield only)
+- `--requirement-level <P0|P1|P2>`: Only build criteria at or above this level (default `P2`)
+
+### `--requirement-level` — which criteria, not which features
+
+Two filters, two levels, and they compose in one direction only:
+
+| Filter | Selects | Vocabulary |
+|---|---|---|
+| `--priority` (item 14, not yet built) | which **features** are in scope | MoSCoW |
+| `--requirement-level` | which **criteria** within them are built | `P0` · `P1` · `P2` |
+
+**Applied second, always.** `--priority` chooses the features; `--requirement-level` then chooses
+inside them. Running it the other way round would filter criteria out of features that were about
+to be dropped whole, which changes nothing and costs a pass.
+
+**Default `P2` — everything.** No existing invocation changes behaviour, which is the point of
+choosing the permissive end as the default.
+
+**A criterion with no `priority` counts as `P1`.** See [core §4](../../schema/core.md#4-priority):
+the value is written into the file by migration rather than left implicit, so an unfiltered corpus
+and a partly-assigned one are distinguishable. Where you meet one that is genuinely absent, treat
+it as `P1` and **say how many** — a run that silently promoted 400 unassigned criteria into scope
+looks identical to one that had them assigned.
+
+**Report what the filter excluded, by feature.** *"3 features, 41 criteria, 12 excluded below
+P1"* is the line. A filter whose effect is invisible is a filter nobody can check, and item 30's
+coverage question — *does every in-scope feature have a task* — cannot be answered against a
+scope nobody stated.
 
 ## Input Format Detection
 

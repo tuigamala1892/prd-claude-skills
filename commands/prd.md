@@ -174,7 +174,26 @@ For each priority level:
    - Brief description
    - Ask: "Should we detail the acceptance criteria for this now, or mark it for later?"
 
-If "now": Write Given/When/Then acceptance criteria together.
+If "now": write acceptance criteria together, **one EARS sentence each** — the six patterns
+and the rules are in [`core.md`](../schema/core.md#2-acceptance-criteria):
+
+```
+When <trigger>, the system shall <response>.          # event-driven
+While <state>, the system shall <response>.           # state-driven
+If <condition>, then the system shall <response>.     # unwanted-behaviour
+```
+
+**Ask what should happen when it goes wrong, every time.** *"When does this fail, and what should
+it do then?"* An interview that only asks what should happen produces criteria that are entirely
+`event-driven` — the shape a feature has when it has described success and nothing else — and
+that reads as complete when it is not.
+
+Assign `pattern` here, while the person who described the behaviour is still in the room. It is
+the one attribute a migration is forbidden to guess, and this is the only moment it is cheap.
+
+`priority` is `P0|P1|P2` on each criterion, and it is not the feature's MoSCoW tier — a must-have
+feature can hold a `P2` criterion and usually does.
+
 If "later": Mark as TBD in what-next.md
 
 ### Phase 4: Design (Architecture)

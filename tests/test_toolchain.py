@@ -3716,28 +3716,47 @@ def _run_migrate(*args):
                           encoding="utf-8", errors="replace")
 
 
+def _mechanical_pair():
+    """(from, to) for a step the registry calls fully mechanical, or None.
+
+    Which steps are mechanical is SCHEMAS.json's to declare. Hardcoding schema-1 -> schema-2
+    here would have quietly stopped exercising the golden comparison the moment a third version
+    arrived -- which is the same defect item 45 found in setup_fixture.py, one file along.
+    """
+    _path, reg = schema_registry()
+    versions = list(reg.get("versions") or {})
+    for i, name in enumerate(versions):
+        if i and (reg["versions"][name].get("migration_from_previous") == "mechanical"):
+            return versions[i - 1], name
+    return None
+
+
 @check("the migration turns the old fixture into the new one, exactly -- by running it",
        finding="P28")
 def _():
     """Item 41's golden comparison, which is the whole reason item 43 versioned the fixtures.
 
-    Run the migration over the frozen schema-1 tree and assert the result is byte-for-byte the
-    schema-2 tree. A postcondition asserts what someone thought to assert; a golden comparison
+    Run the migration over a frozen tree and assert the result is byte-for-byte the next
+    version's tree. A postcondition asserts what someone thought to assert; a golden comparison
     catches the losses nobody thought of, because the expected output was authored separately.
 
     Then run it AGAIN over its own output. Re-running must be a no-op, because a 65-file
     migration will be interrupted -- and the marker of `already migrated` is the shape, so
     idempotence is a property of the rules rather than of a stamp.
+
+    Scoped to a step the registry calls MECHANICAL. A step carrying judgements cannot be
+    compared this way and has a check of its own; conflating them would have meant either
+    weakening this one or claiming the script does something it is forbidden to do.
     """
     import filecmp
     import shutil
     import tempfile
 
     assert os.path.isfile(MIGRATE), "schema/scripts/migrate.py is missing"
-    _path, reg = schema_registry()
-    older = [n for n, v in (reg.get("versions") or {}).items() if v.get("frozen")]
-    assert older, "no superseded fixture to migrate FROM"
-    src_version, target = sorted(older)[0], reg["current"]
+    pair = _mechanical_pair()
+    assert pair, ("no step is declared `migration_from_previous: mechanical`, so nothing can be "
+                  "compared byte-for-byte and item 41's golden comparison has no subject")
+    src_version, target = pair
 
     root = tempfile.mkdtemp(prefix="prd-migrate-")
     try:
@@ -3787,6 +3806,80 @@ def _():
         p = _run_migrate(work, "--to", target, "--quiet", "--check")
         assert p.returncode == 0, (
             f"--check disagrees that the tree is in {target}:\n{p.stdout}\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a migration it may not finish does the half it can, and says which half -- by running it",
+       finding="P28")
+def _():
+    """Items 33 and 41 together. The schema-2 -> schema-3 step is the first that is not fully
+    mechanical: `priority` and `derived-from` are the script's, and the EARS sentence and its
+    `pattern` are judgements the guide forbids a machine to make.
+
+    A script that stopped at the boundary would leave the mechanical work undone; one that
+    crossed it would invent the judgement. So it does its half, reports PARTIAL, and `--check`
+    refuses the tree -- and each of those three is asserted here, because two of them passing
+    without the third is exactly the failure that reads as success.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    versions = list(reg.get("versions") or {})
+    mixed = [(versions[i - 1], n) for i, n in enumerate(versions)
+             if i and reg["versions"][n].get("migration_from_previous") == "mixed"]
+    assert mixed, "no step is declared `mixed`, so the PARTIAL state is unexercised"
+    src_version, target = mixed[0]
+
+    root = tempfile.mkdtemp(prefix="prd-partial-")
+    try:
+        work = os.path.join(root, "tree")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+
+        p = _run_migrate(work, "--to", target)
+        assert p.returncode == 0, f"the mechanical half failed: {p.stdout}\n{p.stderr}"
+        assert "PARTIAL" in p.stdout or "PARTIAL" in p.stderr, (
+            f"a step carrying judgements reported no PARTIAL state, so 'the script ran' and "
+            f"'the migration finished' are indistinguishable:\n{p.stdout}\n{p.stderr}")
+
+        p = _run_migrate(work, "--to", target, "--quiet", "--check")
+        assert p.returncode == 1, (
+            f"--check called a partly migrated tree finished (exit {p.returncode}). The whole "
+            f"point of the PARTIAL state is that this run refuses")
+
+        # The mechanical half, exactly: every criterion gains both attributes...
+        expected_root = os.path.join(REPO, "tests", "fixture", "prd", target)
+        for dp, _dn, fn in os.walk(work):
+            for n in sorted(fn):
+                got = open(os.path.join(dp, n), encoding="utf-8").read()
+                rel = os.path.relpath(os.path.join(dp, n), work)
+                tags = re.findall(r"<criterion\b([^>]*)>", got)
+                for t in tags:
+                    assert 'priority="' in t, (
+                        f"{rel} has a criterion with no priority after migration. The value is "
+                        f"written in rather than defaulted, or a partly-assigned corpus cannot "
+                        f"be told from a finished one")
+                    assert "derived-from=" in t, (
+                        f"{rel} has a migrated criterion with no derived-from, so the rewrite "
+                        f"cannot be reviewed against what it came from")
+                    # ...and the judgement half, not at all.
+                    assert "pattern=" not in t, (
+                        f"{rel} has a criterion carrying a `pattern` the script assigned. A "
+                        f"pattern derived by the heuristics it exists to replace is circular, "
+                        f"which is why the guide forbids it")
+
+                # Everything OUTSIDE the criteria must be untouched by this step.
+                want = open(os.path.join(expected_root, rel), encoding="utf-8").read()
+                strip = lambda x: re.sub(r"<acceptance-criteria>.*?</acceptance-criteria>", "",
+                                         x, flags=re.S)
+                assert strip(got) == strip(want), (
+                    f"{rel} differs from the {target} fixture OUTSIDE its criteria. This step "
+                    f"is about criteria; anything else it moved, it moved by accident")
+
+                # Criterion count in equals count out -- item 33's own invariant.
+                assert len(tags) == len(re.findall(r"<criterion\b", want)), (
+                    f"{rel} has a different number of criteria from the {target} fixture")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -3898,6 +3991,111 @@ def _():
             f"{name}'s escalation instruction no longer says to stop:\n      "
             + "\n      ".join(ln.strip() for ln in lines)
             + "\n    'Transform it anyway' is the failure this path exists to prevent")
+# ----------------------------------------------------------- EARS criteria (33/34)
+
+EARS_PATTERNS = {"ubiquitous", "state-driven", "event-driven", "optional-feature",
+                 "unwanted-behaviour", "complex"}
+
+
+@check("a criterion is one EARS sentence with a pattern and a priority", finding="P23")
+def _():
+    """Items 33 and 34.
+
+    Given/When/Then is a SCENARIO format and cannot state a requirement, which is why the CRD
+    path needed a second list to hold requirements at all. Replacing it is what makes "covers
+    the edge cases" an attribute count rather than a judgement.
+
+    Parsed, not matched. Every criterion in every template on both paths is read as XML and
+    checked for the two attributes and the word `shall` -- so this survives any rewording and
+    fails the moment one template is updated and the other is not, which is the drift item 44
+    was extracted to stop.
+    """
+    templates = {
+        "schema/prd-format.md": os.path.join(SCHEMA, "prd-format.md"),
+        "schema/core.md": os.path.join(SCHEMA, "core.md"),
+        "crd-format.md": os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+    }
+
+    seen = 0
+    for label, path in templates.items():
+        for body in xml_bodies(open(path, encoding="utf-8").read()):
+            for attrs, inner in re.findall(r"<criterion\b([^>]*)>(.*?)</criterion>", body, re.S):
+                seen += 1
+                a = dict(re.findall(r'([\w-]+)="([^"]*)"', attrs))
+                assert "id" in a, f"{label}: a criterion carries no id"
+                assert a.get("pattern") in EARS_PATTERNS, (
+                    f"{label}: criterion {a.get('id')} has pattern {a.get('pattern')!r}, which "
+                    f"is not one of the six EARS patterns")
+                assert re.fullmatch(r"P[012]", a.get("priority", "")), (
+                    f"{label}: criterion {a.get('id')} has priority {a.get('priority')!r}; "
+                    f"item 34 chose P0|P1|P2 precisely so it could not be read as MoSCoW")
+                flat = " ".join(inner.split())
+                assert "<given>" not in flat and "<when>" not in flat, (
+                    f"{label}: criterion {a.get('id')} is still a Given/When/Then triple")
+                assert re.search(r"\bshall\b", flat), (
+                    f"{label}: criterion {a.get('id')} contains no `shall`. An EARS criterion "
+                    f"states what the system must do; without it this is a scenario again")
+    assert seen >= 6, f"only {seen} criteria in the schema documents; the templates are a stub"
+
+    # The taxonomy has to be WRITTEN DOWN somewhere a person assigning one can read, and all six
+    # of it -- the value of the attribute is that it distinguishes the failure cases from the
+    # happy path, which five patterns cannot do.
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("### The six patterns", 1)
+    assert len(region) == 2, "core.md does not enumerate the EARS patterns"
+    listed = set(re.findall(r"`([a-z-]+)`", region[1].split("\n## ", 1)[0]))
+    assert EARS_PATTERNS <= listed, (
+        f"core.md's pattern table is missing {sorted(EARS_PATTERNS - listed)}")
+
+    # And the consumer has to do something with the attribute, or it is decoration.
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    for pattern in EARS_PATTERNS:
+        assert pattern in gen, (
+            f"breakdown-generate-tasks says nothing about `{pattern}` criteria, so `pattern` "
+            f"reaches the generator and changes nothing -- which is the unread element this "
+            f"plan exists to remove")
+
+
+@check("the two priority levels stay in two vocabularies, and the filter says so", finding="P1")
+def _():
+    """Item 34's whole design, and the reason it is not MoSCoW.
+
+    Feature priority selects WHICH FEATURES; criterion priority selects WHICH CRITERIA WITHIN
+    THEM. Sharing a vocabulary would make every flag, report line and conversation ambiguous
+    about which level it meant -- which is what item 29 refused when it declined to run
+    `<needs-clarification>` beside `<gaps>`.
+    """
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("## 4. Priority", 1)
+    assert len(region) == 2, "core.md has no priority section"
+    region = region[1].split("\n## ", 1)[0]
+
+    rows = [r.strip() for r in region.splitlines() if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r]
+    assert len(rows) == 2, f"core §4 lists {len(rows)} priority levels; item 34 defines two"
+
+    vocabs = []
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        vocabs.append(set(re.findall(r"`([\w-]+)`", cells[2])))
+
+    assert not (vocabs[0] & vocabs[1]), (
+        f"the two priority levels share {sorted(vocabs[0] & vocabs[1])}. They are in different "
+        f"vocabularies on purpose, so that no flag or report line is ambiguous about which "
+        f"level it means")
+    assert {"P0", "P1", "P2"} <= (vocabs[0] | vocabs[1]), "core §4 never names P0|P1|P2"
+    assert any("must-have" in v for v in vocabs), "core §4 never names MoSCoW"
+
+    # The flag exists, is ordered against the feature-level one, and reports what it excluded.
+    skill = prose(open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read())
+    assert "--requirement-level" in skill, "/breakdown gained no --requirement-level flag"
+    assert re.search(r"Applied second", skill), (
+        "/breakdown does not say which of the two filters runs first. Filtering criteria out of "
+        "features that were about to be dropped whole changes nothing and costs a pass")
+    assert re.search(r"Report what the filter excluded", skill), (
+        "/breakdown never reports what --requirement-level removed. A filter whose effect is "
+        "invisible is a filter nobody can check")
 
 # ------------------------------------------------------------------- behavioural
 
