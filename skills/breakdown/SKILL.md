@@ -17,6 +17,9 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 - `--output-dir <path>`: Target directory for greenfield projects (overrides default)
 - `--project-path <path>`: Existing project path for brownfield/CRD (overrides PRD value)
 - `--auto-setup`: Automatically execute Layer 0 tasks after generation (greenfield only)
+- `--priority <must-have|should-have|could-have>`: Lowest **feature** tier to build (default
+  `could-have` — all three)
+- `--include-tbd`: Break down features whose `<definition>` is `tbd` anyway
 - `--requirement-level <P0|P1|P2>`: Only build criteria at or above this level (default `P2`)
 
 ### `--requirement-level` — which criteria, not which features
@@ -25,7 +28,7 @@ Two filters, two levels, and they compose in one direction only:
 
 | Filter | Selects | Reads | Vocabulary |
 |---|---|---|---|
-| `--priority` (item 14, not yet built) | which **whole items** are in scope | PRD: `priority=` in `index.md` · CRD: `<meta><priority>` | MoSCoW |
+| `--priority` | which **whole items** are in scope | PRD: `priority=` in `index.md` · CRD: `<meta><priority>` | MoSCoW |
 | `--requirement-level` | which **criteria** within them are built | `priority=` on each `<criterion>`, both paths | `P0` · `P1` · `P2` |
 
 **Both columns now have something to read on both paths.** Until item 47 a CRD carried MoSCoW at
@@ -251,7 +254,43 @@ python {skill_dir}/scripts/check-prd-size.py {prd_dir}
 
 It writes `{tasks_dir}/analysis.index.json`.
 
-**Step 3 — one pass per feature.** For each feature named in the index, invoke
+**Step 2a — decide which features are in scope, before analysing any of them.**
+
+```bash
+python {skill_dir}/scripts/select-features.py {prd_dir} --priority {threshold}
+```
+
+Items 13, 14 and 15. **`/breakdown` used to filter nothing** — every feature named in the index
+became tasks, so a `wont-have` feature nobody intends to build, a `superseded` one already
+absorbed into another, and a `tbd` one consisting of a name and a sentence all reached `/execute`
+as work. That is **P1**, and it is three rules wearing one symptom:
+
+| Rule | What it drops | Kind of rule |
+|---|---|---|
+| **13** | `wont-have`, `<definition>excluded</definition>`, `<definition>superseded</definition>` | **Correctness. No flag, no override** |
+| **14** | anything below `--priority` | the operator's choice |
+| **15** | a `<gap kind="specification">`, or `tbd` without `--include-tbd` | a defect in the PRD, **and it is named** |
+
+- **Exit 0** — a set was selected. Analyse **only those features** in Step 3.
+- **Exit 1** — nothing was selected. **Stop and report the reasons**, all of them. This is not an
+  error to work around; it means the PRD as filtered contains nothing buildable.
+
+**Read stderr before anything else.** *"5 must-have features are not defined enough to break
+down"* is the single most useful sentence this command can say about a PRD, and the script puts
+it on stderr precisely so it does not become line eleven of twenty. **Say it to the operator
+verbatim.** A silently omitted must-have is worse than the unfiltered behaviour this replaced.
+
+**Every reason is listed, not the first one that matched.** A feature is commonly excluded by more
+than one rule — the reference fixture's `quokka-telemetry` is `wont-have` *and* carries a
+specification gap. Reporting one would make fixing it appear to change nothing.
+
+**The gap block beats the status, and that is item 15's real content.** `<definition>` is a
+summary; `<gaps>` is the detail. A `specification` gap refuses the feature whatever its declared
+status — it is the author saying the specification is incomplete. The other four kinds **warn and
+do not refuse**: they say the feature is specified but not yet *buildable*, which is a scheduling
+fact rather than a definition defect. `--include-tbd` reaches the status and **never** the gap.
+
+**Step 3 — one pass per feature.** For each feature **the previous step selected**, invoke
 `breakdown-analyze-prd` again with **that one feature file**, asking for what only that feature
 implies:
 - Data models, API endpoints and frontend components implied by this feature

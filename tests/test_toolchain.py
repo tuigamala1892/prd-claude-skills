@@ -5197,6 +5197,180 @@ def _():
         print("    (%d open asymmetry/ies: %s)" % (len(opens), "; ".join(opens)))
 
 
+# ------------------------------------------------ the three filters (13/14/15), finding P1
+
+
+def _probe_prd(root, features):
+    """A PRD with exactly the properties one rule needs, and no others.
+
+    ONE RULE PER FEATURE, deliberately. The reference fixture's `quokka-telemetry` is `wont-have`
+    AND carries a specification gap AND is `in-progress` -- three rules satisfied by one feature,
+    so a check that watched it pass could not say which rule fired, and removing any two would
+    still look green. That is the same site-counting defect this repository keeps meeting, in the
+    fixture rather than in the assertion.
+
+    `features` is a list of (slug, tier, definition, [gap kinds]).
+    """
+    os.makedirs(os.path.join(root, "features"), exist_ok=True)
+    entries = "\n".join(
+        '    <feature priority="%s" file="features/%s.md">\n'
+        '      <name>%s</name><summary>Probe.</summary>\n'
+        '    </feature>' % (tier, slug, slug) for slug, tier, _d, _g in features)
+    with open(os.path.join(root, "index.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("<prd>\n  <meta><name>Probe</name><slug>probe</slug>"
+                "<status>complete</status></meta>\n  <features>\n%s\n  </features>\n</prd>\n"
+                % entries)
+    for slug, _tier, definition, gaps in features:
+        block = ""
+        if gaps:
+            rows = "\n".join('    <gap id="%d" kind="%s" raised="2026-08-27">Probe.</gap>'
+                             % (i, k) for i, k in enumerate(gaps, start=1))
+            block = "  <gaps>\n%s\n  </gaps>\n" % rows
+        with open(os.path.join(root, "features", slug + ".md"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write("<feature>\n  <meta><name>%s</name><slug>%s</slug>"
+                    "<definition>%s</definition></meta>\n%s</feature>\n"
+                    % (slug, slug, definition, block))
+    return root
+
+
+@check("/breakdown declines work it was told not to do, and names what it declined -- by running it",
+       finding="P1")
+def _():
+    """Items 13, 14 and 15 -- P1's whole first half.
+
+    `/breakdown` filtered NOTHING. Every feature named in the index became tasks, so a
+    `wont-have` feature, a `superseded` one and a `tbd` one all reached `/execute` as work.
+
+    Three rules wearing one symptom, and they are NOT the same kind of rule, which is most of
+    what is asserted here. Item 14 is a preference and has a flag. Item 13 is correctness and
+    must have no way past it -- a `wont-have` feature is one somebody DECIDED against, and an
+    override would make the decision advisory. Item 15 is a defect in the PRD and is therefore
+    named rather than quietly dropped.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "select-features.py")
+    assert os.path.isfile(script), "select-features.py does not exist, so /breakdown still builds everything"
+
+    # The RUNNABLE invocation, not the filename. Twice now a bare substring has been satisfied by
+    # prose ABOUT a script while the command that ran it was deleted.
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/select-features.py {prd_dir}" in skill, (
+        "/breakdown never RUNS the selector on the PRD directory")
+    for flag in ("--priority", "--include-tbd"):
+        assert flag in skill, f"/breakdown documents no {flag}"
+
+    root = tempfile.mkdtemp(prefix="filters-13-")
+    try:
+        def run(features, *args):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            _probe_prd(d, features)
+            p = subprocess.run([sys.executable, script, d, "--json"] + list(args),
+                               capture_output=True, text=True)
+            return p, json.loads(p.stdout) if p.stdout.strip() else {}
+
+        # ---- item 13: three values, none of them overridable. The flags are passed BECAUSE
+        # the claim is that they make no difference here -- asserting the default alone would
+        # leave "no override" untested, which is the half that is actually a promise.
+        for slug, tier, definition in (("nope", "wont-have", "defined"),
+                                       ("gone", "must-have", "excluded"),
+                                       ("merged", "must-have", "superseded")):
+            for extra in ([], ["--include-tbd"], ["--priority", "could-have", "--include-tbd"]):
+                p, out = run([(slug, tier, definition, []), ("keep", "must-have", "defined", [])],
+                             *extra)
+                assert out["selected"] == ["keep"], (
+                    f"{definition}/{tier} was selected with {extra or 'defaults'}. Item 13 is "
+                    f"correctness, not a preference -- there is meant to be no way past it:\n"
+                    f"{p.stdout}")
+                assert any("item 13" in r for d in out["dropped"] if d["slug"] == slug
+                           for r in d["reasons"]), (
+                    f"{slug} was dropped without citing item 13, so the report cannot tell an "
+                    f"operator which rule to argue with")
+
+        # ---- item 14: the threshold, and its default. The default is the load-bearing part:
+        # it preserves today's behaviour minus item 13, so the flag adds capability without
+        # silently changing what an existing invocation builds.
+        tiers = [("m", "must-have", "defined", []), ("s", "should-have", "defined", []),
+                 ("c", "could-have", "defined", [])]
+        _p, out = run(tiers)
+        assert set(out["selected"]) == {"m", "s", "c"}, (
+            f"the default threshold is not `could-have`; an existing invocation just changed "
+            f"what it builds: {out['selected']}")
+        assert out["threshold"] == "could-have"
+        _p, out = run(tiers, "--priority", "must-have")
+        assert out["selected"] == ["m"], f"--priority must-have selected {out['selected']}"
+        _p, out = run(tiers, "--priority", "should-have")
+        assert set(out["selected"]) == {"m", "s"}, (
+            f"--priority should-have must be must+should, not {out['selected']}")
+
+        # ---- item 15: the gap block beats the status, and only ONE kind refuses.
+        p, out = run([("sketch", "must-have", "tbd", []),
+                      ("holed", "must-have", "defined", ["specification"]),
+                      ("waiting", "must-have", "defined", ["dependency"]),
+                      ("undecided", "must-have", "defined", ["decision"]),
+                      ("unsure", "must-have", "defined", ["evidence"]),
+                      ("whose", "must-have", "defined", ["ownership"])])
+        assert set(out["selected"]) == {"waiting", "undecided", "unsure", "whose"}, (
+            f"the four non-specification gap kinds must WARN, not refuse -- they say the feature "
+            f"is specified but not yet buildable, which is a scheduling fact:\n{p.stdout}")
+        assert set(out["warnings"]) >= {"waiting", "undecided", "unsure", "whose"}, (
+            "a feature carrying an open gap was built with no warning at all")
+
+        # --include-tbd reaches the STATUS and must never reach the gap. A status is a summary;
+        # the gap is the author saying the specification is incomplete.
+        p, out = run([("sketch", "must-have", "tbd", []),
+                      ("holed", "must-have", "defined", ["specification"])], "--include-tbd")
+        assert out["selected"] == ["sketch"], (
+            f"--include-tbd must reach `tbd` and NOT a specification gap:\n{p.stdout}")
+
+        # A `defined` feature carrying a specification gap is still refused. That is the whole
+        # point of "the gap block beats the status" -- asserting it only on a `tbd` feature would
+        # pass on a script that never read the gaps at all.
+        assert any("item 15" in r for d in out["dropped"] if d["slug"] == "holed"
+                   for r in d["reasons"]), "a `defined` feature with a specification gap was not refused by item 15"
+
+        # ---- every reason, not the first that matched. Fixing one of two must visibly change
+        # something, or the report teaches an operator that the fix did nothing.
+        p, out = run([("both", "wont-have", "defined", ["specification"]),
+                      ("keep", "must-have", "defined", [])])
+        reasons = [d["reasons"] for d in out["dropped"] if d["slug"] == "both"][0]
+        assert len(reasons) >= 2 and any("item 13" in r for r in reasons) \
+            and any("item 15" in r for r in reasons), (
+            f"a feature excluded by two rules reported {len(reasons)}:\n{reasons}")
+
+        # ---- the sentence item 15 exists to make sayable, on stderr so it cannot become line
+        # eleven of twenty.
+        p, out = run([("holed", "must-have", "defined", ["specification"]),
+                      ("keep", "must-have", "defined", [])])
+        assert out["undefined_must_haves"] == ["holed"]
+        assert "must-have" in p.stderr and "not defined enough" in p.stderr, (
+            f"an undefined must-have was not called out on stderr:\n{p.stderr}")
+
+        # ---- nothing selectable is an exit code, not an empty success.
+        p, out = run([("nope", "wont-have", "defined", [])])
+        assert p.returncode == 1, (
+            f"a PRD with nothing buildable exited {p.returncode}. 'Built everything asked for' "
+            f"and 'there was nothing to build' must not share an exit code")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # ---- and the CRD path, where item 47 is what gave --priority anything to read.
+    _p, reg = schema_registry()
+    crd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf", "crd",
+                       "archive-links.md")
+    if os.path.isfile(crd):
+        p = subprocess.run([sys.executable, script, crd, "--json", "--priority", "must-have"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert out["selected"] == [] and p.returncode == 1, (
+            f"a should-have change request was not declined by --priority must-have. Before "
+            f"item 47 this flag had no field to read on the CRD path:\n{p.stdout}")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

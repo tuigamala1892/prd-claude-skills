@@ -1838,12 +1838,12 @@ grouping that keeps each commit a single concern:
 | Group | Items | Why these are one commit |
 |---|---|---|
 | **5a — CRD parity** | 46 · 47 · 48 · 49 · 50 | The plan says 46 and 47 land *"immediately after 33 and 34"* — which landed in `4f81d54`. **They are already lagging**, and lagging is precisely how two vocabularies acquire consumers. 48 and 49 are the same reach-across in the other direction; 50 is the check that stops the distance reopening. |
-| **5b — the carry** | 16 · 17 · 30 · 59 | The boundary chain, in dependency order. 30 has nothing to check until `<source-feature>` exists; 59 is the first test that crosses the boundary 16, 17 and 30 specify. Splitting it means writing 59 twice. |
-| **5c — the filters** | 13 · 14 · 15 · 19 · 20 | Five refusals and two flags, all reading tags that now exist, spread across `/breakdown` and `/execute`. Genuinely small — and they are one commit because they are one behaviour: *the toolchain declines work it was told not to do, and says which.* |
+| **5b — the carry** | 16 · 17 · 30 · 59 · **19** · **20** | The boundary chain, in dependency order. 30 has nothing to check until `<source-feature>` exists; 59 is the first test that crosses the boundary 16, 17 and 30 specify. **19 and 20 were put in 5c and moved here** — both read `<moscow>` on a *task*, which is item 16's, and the plan opens Phase 5 with 16 for that reason. See the 13/14/15 entry. |
+| **5c — the filters** | 13 · 14 · 15 | Three refusals and two flags, all reading tags that now exist. One commit because they are one behaviour: *the toolchain declines work it was told not to do, and says which.* |
 | **5d — the definition bar** | 58 · 3 · 6 · 7 · 40 · 8 | 58 is the table of assertions, 6 is its caller, 3 feeds it, 40 supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the same checker four times — the argument Phase 3 made about `architecture.md`, arriving again. |
 | **5e — the residue** | 10 · 24 · 32 · 38 | Independent of each other and of the above. Last because nothing waits on them. |
 
-**5a is complete** (two commits, not one: 46-48 were a schema version with a migration and a new fixture, which is not "small"). **5c is next.**
+**5a and 5c are complete.** Neither matched its own row: 46-48 were a whole schema version with a migration and a new fixture, so 5a took two commits; and 5c turned out to be three items rather than five, because 19 and 20 depend on item 16 and belong in 5b. **The split was right about the seams and wrong twice about the contents**, which is the ledger doing its job rather than failing at it. **5b is next.**
 
 **5a and 5c first, in that order.** Both are edits to existing consumers with checkable
 postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
@@ -1858,8 +1858,8 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 |---|---|---|
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
-| **13 + 14 + 15 + 19 + 20** — the filters | *Next* | — |
-| **16 + 17 + 30 + 59** — the carry | *Not started* | — |
+| **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `PENDING` |
+| **16 + 17 + 30 + 59 + 19 + 20** — the carry, and the two reporters that need it | *Next* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
 
@@ -2185,6 +2185,109 @@ missing input exiting 1 rather than reporting nothing.
 two survivors above were fixed. Every anchor was verified to match exactly once **before** the
 round was launched — the correction to last round's method, where two attempts were wasted on
 anchors that never applied.
+
+---
+
+## 13 + 14 + 15 — `/breakdown` declines work, and names what it declined
+
+**Commit:** `PENDING` · **Addresses:** P1 · **Files:** `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/select-features.py` (new), `tests/mutants/filters.py`,
+`tests/test_toolchain.py`
+
+### The group is three items, not five — and that is a correction to this ledger's own split
+
+**Items 19 and 20 moved to 5b.** Both read `<moscow>` on a *task*, which item 16 puts there, and
+item 16 is in 5b. The plan's own Phase 5 ordering opens with 16 for exactly this reason; the
+five-group split published two commits ago claimed *"every constraint the plan states between
+items is preserved"*, and for these two it was not.
+
+Building them here was possible and would have been wrong. Item 20 refuses a task carrying
+`<moscow>wont-have</moscow>`; with no producer for that element the refusal can never fire, which
+is a **guard with no producer** — the exact mirror of the field-with-no-reader defect this plan
+has spent forty items removing, and which item 49 had just finished removing two commits earlier.
+
+### What `/breakdown` did before this
+
+**It filtered nothing.** Every feature named in the index became tasks. A `wont-have` feature
+nobody intends to build, a `superseded` one already absorbed into another, and a `tbd` one
+consisting of a name and a sentence all reached `/execute` as work. That is P1, and the useful
+observation is that it is **three rules wearing one symptom**:
+
+| Rule | Drops | Kind of rule |
+|---|---|---|
+| **13** | `wont-have`, `excluded`, `superseded` | **correctness — no flag, no override** |
+| **14** | anything below `--priority` | the operator's choice |
+| **15** | a `<gap kind="specification">`, or `tbd` without `--include-tbd` | a defect in the PRD, **named** |
+
+Only the middle one is a preference, and most of the check is about that distinction rather than
+about the filtering. A selector that filters correctly but lets item 13 be overridden has turned
+somebody's decision into a suggestion.
+
+### `--include-tbd` reaches the status and never the gap
+
+This is item 15's real content and it is easy to get backwards. `<definition>` is a **summary**;
+`<gaps>` is the **detail**. So:
+
+- a `<gap kind="specification">` refuses the feature **whatever its declared status**, because it
+  is the author saying the specification is incomplete — and `--include-tbd` does not reach it
+- the other four kinds — `dependency`, `decision`, `evidence`, `ownership` — **warn and do not
+  refuse**. They say the feature is specified but not yet *buildable*, which is a scheduling fact
+  rather than a definition defect
+
+A boolean `blocking=` could not have drawn that line, which is why item 29 gave `<gap>` a `kind`.
+The mutant that makes every kind refuse is caught, and it is the one worth having: a selector that
+halts an overnight run on an open question is one that gets switched off.
+
+### Every reason is reported, not the first that matched
+
+The plan does not ask for this; the fixture did. `quokka-telemetry` is `wont-have` **and** carries
+a `specification` gap **and** is `in-progress`. Reporting the first match would make the other
+reasons invisible, so fixing one would appear to change nothing — and an operator would learn that
+the report cannot be acted on.
+
+**The same property is why the checks use synthetic PRDs rather than the fixture.** A feature
+satisfying three rules at once tests none of them: remove any two and the check still passes.
+That is [[count-the-sites-that-satisfy-a-check]] in the fixture rather than in the assertion, which
+Phase 4's last round had already recorded as the extension to that rule. Each probe PRD here gives
+one feature exactly one property.
+
+### The sentence item 15 exists to make sayable goes to stderr
+
+*"5 must-have features are not defined enough to break down"* is, as the plan says, the single most
+useful sentence `/breakdown` could say about a PRD. It is on **stderr**, separately from the
+per-feature listing, precisely so it cannot become line eleven of twenty and read as routine. The
+skill is told to relay it verbatim before anything else.
+
+Two of the ten mutants attack the report rather than the filtering, and they matter as much: a
+selector that drops exactly the right features and says nothing has failed the item. A silently
+omitted must-have is worse than the unfiltered behaviour this replaced.
+
+### Item 14 gave item 47 its reader, one commit later
+
+`--priority` reads `priority=` from the index on the PRD path and `<meta><priority>` on the CRD
+path. The second only exists because item 47 moved MoSCoW up to the document last commit — and the
+plan predicted exactly this: *"it makes `/breakdown`'s `--priority` threshold mean something on the
+CRD path, where today it means nothing."* A `should-have` change request is now declined by
+`--priority must-have`, which is asserted by running it.
+
+**The default is `could-have`, and the default is the load-bearing part.** It preserves today's
+behaviour minus item 13, so the flag adds capability without silently changing what an existing
+invocation builds. Two mutants attack it — a drifted default and an off-by-one threshold — because
+both are silent.
+
+### Verification
+
+`python tests/test_toolchain.py` — **91 → 92**, `failed 0`, `known 0`.
+
+Watched by hand before the check was written, over every path: all three rules in isolation, the
+warn path on a `decision` gap, `--include-tbd` reaching `tbd` but not a specification gap, the
+stderr call-out, multi-reason reporting, exit 1 when nothing is selectable, and the CRD threshold.
+
+**Mutation round:** `tests/mutants/filters.py`, ten mutants, **10/10 caught on the first
+attempt** — the first round in this phase to open at 100%. Two method changes account for it, both
+of them corrections made earlier in the same session: every anchor was verified to match exactly
+once **before** launching, and every assertion about a script names a **runnable invocation or a
+fenced block** rather than a filename that prose also satisfies.
 ---
 
 ## What the machine sleeping taught, which was not about sleep
