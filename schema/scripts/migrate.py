@@ -48,7 +48,7 @@ import os
 import re
 import sys
 
-VERSIONS = ["schema-1", "schema-2", "schema-3"]
+VERSIONS = ["schema-1", "schema-2", "schema-3", "schema-4"]
 
 # ---------------------------------------------------------------- artefact kinds
 
@@ -115,6 +115,58 @@ def _criteria_lacking(text, attr):
     return [a for a in _criteria_attrs(text) if attr not in a]
 
 
+DATA_MODEL_HEADING = re.compile(r"^\s*\*\*Data model\*\*\s*:?\s*$", re.M | re.I)
+
+
+def _meta_drop(text, tag):
+    """Remove <tag>...</tag> from <meta>, and the newline it sat on."""
+    m = META.search(text)
+    if not m:
+        return text
+    inner = re.sub(r"\n[ \t]*<%s>.*?</%s>" % (tag, tag), "", m.group(1), flags=re.S)
+    return text[:m.start(1)] + inner + text[m.end(1):]
+
+
+def _split_notes(text):
+    """<notes> prose becomes <data-model> plus <considerations>, keyed on a bold heading.
+
+    The catch-all is what makes this safe: everything not under a `**Data model**` heading goes
+    to <considerations> VERBATIM. A three-way split needing judgement per file was on this
+    plan's critical path until §4.3 removed it; this is the two-way one that replaced it, and
+    the reason it can be mechanical at all is that one side never has to be understood.
+    """
+    m = re.search(r"( *)<notes>(.*?)</notes>", text, re.S)
+    if not m or "<considerations>" in m.group(2):
+        return text
+    base, body = m.group(1), m.group(2).strip("\n")
+    lines = body.splitlines()
+    hit = next((i for i, ln in enumerate(lines) if DATA_MODEL_HEADING.match(ln)), None)
+
+    def block(tag, rows):
+        # Blank rows at either end are an artefact of where the heading fell, not content.
+        # Keeping them would make the output depend on the source's blank lines rather than
+        # on its prose, and a golden comparison would then be asserting whitespace.
+        while rows and not rows[0].strip():
+            rows = rows[1:]
+        while rows and not rows[-1].strip():
+            rows = rows[:-1]
+        inner = "\n".join(rows)
+        return f"{base}  <{tag}>\n{inner}\n{base}  </{tag}>"
+
+    parts = []
+    if hit is None:
+        parts.append(block("considerations", lines))
+    else:
+        end = next((j for j in range(hit + 1, len(lines))
+                    if re.match(r"^\s*\*\*[^*]+\*\*\s*:?\s*$", lines[j])), len(lines))
+        parts.append(block("data-model", lines[hit + 1:end]))
+        rest = lines[:hit] + lines[end:]
+        if any(ln.strip() for ln in rest):
+            parts.append(block("considerations", rest))
+    return (text[:m.start()] + f"{base}<notes>\n" + "\n".join(parts) + f"\n{base}</notes>"
+            + text[m.end():])
+
+
 def _stamp_criteria(text):
     """Add priority="P1" and derived-from="{id}" to every criterion lacking them.
 
@@ -174,6 +226,18 @@ RULES = [
      lambda t: bool(_criteria_lacking(t, "pattern")),
      _stamp_criteria,
      lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
+
+    # R6 is mixed for the same reason R4 is: the two mechanical halves are here, and
+    # <user-story>, <depends-on>, <gaps> and <architecturally-significant> are content a
+    # machine has nothing to derive from. `done` requires the story, which is what a person or
+    # `schema-migrator` supplies.
+    ("R6", "schema-4", "feature",
+     lambda t: _meta_has(t, "priority") or ("<notes>" in t and "<considerations>" not in t)
+               or "<user-story>" not in t,
+     lambda t: _split_notes(_meta_drop(t, "priority")),
+     lambda t: not _meta_has(t, "priority")
+               and ("<notes>" not in t or "<considerations>" in t)
+               and "<user-story>" in t),
 ]
 
 # Rules whose transform cannot reach their own postcondition, and what the mechanical half DOES
@@ -182,6 +246,8 @@ RULES = [
 PARTIAL_OF = {
     "R4": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
     "R5": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
+    "R6": lambda t: not _meta_has(t, "priority")
+                    and ("<notes>" not in t or "<considerations>" in t),
 }
 
 # Artefacts a step does not change. Named rather than defaulted: "no rule matched" and "no rule
@@ -189,6 +255,7 @@ PARTIAL_OF = {
 UNCHANGED = {
     "schema-2": {"prd", "what-next"},
     "schema-3": {"prd", "what-next", "project-context"},
+    "schema-4": {"prd", "what-next", "project-context", "crd"},
 }
 
 
@@ -390,12 +457,12 @@ def main():
 def applied_adds_values(applied):
     """True when a step legitimately introduces new attribute values.
 
-    R4/R5 add `priority` and `derived-from`, so the rename invariant -- values identical before
-    and after -- does not hold for them and must not be asserted. Stated per rule rather than
-    switched off globally, because the invariant is the only thing standing between a rename and
-    an edit for R1-R3.
+    R4/R5 add `priority` and `derived-from`; R6 removes a duplicated <priority> and re-nests
+    note prose. So the rename invariant -- values identical before and after -- does not hold
+    for them and must not be asserted. Stated per rule rather than switched off globally,
+    because the invariant is the only thing standing between a rename and an edit for R1-R3.
     """
-    return any(rid in ("R4", "R5") for rid in applied)
+    return any(rid in ("R4", "R5", "R6") for rid in applied)
 
 
 if __name__ == "__main__":

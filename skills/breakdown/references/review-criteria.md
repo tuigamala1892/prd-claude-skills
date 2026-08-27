@@ -15,7 +15,15 @@ Failure on ANY critical criterion means the task must be regenerated.
     otherwise have every task fail here and never reach execution. Its *presence* when
     `default="none"` is not a failure — only its emptiness is.
 - [ ] No empty sections
-- [ ] No placeholder text: "TODO", "TBD", "...", "[fill in]", "etc."
+- [ ] No **unmarked** placeholder text: "TODO", "TBD", "...", "[fill in]", "etc."
+  - **A `<gap>` carried from the source document is not a placeholder.** It is an author's
+    declared uncertainty, with a `kind`, an `id` and a date, and it *passes* review and
+    *blocks* execution — see [core §6](../../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing).
+    Banning marked uncertainty outright is precisely what makes invention the compliant
+    answer: an author who cannot write "we have not decided this" writes something
+    plausible instead, and nothing downstream can tell the difference.
+  - Unmarked vagueness keeps failing exactly as it did. The distinction is whether
+    somebody **declared** the gap, not whether the task admits to one.
 - [ ] No "see above", "as mentioned", or references to other parts of the document
 
 ### 2. Self-Containment
@@ -129,6 +137,11 @@ Warnings don't block, but should be noted for improvement.
 ## Common Issues
 
 ### Placeholder Patterns to Flag
+
+**Inside a `<gap>` element, none of these are flagged.** The list below finds vagueness
+nobody owned up to; a gap is vagueness somebody signed and dated. Scope the scan to the
+task text outside `<gaps>`, or the mechanism item 29 built to make honesty possible becomes
+the thing that fails review.
 
 ```
 TODO

@@ -10,7 +10,7 @@ it.** Where a format document needs to show a shared element it shows an *exampl
 attributes, the legal values and the meaning live here.
 
 ```xml
-<schema-core version="schema-3"/>
+<schema-core version="schema-4"/>
 ```
 
 The version above is the artefact schema the toolchain currently writes. It is the same string
@@ -46,6 +46,7 @@ written to remove, and the surest way to grow one is to define it somewhere nobo
 | status vocabularies | [3](#3-status) | `/prd`, `/crd`, `crd-investigate` | `list-prds.py`, `/breakdown`, `/crd` |
 | priority vocabularies | [4](#4-priority) | `/prd`, `/crd` | `/breakdown`'s `--priority` and `--requirement-level` |
 | `<scope>`, `<confidence>` | [5](#5-scope-and-confidence) | `crd-impact-analysis` | *(none yet — item 49)* |
+| `<gaps>` / `<gap>` | [6](#6-gaps--what-a-document-knows-it-is-missing) | `/prd`, `/crd` | `breakdown-analyze-prd`, `breakdown-review-tasks`, `/breakdown`'s report |
 
 The empty cell in the last row is stated rather than hidden. `<scope>` and `<confidence>` are
 required fields on the CRD path with no consumer anywhere in the toolchain; they are in this
@@ -259,6 +260,64 @@ item 29.
 Both are required on the CRD path today. **Neither has a reader**, which is recorded here as a
 defect rather than as a schema.
 
+---
+
+## 6. Gaps — what a document knows it is missing
+
+```xml
+<gaps>
+  <gap id="3" kind="specification" raised="2026-08-18">
+  Retention period for archived links is unspecified.
+  </gap>
+</gaps>
+```
+
+| Part | Required | Holds |
+|---|---|---|
+| `id` | Yes | Integer, unique within `<gaps>`; core §1 — citable from a commit or a review |
+| `kind` | Yes | One of the five below |
+| `raised` | Yes | `YYYY-MM-DD`. Without it an open item and a stale one look identical |
+| body | Yes | Markdown, including links, exactly as elsewhere |
+
+**Uncertainty is recorded, not banned.** A toolchain that forbids `TBD` outright makes invention
+the compliant answer — the author writes something plausible because writing nothing fails
+review. A marked gap **passes review and blocks execution**; unmarked vagueness keeps failing
+review exactly as it did.
+
+### The five kinds, and what each blocks
+
+| `kind` | Blocks `defined`? | Blocks execution? |
+|---|---|---|
+| `specification` | **yes** — it bars `defined` outright | yes |
+| `dependency` | no | yes, until the dependency is named and available |
+| `decision` | no | yes — an undecided question built anyway is an invented one |
+| `ownership` | no | **warn** — the boundary may move under the task |
+| `evidence` | no | **warn** |
+
+**Three of the five warn rather than stop**, and that is the answer to the objection that killed
+an earlier design: an overnight run should be halted by a genuine unknown, not by every open
+item. A boolean `blocking=` could not make that distinction; `kind` can, and it also says *what
+sort of not-knowing this is*, which a boolean never could.
+
+**A `defined` artefact must not carry a `specification` gap.** That is a contradiction — claiming
+to be fully specified while declaring the specification incomplete — and it is the one rule here
+a script can enforce without judgement. It runs one way only: the absence of a gap proves
+nothing, so nothing is ever promoted *to* `defined` by this rule.
+
+**One element, not two.** `<confidence>` (§5) grades a whole analysis; a `<gap>` marks one
+specific unresolved point. They feed the same gate and the same report line, and neither is a
+substitute for the other — but a second element meaning *"something here is unknown"* would be
+the drift this file exists to prevent.
+
+### Where a gap is resolved
+
+**In the interview, wherever possible.** `/prd`'s phases and `/crd`'s change capture are better
+resolution mechanisms than anything downstream, because a human is answering. A gap is for what
+the interview *failed* to resolve — never a licence to stop asking.
+
+**A resolved gap is annotated, not deleted.** The `id` may already have been cited from a commit
+message or a review, and a deleted gap turns those citations into nothing. Say what resolved it
+and when, in the body, and leave it in place.
 ---
 
 ## Who cites this file

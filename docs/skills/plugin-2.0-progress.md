@@ -1001,7 +1001,8 @@ can land until the transformation is specified and checkable.
 | **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `9fc531c` |
 | **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `145282d` |
 | **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `28b85b9` |
-| **33 + 34** — EARS criteria, and criterion priority | **Landed** 2026-08-27 | `_` |
+| **33 + 34** — EARS criteria, and criterion priority | **Landed** 2026-08-27 | `4f81d54` |
+| **29 + 27 + 35 + 1 + 2 + 5** — the rest of the template | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -1497,6 +1498,156 @@ discarded the item's work along with the mutation.
 The operational fix is to run long rounds in the background rather than to shrink them. The
 standing rule against running the suite concurrently with a mutation round still holds, so the
 useful work while one runs is writing, not checking.
+---
+
+## 29 + 27 + 35 + 1 + 2 + 5 — the rest of the feature template, as one schema version
+
+**Addresses:** P19, P11, P25, P8, P4, P12 · **Files:** `schema/core.md`, `schema/prd-format.md`,
+`schema/migration.md`, `schema/scripts/migrate.py`,
+`skills/breakdown/scripts/check-references.py`, `skills/breakdown/SKILL.md`,
+`skills/breakdown-analyze-prd/SKILL.md`, `skills/breakdown-plan-layers/SKILL.md`,
+`skills/breakdown-review-tasks/SKILL.md`, `skills/breakdown/references/review-criteria.md`,
+`skills/breakdown/references/task-format-spec.md`, `tests/fixture/prd/schema-4/**` (new),
+`tests/fixture/prd/SCHEMAS.json`, `tests/test_toolchain.py`,
+`tests/mutants/phase4-schema4.py` (new), `CLAUDE.md`
+
+### Why six items are one commit
+
+They are one template. Landing them apart would mean six schema versions of one project, six
+migration steps over the same file, and six golden comparisons that each have to account for the
+other five. `SCHEMAS.json`'s `planned` block had already grouped them for exactly that reason.
+
+### What landed
+
+| Item | Element | Reader |
+|---|---|---|
+| 29 | `<gaps>` / `<gap kind= raised=>` | `analyze-prd` carries them, task files preserve them, `review-criteria` lets them through, `/breakdown` reports them |
+| 27 | `<depends-on slug= kind=>` | `analyze-prd` emits `feature_edges`; `plan-layers` derives the ordering from them |
+| 35 | `<architecturally-significant because= criteria=>` | `check-references.py` reports a flagged feature no record drives |
+| 1 | `<user-story>`, `<rationale>`, `<superseded-by>`, and `<priority>` **removed** from `<meta>` | the index is the only home for feature priority |
+| 2 | `<notes>` → `<data-model>` + `<considerations>` | `analyze-prd` reads the first and is told to leave the second alone |
+| 5 | no `<phases>` element, and the argument for never adding one | — |
+
+### The one that had to be given a reader before it could land
+
+**Item 35's flag had none.** The plan gives it two — item 6 screens for candidates and item 38's
+gate asserts every significant feature is named by a record — and both are Phase 5. A flag landing
+now with its readers a phase away is the unread element this plan exists to remove, and the
+regression suite would have been right to say so.
+
+So `check-references.py` gained the smallest honest reader available: **a significant feature that
+no decision record names in `**Drives:**` is reported STALE, never DANGLING.** The asymmetry is
+item 35's own — the flag is a judgement and its absence proves nothing, so the script says which
+features are in that state and stops. The one thing it *does* refuse is an
+`<architecturally-significant>` with an empty `because`, which records that something matters
+without saying what kind of thing it is.
+
+This is item 38's first assertion arriving early, minus the gate. Recorded as a deviation because
+the gate is still item 38's, and someone reading Phase 5 should find this already done rather
+than do it twice.
+
+### Item 29's corollary was the substantive half, not the element
+
+`<gaps>` is a schema addition and a small one. **The change that matters is to
+`review-criteria.md`: the placeholder ban now applies to *unmarked* vagueness only.**
+
+Banning `TBD` outright is precisely what makes invention the compliant answer — an author who
+cannot write *"we have not decided this"* writes something plausible instead, and nothing
+downstream can tell the difference. A marked gap **passes review and blocks execution**; unmarked
+vagueness keeps failing exactly as it did.
+
+The placeholder scan is now scoped *around* the `<gaps>` element rather than over the whole task,
+which is the mechanical form of the same rule. Without that scoping the mechanism item 29 built
+to make honesty possible would itself have failed review.
+
+### Deviations from the plan
+
+- **`<data-model>` extraction is mechanical only where the heading is.** Item 2 keys the split on
+  a bold `**Data model**` heading measured at zero false positives *on the corpus*. The fixture
+  has no such heading, so its `<data-model>` blocks are authored rather than migrated — which is
+  the honest outcome and is declared: `judgement_elements` in `SCHEMAS.json` lists `data-model`
+  for this step.
+
+- **`<definition>` is part of the judgement surface too.** Reclassifying a feature against its
+  migrated content is item 4, and a `specification` gap barring `defined` is a decision about the
+  feature rather than about its format. The fixture's `quokka-telemetry` is held at `in-progress`
+  for exactly that reason — **which is item 43's untested rule firing for the first time.** It
+  recorded the bar as *"sound in principle and unexercised in fact"* and named the fixture as
+  where it should first fire; it now does.
+
+- **Item 5 is a decision with a guard, not a deletion.** `<phases>` never existed in this
+  toolchain — it was proposed and superseded within the plan's own item. So what landed is the
+  *argument* for never adding it, in `prd-format.md`, plus a check that no template declares one.
+  An absence with no argument beside it is an omission somebody will helpfully correct.
+
+- **The schema-4 fixture is built by running the migration and then authoring the judgements.**
+  The first attempt hand-wrote the whole file, and the golden comparison then failed on
+  indentation — it was asserting whitespace rather than behaviour. Building it the way a real
+  migration runs makes the mechanical half byte-identical by construction, which leaves the check
+  exactly one thing to assert.
+
+### Verification
+
+Suite 78 → **82**, and the two migration checks now exercise a second mixed step.
+
+**`uncertainty has a channel that survives the handoff, and review lets it through`** reads core
+§6's kind table as data, asserts at least two kinds warn rather than stop, and follows the gap
+through every hop — analysis, task file, reviewer. The last assertion is scoped to *the line that
+carries the placeholder ban* in each of the two reviewers, and requires the word **unmarked** on
+it.
+
+**`feature dependencies are declared edges, and ordering is derived from them`** asserts the three
+kinds, that `reference` carries **no** ordering constraint, that the analyser refuses to derive
+edges from markdown links, and that `plan-layers` is told the ordering is its own job.
+
+**`the feature template carries intent, significance, and no second priority`** parses the
+template as XML: eight elements present, no `<priority>` in `<meta>`, `excluded` and `superseded`
+in the `<definition>` enum, no `<phases>` in any template and no `phase=` on any criterion — and
+that item 35's flag has a reader that reports rather than refuses.
+
+**``<considerations>` is unread by design, and says so`** asserts the distinction between *unread
+by design* and *unread by oversight* is actually written down, along with the verbatim promise
+that makes the two-way split safe.
+
+Mutation: **20/20 caught** against a stated-green baseline (`tests/mutants/phase4-schema4.py`) — after a first pass at 14/20, whose six misses are below.
+
+### Six misses in the first round, and five were one defect
+
+| Miss | Satisfied by | Fix |
+|---|---|---|
+| the `specification` gap stops barring `defined` | the row's *other* `yes` column | assert the **cell**, not the row |
+| the analyser starts answering gaps | heading **and** body both matched | scope to the **section heading** |
+| task files stop carrying gaps | the prose describing the rule | assert a **parsed `<gaps>` block** |
+| the `<phases>` argument is deleted | the mutant hit a neighbouring sentence | assert the *reason*, and mutate that |
+| the significance flag loses its reader | the script's **docstring** | **run the script** and assert the report |
+
+The sixth was a mutant whose anchor spanned a line wrap: the harness reported `ANCHOR NOT FOUND`
+rather than `MISSED`, which is a distinction it was built to draw and which saved a wrong
+conclusion about the check.
+
+**The last row is the one to keep.** `"architecturally-significant" in refs` passed while the
+script's pattern had been renamed to match nothing at all — the docstring satisfied it. The check
+now builds a temporary PRD with a flagged feature and asserts **both halves of the asymmetry**:
+reported when no record drives it, silent when one does, exit 0 either way. That is this
+repository's own *"by running the guard"* pattern, arriving at a check that had been written as a
+grep.
+
+> **The site-counting rule, stated for the third time in one phase and now with its own memory.**
+> Before a check is finished, count what satisfies it. If more than one thing does, no single
+> edit can break it. Three items running, and the same defect each time — which says the rule is
+> right and that knowing it is not sufficient. Only the round finds them.
+
+### Two of my own checks were wrong, both in ways this ledger has recorded before
+
+**A pattern containing backticks, matched against `prose()`.** The helper strips ` * _ so that a
+check does not fail on emphasis — which means a pattern written with backticks can never match.
+The assertion passed nothing for a run and reported green until an unrelated failure exposed it.
+
+**And `"<phases>" not in fmt`**, which failed on the heading of the section explaining why there
+is no `<phases>` element. That is item 9's F3 lesson exactly: *a check that fails when the
+absence is documented is a check pinned to prose*. The fix is the same one Phase 3 arrived at —
+assert over the **parsed template**, which is a structural claim about what the block is, rather
+than a word hunt over the document that describes it.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

@@ -292,6 +292,28 @@ The CRD already contains impact analysis, so less inference is needed.
 
 Save the analysis to `{tasks_dir}/analysis.json`
 
+**Then report what the documents said they did not know**, before any task is generated:
+
+```
+gaps: 4 blocking (2 decision, 1 dependency, 1 specification), 2 warnings (1 ownership, 1 evidence)
+  save-link#3     decision      raised 2026-08-18   Whether archived links keep their tags
+  ...
+architecturally significant: 2 features (cross-cutting, external-dependency)
+```
+
+**Blocking and warning are the author's call, not yours** — [core
+§6](../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing) maps `kind` to which is
+which. `specification`, `dependency` and `decision` stop execution; `ownership` and `evidence`
+warn. Generation continues either way: a gap is a fact about the source document, and refusing to
+generate would leave the person with neither tasks nor a list.
+
+**Never resolve a gap.** A gap this phase quietly answers becomes a requirement nobody wrote, and
+it arrives at the implementer with the same authority as one somebody did.
+
+Significant features are reported because a design step is affordable only over the handful that
+warrant one. `check-references.py` says which of them no decision record names — a warning, never
+a refusal, because the flag is a judgement and its absence proves nothing.
+
 ### Phase 3: Plan Layers
 
 If layer_plan.json exists, skip this phase.

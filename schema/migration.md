@@ -147,30 +147,48 @@ stopped at it entirely would leave the mechanical work undone across 550 criteri
 crossed it would invent the judgement it was written to protect. Neither failure announces
 itself, which is why the state is reported rather than inferred.
 
-### What is still to come
+## schema-3 → schema-4: the rest of the feature template
 
-The rest of the feature template — `<user-story>`, `<gaps>`, `<depends-on>`, the `<notes>` split,
-`<architecturally-significant>`, and the removal of the duplicated feature `<priority>` — lands
-together as **schema-4** with items 1, 2, 5, 27, 29 and 35. Its rules are drafted below, and the
-boundary is settled in advance because the boundary is what stops an agent guessing.
+Items 1, 2, 5, 27, 29 and 35. `<user-story>`, `<depends-on>`, `<gaps>`,
+`<architecturally-significant>`, the `<notes>` split, and the removal of the duplicated
+`<priority>`. **Mixed, like the step before it**, and for the same reason: some of it is a
+transformation of what is there, and the rest is content nothing in the file implies.
 
-**Mechanical, and `migrate.py`'s when schema-4 lands:**
+### The mechanical half — `migrate.py`'s
 
-| Transformation | Rule over the old shape | Item |
-|---|---|---|
-| `<priority>` deleted from a feature's `<meta>` | only after the index entry is confirmed to carry it | 1 |
-| `<notes>` prose split | a bold `**Data model**` heading opens `<data-model>`; **everything else goes to `<considerations>` verbatim** | 2 |
-| `<phases>` removed, `phase=` dropped from criteria | a `phase="2"` becomes a `<gap>` only where the file states a reason; otherwise it is dropped and the drop is reported | 5 |
-| `<affected-apis>` → `<affected-contracts kind="api">` | one contract element per api element | 57 |
+| # | Precondition | Transformation | Postcondition |
+|---|---|---|---|
+| R6 | a PRD feature file with `<meta><priority>`, or a `<notes>` not yet split, or no `<user-story>` | `<priority>` is deleted from `<meta>`; `<notes>` prose is split into `<data-model>` and `<considerations>` | no `<priority>` in `<meta>`; `<notes>` contains `<considerations>`; a `<user-story>` exists |
 
-**Judgement, and never mechanical:**
+**`<priority>` is deleted only after the index entry is confirmed to carry it.** The index is the
+survivor of the pair, so removing the copy before checking the original would lose the fact
+rather than deduplicate it.
 
-| Judgement | Why a machine must not | Item |
-|---|---|---|
-| writing a `<user-story>` | it is new content, not a transformation — nothing in the file to derive it from | 1 |
-| setting `<architecturally-significant>` | not derivable from any structural property — that is the point of the flag | 35 |
-| deciding a `<gap>`'s `kind` | the difference between a blocked dependency and an undecided question is what the gap is *for* | 29 |
-| declaring `<depends-on>` edges | a markdown link and a dependency are not the same thing, which is the defect item 27 exists to fix | 27 |
+**The `<notes>` split keys on a bold `**Data model**` heading, and everything else goes to
+`<considerations>` verbatim.** That is what makes it mechanical at all: one side of a two-way
+split never has to be understood. A three-way split — data model, relationships, considerations —
+was on this plan's critical path until `<depends-on>` took the relationships, and it needed a
+judgement per file.
+
+**A feature with no `<notes>` gains none.** The rule transforms prose that exists; it is not an
+instruction to write some.
+
+### The judgement half — never the script's
+
+| Judgement | Why a machine must not |
+|---|---|
+| writing a `<user-story>` | new content, not a transformation. Nothing in the file implies the benefit clause, which is the half that matters |
+| declaring `<depends-on>` edges | a markdown link and a dependency are not the same thing, and that ambiguity is the defect item 27 exists to fix. Deriving edges from links puts the guess back |
+| deciding a `<gap>`'s `kind` | the difference between a blocked dependency and an undecided question is what the gap is *for* |
+| setting `<architecturally-significant>` | not derivable from any structural property — that is the point of the flag |
+| extracting a `<data-model>` where no heading marks one | the heading convention is what makes the split mechanical; without it, the boundary is a judgement |
+| reclassifying `<definition>` | item 4. A `specification` gap bars `defined`, and applying that is a decision about the feature, not about its format |
+
+**`<user-story>` is required for `defined`, not for `tbd`.** A feature acquires one on promotion,
+so the migration owes stories only for the features already at `defined` — which is why R6's
+postcondition names the story and its precondition does not care how many are missing.
+
+---
 
 ---
 
@@ -208,9 +226,9 @@ than three by design.
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --detect
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3 --dry-run
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3
-python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-3 --check
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-4 --dry-run
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-4
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-4 --check
 ```
 
 `<path>` is a file or a directory; a directory is walked and **each file decided on its own** —

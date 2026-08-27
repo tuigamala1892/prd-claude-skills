@@ -27,7 +27,10 @@ Failure on ANY critical criterion means the task FAILS.
 #### 1. Completeness
 - All required XML sections present
 - No empty sections
-- No placeholder text: "TODO", "TBD", "...", "[fill in]", "etc."
+- No **unmarked** placeholder text: "TODO", "TBD", "...", "[fill in]", "etc."
+  A `<gap>` carried from the PRD or CRD is not a placeholder — it is declared uncertainty,
+  and it passes review while blocking execution. Marked and unmarked are different things,
+  and banning both is what makes invention the compliant answer (item 29).
 
 #### 2. Self-Containment
 - All context is inline (no "see PRD" or "check docs")

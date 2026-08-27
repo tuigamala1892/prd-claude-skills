@@ -301,10 +301,36 @@ Return a JSON object with this structure:
 - Keep related files together (model + migration, component + styles)
 
 ### Dependency Ordering
+
+**Start from `analysis.json`'s `feature_edges`, which is declared rather than inferred.** Each
+entry is one `<depends-on slug= kind=>` an author wrote while the feature was in front of them.
+Two of the three kinds constrain order and one does not:
+
+| `kind` | Order constraint |
+|---|---|
+| `data` | the depended-on feature's model work comes first |
+| `runtime` | the depended-on feature must exist before the caller is wired |
+| `reference` | **none.** It says the two are related, not that one waits |
+
+**`reference` carrying no constraint is the point of the element.** Before it existed, a plain
+markdown link between features was indistinguishable from a dependency, so either every mention
+constrained the order or none did.
+
+**You own the ordering, and you are the only component that does.** `what-next.md` may contain a
+sequence someone recorded during the interview; it is a second model's unvalidated inference,
+produced without a dependency graph and without knowing this skill exists. Read its *rationale*
+— why a spike matters, what it must measure — and derive the order here, from the edges.
+
+Then, within each layer:
 - Within Layer 1: Order by model dependencies (base models first)
 - Within Layer 2: Order by API dependencies (auth before protected endpoints)
 - Within Layer 3: Order by component hierarchy (atoms before molecules)
 - Within Layer 4: Order by flow (setup before flows)
+
+**A `data` or `runtime` edge that would order a later layer before an earlier one is a
+contradiction, not an ordering.** Report it and place the tasks by layer; a feature edge cannot
+override the layer graph, because the layer graph is the project's declared rule and the edge is
+one author's note.
 
 ### Task Naming Convention
 - Use verb + noun: "Create X", "Implement X", "Wire X"

@@ -15,6 +15,17 @@ WHAT IS CHECKED
                       a citation of a *resolved* question is reported with what resolved it
   **Drives:** links   in each decision record, resolve to a file that exists
   P-NNN citations     resolve to a <principle id=> in architecture.md's <principles> section
+  significant features are named by some record's **Drives:**, or the absence is reported
+
+A FLAG THAT REPORTS, NEVER REFUSES (item 35)
+
+`<architecturally-significant>` is a declared judgement -- not derivable from any structural
+property, which is the whole reason it is a flag. So a flagged feature that no decision record
+drives is STALE, not DANGLING: it may be a decision nobody has written yet, or a feature that
+genuinely needs none. The script says which features are in that state and stops there.
+
+Without this the flag would have had no reader until item 38's gate, and an element nobody reads
+is the defect this plan exists to remove.
 
 PRINCIPLES WERE THE DEFERRED TENTH (item 39, closed by items 28 and 37)
 
@@ -75,6 +86,9 @@ OQ_CITATION = re.compile(r"\bOQ-(\d{1,4})\b")
 # `**Status:** Superseded by ADR-014` -- item 36's convention, already regular in the corpus.
 STATUS_FIELD = re.compile(r"^\s*\*\*Status:\*\*\s*(.+?)\s*$", re.M)
 DRIVES_FIELD = re.compile(r"^\s*\*\*Drives:\*\*\s*(.+?)\s*$", re.M)
+# Item 35. `criteria=` is optional and not read here -- which criteria carry the
+# significance is for a person reading the record, not for this check.
+SIGNIFICANT = re.compile(r"<architecturally-significant\b([^>]*)>")
 MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 # An id in a filename: `ADR-007-title.md`, `007-title.md`, `adr007.md`.
 FILENAME_ID = re.compile(r"^(?:adr[-_]?)?(\d{1,4})\b", re.I)
@@ -294,6 +308,29 @@ def main():
                 if not os.path.exists(resolved):
                     errors.append(f"{os.path.basename(rec['path'])}: **Drives:** "
                                   f"{target} does not exist")
+
+    # Item 35's direction: a feature declaring itself architecturally significant, and no
+    # record driving it. Reported, never refused -- see the docstring.
+    driven = set()
+    if records:
+        for rec in records.values():
+            for target in rec["drives"]:
+                driven.add(os.path.basename(target.split("#")[0]))
+
+    for path_ in markdown_files(prd_dir):
+        rel = os.path.relpath(path_, prd_dir)
+        for attrs in SIGNIFICANT.findall(read(path_)):
+            counted += 1
+            because = re.search(r'because="([^"]*)"', attrs)
+            if not because or not because.group(1).strip():
+                errors.append(f"{rel}: <architecturally-significant> names no `because`, so it "
+                              f"records that something matters and not what kind of thing it is")
+            elif records is None:
+                warnings.append(f"{rel}: is architecturally significant and no decision "
+                                f"directory was found -- pass --adr-dir")
+            elif os.path.basename(path_) not in driven:
+                warnings.append(f"{rel}: is architecturally significant ({because.group(1)}) "
+                                f"and no decision record names it in **Drives:**")
 
     if not args.quiet:
         for line in errors:

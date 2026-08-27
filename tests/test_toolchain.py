@@ -1028,8 +1028,13 @@ def _():
         assert os.path.isfile(path), f"index names features/{slug}.md and it is not there"
         body = open(path, encoding="utf-8").read()
         assert f"<slug>{slug}</slug>" in body, f"{slug}.md does not declare its own slug"
-        assert f"<priority>{tier}</priority>" in body, (
-            f"{slug}.md and the index disagree about priority; the probe measures priority")
+        # Item 1 removed <priority> from the feature file: the index entry is the only place
+        # a feature's tier is recorded. Asserting the two AGREE is no longer possible, and the
+        # stronger claim replaces it -- the feature file must not carry a second copy at all,
+        # because two writers for one fact is what item 1 was about.
+        assert "<priority>" not in re.sub(r"<criterion\b[^>]*>", "", body), (
+            f"{slug}.md carries a <priority> of its own. Priority lives on the index entry; a "
+            f"copy here is the duplication item 1 removed, and nothing keeps the two in step")
         assert len(re.findall(r"<criterion\b", body)) == 2, (
             f"{slug}.md must carry exactly two criteria -- P5 says a bigger probe fails for "
             f"reasons that have nothing to do with what it measures")
@@ -1039,6 +1044,9 @@ def _():
     # ONLY by its priority. An instruction in the prose does the filtering the toolchain is
     # supposed to be measured on.
     wont = open(os.path.join(probe, "features", "quokka-telemetry.md"), encoding="utf-8").read()
+    assert ('<feature priority="wont-have" file="features/quokka-telemetry.md">' in index), (
+        "the index does not declare quokka-telemetry as wont-have, and since item 1 the index "
+        "is the only place that declaration can live")
     body = re.sub(r"<priority>.*?</priority>", "", wont)
     for instruction in ("must not be built", "must not be implemented", "do not build",
                         "explicitly rejected", "out of scope", "not wanted"):
@@ -3810,17 +3818,38 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _strip_judgement(text, elements):
+    """Remove the elements a mixed step's migration is forbidden to produce.
+
+    What is left is exactly what the script was supposed to do, so comparing it to the fixture
+    asserts the mechanical half and says nothing about the judgement half -- which is the only
+    honest golden comparison for a step that carries both.
+    """
+    for name in elements:
+        text = re.sub(r"[ \t]*<%s\b[^>]*/>\n?" % name, "", text)
+        text = re.sub(r"[ \t]*<%s\b.*?</%s>\n?" % (name, name), "", text, flags=re.S)
+    # Blank lines go too. Removing an element leaves the whitespace that framed it, and
+    # that whitespace is not content -- comparing it would make the check fail on where a
+    # paragraph break happened to fall rather than on what the migration did.
+    return "\n".join(ln for ln in text.splitlines() if ln.strip())
+
+
 @check("a migration it may not finish does the half it can, and says which half -- by running it",
        finding="P28")
 def _():
-    """Items 33 and 41 together. The schema-2 -> schema-3 step is the first that is not fully
-    mechanical: `priority` and `derived-from` are the script's, and the EARS sentence and its
-    `pattern` are judgements the guide forbids a machine to make.
+    """Items 33, 41 and the schema-4 group together.
+
+    A step is `mixed` when part of it is mechanical and part is a judgement the guide forbids a
+    machine to make -- rewriting a Given/When/Then into EARS and assigning its `pattern`, or
+    writing a `<user-story>` there is nothing in the file to derive.
 
     A script that stopped at the boundary would leave the mechanical work undone; one that
     crossed it would invent the judgement. So it does its half, reports PARTIAL, and `--check`
-    refuses the tree -- and each of those three is asserted here, because two of them passing
-    without the third is exactly the failure that reads as success.
+    refuses the tree -- and each of those three is asserted, because two of them passing without
+    the third is exactly the failure that reads as success.
+
+    EVERY mixed step is exercised, not the first one found. Testing one of two leaves the other
+    unchecked while reporting green, which is the site-counting defect in its other direction.
     """
     import shutil
     import tempfile
@@ -3830,58 +3859,70 @@ def _():
     mixed = [(versions[i - 1], n) for i, n in enumerate(versions)
              if i and reg["versions"][n].get("migration_from_previous") == "mixed"]
     assert mixed, "no step is declared `mixed`, so the PARTIAL state is unexercised"
-    src_version, target = mixed[0]
 
-    root = tempfile.mkdtemp(prefix="prd-partial-")
-    try:
-        work = os.path.join(root, "tree")
-        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+    for src_version, target in mixed:
+        judgement = reg["versions"][target].get("judgement_elements") or []
+        assert judgement, (
+            f"{target} is a mixed step and names no judgement_elements, so there is nothing to "
+            f"exclude from the comparison and nothing recorded about what the script may not do")
 
-        p = _run_migrate(work, "--to", target)
-        assert p.returncode == 0, f"the mechanical half failed: {p.stdout}\n{p.stderr}"
-        assert "PARTIAL" in p.stdout or "PARTIAL" in p.stderr, (
-            f"a step carrying judgements reported no PARTIAL state, so 'the script ran' and "
-            f"'the migration finished' are indistinguishable:\n{p.stdout}\n{p.stderr}")
+        root = tempfile.mkdtemp(prefix="prd-partial-")
+        try:
+            work = os.path.join(root, "tree")
+            shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
 
-        p = _run_migrate(work, "--to", target, "--quiet", "--check")
-        assert p.returncode == 1, (
-            f"--check called a partly migrated tree finished (exit {p.returncode}). The whole "
-            f"point of the PARTIAL state is that this run refuses")
+            p = _run_migrate(work, "--to", target)
+            assert p.returncode == 0, (
+                f"{src_version} -> {target}: the mechanical half failed: {p.stdout}\n{p.stderr}")
+            assert "PARTIAL" in p.stdout or "PARTIAL" in p.stderr, (
+                f"{src_version} -> {target} carries judgements and reported no PARTIAL state, so "
+                f"'the script ran' and 'the migration finished' are indistinguishable:\n"
+                f"{p.stdout}\n{p.stderr}")
 
-        # The mechanical half, exactly: every criterion gains both attributes...
-        expected_root = os.path.join(REPO, "tests", "fixture", "prd", target)
-        for dp, _dn, fn in os.walk(work):
-            for n in sorted(fn):
-                got = open(os.path.join(dp, n), encoding="utf-8").read()
-                rel = os.path.relpath(os.path.join(dp, n), work)
-                tags = re.findall(r"<criterion\b([^>]*)>", got)
-                for t in tags:
-                    assert 'priority="' in t, (
-                        f"{rel} has a criterion with no priority after migration. The value is "
-                        f"written in rather than defaulted, or a partly-assigned corpus cannot "
-                        f"be told from a finished one")
-                    assert "derived-from=" in t, (
-                        f"{rel} has a migrated criterion with no derived-from, so the rewrite "
-                        f"cannot be reviewed against what it came from")
-                    # ...and the judgement half, not at all.
-                    assert "pattern=" not in t, (
-                        f"{rel} has a criterion carrying a `pattern` the script assigned. A "
-                        f"pattern derived by the heuristics it exists to replace is circular, "
-                        f"which is why the guide forbids it")
+            p = _run_migrate(work, "--to", target, "--quiet", "--check")
+            assert p.returncode == 1, (
+                f"{src_version} -> {target}: --check called a partly migrated tree finished "
+                f"(exit {p.returncode}). The whole point of PARTIAL is that this run refuses")
 
-                # Everything OUTSIDE the criteria must be untouched by this step.
-                want = open(os.path.join(expected_root, rel), encoding="utf-8").read()
-                strip = lambda x: re.sub(r"<acceptance-criteria>.*?</acceptance-criteria>", "",
-                                         x, flags=re.S)
-                assert strip(got) == strip(want), (
-                    f"{rel} differs from the {target} fixture OUTSIDE its criteria. This step "
-                    f"is about criteria; anything else it moved, it moved by accident")
+            expected_root = os.path.join(REPO, "tests", "fixture", "prd", target)
+            for dp, _dn, fn in os.walk(work):
+                for n in sorted(fn):
+                    rel = os.path.relpath(os.path.join(dp, n), work)
+                    got = open(os.path.join(dp, n), encoding="utf-8").read()
+                    want = open(os.path.join(expected_root, rel), encoding="utf-8").read()
 
-                # Criterion count in equals count out -- item 33's own invariant.
-                assert len(tags) == len(re.findall(r"<criterion\b", want)), (
-                    f"{rel} has a different number of criteria from the {target} fixture")
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+                    # Everything OUTSIDE the judgement surface must match the fixture exactly.
+                    assert _strip_judgement(got, judgement) == _strip_judgement(want, judgement), (
+                        f"{src_version} -> {target}: {rel} differs from the fixture outside "
+                        f"{judgement}. That is the half the script owns, so anything it moved "
+                        f"there, it moved by accident")
+
+                    # And it must not have produced any of the forbidden elements.
+                    for name in judgement:
+                        if name in ("acceptance-criteria", "definition"):
+                            continue        # these exist before the step; see below
+                        assert f"<{name}" not in got, (
+                            f"{src_version} -> {target}: {rel} carries a <{name}> the script "
+                            f"produced. Assigning it is a judgement the guide forbids")
+
+            # Criteria and definition exist before the step, so their ABSENCE cannot be the test.
+            # The specific forbidden act is the attribute and the value, so assert those.
+            if "acceptance-criteria" in judgement:
+                for dp, _dn, fn in os.walk(work):
+                    for n in sorted(fn):
+                        got = open(os.path.join(dp, n), encoding="utf-8").read()
+                        rel = os.path.relpath(os.path.join(dp, n), work)
+                        for t in re.findall(r"<criterion\b([^>]*)>", got):
+                            assert 'priority="' in t and "derived-from=" in t, (
+                                f"{rel} has a criterion missing priority or derived-from. The "
+                                f"value is written in rather than defaulted, or a partly "
+                                f"assigned corpus cannot be told from a finished one")
+                            assert "pattern=" not in t, (
+                                f"{rel} has a criterion carrying a `pattern` the script "
+                                f"assigned. A pattern derived by the heuristics it exists to "
+                                f"replace is circular")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 @check("a file the migration cannot place stops it, and is named -- by running it",
@@ -4096,6 +4137,274 @@ def _():
     assert re.search(r"Report what the filter excluded", skill), (
         "/breakdown never reports what --requirement-level removed. A filter whose effect is "
         "invisible is a filter nobody can check")
+# ----------------------------------------------- the feature template's other half (schema-4)
+
+GAP_KINDS = {"specification", "dependency", "decision", "ownership", "evidence"}
+EDGE_KINDS = {"data", "runtime", "reference"}
+
+
+@check("uncertainty has a channel that survives the handoff, and review lets it through",
+       finding="P19")
+def _():
+    """Item 29.
+
+    Banning `TBD` outright is what makes INVENTION the compliant answer: an author who cannot
+    write "we have not decided this" writes something plausible instead, and nothing downstream
+    can tell the difference. So a marked gap must PASS review and BLOCK execution, while
+    unmarked vagueness keeps failing exactly as it did.
+
+    Three things have to hold together or the channel leaks:
+      1. the five kinds exist and each says whether it blocks or warns;
+      2. every hop preserves the gap -- analysis carries it, the task file carries it;
+      3. the reviewer's placeholder ban is scoped AROUND it.
+    """
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("## 6. Gaps", 1)
+    assert len(region) == 2, "core.md defines no <gaps> element"
+    region = region[1]
+
+    rows = [r.strip() for r in region.split("### The five kinds", 1)[1].splitlines()
+            if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r]
+    kinds = {}
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        m = re.search(r"`([a-z]+)`", cells[0])
+        if m:
+            kinds[m.group(1)] = prose(cells[2])
+    assert set(kinds) == GAP_KINDS, (
+        f"core §6 declares kinds {sorted(kinds)}; item 29 defines {sorted(GAP_KINDS)}")
+
+    warners = [k for k, v in kinds.items() if re.search(r"\bwarn\b", v, re.I)]
+    assert len(warners) >= 2, (
+        f"only {warners} warn rather than stop. Three of the five warn on purpose -- an "
+        f"overnight run should be halted by a genuine unknown, not by every open item, and a "
+        f"boolean `blocking=` could not draw that line")
+    # The CELL, not the row. `specification ... yes` matched the second column as happily as
+    # the first, so a mutant that flipped "bars defined" to "no" was invisible.
+    spec_row = next(r for r in rows if "`specification`" in r)
+    bars_definition = [c.strip() for c in spec_row.strip("|").split("|")][1]
+    assert re.search(r"\byes\b", prose(bars_definition), re.I), (
+        f"core §6's `specification` row says {bars_definition!r} under 'blocks definition'. "
+        f"That a specification gap bars `defined` is the one rule here a script can enforce "
+        f"without judgement")
+
+    # Every hop. A channel that survives four of five hops delivers nothing.
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    assert '"gaps"' in analyzer, "analysis.json carries no gaps, so nothing downstream sees one"
+    # Scoped to the SECTION HEADING. Searching the document matched the body sentence as well,
+    # so retitling the section "gaps are reviewed and settled here" changed nothing.
+    headings = [ln for ln in analyzer.splitlines() if ln.startswith("###") and "gap" in ln.lower()]
+    assert headings, "analyze-prd has no section about gaps"
+    assert any(re.search(r"carried, never resolved", prose(h), re.I) for h in headings), (
+        f"analyze-prd's gaps section is titled {headings!r}. It has to say the gaps are carried "
+        f"and not resolved -- a gap this pass quietly answers becomes a requirement nobody "
+        f"wrote, arriving with an author's authority")
+
+    task_fmt = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                    encoding="utf-8").read()
+    # A parsed block whose root is <gaps>, not the word in a sentence. The prose describing the
+    # rule survived the sample being commented out, and the prose is not what a generator copies.
+    assert any(b.lstrip().startswith("<gaps>") for b in xml_bodies(task_fmt)), (
+        "task-format-spec.md shows no <gaps> block. A task file is self-contained by mandate, "
+        "so an implementer who cannot see the gap fills it in")
+
+    # The corollary, and the thing most likely to be reverted by someone tidying: the ban is on
+    # UNMARKED vagueness. Scoped to the line that carries the ban, not the document.
+    for rel in ("skills/breakdown/references/review-criteria.md",
+                "skills/breakdown-review-tasks/SKILL.md"):
+        text = open(os.path.join(REPO, rel), encoding="utf-8").read()
+        bans = [ln for ln in text.splitlines() if "placeholder text" in ln]
+        assert bans, f"{rel} no longer states a placeholder ban at all"
+        for ln in bans:
+            assert re.search(r"\bunmarked\b", ln, re.I), (
+                f"{rel} bans placeholders without qualifying it to UNMARKED ones:\n      "
+                f"{ln.strip()}\n    A declared <gap> failing review is what makes invention the "
+                f"compliant answer (item 29)")
+
+
+@check("feature dependencies are declared edges, and ordering is derived from them",
+       finding="P11")
+def _():
+    """Item 27.
+
+    `what-next.md`'s task-generation order was deduced by a model during `/prd` -- a second
+    model's unvalidated inference, produced with more context than `/breakdown` has but with no
+    dependency graph and no awareness that layer planning exists to do the job. The durable
+    artefact is the dependencies, not the order.
+
+    So: the element exists with a `kind`, the analyser emits the edges, and the component that
+    owns ordering is told to derive from them rather than to read a sequence.
+    """
+    fmt = open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read()
+    region = fmt.split("### `<depends-on>`", 1)
+    assert len(region) == 2, "prd-format.md defines no <depends-on> element"
+    region = region[1].split("\n### ", 1)[0]
+
+    rows = [r.strip() for r in region.splitlines() if r.strip().startswith("|")]
+    kinds = {m.group(1) for r in rows[2:] for m in [re.match(r"\|\s*`([a-z]+)`", r)] if m}
+    assert kinds == EDGE_KINDS, f"<depends-on> declares kinds {sorted(kinds)}, not {sorted(EDGE_KINDS)}"
+    # NOT through prose(): it strips backticks, so a pattern containing them can never match.
+    # The check passed nothing for one run because of exactly that.
+    assert "`reference`" in region, "the reference kind is undocumented"
+
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    assert "feature_edges" in analyzer, "analysis.json carries no feature edges"
+    assert re.search(r"markdown link between features is not an edge", prose(analyzer), re.I), (
+        "analyze-prd does not say a plain link is not a dependency, which is the ambiguity "
+        "<depends-on> exists to remove -- re-deriving edges from links puts the guess back")
+
+    planner = open(os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md"),
+                   encoding="utf-8").read()
+    flat = prose(planner)
+    assert "feature_edges" in planner, "plan-layers never reads the declared edges"
+    edge_rows = [ln for ln in planner.splitlines() if re.match(r"\|\s*`reference`", ln.strip())]
+    assert edge_rows, "plan-layers does not say what each edge kind constrains"
+    assert re.search(r"\bnone\b", prose(edge_rows[0]), re.I), (
+        "plan-layers gives `reference` an ordering constraint. That it carries none is the "
+        "point of having three kinds rather than a boolean")
+    assert re.search(r"You own the ordering", flat), (
+        "plan-layers is not told that ordering is its own job, so a sequence recorded during "
+        "the interview can still be deferred to -- two producers for one artefact")
+
+
+@check("the feature template carries intent, significance, and no second priority",
+       finding="P8")
+def _():
+    """Items 1, 2, 5 and 35, which are one template between them.
+
+    Parsed as XML rather than matched: the template is read for the elements it declares, so
+    this survives rewording and fails when one of the six items is quietly dropped.
+    """
+    fmt = open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read()
+    blocks = [b for b in xml_bodies(fmt) if b.lstrip().startswith("<feature>")]
+    assert blocks, "prd-format.md carries no <feature> template"
+    tpl = blocks[0]
+
+    for element in ("<user-story>", "<gaps>", "<data-model>", "<considerations>",
+                    "<depends-on", "<architecturally-significant", "<rationale>",
+                    "<superseded-by"):
+        assert element in tpl, f"the feature template declares no {element}"
+
+    meta = re.search(r"<meta>(.*?)</meta>", tpl, re.S)
+    assert meta, "the feature template has no <meta>"
+    assert "<priority>" not in meta.group(1), (
+        "the feature template still carries <priority> in <meta>. It duplicates the index "
+        "entry with nothing keeping the two in step -- item 1 removes it")
+
+    definition = re.search(r"<definition>([^<]*)</definition>", meta.group(1))
+    assert definition, "the feature template declares no <definition>"
+    values = set(definition.group(1).split("|"))
+    assert {"excluded", "superseded"} <= values, (
+        f"<definition> offers {sorted(values)}. `excluded` and `superseded` are how a feature "
+        f"that is not being built stays in the PRD as a record instead of vanishing from it")
+
+    # Item 5, which is a decision rather than a deletion: nothing ever had <phases>, and the
+    # argument for never adding it has to be written down or it gets added.
+    #
+    # Scoped to the PARSED TEMPLATE, not to the document. The first version searched the whole
+    # file for `<phases>` and failed on the heading of the section explaining why there isn't
+    # one -- the F3 mistake in miniature: a check that fails when the absence is documented.
+    for block in xml_bodies(fmt):
+        assert "<phases>" not in block, (
+            "a <phases> element has appeared in a template. Phasing is priority plus gaps")
+    for attrs in re.findall(r"<criterion\b([^>]*)>", tpl):
+        assert "phase=" not in attrs, (
+            "a criterion carries a phase= attribute. Item 5 removed it: a phase says `later` "
+            "and carries nothing else, while a gap says why and since when")
+    region = fmt.split("### There is no `<phases>` element", 1)
+    assert len(region) == 2, (
+        "prd-format.md does not record WHY there is no <phases> element. An absence with no "
+        "argument beside it is an omission somebody will helpfully correct")
+    flat = prose(region[1].split("\n## ", 1)[0])
+    assert re.search(r"essential but blocked", flat), (
+        "the <phases> decision no longer states the case that looked like it needed a third "
+        "axis, which is the only part of the argument a reader will want to check")
+    assert re.search(r"\bdemote\b", flat), (
+        "the <phases> decision no longer says what a phase would have COST -- forcing an author "
+        "to demote something important in order to say it is stuck. Without that sentence the "
+        "section records a preference rather than an argument")
+
+    # Item 35 needs a reader, or it is the unread element this plan exists to remove -- and
+    # the reader is verified BY RUNNING IT. `"architecturally-significant" in refs` passed
+    # while the script's pattern had been renamed to match nothing: the docstring satisfied it.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="prd-significant-")
+    try:
+        prd = os.path.join(root, "prd", "features")
+        adr = os.path.join(root, "architecture", "decisions")
+        os.makedirs(prd)
+        os.makedirs(adr)
+        open(os.path.join(root, "prd", "index.md"), "w", encoding="utf-8",
+             newline="\n").write("<prd><meta><slug>x</slug></meta></prd>\n")
+        open(os.path.join(prd, "flagged.md"), "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <slug>flagged</slug>\n"
+            '    <architecturally-significant because="cross-cutting"/>\n'
+            "  </meta>\n</feature>\n")
+
+        p = subprocess.run([sys.executable, script, os.path.join(root, "prd"),
+                            "--adr-dir", adr], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        out = p.stdout + p.stderr
+        assert "flagged.md" in out and "STALE" in out, (
+            f"a feature declaring itself architecturally significant, with no record driving "
+            f"it, was not reported. A flag nothing reads is the defect item 23's rule is "
+            f"about:\n{out}")
+        assert p.returncode == 0, (
+            f"the report REFUSED (exit {p.returncode}). The flag is a judgement and its absence "
+            f"proves nothing, so this reports and never refuses")
+
+        # And the other half of the asymmetry: a record that drives it silences the report.
+        open(os.path.join(adr, "ADR-001-flagged.md"), "w", encoding="utf-8",
+             newline="\n").write(
+            "# ADR-001: Flagged crosses every context\n\n**Status:** Accepted\n"
+            "**Drives:** [Flagged](../../prd/features/flagged.md)\n")
+        p = subprocess.run([sys.executable, script, os.path.join(root, "prd"),
+                            "--adr-dir", adr], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        assert "flagged.md: is architecturally significant" not in (p.stdout + p.stderr), (
+            "a significant feature named by a record's **Drives:** is still reported. The "
+            "report would then fire on every flagged feature and be ignored")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`<considerations>` is unread by design, and says so", finding="P4")
+def _():
+    """Item 2's smaller half, and the one most likely to erode.
+
+    `<data-model>` earns an element because a consumer must UNDERSTAND it -- analyze-prd reads
+    entities and fields and stops inferring them. `<considerations>` earns one because it is the
+    catch-all that makes migration lossless, and nothing reads it.
+
+    The distinction between *unread by design* and *unread by oversight* is the whole point, and
+    it only exists if it is written down.
+    """
+    fmt = prose(open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read())
+    assert re.search(r"considerations> is unread by design", fmt), (
+        "prd-format.md does not mark <considerations> unread by design, so it is "
+        "indistinguishable from an element nobody got round to reading")
+    assert re.search(r"verbatim, never dropped", fmt), (
+        "the template no longer promises that unrecognised note content survives migration "
+        "verbatim. That promise is what makes the two-way split safe at all")
+    assert re.search(r"no <relationships> element", fmt, re.I), (
+        "prd-format.md does not record that <relationships> was dropped. §4.3 removed it "
+        "because <depends-on> already carries the outbound edges, and an absence with no "
+        "argument beside it gets helpfully restored")
+
+    analyzer = prose(open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                          encoding="utf-8").read())
+    assert re.search(r"considerations> is not read", analyzer), (
+        "analyze-prd is not told to leave <considerations> alone, so the catch-all becomes "
+        "another thing to mine and the split stops being safe")
+    assert re.search(r"When a feature declares one, copy it", analyzer), (
+        "analyze-prd is not told to prefer a declared <data-model> over its own inference, "
+        "which is the entire reason the element exists (P4)")
 
 # ------------------------------------------------------------------- behavioural
 

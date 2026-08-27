@@ -327,6 +327,12 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
 - TDD is mandatory: `<test-requirements>` is a required section in `task-format-spec.md` and a
   critical criterion in `review-criteria.md`; `execute-batch` runs the red/green cycle
 - Run `tests/test_toolchain.py` before and after any change to skill frontmatter or git commands
+- **A feature file's other elements, since schema-4**: `<user-story>` before the description
+  (required for `defined`), `<depends-on slug= kind=>` after it, `<gaps>` between the criteria and
+  the notes, `<notes>` split into `<data-model>` (read) and `<considerations>` (unread by design),
+  and an optional `<architecturally-significant>` in `<meta>`. `<priority>` is **gone** from the
+  feature file — the index entry is the only place it lives. **There is no `<phases>` element**,
+  deliberately: phasing is priority plus gaps.
 - **A `<criterion>` is one EARS sentence, not a Given/When/Then triple** (item 33). It carries
   `pattern` — one of six — and `priority` in `P0|P1|P2`, which is deliberately not MoSCoW so that
   no flag or report line is ambiguous about which level it means (item 34). `pattern` is assigned

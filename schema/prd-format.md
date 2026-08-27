@@ -151,13 +151,24 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
   <meta>
     <name>{{Feature Name}}</name>
     <slug>{{feature-slug}}</slug>
-    <priority>must-have|should-have|could-have</priority>
-    <definition>defined|tbd|in-progress</definition>
+    <!-- priority is NOT here. It lives on the index entry -- core §4 -->
+    <definition>tbd|in-progress|defined|excluded|superseded</definition>
+    <!-- optional; a judgement, never derived. See below -->
+    <architecturally-significant
+        because="quality-attribute|risk|first-of-a-kind|cross-cutting|external-dependency|constraint"
+        criteria="3,7"/>
   </meta>
+
+  <user-story>
+  As a {{actor}}, I want {{capability}}, so that {{benefit}}.
+  </user-story>
 
   <description>
   {{Detailed feature description}}
   </description>
+
+  <!-- zero or more; the edges plan-layers orders by -->
+  <depends-on slug="{{other-feature}}" kind="data|runtime|reference"/>
 
   <acceptance-criteria>
     <criterion id="1" pattern="event-driven" priority="P0">
@@ -169,9 +180,25 @@ step can. This is the only mechanism recording that a phase ran and chose nothin
     <!-- More criteria -->
   </acceptance-criteria>
 
+  <gaps>
+    <gap id="1" kind="dependency" raised="{{YYYY-MM-DD}}">
+    {{What is not known, in markdown. Core §6}}
+    </gap>
+  </gaps>
+
   <notes>
-  {{Any additional notes, edge cases, or considerations}}
+    <data-model>
+    {{Entities and fields. READ by analyze-prd -- see below}}
+    </data-model>
+    <considerations>
+    {{Everything else. Deliberately unread}}
+    </considerations>
   </notes>
+
+  <!-- required when definition is `excluded` -->
+  <rationale>{{why this feature is not being built}}</rationale>
+  <!-- required when definition is `superseded` -->
+  <superseded-by slug="{{the feature that absorbed it}}"/>
 </feature>
 ```
 
@@ -185,12 +212,109 @@ said what happens when things go right and nothing else, and the template showin
 is how a corpus ends up with no `unwanted-behaviour` criteria in it at all.
 
 **`<definition>` is core §3's second row** — how completely this feature is *defined*, never how
-much of it is built. It was called `<status>` until item 45; a feature file that still says
-`<status>` is read as `<definition>` and rewritten by item 41's migration, never refused.
+much of it is built. `excluded` and `superseded` are how a feature that is *not being built*
+stays in the PRD as a record instead of vanishing from it, and each is paired with the element
+that says why: no `<rationale>` on an `excluded` feature, and no successor on a `superseded` one,
+means the file records a decision nobody can reconstruct.
 
-**`<priority>` in `<meta>` duplicates the index entry, and the index is the one that counts.**
-Two writers for one fact, with nothing keeping them in step and no check that they agree. Item 1
-removes it from here; until then, a reader that must choose reads `index.md`.
+**`<gaps>` is core §6**, and it goes between `</acceptance-criteria>` and `<notes>` — stated,
+because a migration needs somewhere definite to put it.
+
+**`<priority>` is gone from `<meta>`.** It duplicated the index entry with nothing keeping the two
+in step and no check that they agreed. Core §4 has the argument: a ranking has no meaning inside
+the thing being ranked.
+
+### `<user-story>` — intent, before its elaboration
+
+**Required for `defined`; optional for `tbd`.** A feature acquires one on promotion, so early
+authoring stays cheap and the bar applies where it matters.
+
+**A separate element, not part of `<description>`.** The description is about *scope* — what is
+in, what is out, and who holds each excluded part. Intent and elaboration are different jobs, and
+one element serving two of them serves neither. The story comes first because the description
+elaborates it.
+
+**Prose with a three-part convention, not parsed attributes.** No consumer needs to *understand*
+a user story. Locate it, check its shape, leave it in prose.
+
+**The actor may be a consuming feature, not only a person.** Reference-data features often have
+no human user, and forcing one produces *"As a system, I want…"* — the degenerate case that
+teaches people to stop taking the field seriously. *"As **Best Value Engine**, I want price bands
+per venue, so that I can compare offers without re-deriving them"* is a better story **and** it
+forces a reference-data feature to name who consumes it. The features least able to state a human
+benefit are exactly the ones whose consumers are least clear.
+
+### `<depends-on>` — the edges, not the order
+
+```xml
+<depends-on slug="save-link" kind="data"/>
+```
+
+| `kind` | Means |
+|---|---|
+| `data` | this feature reads or writes something the other one defines |
+| `runtime` | this feature calls the other one, or needs it running |
+| `reference` | this feature mentions the other one; no build-order consequence |
+
+**Captured where they are noticed, which is during the interview.** While writing features an
+author notices dependencies and has nowhere to record them, so they come out as an *ordering* in
+`what-next.md` instead — a second model's unvalidated inference, produced with no dependency
+graph and no awareness that layer planning exists to do exactly this job.
+
+**The durable artefact is the dependencies, not the order.** `breakdown-plan-layers` derives the
+ordering from these edges, once, in the component that owns ordering. `<next-steps>` keeps the
+*rationale* — why a spike matters, what it must measure — and drops the sequence.
+
+**`kind` is what makes a link different from a dependency.** A plain markdown link to another
+feature is indistinguishable from *"see also"*; that ambiguity is the defect this element exists
+to remove, and it is why `reference` is a value rather than an absence.
+
+### `<notes>` — two elements, one of them deliberately unread
+
+**`<data-model>` is read.** `analyze-prd` takes entities and fields from it and stops inferring
+them. Locating it is not enough — a consumer must *understand* it — which is the test for whether
+something earns an element.
+
+**`<considerations>` is unread by design, and the template says so.** It is the catch-all that
+makes migration safe and prose survivable: unrecognised note content goes here **verbatim, never
+dropped**. Marking it explicitly unread is what distinguishes *unread by design* from *unread by
+oversight*.
+
+**There is no `<relationships>` element.** Outbound edges are `<depends-on>` above, in
+machine-readable form; inbound ones are found by grepping this feature's slug across the PRD.
+Relationship *prose* stays in the notes. A second structured list of the same relationships would
+be two producers for one idea.
+
+### `<architecturally-significant>` — a judgement, declared
+
+**Not all non-functional requirements are architecturally significant, and some functional ones
+are.** That is the whole reason this is a declared flag rather than a query: it cannot be derived
+from a `<non-functional>` section or from any structural property of the file.
+
+`because` states which kind of significance, and `criteria` optionally names the criteria that
+carry it. It sits in `<meta>` because significance is a property of the requirement's *nature*,
+not of its place in the plan.
+
+**It exists to make a design step affordable.** Without it, a design pass runs across every
+feature in the PRD rather than the handful that warrant one.
+
+### There is no `<phases>` element, and that is a decision
+
+Phasing is **priority plus gaps**, and between them nothing is left for a third axis to carry:
+
+| Saying | Element | Also carries |
+|---|---|---|
+| less important | `priority="P2"` on a criterion | a rank |
+| blocked | `<gap kind="dependency\|decision">` | *why*, and *since when* |
+
+The case that looked like it needed a third axis — **a criterion that is essential but blocked** —
+is handled better by the pair: the criterion keeps its `P0` because it matters, and the gap blocks
+execution because it cannot proceed. A phase would have forced an author to *demote* something
+important in order to say it was stuck.
+
+What is genuinely lost is naming a coherent increment, because priority ranks and does not group.
+That is recovered from the filter instead: `--requirement-level P0` **produces** the increment, so
+the grouping is a query result rather than a fourth thing to maintain.
 
 ## `architecture.md` — the project rule file
 

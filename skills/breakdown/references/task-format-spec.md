@@ -106,6 +106,25 @@ generator produce it systematically.
 
 All background information needed to understand the task.
 
+**Carry the source document's `<gaps>` into `<context>`, unchanged.** A gap the author declared
+is the difference between *"this is not specified"* and *"the implementer will decide"*, and a
+task file is self-contained by mandate — an implementer who cannot see the gap fills it in, which
+is exactly the invention [core §6](../../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing)
+exists to prevent.
+
+```xml
+<gaps>
+  <gap id="3" kind="decision" raised="2026-08-18">
+  Whether archived links keep their tags is undecided.
+  </gap>
+</gaps>
+```
+
+Carry only the gaps that reach this task. `kind` travels with the gap: `specification`,
+`dependency` and `decision` stop execution, `ownership` and `evidence` warn. **A carried gap is
+not a placeholder** — `review-criteria.md` scopes its placeholder scan around this element for
+that reason.
+
 **`<prd-excerpt>` carries acceptance criteria, and they mean what
 [core §2](../../../schema/core.md#2-acceptance-criteria) says they mean** — a `<criterion>` from
 a PRD feature file and one from a CRD are the same element, so a task generated from either

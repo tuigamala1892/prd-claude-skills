@@ -20,12 +20,17 @@
     "  recomputes it and prints the actual digest when it disagrees, so a DELIBERATE change",
     "  to a frozen fixture is a copy-paste and an accidental one is a named failure.",
     "",
+    "  judgement_elements = the elements a MIXED step's migration may not produce, because",
+    "  assigning them is a judgement the guide forbids a machine to make. The golden",
+    "  comparison strips these before comparing, so it asserts exactly what the script was",
+    "  supposed to do and nothing about what it was forbidden to do.",
+    "",
     "A non-current fixture is not decoration under these rules: it is the INPUT to item 41's",
     "migration test and to item 24's compatibility comparison, so it is exercised on every",
     "run rather than merely stored."
   ],
 
-  "current": "schema-3",
+  "current": "schema-4",
 
   "versions": {
     "schema-1": {
@@ -47,22 +52,33 @@
       "notes": "link-shelf is the §5.1 end-to-end fixture; staff-service is item 21's tier probe. Both carried over from schema-1 with the rename applied and no other edit -- deliberately, so that item 41's golden comparison has exactly one transformation to account for."
     },
     "schema-3": {
-      "status": "current",
+      "status": "accepted",
       "description": "Items 33 and 34: a <criterion> is one EARS sentence carrying `pattern` and `priority`, replacing the Given/When/Then triple. Migrated criteria also carry `derived-from` until sign-off.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": true,
+      "frozen_sha256": "728d2e2e6adbb6a38ee92bd25069db1f6d48540950337aa52ae26ad66c7a2b85",
+      "migration_from_previous": "mixed",
+      "judgement_elements": ["acceptance-criteria"],
+      "notes": "The first step that is not fully mechanical. `priority` and `derived-from` are the script's; the EARS sentence and its `pattern` are judgements the guide forbids a machine to make, so migrate.py reports PARTIAL and --check refuses the tree. The golden comparison for this step therefore asserts the mechanical half exactly and the judgement half not at all -- see the suite."
+    },
+    "schema-4": {
+      "status": "current",
+      "description": "Items 1, 2, 5, 27, 29 and 35: the rest of the feature template. <user-story> before the description, <depends-on slug= kind=> after it, <gaps> between the criteria and the notes, <notes> split into <data-model> and <considerations>, an optional <architecturally-significant> in <meta>, and the duplicated <priority> removed from <meta>. No <phases> element, deliberately.",
       "projects": ["link-shelf", "staff-service"],
       "frozen": false,
       "migration_from_previous": "mixed",
-      "notes": "The first step that is not fully mechanical. `priority` and `derived-from` are the script's; the EARS sentence and its `pattern` are judgements the guide forbids a machine to make, so migrate.py reports PARTIAL and --check refuses the tree. The golden comparison for this step therefore asserts the mechanical half exactly and the judgement half not at all -- see the suite."
+      "judgement_elements": ["user-story", "depends-on", "gaps", "architecturally-significant", "data-model", "definition"],
+      "notes": "quokka-telemetry is where the specification-gap bar first fires: it carries a <gap kind=\"specification\"> and is therefore in-progress rather than defined. Item 43 recorded that rule as sound in principle and unexercised in fact; this is the fixture exercising it."
     }
   },
 
   "planned": {
-    "schema-4": {
-      "arrives_with": ["item 1", "item 2", "item 5", "item 27", "item 29", "item 35"],
-      "description": "The rest of the feature template: <user-story>, <gaps>, <depends-on>, the <notes> split into <data-model> and <considerations>, <architecturally-significant>, and the removal of the duplicated feature <priority>. They land together rather than one version per item -- a fixture per item would be six copies of one project.",
+    "schema-5": {
+      "arrives_with": ["item 11", "item 46", "item 47", "item 48"],
+      "description": "what-next.md gains a parseable skeleton with a derived <authoring-gaps> block (item 11), and the CRD path takes the parity changes -- <requirements> retired into EARS criteria, MoSCoW migrated to P0|P1|P2, <gaps> adopted.",
       "unblocks": [
-        "item 4 -- reclassifying every feature's <definition> against the migrated content",
-        "item 24 -- 'select the right migration, not the newest one' now has three steps to choose between rather than two"
+        "item 30 -- coverage between /breakdown and /execute, which needs the traceability items first",
+        "item 38 -- the gate, which reads gaps, significance and coverage together"
       ]
     }
   }

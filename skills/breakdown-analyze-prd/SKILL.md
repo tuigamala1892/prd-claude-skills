@@ -161,9 +161,58 @@ Return a JSON object with this structure:
       "version": "latest",
       "purpose": "LLM API client"
     }
+  ],
+  "gaps": [
+    {
+      "feature": "save-link",
+      "id": 3,
+      "kind": "dependency",
+      "raised": "2026-08-18",
+      "body": "Retention period for archived links is unspecified."
+    }
+  ],
+  "feature_edges": [
+    {"from": "tag-links", "to": "save-link", "kind": "data"}
   ]
 }
 ```
+
+### `data_models` come from `<notes><data-model>`, not from inference
+
+**When a feature declares one, copy it. Do not infer alongside it.** The element exists so that
+this pass stops guessing at entities and fields, and a data model half-read and half-invented is
+worse than either — nobody can tell which half is the author's.
+
+Infer only for features that declare no `<data-model>`, and mark those entries as inferred, as
+every inferred entry already must be.
+
+**`<notes><considerations>` is not read.** It is the catch-all, and it is unread by design rather
+than by oversight. Do not mine it for entities.
+
+### `gaps` are carried, never resolved
+
+Copy each feature's `<gap>` entries out verbatim, adding the feature slug. **Do not judge them,
+do not merge them, and above all do not answer them** — a gap that this pass quietly resolves is
+an invented requirement wearing an author's authority.
+
+`kind` decides what happens downstream and it is the author's, not yours:
+
+| `kind` | Downstream |
+|---|---|
+| `specification` | blocks `defined`, and blocks execution |
+| `dependency`, `decision` | blocks execution |
+| `ownership`, `evidence` | warn |
+
+**A feature with no `<gaps>` block contributes nothing here.** Absence is not a gap; it is either
+a complete specification or one whose author has not looked. Neither is yours to declare.
+
+### `feature_edges` come from `<depends-on>`, and only from there
+
+One entry per `<depends-on slug= kind=>` element. **A markdown link between features is not an
+edge** — that ambiguity is the whole reason the element exists, and re-deriving edges from links
+would put the guess back.
+
+`plan-layers` orders from these. This pass records them and does not order.
 
 ## Template Detection
 
@@ -183,7 +232,9 @@ If no match found, set `template.path` to `null` and note in `detected_from`.
 1. **Be thorough**: Capture all features, not just the obvious ones
 2. **Infer carefully**: Data models and APIs should be reasonable inferences, not guesses
 3. **Use PRD language**: Match names and terminology from the PRD
-4. **Note uncertainties**: If something is unclear, include it with a note
+4. **Note uncertainties**: If something is unclear, say so in the fragment. Where the *author*
+   already marked it, carry their `<gap>` rather than restating it in your own words — one
+   uncertainty should not arrive downstream twice under two descriptions
 5. **Brownfield**: If `<type>brownfield</type>`, expect `<project-path>` to be present
 
 ## Example Inference
