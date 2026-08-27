@@ -1854,7 +1854,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 
 | Item | Status | Commit |
 |---|---|---|
-| **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `b56c93c` |
+| **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | *In progress* | — |
 | **13 + 14 + 15 + 19 + 20** — the filters | *Not started* | — |
 | **16 + 17 + 30 + 59** — the carry | *Not started* | — |
@@ -1867,7 +1867,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 
 ## 46 + 47 + 48 — the CRD path takes the parity changes, and becomes schema-5
 
-**Commit:** `b56c93c` · **Addresses:** P31, P32 · **Files:** `schema/core.md`,
+**Commit:** `6381ed8` · **Addresses:** P31, P32 · **Files:** `schema/core.md`,
 `schema/migration.md`, `schema/scripts/migrate.py`, `skills/crd/references/crd-format.md`,
 `commands/crd.md`, `skills/crd/SKILL.md`, `skills/breakdown/SKILL.md`,
 `skills/breakdown/scripts/check-writable.py`, `tests/fixture/prd/SCHEMAS.json`,
