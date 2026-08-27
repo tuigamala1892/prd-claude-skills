@@ -215,6 +215,7 @@ defect rather than as a schema.
 | Document | Cites it for |
 |---|---|
 | [`prd-format.md`](prd-format.md) | identity, criteria, status, priority |
+| [`migration.md`](migration.md) | every element it moves between versions |
 | [`crd-format.md`](../skills/crd/references/crd-format.md) | identity, criteria, status, priority, scope, confidence |
 | [`project-format.md`](../skills/crd/references/project-format.md) | status |
 | [`task-format-spec.md`](../skills/breakdown/references/task-format-spec.md) | identity, criteria |

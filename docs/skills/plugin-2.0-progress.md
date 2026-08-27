@@ -999,7 +999,8 @@ can land until the transformation is specified and checkable.
 | Item | Status | Commit |
 |---|---|---|
 | **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `9fc531c` |
-| **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `_` |
+| **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `145282d` |
+| **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -1266,6 +1267,115 @@ worth stating: **write files containing regex escapes with a file-writing tool, 
 heredoc.** A repo-wide scan for `[\0\a\b\v\f]` now runs after any such edit — it takes a second
 and it is the only thing that makes this class of defect visible at all, since `grep` prints
 `Binary file matches` and moves on.
+---
+
+## 41 — the migration, and the marker that turned out not to be needed
+
+**Addresses:** the precondition for items 1, 2, 5, 11, 29, 33, 34, 35 · **Files:**
+`schema/migration.md` (new), `schema/scripts/migrate.py` (new),
+`agents/schema-migrator.md` (new), `skills/migrate/SKILL.md` (new), `schema/core.md`,
+`tests/test_toolchain.py`, `tests/mutants/phase4-41.py` (new), `CLAUDE.md`
+
+### What landed
+
+The guide, in the four-part shape the item specifies — precondition, transformation,
+postcondition, escalation, per rule — with the schema-1 → schema-2 rules written out and the
+schema-2 → schema-3 **boundary** settled in advance: which transformations are mechanical, which
+are judgements, and which judgement belongs to whom.
+
+Three consumers, because a guide with no consumer is the defect this plan exists to remove:
+`migrate.py` for the mechanical rules, `schema-migrator` for the judgements, and a thin
+`/migrate` skill that dispatches one agent per file.
+
+**And the golden comparison the fixture registry promised since item 43**: run the migration over
+the frozen schema-1 tree and assert the result is byte-for-byte the schema-2 tree. It is the only
+check in the suite whose expected output was authored independently of the thing producing it.
+
+### The marker: item 41 asked for one, and the answer is that there isn't one
+
+The item requires that *"the marker of already migrated must be in the file rather than in a
+side-car that can drift from it."* The natural reading is a stamp — `<schema>schema-2</schema>`
+in every artefact's `<meta>`.
+
+**The shape is the marker.** A feature file carrying `<definition>` is migrated; one carrying
+`<status>` is not. Nothing is added. A version stamp beside the content would be a second source
+of truth about the same file, free to disagree with it — which is the defect this plan spends
+most of its items removing, reintroduced by the tool meant to apply them.
+
+**The corollary is a real constraint, and it is the part worth carrying forward.** If completion
+is not visible in the shape, the transformation must be made **total** until it is. Item 34's
+criterion `priority` is the case that forced this: *unassigned* and *deliberately absent* look
+identical, so the migration must assign `P1` to every criterion lacking one rather than leaving
+the default implicit. A partial transformation with an invisible completion state cannot be
+resumed at all — and the guide now refuses to define one, which is a constraint on items 34, 2
+and 5 that they do not yet know they are under.
+
+### Deviations from the plan
+
+- **A skill and an agent, neither of which the item mentions.** It says the work "will be done by
+  an agent" and stops there. The regression suite refuses an agent nothing dispatches — F20's
+  shape — so the invoker is not optional; `/migrate` is the smallest thing that makes the agent
+  reachable, and it is what makes *per file, reviewed as a diff* an instruction someone follows
+  rather than a sentence in a guide.
+
+- **The mechanical half is a script, not the agent.** The item frames the whole migration as
+  agent work, which is right for 550 EARS criteria and wrong for a rename. Splitting it is what
+  makes the golden comparison possible at all: a deterministic transformation can be asserted
+  byte-for-byte, and a model's cannot.
+
+- **Escalation gets its own exit code.** The item says *stop and report this file, never
+  transform it anyway*. Exit 2 is separate from exit 1 so that *"nothing was written for these"*
+  is sayable — a failed postcondition restores one file, while an escalation never touched it.
+
+- **`--check` is not in the item.** *"The migration ran"* and *"the migration finished"* are
+  different claims, and only a run that asserts postconditions against the tree as it stands can
+  make the second. It is item 55's lesson — the ledger states what it verified — arriving on a
+  different artefact.
+
+### Verification
+
+Three checks, two of which **run the script**. Suite 72 → **75**.
+
+**`the migration turns the old fixture into the new one, exactly`** copies the frozen schema-1
+tree, migrates it, and compares the result to the schema-2 fixture with `filecmp.dircmp` — then
+runs it again and asserts nothing changed, and calls `--check` before and after.
+
+**`a file the migration cannot place stops it, and is named`** builds a tree holding one
+migratable file, one file with no root element and one `<feature>` in neither shape. It asserts
+exit 2, that both unplaceable files are named, that **neither was modified**, and that the
+migratable one was still migrated. The last assertion is the one that matters: a run that gives
+up wholesale on one bad file cannot be resumed.
+
+**`the migration guide has an executor, and the executor cites the guide`** is item 23's rule
+applied to item 41's own output.
+
+Mutation: **12/12 caught** (`tests/mutants/phase4-41.py`) — after the round found three more
+assertions of the kind item 45 named.
+
+### The site-counting rule earned its third and fourth confirmations
+
+| Assertion | Sites satisfying it | Mutant that survived |
+|---|---|---|
+| `--check` returns 0 on a migrated tree | every branch agrees there | `--check` always returning 0 |
+| `"migration.md" in body` | the link **and the frontmatter description** | deleting the link |
+| *some sentence says "stop and report"* | 3 sentences per document | reversing the exit-2 row |
+
+The first is a new variant and worth naming separately: **the check ran the command in the only
+state where its answer could not be wrong.** `--check` was called on an already-migrated tree,
+where a correct implementation and one that always returns 0 are indistinguishable. Counting
+sites would not have found it; the question that does is *"in what state would this command give
+the wrong answer, and is that the state I am testing?"*
+
+The second and third are the same `any()`-where-the-claim-is-universal defect item 45 named, and
+the fixes are the same two moves: require a **resolving link** rather than a mention, and scope
+the escalation assertion to the one line in each document that owns the claim.
+
+### A note on where the guide's authority sits
+
+`migrate.py`'s docstring says outright that `schema/migration.md` is the authority and that a
+rule existing in the script and not in the guide is a bug in the script. That sentence is doing
+real work: it is what stops the guide becoming documentation of the program, which is the
+direction these pairs always drift when nobody says which one is upstream.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

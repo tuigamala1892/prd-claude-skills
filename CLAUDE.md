@@ -47,7 +47,9 @@ All three live at the **repository root**, not under `.claude/` — see the note
 ```
 schema/                       # Artefact schema owned by neither path (item 44)
 ├── core.md                   # The single definition of every shared element
-└── prd-format.md             # What /prd writes; cites core.md
+├── prd-format.md             # What /prd writes; cites core.md
+├── migration.md              # How artefacts move between schema versions (item 41)
+└── scripts/migrate.py        # Its mechanical half; the judgements are schema-migrator's
 
 commands/                     # User-invocable commands (all three entry points)
 ├── prd.md                    # /prd
@@ -72,7 +74,8 @@ skills/                       # Skills, each a directory holding SKILL.md
 ├── crd/                      # CRD orchestration
 ├── crd-investigate/          # Deep codebase analysis
 ├── crd-context-update/       # Incremental context update
-└── crd-impact-analysis/      # Change impact analysis
+├── crd-impact-analysis/      # Change impact analysis
+└── migrate/                  # Artefact schema migration (item 41)
 
 agents/                       # Agent definitions for the Task tool
 ├── task-implementer.md       # Implements one task inside its worktree
@@ -82,7 +85,8 @@ agents/                       # Agent definitions for the Task tool
 ├── crd-investigator.md            # PROJECT.md generation
 ├── crd-context-updater.md         # Incremental updates
 ├── crd-impact-analyzer.md         # Impact analysis
-└── project-context-finalizer.md   # Post-execute updates
+├── project-context-finalizer.md   # Post-execute updates
+└── schema-migrator.md             # One artefact, one schema version forward
 
 docs/skills/                  # The only docs directory that exists
 ├── toolchain-assessment-and-plan.md
@@ -191,7 +195,7 @@ Tasks are XML with these sections:
 ### CRD Document Format
 
 CRDs are XML documents with these sections:
-- `<meta>` - Slug, type (feature-add/modify/remove/refactor), status
+- `<meta>` - Slug, type (feature-add/modify/remove/refactor), `<workflow>`
 - `<context>` - PROJECT.md reference, related features
 - `<change-request>` - Summary, motivation
 - `<impact-analysis>` - Affected files, features, APIs, schemas

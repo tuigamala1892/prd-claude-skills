@@ -3706,6 +3706,198 @@ def _():
     assert not offenders, (
         "these name a schema version directly instead of asking SCHEMAS.json which is "
         "current:\n    " + "\n    ".join(offenders))
+# ------------------------------------------------------------ migration (41)
+
+MIGRATE = os.path.join(SCHEMA, "scripts", "migrate.py")
+
+
+def _run_migrate(*args):
+    return subprocess.run([sys.executable, MIGRATE, *args], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+
+
+@check("the migration turns the old fixture into the new one, exactly -- by running it",
+       finding="P28")
+def _():
+    """Item 41's golden comparison, which is the whole reason item 43 versioned the fixtures.
+
+    Run the migration over the frozen schema-1 tree and assert the result is byte-for-byte the
+    schema-2 tree. A postcondition asserts what someone thought to assert; a golden comparison
+    catches the losses nobody thought of, because the expected output was authored separately.
+
+    Then run it AGAIN over its own output. Re-running must be a no-op, because a 65-file
+    migration will be interrupted -- and the marker of `already migrated` is the shape, so
+    idempotence is a property of the rules rather than of a stamp.
+    """
+    import filecmp
+    import shutil
+    import tempfile
+
+    assert os.path.isfile(MIGRATE), "schema/scripts/migrate.py is missing"
+    _path, reg = schema_registry()
+    older = [n for n, v in (reg.get("versions") or {}).items() if v.get("frozen")]
+    assert older, "no superseded fixture to migrate FROM"
+    src_version, target = sorted(older)[0], reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-migrate-")
+    try:
+        work = os.path.join(root, "tree")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+
+        # --check BEFORE migrating, which is the only run in which its answer can be wrong.
+        # Asserting it only on an already-migrated tree exercises nothing: every branch agrees
+        # there, and a --check that always returned 0 would pass.
+        p = _run_migrate(work, "--to", target, "--quiet", "--check")
+        assert p.returncode == 1, (
+            f"--check called a {src_version} tree finished (exit {p.returncode}). 'The migration "
+            f"ran' and 'the migration finished' are different claims and this is the difference")
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 0, (
+            f"migrating {src_version} -> {target} exited {p.returncode}:\n{p.stdout}\n{p.stderr}")
+
+        expected = os.path.join(REPO, "tests", "fixture", "prd", target)
+        cmp = filecmp.dircmp(work, expected)
+
+        def differences(d, prefix=""):
+            out = [prefix + n for n in (d.left_only + d.right_only + d.diff_files + d.funny_files)]
+            for name, sub in d.subdirs.items():
+                out += differences(sub, prefix + name + "/")
+            return out
+
+        diffs = differences(cmp)
+        assert not diffs, (
+            f"the migration's output is not the {target} fixture. A golden comparison exists "
+            f"to catch exactly this:\n    " + "\n    ".join(diffs))
+
+        # Idempotence, measured rather than asserted: a second run must change nothing.
+        before = {}
+        for dp, _dn, fn in os.walk(work):
+            for n in fn:
+                before[os.path.join(dp, n)] = open(os.path.join(dp, n), "rb").read()
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 0, f"re-running the migration exited {p.returncode}: {p.stderr}"
+        for full, content in before.items():
+            assert open(full, "rb").read() == content, (
+                f"a second migration run modified {os.path.relpath(full, work)}. Re-entering a "
+                f"partly migrated tree has to be safe, and it is only safe if this holds")
+
+        # And --check must agree that it finished. "The migration ran" is a different claim.
+        p = _run_migrate(work, "--to", target, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"--check disagrees that the tree is in {target}:\n{p.stdout}\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a file the migration cannot place stops it, and is named -- by running it",
+       finding="P28")
+def _():
+    """Item 41's escalation path: *stop and report this file*, never transform it anyway.
+
+    The asymmetry is the point, so both halves are exercised. A file that cannot be placed must
+    (a) exit non-zero, (b) be named, and (c) LEAVE THE TREE ALONE -- including the files beside
+    it that were perfectly migratable. Reporting a problem while half-applying the change is
+    worse than either refusing or proceeding.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-escalate-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(work)
+        good = os.path.join(work, "ok.md")
+        open(good, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <status>defined</status>\n  </meta>\n</feature>\n")
+        stray = os.path.join(work, "stray.md")
+        open(stray, "w", encoding="utf-8", newline="\n").write("prose, and no root element\n")
+        odd = os.path.join(work, "odd.md")
+        open(odd, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <name>X</name>\n  </meta>\n</feature>\n")
+
+        untouched = {p: open(p, "rb").read() for p in (stray, odd)}
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 2, (
+            f"a file matching no precondition did not escalate (exit {p.returncode}). Exit 2 is "
+            f"separate from exit 1 precisely so that 'nothing was written for these' is sayable")
+        for name in ("stray.md", "odd.md"):
+            assert name in p.stderr, f"the escalation does not name {name}:\n{p.stderr}"
+
+        for path, content in untouched.items():
+            assert open(path, "rb").read() == content, (
+                f"{os.path.basename(path)} was escalated AND modified. Escalation means the "
+                f"tree is exactly as it was found")
+
+        # The half that must still work: a file it CAN place is migrated in the same run.
+        assert "<definition>defined</definition>" in open(good, encoding="utf-8").read(), (
+            "one unplaceable file stopped the files it has nothing to do with. Per-file is the "
+            "unit of decision, and a run that gives up wholesale cannot be resumed")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the migration guide has an executor, and the executor cites the guide", finding="P24")
+def _():
+    """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule
+    as every other producer/consumer pair here -- the consumer must be named and must exist.
+
+    Three named consumers, each verified as a link that resolves rather than as a mention:
+    the script that runs the mechanical rules, the agent that performs the judgements, and the
+    skill that dispatches the agent per file.
+    """
+    guide = os.path.join(SCHEMA, "migration.md")
+    assert os.path.isfile(guide), "schema/migration.md does not exist"
+    text = open(guide, encoding="utf-8").read()
+
+    for _label, target in md_links(text):
+        resolved = os.path.normpath(os.path.join(SCHEMA, target))
+        assert os.path.isfile(resolved), f"migration.md links {target}, which does not exist"
+
+    assert "migrate.py" in text, "the guide names no script for its mechanical rules"
+    assert "schema-migrator" in text, "the guide names no agent for its judgements"
+
+    # And the citation runs the other way too, or the guide is prose beside a program.
+    #
+    # A RESOLVING LINK, not a mention. `"migration.md" in body` was the first version and it
+    # counted the agent's own frontmatter description as a citation, so removing the actual
+    # link changed nothing. One site, and it is the site that has to work.
+    agent_path = os.path.join(AGENTS, "schema-migrator.md")
+    skill_path = os.path.join(SKILLS, "migrate", "SKILL.md")
+    agent = open(agent_path, encoding="utf-8").read()
+    skill = open(skill_path, encoding="utf-8").read()
+
+    for name, path_, body in (("schema-migrator", agent_path, agent),
+                              ("migrate", skill_path, skill)):
+        links = [t for _l, t in md_links(body) if os.path.basename(t) == "migration.md"]
+        assert links, (
+            f"{name} performs a migration without linking schema/migration.md, so the rules it "
+            f"follows are whatever it remembers")
+        for t in links:
+            resolved = os.path.normpath(os.path.join(os.path.dirname(path_), t))
+            assert os.path.isfile(resolved), f"{name} links {t}, which does not exist"
+        assert "migrate.py" in body, f"{name} never runs the script that owns the mechanical rules"
+
+    # The escalation instruction is the one most likely to erode, and the erosion looks like
+    # helpfulness. Scoped to the ONE line in each document that owns the claim -- a document-wide
+    # search matched three other sentences and survived the row being reversed.
+    owners = {
+        "migration.md": (text, "Escalation is always the same"),
+        "schema-migrator": (agent, "ESCALATE"),
+        "migrate": (skill, "no precondition"),
+    }
+    for name, (body, anchor) in owners.items():
+        lines = [ln for ln in body.splitlines() if anchor in ln and not ln.startswith("#")]
+        assert lines, f"{name} has no line about a file the migration cannot place"
+        assert any(re.search(r"\bstop\b", prose(ln), re.I) for ln in lines), (
+            f"{name}'s escalation instruction no longer says to stop:\n      "
+            + "\n      ".join(ln.strip() for ln in lines)
+            + "\n    'Transform it anyway' is the failure this path exists to prevent")
 
 # ------------------------------------------------------------------- behavioural
 
