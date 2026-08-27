@@ -1860,7 +1860,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
-| **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `PENDING` |
+| **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Next* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
 
@@ -2400,7 +2400,7 @@ than *demonstrated*.
 
 ## 59 — the boundary is crossed, and the first crossing found two defects
 
-**Commit:** `PENDING` · **Addresses:** A8/R13 · **Files:** `tests/boundary-test.py` (new),
+**Commit:** `6fb646f` · **Addresses:** A8/R13 · **Files:** `tests/boundary-test.py` (new),
 `tests/test_toolchain.py`
 
 ### What the item was for, and it delivered exactly that
