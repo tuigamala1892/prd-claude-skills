@@ -73,6 +73,27 @@ def read_ledger(project_path, slug):
     return verified, missing
 
 
+def tier_summary(tasks):
+    """How many tasks at each (moscow, requirement-level) pair, and how many at neither.
+
+    `unattributed` is counted rather than dropped. Layer 0 tasks legitimately carry no tier, so
+    a silent omission would make a report over a partly-migrated task set look complete -- the
+    same reason check-scope.py counts what it could not attribute.
+    """
+    out, unattributed = {}, 0
+    for rec in tasks.values():
+        moscow, level = rec.get("moscow"), rec.get("requirement_level")
+        if not moscow and not level:
+            unattributed += 1
+            continue
+        key = "%s/%s" % (moscow or "-", level or "-")
+        out[key] = out.get(key, 0) + 1
+    summary = {"by_tier": dict(sorted(out.items()))}
+    if unattributed:
+        summary["unattributed"] = unattributed
+    return summary
+
+
 def main():
     argv = sys.argv[1:]
     opts = {}
@@ -151,6 +172,12 @@ def main():
         else:
             status = "pending"
         rec = {"status": status, "layer": layer, "name": entry.get("name", "")}
+        # Item 19. Both tiers, carried from the manifest, which got them from item 16's
+        # elements on the task. Omitted when absent -- a Layer 0 task legitimately has none,
+        # and writing null would make "no tier" and "tier not recorded" the same thing.
+        for key in ("moscow", "requirement_level", "source_feature"):
+            if entry.get(key):
+                rec[key] = entry[key]
         if tid in done:
             rec["commit"] = done[tid].get("commit")
             rec["merged_at"] = done[tid].get("at")
@@ -182,6 +209,14 @@ def main():
         "abandoned": abandoned,
         "merge_queue": [{"task_id": t, "status": "merged", "commit": done[t].get("commit"),
                          "merged_at": done[t].get("at")} for t in sorted(done)],
+        # Item 19's report, derived here rather than counted by whoever writes the summary.
+        # `<requirement-level>` would otherwise have NO reader at all: item 16 puts it on the
+        # task, item 30 checks criteria against the threshold rather than against the element,
+        # and nothing else looks at it. Reporting it is both the cheapest reader and the useful
+        # one -- "9 must-have/P0, 5 should-have/P0" is a sentence an operator can act on, and it
+        # is the only place the two-level filter becomes visible in the OUTPUT rather than only
+        # in the invocation.
+        "tiers": tier_summary(tasks),
         "missing_commits": [e.get("task_id") for e in missing],
         "metrics": {
             "tasks_total": total,

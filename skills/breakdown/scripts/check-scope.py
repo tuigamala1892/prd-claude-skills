@@ -88,6 +88,12 @@ def load(path, what):
 def task_counts(manifest):
     """Tasks per source feature, and how many could not be attributed.
 
+    The key is `task_inventory`, which is what `build-manifest.py` has always written. This read
+    `manifest["tasks"]` when it shipped, and its test seeded that same invented key -- so the
+    check validated the implementation against itself and attributed nothing on a real manifest.
+    The test now builds the manifest by RUNNING build-manifest.py, which is the only version of
+    this assertion that could have caught it.
+
     ATTRIBUTION IS ITEM 16's, AND IT HAS NOT LANDED. A task file carries no <source-feature>
     yet, so on the PRD path nothing here can be attributed and the per-feature comparison has
     nothing to run on. That is reported as a number rather than passed over in silence: a
@@ -95,7 +101,7 @@ def task_counts(manifest):
     disagreement, and this repository has shipped that mistake before.
     """
     per_feature, unattributed = {}, 0
-    for task in manifest.get("tasks") or []:
+    for task in manifest.get("task_inventory") or []:
         slug = task.get("source_feature")
         if slug:
             per_feature[slug] = per_feature.get(slug, 0) + 1
@@ -115,7 +121,7 @@ def main():
     if analysis is None or manifest is None:
         return 1
 
-    total = len(manifest.get("tasks") or [])
+    total = len(manifest.get("task_inventory") or [])
     per_feature, unattributed = task_counts(manifest)
     signals = analysis.get("feature_signals") or []
 

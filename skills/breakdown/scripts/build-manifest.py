@@ -71,11 +71,47 @@ def task_name(path, fallback):
     return fallback.replace("-", " ").capitalize()
 
 
+# Item 16's four elements, as the manifest spells them. The manifest is what every downstream
+# reader sizes the work from, so an element that stops here is an element the coverage check
+# (item 30) and the cross-check (item 49) can never see.
+TRACEABILITY = ("source-feature", "moscow", "satisfies-criteria", "requirement-level")
+
+
+def traceability(path):
+    """Item 16's elements, read from <meta>. Absent keys are OMITTED, never defaulted.
+
+    A Layer 0 task legitimately carries none of these -- it descends from the tech stack rather
+    than from a feature -- so `absent` and `empty` have to stay distinguishable. Writing
+    `"source_feature": null` for both would make a task nobody attributed look exactly like one
+    that cannot be attributed, and item 30's shortfall report is built on telling them apart.
+    """
+    out = {}
+    try:
+        meta = ET.parse(path).getroot().find("meta")
+    except Exception:
+        return out
+    if meta is None:
+        return out
+    for tag in TRACEABILITY:
+        el = meta.find(tag)
+        text = " ".join((el.text or "").split()) if el is not None else ""
+        if not text:
+            continue
+        key = tag.replace("-", "_")
+        if tag == "satisfies-criteria":
+            ids = [x.strip() for x in text.split(",") if x.strip()]
+            if ids:
+                out[key] = ids
+        else:
+            out[key] = text
+    return out
+
+
 def build_inventory(tasks_path):
     inventory = []
     for layer, task_id, fn, path in task_files(tasks_path):
         slug = TASK_RE.match(fn).group(2)
-        inventory.append({
+        entry = {
             "id": task_id,
             "name": task_name(path, slug),
             "layer": layer,
@@ -83,7 +119,9 @@ def build_inventory(tasks_path):
             # directory is moved or mounted. Absolute or workspace-relative paths were both
             # tried before and neither survives the tasks tree being relocated.
             "file": f"{layer}/{fn}",
-        })
+        }
+        entry.update(traceability(path))
+        inventory.append(entry)
     return inventory
 
 
@@ -102,7 +140,10 @@ def resolve(tasks_path, stored):
 
 # The manifest's own shape. Bump it when a field is added, removed or changes meaning --
 # never for a plugin release, which is what toolchain_version is for.
-MANIFEST_SCHEMA_VERSION = "1.0"
+#
+# 1.1 adds item 16's four traceability fields to each inventory entry. A reader written against
+# 1.0 still works: the fields are additive and absent ones are omitted rather than nulled.
+MANIFEST_SCHEMA_VERSION = "1.1"
 
 
 def toolchain_version():

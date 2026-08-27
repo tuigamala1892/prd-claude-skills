@@ -56,6 +56,11 @@ Task identification and classification.
   <priority>1</priority>              <!-- Execution order within layer (1 = first) -->
   <estimated-files>2</estimated-files> <!-- Number of files to create/modify -->
   <cwd>packages/billing</cwd>         <!-- Optional; where commands run. See below -->
+
+  <source-feature>save-link</source-feature>          <!-- item 16: which feature, by slug -->
+  <moscow>must-have</moscow>                          <!-- item 16: that feature's tier -->
+  <satisfies-criteria>1,4,7</satisfies-criteria>      <!-- item 16: criterion ids, core §1 -->
+  <requirement-level>P0</requirement-level>           <!-- item 16: highest among those -->
 </meta>
 ```
 
@@ -66,6 +71,38 @@ Task identification and classification.
 - `estimated-files`: Integer, 1 to the task's effective limit — `<task-limits>` from
   `architecture.md`, defaulting to 3
 - `cwd`: Optional. **Relative to the worktree root**, and must stay inside it
+- `source-feature`: Required except in Layer 0. A feature slug, or a CRD slug on that path
+- `moscow`: Required with `source-feature`. `must-have`, `should-have` or `could-have` — never
+  `wont-have`, which `/execute` refuses (item 20)
+- `satisfies-criteria`: Required except in Layer 0. Comma-separated criterion ids, no spaces
+- `requirement-level`: Required with `satisfies-criteria`. `P0`, `P1` or `P2`
+
+#### Traceability: four elements, and none of them is `<priority>`
+
+Item 16. Before these, **a task named the feature it came from nowhere at all** — attribution was
+a string match on the task's `<name>`, which is why item 21's tier probe had to invent slugs that
+could not occur by coincidence, and why `check-scope.py` could attribute nothing.
+
+**`<priority>` is untouched, deliberately, and that is why these have the names they do.** It is
+an integer meaning *merge order within the layer*, and it has meant that since the beginning
+(**P3**). Overloading it with MoSCoW would leave every reader ambiguous about which of two
+unrelated orderings it was reading, so the feature's tier arrives as `<moscow>` — a name that was
+free.
+
+**`<satisfies-criteria>` is the finer half, and it survives only because something checks it.**
+Kiro's spec asks for exactly this traceability and its own samples fail to keep it — the workflow
+specifies `_Requirements: 1.2_` and the sample degrades to `_Requirements: 1_`. Fine-grained
+traceability decays wherever nothing verifies it, which is item 30's job and why the two items sit
+together in the plan's ordering.
+
+**`<requirement-level>` is the *highest* of the criteria named**, not a list. A task is built or
+not built as a unit, so the level that matters to `--requirement-level` is the strongest
+obligation it carries.
+
+**Layer 0 is exempt, and it is the only exemption.** Its tasks create directories, config and a
+test harness; they descend from the tech stack rather than from any feature, and inventing a
+`<source-feature>` for them would put a false attribution into the coverage check item 30 builds
+on.
 
 #### `<cwd>` — where this task's commands run
 
@@ -131,14 +168,31 @@ a PRD feature file and one from a CRD are the same element, so a task generated 
 carries the same thing. Copy a criterion's `id` with it: core §1 makes ids citable precisely so
 that a task, a commit and a review can name the same requirement and be talking about it.
 
-Items 16 and 17 replace the copied prose with a structural carry. The element they will carry is
-already defined; only its transport changes.
+#### The criteria are carried structurally, not excerpted (item 17)
+
+`<prd-excerpt>` as free prose is how **P2 and P4 happen**: the criteria arrive as a paragraph
+somebody rewrote, so nothing downstream can name criterion 7, and the data model is re-inferred by
+a generator that cannot see the one the author wrote. **This is where the pipeline stops
+discarding the document.**
 
 ```xml
 <context>
+  <acceptance-criteria>
+    <criterion id="4" pattern="event-driven" priority="P0">
+    When a user submits a link, the system shall store it and return the stored record.
+    </criterion>
+    <criterion id="7" pattern="unwanted-behaviour" priority="P0">
+    If the URL is not well-formed, then the system shall reject it and store nothing.
+    </criterion>
+  </acceptance-criteria>
+
+  <data-model>
+  <!-- The feature's own <notes><data-model>, carried. NOT re-inferred. -->
+  Link: id, url, title, created_at. Tags are a separate entity, joined many-to-many.
+  </data-model>
+
   <prd-excerpt>
-  <!-- Copy relevant PRD sections here -->
-  <!-- Include feature description, acceptance criteria, etc. -->
+  <!-- What remains: the feature description, and anything not carried structurally above -->
   </prd-excerpt>
 
   <tech-stack>
@@ -159,9 +213,19 @@ already defined; only its transport changes.
 ```
 
 **Constraints:**
-- `prd-excerpt`: Must include all relevant requirements from PRD
+- `acceptance-criteria`: The source criteria **verbatim, with their original ids**. Every id here
+  must appear in `<meta><satisfies-criteria>`, and vice versa
+- `data-model`: Present when the source feature declares a `<notes><data-model>`. **Copied, never
+  inferred** — a data model half-read and half-invented is worse than either, because nobody can
+  tell which half is the author's
+- `prd-excerpt`: What is left after the two above. Must include all relevant requirements from PRD
 - `tech-stack`: Must specify versions where known
 - Do NOT reference external files - all context must be inline
+
+**Verbatim means verbatim.** A criterion that arrives reworded is one no reviewer can match back
+to the PRD, and the whole point of core §1's citable ids is that a task, a commit and a review can
+name the same requirement and be talking about it. Copy the element; do not summarise it, split it
+or improve its grammar.
 
 ### 3. Dependencies (Required)
 
@@ -268,10 +332,24 @@ Tests to write BEFORE implementation (TDD).
 > TDD is right for most projects and wrong for a spike. The toolchain should be able to say which
 > it is running.
 
+**Each test names the criterion it covers (item 17).** A test citing no criterion is one nobody
+can trace back, and a criterion no test cites is the coverage gap item 30 reports.
+
+**An `unwanted-behaviour` criterion states its negative case explicitly**, so the failing test is
+*read off* rather than invented. That is item 33 paying for itself here: inventing the failure
+case is what the toolchain does today, and **P19** says it cannot be trusted to.
+
 ```xml
 <test-requirements>
   <test id="1">
   Test file: `tests/models/test_project.py`
+  </test>
+
+  <test id="2" covers="7">
+  Test: a malformed URL is rejected and nothing is stored
+  - POST /links with url="not a url"
+  - Assert 422
+  - Assert the links table is unchanged
   </test>
 
   <test id="2">
@@ -390,6 +468,9 @@ Interface contracts this task provides for later tasks.
 
 ## Validation Rules
 
+0. **Traceability resolves both ways**: every id in `<meta><satisfies-criteria>` appears in
+   `<context><acceptance-criteria>`, and every criterion there is named by some `<test covers=>`.
+   Item 30 checks this across the whole task set; here it is checkable within one file
 1. **No placeholders**: No "TODO", "TBD", "...", or "[fill in]"
 2. **No external references**: All information must be in the task file
 3. **Concrete values**: Use specific names, paths, values - not "appropriate" or "suitable"

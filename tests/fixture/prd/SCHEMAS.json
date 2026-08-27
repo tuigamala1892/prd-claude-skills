@@ -84,13 +84,14 @@
 
   "planned": {
     "_comment": "Item 11 was listed here as arriving with schema-5 and in fact landed in schema-4, with what-next.md's skeleton. Recorded rather than quietly deleted: a planned entry that turns out to be wrong about WHEN is the normal case, and the correction is the only evidence the entry was ever checked.",
+    "_items_16_17": {
+      "outcome": "NOT a schema version, and the prediction that they would be is corrected here rather than deleted.",
+      "why": "Items 16 and 17 change the TASK format, and a task is not a versioned artefact. migrate.py recognises five roots -- feature, crd, prd, what-next, project-context -- and a task is none of them, because tasks are regenerable output rather than authored documents: the way to move a task set to a new shape is to re-run /breakdown, not to migrate it. Versioning them would have meant a fixture and a migration step for files nobody ever hand-edits. manifest.json carries its own MANIFEST_SCHEMA_VERSION, which went 1.0 -> 1.1 for item 16's fields, and that is the correct granularity."
+    },
     "schema-6": {
-      "arrives_with": ["item 16", "item 17"],
-      "description": "Traceability from a feature or a change request through to the task that implements it -- <source-feature> and `moscow` on tasks, and the criteria and data model carried structurally rather than summarised.",
-      "unblocks": [
-        "item 30 -- coverage between /breakdown and /execute, which needs the traceability items first",
-        "item 38 -- the gate, which reads gaps, significance and coverage together"
-      ]
+      "arrives_with": ["item 38", "item 40"],
+      "description": "Placeholder. Nothing outstanding in Phase 5 changes an authored artefact's shape; item 38's gate and item 40's definition bar are the two items most likely to, and neither has been designed yet.",
+      "unblocks": []
     }
   }
 }

@@ -101,7 +101,13 @@ What it refuses: a tasks path with no `manifest.json` or `layer_plan.json`; a ta
 not exist, is not a git repository, or is a *subdirectory* of one; a target containing
 `docs/prd/` (a documentation tree); a target containing `.claude-plugin/plugin.json` (this
 toolchain); a target inside the tasks directory; a base branch that does not exist; and a
-detached HEAD, since there is then no branch to merge into.
+detached HEAD, since there is then no branch to merge into; **and a task carrying
+`<moscow>wont-have</moscow>`** (item 20).
+
+**That last one is defence in depth, and it names the files.** A won't-have task reaching here
+means item 13's selection gate at `/breakdown` did not run, or ran and was ignored. It is an
+exit code rather than a note for the same reason as everything else in this script — item 4.13's
+principle that a guard a model can reason past is not a guard.
 
 **Why a script and not the checklist that used to be here.** These were prose, and prose is
 weighed rather than obeyed. Pointed at a path containing `docs/prd/` — the exact case the prose
@@ -492,10 +498,15 @@ rather than overriding it.
 
 Output final summary including context update if performed:
 
+**Report the tier that was built, from `execute-state.json`'s `tiers` block** (item 19). Do not
+count it yourself — nothing in that file is maintained by hand, and a summary counted by the
+reporter is one that can disagree with the tasks it counts.
+
 ```
 Execution Complete: {prd_slug}
 
 Total: 44/44 tasks completed
+Built: 9 must-have/P0, 5 should-have/P0, 3 could-have/P1  (4 unattributed: Layer 0)
 Duration: 2h 15m
 
 Context Update:

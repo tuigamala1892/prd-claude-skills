@@ -565,11 +565,37 @@ For each layer in order:
    **`confidence` is reported, never compared** — there is nothing to hold it against. It says
    where the analyser was guessing, which is the one thing its output cannot otherwise recover.
 
-4. Report completion summary:
+4. **Check the task set against the document it came from:**
+
+   ```bash
+   python {skill_dir}/scripts/check-coverage.py {prd_dir} {tasks_dir}      --priority {threshold} --requirement-level {level}
+   ```
+
+   Item 30. The previous step asked *do the files match the manifest*; this asks the same
+   question one level up — **do the tasks match the PRD**. It is only answerable because item 16
+   put `<source-feature>` and `<satisfies-criteria>` on the task; before that, attribution was a
+   string match on the task's name.
+
+   Four assertions: every in-scope feature has a task, every `<source-feature>` resolves to a
+   feature that exists and was not skipped, every in-scope criterion is named by some task and
+   every id named resolves, and **no task descends from a `wont-have`, `excluded` or
+   `superseded` feature** — item 13's runtime backstop, which fires when the selection gate did
+   not run or ran and was ignored.
+
+   - **Exit 0** — the task set covers the document.
+   - **Exit 1** — a shortfall. **Report it by name.** *"1 should-have feature has no task:
+     tag-links"* is the sentence; a count is not, because a check reporting the wrong four
+     features passes any test that only counts.
+
+   The plan's fifth assertion — every architecturally-significant feature named by a decision
+   record's `**Drives:**` — is **not** in this script. `check-references.py` already runs it, and
+   a rule stated in two programs is a rule that gets changed in one of them.
+
+5. Report completion summary:
    - Total tasks generated — **the number the script reports**, not the number planned
    - Tasks per layer
-   - **Anything `check-scope.py` reported**, verbatim — a cross-check whose output is summarised
-     away is a cross-check nobody acts on
+   - **Anything `check-scope.py` or `check-coverage.py` reported**, verbatim — a check whose
+     output is summarised away is a check nobody acts on
    - Any review failures requiring attention
    - If the count differs from `layer_plan.json`, say so and say why; a plan revised during
      generation is the plan working, not failing

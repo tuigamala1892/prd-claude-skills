@@ -70,18 +70,29 @@ Real output from `write-state.py`, for a three-task run with one task merged and
     "L2-001": {
       "status": "failed",
       "layer": "2-backend",
-      "name": "Create project CRUD API"
+      "name": "Create project CRUD API",
+      "source_feature": "save-link",
+      "moscow": "must-have",
+      "requirement_level": "P0"
     },
     "L2-002": {
       "status": "pending",
       "layer": "2-backend",
-      "name": "Create link CRUD API"
+      "name": "Create link CRUD API",
+      "source_feature": "list-links",
+      "moscow": "should-have",
+      "requirement_level": "P1"
     }
   },
 
   "layers": {
     "1-foundation": {"total": 1, "merged": 1, "status": "completed"},
     "2-backend": {"total": 2, "merged": 0, "status": "in_progress"}
+  },
+
+  "tiers": {
+    "by_tier": {"must-have/P0": 1, "should-have/P1": 1},
+    "unattributed": 1
   },
 
   "completed": ["L1-001"],
@@ -109,6 +120,28 @@ Real output from `write-state.py`, for a three-task run with one task merged and
   }
 }
 ```
+
+
+## `source_feature`, `moscow`, `requirement_level` and `tiers` (item 19)
+
+Item 16 puts four traceability elements on a task; `build-manifest.py` carries them into the
+manifest; this file records three of them per task and **derives `tiers` from them**.
+
+**They are omitted when absent, never written as `null`.** A Layer 0 task legitimately carries
+no tier — it descends from the tech stack rather than from a feature — so *"has no tier"* and
+*"tier not recorded"* have to stay distinguishable, and `tiers.unattributed` counts the
+difference rather than hiding it.
+
+**`requirement_level` would otherwise have no reader at all.** Item 16 puts it on the task and
+item 30 checks criteria against the *threshold* rather than against the element, so nothing else
+looks at it. Reporting it is both the cheapest reader and the useful one: *"built 14 tasks:
+9 must-have/P0, 5 should-have/P0"* is a sentence an operator can act on, and it is the only place
+the two-level filter — `--priority` and `--requirement-level` — becomes visible in the **output**
+rather than only in the invocation.
+
+**`tiers` is derived, like every other field here.** Nothing in this file is maintained by hand,
+and a summary counted by whoever writes the report is a summary that disagrees with the tasks it
+counts.
 
 ## Field Descriptions
 

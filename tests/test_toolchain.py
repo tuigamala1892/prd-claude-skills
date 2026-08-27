@@ -5053,24 +5053,44 @@ def _():
 
     root = tempfile.mkdtemp(prefix="scope-49-")
     try:
-        def run(analysis, manifest):
+        builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+
+        def run(analysis, count, slug=None):
+            """Write real task files, BUILD the manifest, then compare.
+
+            The manifest is produced by running build-manifest.py rather than hand-written.
+            When this check shipped it seeded a `tasks` key that no manifest has ever had, and
+            check-scope.py read the same invented key -- so the check validated the
+            implementation against itself and attributed nothing on a real manifest. A fixture
+            that agrees with the code it tests is the failure that reads exactly like a pass.
+            """
             d = os.path.join(root, "t")
             shutil.rmtree(d, ignore_errors=True)
-            os.makedirs(d)
-            for name, obj in (("analysis.json", analysis), ("manifest.json", manifest)):
-                with open(os.path.join(d, name), "w", encoding="utf-8", newline="\n") as f:
-                    json.dump(obj, f)
+            os.makedirs(os.path.join(d, "1-foundation"))
+            for i in range(count):
+                trace = ""
+                if slug:
+                    trace = ("    <source-feature>%s</source-feature>\n"
+                             "    <moscow>must-have</moscow>\n"
+                             "    <satisfies-criteria>1</satisfies-criteria>\n"
+                             "    <requirement-level>P0</requirement-level>\n" % slug)
+                with open(os.path.join(d, "1-foundation", "L1-%03d-probe.xml" % (i + 1)),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Probe %d</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>1</priority>\n"
+                            "%s  </meta>\n</task>\n" % (i + 1, i + 1, trace))
+            with open(os.path.join(d, "analysis.json"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                json.dump(analysis, f)
+            b = subprocess.run([sys.executable, builder, d], capture_output=True, text=True)
+            assert b.returncode == 0, f"build-manifest.py failed: {b.stdout}\n{b.stderr}"
             return subprocess.run([sys.executable, script, d], capture_output=True, text=True)
-
-        tasks = lambda n, slug=None: {"tasks": [
-            dict({"id": "L1-%03d" % i}, **({"source_feature": slug} if slug else {}))
-            for i in range(n)]}
 
         # Gross disagreement, on both paths at once.
         p = run({"scope": "small", "confidence": "medium",
                  "feature_signals": [{"feature": "save-link", "scope": "small",
                                       "confidence": "low"}]},
-                tasks(11, "save-link"))
+                11, "save-link")
         assert p.returncode == 0, (
             f"the cross-check exited {p.returncode}. A prediction losing an argument with an "
             f"observation is information, not a failure -- one that can block gets disabled")
@@ -5087,7 +5107,7 @@ def _():
         p = run({"scope": "small", "confidence": "high",
                  "feature_signals": [{"feature": "save-link", "scope": "small",
                                       "confidence": "high"}]},
-                tasks(5, "save-link"))
+                5, "save-link")
         assert p.returncode == 0 and "DISAGREES" not in p.stdout, (
             f"small against medium was reported as a disagreement:\n{p.stdout}")
 
@@ -5095,9 +5115,28 @@ def _():
         # PRD path this is the normal case -- and a cross-check that silently compares nothing
         # is indistinguishable from one that found nothing wrong.
         p = run({"feature_signals": [{"feature": "save-link", "scope": "small",
-                                      "confidence": "high"}]}, tasks(4))
+                                      "confidence": "high"}]}, 4)
         assert re.search(r"4 of 4 task\(s\) name no source feature", p.stdout), (
             f"tasks that could not be attributed were not counted:\n{p.stdout}")
+
+        # Item 16's elements survive into the manifest, which is what every downstream reader
+        # sizes the work from. Asserted on the file build-manifest.py wrote, not on the task.
+        inv = json.load(open(os.path.join(root, "t", "manifest.json"),
+                             encoding="utf-8")).get("task_inventory") or []
+        assert inv and all("source_feature" not in e for e in inv), (
+            "the last run had no traceability, so this assertion is checking the wrong tree")
+        p = run({"feature_signals": [{"feature": "save-link", "scope": "large",
+                                      "confidence": "high"}]}, 2, "save-link")
+        inv = json.load(open(os.path.join(root, "t", "manifest.json"),
+                             encoding="utf-8")).get("task_inventory") or []
+        assert inv and all(e.get("source_feature") == "save-link" for e in inv), (
+            f"build-manifest.py dropped <source-feature>; item 30 and item 49 both read it from "
+            f"the manifest and would attribute nothing:\n{inv}")
+        assert all(e.get("moscow") == "must-have" and e.get("requirement_level") == "P0"
+                   and e.get("satisfies_criteria") == ["1"] for e in inv), (
+            f"build-manifest.py dropped one of item 16's other three elements:\n{inv}")
+        assert "DISAGREES" in p.stdout, (
+            f"large against 2 tasks is non-adjacent and should have been reported:\n{p.stdout}")
 
         # A missing input is a failure, which is a different answer from a quiet comparison.
         p = subprocess.run([sys.executable, script, os.path.join(root, "absent")],
@@ -5369,6 +5408,264 @@ def _():
         assert out["selected"] == [] and p.returncode == 1, (
             f"a should-have change request was not declined by --priority must-have. Before "
             f"item 47 this flag had no field to read on the CRD path:\n{p.stdout}")
+
+
+# ------------------------------------- the carry across the boundary (16/17/30/19/20), P20
+
+
+def _task_xml(tid, slug=None, crits="1", moscow="must-have", level="P0"):
+    trace = ""
+    if slug:
+        trace = ("    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
+                 "    <satisfies-criteria>%s</satisfies-criteria>\n"
+                 "    <requirement-level>%s</requirement-level>\n" % (slug, moscow, crits, level))
+    return ("<task>\n  <meta>\n    <id>%s</id>\n    <name>Probe %s</name>\n"
+            "    <layer>1-foundation</layer>\n    <priority>1</priority>\n%s  </meta>\n"
+            "</task>\n" % (tid, tid, trace))
+
+
+def _task_tree(root, tasks):
+    """A tasks directory with real files and a manifest BUILT by build-manifest.py."""
+    layer = os.path.join(root, "1-foundation")
+    os.makedirs(layer, exist_ok=True)
+    for i, kwargs in enumerate(tasks, start=1):
+        tid = "L1-%03d" % i
+        with open(os.path.join(layer, "%s-probe.xml" % tid), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write(_task_xml(tid, **kwargs))
+    builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    p = subprocess.run([sys.executable, builder, root], capture_output=True, text=True)
+    assert p.returncode == 0, f"build-manifest.py failed: {p.stdout}\n{p.stderr}"
+    return root
+
+
+@check("a task names the feature and criteria it came from, and `<priority>` is left alone",
+       finding="P15")
+def _():
+    """Items 16 and 17.
+
+    Before these a task named its source feature NOWHERE. Attribution downstream was a string
+    match on `<name>`, which is why item 21's tier probe had to invent slugs that could not occur
+    by coincidence, and why check-scope.py could attribute nothing.
+
+    The `<priority>` half is the part worth guarding. It is an integer meaning merge order within
+    the layer and has meant that since the beginning (P3); overloading it with MoSCoW would leave
+    every reader ambiguous about which of two unrelated orderings it was reading. So the assertion
+    is not only that the tier arrives, but that it arrives UNDER A DIFFERENT NAME.
+    """
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    blocks = re.findall(r"```xml\n(.*?)```", spec, re.S)
+    meta = next((b for b in blocks if "<meta>" in b and "<id>" in b), None)
+    assert meta, "task-format-spec.md has no <meta> example"
+    for tag in ("source-feature", "moscow", "satisfies-criteria", "requirement-level"):
+        assert "<%s>" % tag in meta, f"the task <meta> example carries no <{tag}>"
+
+    # P3: <priority> keeps its meaning. A MoSCoW value inside it is the overload item 16 avoided.
+    prio = re.search(r"<priority>([^<]*)</priority>", meta)
+    assert prio and prio.group(1).strip().isdigit(), (
+        f"<priority> in the task example is {prio.group(1) if prio else 'absent'!r}. It is an "
+        f"integer meaning merge order (P3); the feature's tier belongs in <moscow>")
+
+    flat = prose(spec)
+    assert re.search(r"Layer 0 is exempt", flat), (
+        "the spec does not exempt Layer 0. Its tasks descend from the tech stack rather than "
+        "from a feature, and inventing a <source-feature> for them puts a false attribution "
+        "into item 30's coverage check")
+    assert re.search(r"highest", flat), (
+        "the spec does not say <requirement-level> is the HIGHEST of the criteria named; a task "
+        "is built or not built as a unit")
+
+    # Item 17: the criteria are carried structurally, verbatim, and the tests cite them.
+    ctx = next((b for b in blocks if "<acceptance-criteria>" in b and "<tech-stack>" in b), None)
+    assert ctx, "task <context> does not carry <acceptance-criteria> structurally (item 17)"
+    assert "<data-model>" in ctx, "task <context> does not carry the feature's <data-model>"
+    assert re.search(r"Verbatim means verbatim", flat), (
+        "the spec does not require the criteria verbatim. A reworded criterion is one no "
+        "reviewer can match back to the PRD, which is what core §1's ids are for")
+    assert re.search(r'<test id="2" covers="7">', spec), (
+        "no test in the spec cites the criterion it covers, so item 30 has nothing to check "
+        "within a single file")
+
+    # And the generator is told to produce them -- the runnable half is item 30's check below.
+    gen = prose(open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                     encoding="utf-8").read())
+    assert re.search(r"Copy each <criterion> element whole", gen), (
+        "breakdown-generate-tasks is not told to copy the criterion element whole")
+    assert re.search(r"data model is copied, never inferred", gen), (
+        "the generator may still infer a data model beside the author's, which is the half-read "
+        "half-invented case item 17 exists to stop")
+
+
+@check("the task set is checked against the document it came from -- by running it",
+       finding="P20")
+def _():
+    """Item 30, and it is only answerable because item 16 landed.
+
+    Four assertions here; the fifth in the plan -- significance against a decision record's
+    **Drives:** -- lives in check-references.py and is NOT restated, because a rule stated in two
+    programs is one that gets changed in one of them.
+
+    THE SHORTFALL IS ASSERTED BY NAME. "1 feature has no task" passes a test that a check naming
+    the WRONG feature would also pass, and item 59's third assertion exists for the same reason.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+    assert os.path.isfile(script), "check-coverage.py does not exist"
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/check-coverage.py {prd_dir} {tasks_dir}" in skill, (
+        "/breakdown never RUNS the coverage check on the PRD and the tasks directory")
+
+    # The fifth assertion is somewhere else, and this is the statement that it is.
+    refs = open(os.path.join(SKILLS, "breakdown", "scripts", "check-references.py"),
+                encoding="utf-8").read()
+    assert "**Drives:**" in refs, (
+        "check-references.py no longer checks significance against a decision record, so item "
+        "30's fifth assertion is now stated nowhere")
+    doc = open(script, encoding="utf-8").read()
+    assert "check-references.py" in doc, (
+        "check-coverage.py does not name where the fifth assertion lives, so a reader will "
+        "conclude it was dropped")
+
+    _p, reg = schema_registry()
+    prd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf")
+    root = tempfile.mkdtemp(prefix="cov-30-")
+    try:
+        def run(tasks, *args):
+            d = os.path.join(root, "t")
+            shutil.rmtree(d, ignore_errors=True)
+            _task_tree(d, tasks)
+            p = subprocess.run([sys.executable, script, prd, d, "--json"] + list(args),
+                               capture_output=True, text=True)
+            return p, json.loads(p.stdout)
+
+        full = [dict(slug="save-link", crits="1,2,3,4"),
+                dict(slug="list-links", crits="1,2,3"),
+                dict(slug="tag-links", crits="1,2,3,4", moscow="should-have")]
+
+        # Complete coverage is exit 0 -- and asserting this is what stops a check that reports
+        # a shortfall unconditionally from passing everything below.
+        p, out = run(full)
+        assert p.returncode == 0, f"complete coverage was reported as a shortfall:\n{p.stderr}"
+        assert not out["uncovered_features"] and not out["uncovered_criteria"]
+
+        # 1. A feature with no task at all, BY NAME.
+        p, out = run(full[:2])
+        assert p.returncode == 1
+        assert [f["slug"] for f in out["uncovered_features"]] == ["tag-links"], (
+            f"the shortfall does not name the feature. A check that counts correctly and "
+            f"attributes wrongly passes any test that only counts:\n{out}")
+        assert "tag-links" in p.stderr, "the operator-facing report does not name it either"
+
+        # 3. Criteria, both directions.
+        p, out = run([dict(slug="save-link", crits="1,2")] + full[1:])
+        assert {(c["feature"], c["id"]) for c in out["uncovered_criteria"]} == {
+            ("save-link", "3"), ("save-link", "4")}, (
+            f"an uncovered criterion was not named: {out['uncovered_criteria']}")
+        p, out = run([dict(slug="save-link", crits="1,2,3,4,99")] + full[1:])
+        assert [c["id"] for c in out["unknown_criteria"]] == ["99"], (
+            f"a task citing a criterion that does not exist was not reported: {out}")
+
+        # 2. A <source-feature> naming nothing in the document.
+        p, out = run(full + [dict(slug="ghost-feature")])
+        assert [f["slug"] for f in out["unresolved_source_features"]] == ["ghost-feature"]
+
+        # 5. Item 13's runtime backstop, on the fixture that actually has a wont-have feature.
+        staff = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "staff-service")
+        d = os.path.join(root, "s")
+        _task_tree(d, [dict(slug="zebra-signin", crits="1,2,3,4"),
+                       dict(slug="quokka-telemetry", crits="1")])
+        p = subprocess.run([sys.executable, script, staff, d, "--json",
+                            "--priority", "must-have"], capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert [f["slug"] for f in out["forbidden_source_features"]] == ["quokka-telemetry"], (
+            f"a task descending from a wont-have feature was not refused. That is item 13's "
+            f"runtime backstop, and it fires when the selection gate did not run:\n{out}")
+        assert p.returncode == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/execute reports the tier it built and refuses won't-have work -- by running both",
+       finding="P1")
+def _():
+    """Items 19 and 20, which are why they were moved out of group 5c: both read `<moscow>` on a
+    TASK, and nothing put it there until item 16.
+
+    `<requirement-level>` would otherwise have no reader at all -- item 16 writes it, item 30
+    checks criteria against the threshold rather than against the element, and nothing else looks
+    at it. The report is both the cheapest reader and the useful one.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="exec-19-")
+    try:
+        project = os.path.join(root, "proj")
+        os.makedirs(project)
+        for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "init"]):
+            subprocess.run(["git"] + args, cwd=project, capture_output=True, text=True)
+
+        tasks = os.path.join(root, "tasks")
+        _task_tree(tasks, [dict(slug="save-link", moscow="must-have", level="P0"),
+                           dict(slug="tag-links", moscow="should-have", level="P1"),
+                           dict(slug=None)])  # Layer 0 shape: no tier at all
+        with open(os.path.join(tasks, "layer_plan.json"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write('{"layers": []}\n')
+
+        # ---- item 19: the tiers are DERIVED into the state file, not counted by a reporter.
+        writer = os.path.join(SKILLS, "execute", "scripts", "write-state.py")
+        p = subprocess.run([sys.executable, writer, tasks, project, "probe"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"write-state.py failed: {p.stdout}\n{p.stderr}"
+        state = json.load(open(os.path.join(tasks, "execute-state.json"), encoding="utf-8"))
+
+        assert state.get("tiers", {}).get("by_tier") == {"must-have/P0": 1,
+                                                         "should-have/P1": 1}, (
+            f"execute-state.json does not group by BOTH tiers. The two-level filter is "
+            f"invisible in the output otherwise:\n{state.get('tiers')}")
+        assert state["tiers"].get("unattributed") == 1, (
+            "a task with no tier was not counted as unattributed. Layer 0 legitimately has "
+            "none, and silently dropping it makes a partial report look complete")
+        rec = state["tasks"]["L1-001"]
+        assert rec.get("moscow") == "must-have" and rec.get("requirement_level") == "P0"
+        assert "moscow" not in state["tasks"]["L1-003"], (
+            "a task with no tier was given a null one; `has no tier` and `tier not recorded` "
+            "must stay distinguishable")
+
+        schema = open(os.path.join(SKILLS, "execute", "references", "state-schema.md"),
+                      encoding="utf-8").read()
+        for field in ('"tiers"', '"moscow"', '"requirement_level"'):
+            assert field in schema, (
+                f"state-schema.md does not document {field}. A live producer/spec mismatch in "
+                f"this exact file is what item 23a was")
+
+        # ---- item 20: preflight refuses, names the file, and still works when it should.
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        p = subprocess.run(["sh", flight, tasks, project], capture_output=True, text=True)
+        assert p.returncode == 0, f"preflight refused a clean tree: {p.stderr}"
+        assert p.stdout.strip(), "preflight stopped printing the resolved base branch"
+
+        bad = os.path.join(tasks, "1-foundation", "L1-004-wont.xml")
+        with open(bad, "w", encoding="utf-8", newline="\n") as f:
+            f.write(_task_xml("L1-004", slug="quokka-telemetry", moscow="wont-have"))
+        p = subprocess.run(["sh", flight, tasks, project], capture_output=True, text=True)
+        assert p.returncode == 1, (
+            "a task carrying <moscow>wont-have</moscow> reached /execute and was not refused. "
+            "That means item 13's gate did not run, and item 20 is the exit code that says so")
+        assert "REFUSED" in p.stderr and "L1-004" in p.stderr, (
+            f"the refusal does not name the offending task file:\n{p.stderr}")
+
+        skill = prose(open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read())
+        assert re.search(r"wont-have", skill), "/execute does not document the item 20 refusal"
+        assert re.search(r"tiers block", skill), (
+            "/execute is not told to report the tier from the state file's derived block, so it "
+            "will count its own and disagree with the tasks it counted")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 # ------------------------------------------------------------------- behavioural

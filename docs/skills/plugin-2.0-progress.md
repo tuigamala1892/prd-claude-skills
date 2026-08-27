@@ -1859,7 +1859,8 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
-| **16 + 17 + 30 + 59 + 19 + 20** — the carry, and the two reporters that need it | *Next* | — |
+| **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `PENDING` |
+| **59** — the runtime test across the boundary | *Next* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
 
@@ -2288,6 +2289,112 @@ attempt** — the first round in this phase to open at 100%. Two method changes 
 of them corrections made earlier in the same session: every anchor was verified to match exactly
 once **before** launching, and every assertion about a script names a **runnable invocation or a
 fenced block** rather than a filename that prose also satisfies.
+
+---
+
+## 16 + 17 + 30 + 19 + 20 — the pipeline stops discarding the document
+
+**Commit:** `PENDING` · **Addresses:** P1, P15, P20 · **Files:**
+`skills/breakdown/references/task-format-spec.md`, `skills/breakdown-generate-tasks/SKILL.md`,
+`skills/breakdown/SKILL.md`, `skills/breakdown/scripts/build-manifest.py`,
+`skills/breakdown/scripts/check-coverage.py` (new), `skills/breakdown/scripts/check-scope.py`,
+`skills/execute/SKILL.md`, `skills/execute/scripts/write-state.py`,
+`skills/execute/scripts/preflight.sh`, `skills/execute/references/state-schema.md`,
+`tests/fixture/prd/SCHEMAS.json`, `tests/mutants/carry.py`, `tests/test_toolchain.py`
+
+### What actually changed
+
+A task now knows where it came from. Before item 16 it did not — attribution downstream was a
+**string match on the task's `<name>`**, which is why item 21's tier probe had to invent slugs
+that could not occur by coincidence, and why `check-scope.py` shipped with nothing to attribute.
+
+- **16** — `<meta>` gains `<source-feature>`, `<moscow>`, `<satisfies-criteria>` and
+  `<requirement-level>`. `build-manifest.py` carries all four into `manifest.json` (`1.0` → `1.1`).
+- **17** — `<context>` carries the criteria **verbatim with their ids** and the feature's own
+  `<data-model>`, instead of `<prd-excerpt>` prose somebody rewrote. Each `<test covers=>` names
+  the criterion it discharges.
+- **30** — `check-coverage.py`: does the task set match the document.
+- **19** — both tiers reach `execute-state.json` per task, and a derived `tiers` block groups them.
+- **20** — `preflight.sh` refuses a task carrying `<moscow>wont-have</moscow>`, naming the file.
+
+### `<priority>` is untouched, and that is why the others have the names they do
+
+P3. `<priority>` is an integer meaning *merge order within the layer* and has meant that since the
+beginning. Overloading it with MoSCoW would leave every reader ambiguous about which of two
+unrelated orderings it was reading, so the feature's tier arrives as `<moscow>` — a name that was
+free.
+
+**A check asserting only "the tier is somewhere in `<meta>`" would pass on the overload**, so the
+mutant that puts `must-have` inside `<priority>` is in the round, and it is caught.
+
+### Two items were moved here from 5c, and this is why
+
+Items **19 and 20 both read `<moscow>` on a *task***, which nothing wrote until item 16. Building
+item 20 in 5c would have shipped a refusal that can never fire — a **guard with no producer**,
+which is the mirror of the field-with-no-reader defect item 49 had just finished removing. The
+plan opens Phase 5 with item 16 for exactly this reason and the five-group split had missed it.
+
+### A defect I shipped two commits ago, found by wiring the next item to it
+
+`check-scope.py` (item 49, `cfc8796`) read `manifest["tasks"]`. **The manifest key is
+`task_inventory`**, and has been since it existed — `write-state.py` reads it correctly.
+
+The reason it passed: **its test seeded the same invented key.** The fixture agreed with the
+implementation, so the check validated the code against itself and attributed nothing on a real
+manifest. That is the failure mode that reads exactly like a pass, and no amount of mutation of
+`check-scope.py` would have caught it, because the mutants and the fixture shared the mistake.
+
+The fix is not the one-word key change. **The test now builds the manifest by running
+`build-manifest.py`**, so the check is held against the artefact the toolchain actually produces
+rather than against a dict I wrote to match my own code. Reverting the key and watching the
+corrected test fail is what established that it now catches it.
+
+**The general rule, which this ledger has not previously stated:** a fixture hand-written to match
+the reader is not a fixture, it is a restatement of the reader. Where a producer exists, run it.
+
+### Item 30 does not restate the assertion that already has a home
+
+The plan lists five assertions for the coverage check. The fourth — every architecturally
+significant feature named by a decision record's `**Drives:**` — **is not in `check-coverage.py`**,
+because `check-references.py` already runs it. A rule stated in two programs is a rule that gets
+changed in one of them, and the script names where the fifth lives so a reader does not conclude
+it was dropped.
+
+### The shortfall is named, and the mutant that proves it keeps the count right
+
+*"1 should-have feature has no task: tag-links"* is the sentence. A check reporting *"1 feature has
+no task"* passes any test that a check naming the **wrong** feature would also pass — which is
+item 59's third assertion, arriving early as a mutant that leaves the count correct and removes
+only the name.
+
+### Items 16 and 17 are not a schema version, and the registry now says so
+
+`SCHEMAS.json` had them listed under a `planned` schema-6. They are not: **a task is not a
+versioned artefact.** `migrate.py` recognises five roots and a task is none of them, because tasks
+are *regenerable output* — the way to move a task set to a new shape is to re-run `/breakdown`,
+not to migrate it. Versioning them would have meant a fixture and a migration step for files
+nobody hand-edits. `manifest.json`'s own `MANIFEST_SCHEMA_VERSION` went `1.0` → `1.1` instead,
+which is the right granularity.
+
+The prediction is corrected in the file rather than deleted, per the convention item 11's
+correction established.
+
+### Verification
+
+`python tests/test_toolchain.py` — **92 → 95**, `failed 0`, `known 0`.
+
+Watched by hand before the checks were written: `check-coverage.py` over all five outcomes
+(complete → exit 0; a feature with no task, named; a missing criterion; a criterion id that does
+not resolve; a task from a `wont-have` feature); `preflight.sh` refusing and then permitting; and
+`write-state.py` producing the `tiers` block from a real manifest.
+
+**Mutation round:** `tests/mutants/carry.py`, eleven mutants, **11/11 caught on the first
+attempt** — the second consecutive round to open at 100%, on the two method corrections made
+earlier in this phase.
+
+**Item 59 is not in this commit.** It is the runtime test across this boundary, it needs the
+toolchain driven headlessly, and it is the assertion that everything above is *specified* rather
+than *demonstrated*.
 ---
 
 ## What the machine sleeping taught, which was not about sleep
