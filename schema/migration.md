@@ -192,6 +192,43 @@ postcondition names the story and its precondition does not care how many are mi
 
 ---
 
+## The conventions, and what they make checkable
+
+Item 4. `excluded` and `superseded` were conventions an authoring corpus invented because the
+schema had nowhere to record *"we decided not to build this"*. They are schema now, and each is
+paired with the element that says **why** — which is what turns a convention into something a
+postcondition can hold.
+
+| # | Precondition | Transformation | Postcondition |
+|---|---|---|---|
+| R7 | a feature whose `<definition>` is `excluded` | none — this is a rule, not a rewrite | it carries a non-empty `<rationale>` |
+| R8 | a feature whose `<definition>` is `superseded` | none | it carries `<superseded-by slug=>`, the slug resolves to a feature that exists, and **no `index.md` entry points at this feature** |
+
+**R7 and R8 transform nothing, and that is deliberate.** A migration cannot invent a rationale
+for a decision it was not present for. What it can do is **refuse to finish** while one is
+missing, which turns *"somebody will notice"* into an exit code at the moment the file is being
+touched anyway.
+
+**Index removal is the half that is easy to forget.** A superseded feature stays on disk as a
+record and leaves the index, because the index is the *planning* view and a merged feature is no
+longer a unit of planning. Leaving the entry there makes the feature count wrong and gives
+`--priority` something to select that nobody intends to build.
+
+**Reclassifying `<definition>` is a judgement, and the rule it will follow is a ceiling.**
+Item 3 builds the derivation; the constraint it inherits is recorded here so it implements rather
+than invents:
+
+> Derive **at most** what the content supports. Report where the declared status **exceeds** the
+> ceiling; stay silent where it sits below. A feature an author has held at `in-progress` for
+> reasons the file cannot express is never contradicted upward — and a `<gap kind="specification">`
+> against a `defined` feature is reported as the contradiction it is, not escalated.
+
+A derivation that reports a *value* can contradict an author. One that reports a *ceiling*
+cannot, and that is the whole reason the check is three-valued by construction rather than by
+concession.
+
+---
+
 ## The CRD path
 
 Seven items in §5 J change artefacts that are already written. A migration scoped to PRDs would

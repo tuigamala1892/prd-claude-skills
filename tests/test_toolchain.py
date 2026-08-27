@@ -1194,10 +1194,15 @@ def _():
                   open(os.path.join(prd, "features", n), encoding="utf-8").read()]
         assert owners == ["label-links.md"], f"the new slug is claimed by {owners}"
 
-        # what-next.md's ref= is the sixth site. The plan's item 42 lists five, and the
-        # fixture is where the sixth turned up.
+        # what-next.md is the sixth site. The plan's item 42 lists five and the fixture is
+        # where the sixth turned up -- and item 11 then changed its SHAPE, from a `ref=` path
+        # to a `slug=` row in the derived <authoring-gaps>. So the assertion is that the file
+        # was carried, not that one spelling of it was: three more `slug=` sites arrived with
+        # the schema-4 group, which is the argument for a postcondition over a list.
         wn = open(os.path.join(prd, "what-next.md"), encoding="utf-8").read()
-        assert 'ref="features/label-links.md"' in wn, "what-next.md was not carried"
+        assert "label-links" in wn and "tag-links" not in wn, (
+            "what-next.md was not carried. Its feature references are `<gap slug=>` rows since "
+            "item 11, and a rename has to carry every shape of reference or the file is stale")
 
         # Prose is reported, not rewritten.
         assert "MENTION" in p.stdout and "in prose" in p.stdout, (
@@ -2361,9 +2366,15 @@ def _():
                or not os.path.isfile(os.path.join(base, f.get("file").replace("/", os.sep)))]
     assert not missing, f"feature files missing: {missing}"
 
+    # Item 12's dual read, asserted rather than assumed: <status> is under <meta> in a migrated
+    # file and a direct child in one that has not been migrated yet, and BOTH must keep working
+    # until every artefact has moved. A PRD that cannot be found is a PRD that gets overwritten
+    # -- F3, which cost an interview before it was fixed.
     wn = ET.parse(os.path.join(base, "what-next.md")).getroot()
-    assert (wn.findtext("status") or "").strip() == "in-progress", \
-        "fixture what-next.md needs <status>in-progress</status> for the resume test (F3)"
+    status = (wn.findtext("meta/status") or wn.findtext("status") or "").strip()
+    assert status == "in-progress", (
+        "fixture what-next.md needs <status>in-progress</status> for the resume test (F3), "
+        "under <meta> or directly under <what-next>")
 
 
 @check("every referenced references/ file exists")
@@ -3897,10 +3908,16 @@ def _():
                         f"{judgement}. That is the half the script owns, so anything it moved "
                         f"there, it moved by accident")
 
-                    # And it must not have produced any of the forbidden elements.
+                    # And it must not have PRODUCED any of the forbidden elements. An element
+                    # already in the source is not evidence either way -- the script leaving
+                    # `<tbd-items>` alone is required, not forbidden -- so the exclusion is
+                    # derived from the source file rather than hardcoded, which is what stops
+                    # this list going stale the next time a step is added.
+                    source = open(os.path.join(REPO, "tests", "fixture", "prd", src_version,
+                                               rel), encoding="utf-8").read()
                     for name in judgement:
-                        if name in ("acceptance-criteria", "definition"):
-                            continue        # these exist before the step; see below
+                        if f"<{name}" in source:
+                            continue
                         assert f"<{name}" not in got, (
                             f"{src_version} -> {target}: {rel} carries a <{name}> the script "
                             f"produced. Assigning it is a judgement the guide forbids")
@@ -4405,6 +4422,290 @@ def _():
     assert re.search(r"When a feature declares one, copy it", analyzer), (
         "analyze-prd is not told to prefer a declared <data-model> over its own inference, "
         "which is the entire reason the element exists (P4)")
+# --------------------------------------------- conventions, what-next, decision record (4/11/12/36)
+
+def _mini_prd(root, definition, extra="", index_entry=True):
+    """A one-feature PRD on disk. Synthetic rather than a fixture: `excluded` and `superseded`
+    appear in neither fixture project, and adding them there would perturb every golden
+    comparison to exercise two rules."""
+    os.makedirs(os.path.join(root, "features"), exist_ok=True)
+    entry = ('    <feature priority="must-have" file="features/one.md"><name>One</name></feature>\n'
+             if index_entry else "")
+    open(os.path.join(root, "index.md"), "w", encoding="utf-8", newline="\n").write(
+        f"<prd>\n  <meta><slug>mini</slug><status>complete</status></meta>\n"
+        f"  <features>\n{entry}  </features>\n</prd>\n")
+    open(os.path.join(root, "features", "one.md"), "w", encoding="utf-8", newline="\n").write(
+        f"<feature>\n  <meta>\n    <slug>one</slug>\n"
+        f"    <definition>{definition}</definition>\n  </meta>\n"
+        f"  <user-story>As a person, I want a thing, so that a reason.</user-story>\n"
+        f"{extra}</feature>\n")
+    return root
+
+
+@check("a feature that will not be built says why, and leaves the index -- by running it",
+       finding="P8")
+def _():
+    """Item 4. `excluded` and `superseded` were conventions an authoring corpus invented because
+    the schema had nowhere to record "we decided not to build this". They are schema now, and
+    each is paired with the element that says WHY -- which is what turns a convention into
+    something a postcondition can hold.
+
+    Run the migration rather than read it: the rules transform nothing, so their whole value is
+    the exit code, and an exit code that has not been seen non-zero is a hypothesis.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+    root = tempfile.mkdtemp(prefix="prd-conventions-")
+    try:
+        # R7: excluded with no rationale must refuse; with one, it passes.
+        bad = _mini_prd(os.path.join(root, "a"), "excluded")
+        p = _run_migrate(bad, "--to", target, "--quiet")
+        assert p.returncode == 1 and "R7" in p.stderr, (
+            f"an `excluded` feature with no <rationale> was accepted (exit {p.returncode}). A "
+            f"feature nobody will build is a decision, and a decision nobody can reconstruct is "
+            f"a gap in the record:\n{p.stdout}\n{p.stderr}")
+        assert "NOT WRITTEN" in p.stderr, "the refusal does not say the file was left alone"
+
+        # An EMPTY <rationale> is the case the first version of this check never built, so a
+        # mutant that stopped calling .strip() survived. "The element is there" and "somebody
+        # wrote something in it" are different claims.
+        empty = _mini_prd(os.path.join(root, "a2"), "excluded", "  <rationale>   </rationale>\n")
+        p = _run_migrate(empty, "--to", target, "--quiet")
+        assert p.returncode == 1 and "R7" in p.stderr, (
+            f"an empty <rationale> was accepted (exit {p.returncode}). An element with nothing "
+            f"in it records that somebody knew a reason was wanted, and nothing else")
+
+        good = _mini_prd(os.path.join(root, "b"), "excluded",
+                         "  <rationale>The data it needed never arrived.</rationale>\n")
+        p = _run_migrate(good, "--to", target, "--quiet")
+        assert p.returncode == 0, f"an `excluded` feature WITH a rationale was refused: {p.stderr}"
+
+        # R8: superseded needs a successor that EXISTS, and must leave the index. The two are
+        # tested separately -- the first version left this one in the index as well, so the
+        # index rule satisfied the assertion and a mutant that dropped the successor check
+        # survived. One assertion, one rule.
+        dangling = _mini_prd(os.path.join(root, "c"), "superseded",
+                             '  <superseded-by slug="other"/>\n', index_entry=False)
+        p = _run_migrate(dangling, "--to", target, "--quiet")
+        assert p.returncode == 1 and "does not exist" in p.stderr, (
+            f"a `superseded` feature naming a successor that does not exist was accepted "
+            f"(exit {p.returncode}). Without a resolving pointer the feature is merely "
+            f"missing, and nothing says what absorbed it:\n{p.stderr}")
+
+        still_listed = _mini_prd(os.path.join(root, "d"), "superseded",
+                                 '  <superseded-by slug="one"/>\n')
+        p = _run_migrate(still_listed, "--to", target, "--quiet")
+        assert p.returncode == 1 and "index.md still points at it" in p.stderr, (
+            "a `superseded` feature still listed in index.md was accepted. The index is the "
+            "planning view and a merged feature is no longer a unit of planning -- leaving the "
+            "entry makes the feature count wrong")
+
+        gone = _mini_prd(os.path.join(root, "e"), "superseded",
+                         '  <superseded-by slug="one"/>\n', index_entry=False)
+        p = _run_migrate(gone, "--to", target, "--quiet")
+        assert p.returncode == 0, (
+            f"a correctly superseded feature was refused: {p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # Scoped to the SENTENCE that binds reclassification to the rule. "ceiling" appears three
+    # times in the guide, so searching the document let the binding sentence be deleted while
+    # the explanation of what a ceiling is stayed behind, explaining nothing.
+    guide = open(os.path.join(SCHEMA, "migration.md"), encoding="utf-8").read()
+    binding = [ln for ln in guide.splitlines()
+               if "Reclassif" in ln and re.search(r"ceiling", ln, re.I)]
+    assert binding, (
+        "the guide no longer says that RECLASSIFICATION derives a ceiling. A derivation that "
+        "reports a value can contradict an author; one that reports a ceiling cannot, and item "
+        "3 has to inherit that rather than invent it")
+
+
+@check("what-next.md's gap list is derived, and staleness is an exit code -- by running it",
+       finding="P12")
+def _():
+    """Item 11.
+
+    A PRD with twenty-one unfinished features has twenty-one entries to keep in step with
+    twenty-one files, and hand-maintenance of that has never once happened: the corpus this
+    schema was measured against listed ZERO tbd items while carrying twenty-one. Generating it
+    is the only version that stays true -- so the element ships WITH its producer rather than
+    waiting for item 6, which is the mistake item 51 exists because of.
+
+    Asserted by running the builder over the real fixture and mutating a feature underneath it.
+    """
+    import shutil
+    import tempfile
+
+    builder = os.path.join(SCHEMA, "scripts", "build-what-next.py")
+    assert os.path.isfile(builder), "schema/scripts/build-what-next.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-whatnext-")
+    try:
+        work = os.path.join(root, "prd")
+        shutil.copytree(current_fixture("link-shelf"), work)
+
+        def run(*args):
+            return subprocess.run([sys.executable, builder, work, *args],
+                                  capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace")
+
+        p = run("--check")
+        assert p.returncode == 0, (
+            f"the fixture's <authoring-gaps> is already stale, so the rest of this check would "
+            f"be measuring a broken baseline:\n{p.stdout}\n{p.stderr}")
+
+        # Add a gap to a feature. The derived block must now disagree -- that is the whole
+        # point of deriving it, and `--check` is what makes the disagreement actionable.
+        feature = os.path.join(work, "features", "save-link.md")
+        text = open(feature, encoding="utf-8").read()
+        open(feature, "w", encoding="utf-8", newline="\n").write(text.replace(
+            "</acceptance-criteria>",
+            '</acceptance-criteria>\n\n  <gaps>\n    <gap id="9" kind="ownership" '
+            'raised="2026-08-27">\n    Who owns the URL parser is unsettled.\n    </gap>\n'
+            "  </gaps>", 1))
+
+        p = run("--check")
+        assert p.returncode == 1 and "STALE" in p.stderr, (
+            "a feature grew a gap and the derived block did not go stale. A list that cannot "
+            "notice is a list nobody can trust")
+
+        p = run()
+        assert p.returncode == 0, f"the rebuild failed: {p.stderr}"
+        rebuilt = open(os.path.join(work, "what-next.md"), encoding="utf-8").read()
+        assert 'slug="save-link" id="9" kind="ownership"' in rebuilt, (
+            "the rebuilt block does not carry the new gap")
+        assert "Who owns the URL parser" not in rebuilt, (
+            "the derived block copied the gap's BODY. It aggregates pointers so that a gap is "
+            "written in one place and corrected in one place; a copy is a second thing to keep "
+            "in step")
+        assert run("--check").returncode == 0, "the rebuild did not settle"
+
+        # It must aggregate, never invent: a feature with no gaps and no shortfall adds nothing.
+        counts = re.search(r"<summary ([^/]*)/>", rebuilt)
+        assert counts, "the derived block carries no <summary>"
+        assert 'defined="3"' in counts.group(1), (
+            f"the summary miscounts the fixture's definitions: {counts.group(1)}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # Scoped to the SECTION that argues it, not the document -- the phrase also appears in the
+    # template's own XML comment, which satisfied the assertion on its own.
+    fmt = open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read()
+    section = fmt.split("### `<authoring-gaps>` is derived", 1)
+    assert len(section) == 2, "prd-format.md no longer argues why the block is derived"
+    section = section[1].split("\n### ", 1)[0]
+    assert re.search(r"Never hand-maintained", prose(section)), (
+        "prd-format.md's <authoring-gaps> section does not say the block is never "
+        "hand-maintained, so the next person to find it out of date will edit it")
+    assert re.search(r"zero.*twenty-one|twenty-one.*zero", prose(section), re.I), (
+        "the section no longer carries the measurement that makes the rule an argument rather "
+        "than a preference: a corpus listing zero TBD items while carrying twenty-one")
+
+
+@check("the resume marker is readable in both shapes -- by running the finder", finding="F3")
+def _():
+    """Item 12.
+
+    `/prd`'s initialization reads `<status>` from what-next.md OR index.md, and item 11 moved it
+    under `<meta>` in the new shape. The dual check has to keep working across a PARTLY migrated
+    tree, because a PRD that cannot be found is a PRD that gets overwritten -- F3, which cost an
+    interview before it was fixed.
+
+    So both shapes are put in front of the real finder, in one directory, and both must be seen.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+    root = tempfile.mkdtemp(prefix="prd-dual-")
+    try:
+        for name, body in (
+            ("migrated", "<what-next>\n  <meta>\n    <prd-slug>migrated</prd-slug>\n"
+                         "    <status>in-progress</status>\n  </meta>\n</what-next>\n"),
+            ("legacy", "<what-next>\n  <status>in-progress</status>\n</what-next>\n"),
+        ):
+            d = os.path.join(root, name)
+            os.makedirs(os.path.join(d, "features"))
+            open(os.path.join(d, "index.md"), "w", encoding="utf-8", newline="\n").write(
+                f"<prd><meta><slug>{name}</slug><status>in-progress</status></meta></prd>\n")
+            open(os.path.join(d, "what-next.md"), "w", encoding="utf-8", newline="\n").write(body)
+
+        p = subprocess.run([sys.executable, script, root], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        out = p.stdout + p.stderr
+        for name in ("migrated", "legacy"):
+            assert name in out, f"{name} was not listed at all:\n{out}"
+        assert "NO MARKER" not in out, (
+            f"a PRD's resume marker was not found in one of the two shapes. Until every "
+            f"artefact is migrated, both have to work:\n{out}")
+        assert "DISAGREE" not in out, f"the two files were read as disagreeing:\n{out}"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the decision record has a template, a test for when to write one, and a reader",
+       finding="P24")
+def _():
+    """Item 36.
+
+    Adopted from a project that already had nineteen and a settled house style, so the checks
+    read a convention that exists rather than asking for a migration.
+
+    The load-bearing part is not the section list -- it is the TEST. `**No rejected alternatives
+    means it is not a decision record**` is what stops a principle being filed as a decision and
+    read as though something was weighed.
+    """
+    path = os.path.join(SCHEMA, "decision-record.md")
+    assert os.path.isfile(path), "schema/decision-record.md does not exist"
+    text = open(path, encoding="utf-8").read()
+
+    blocks = [b for b in re.findall(r"```markdown\n(.*?)```", text, re.S)]
+    assert blocks, "decision-record.md carries no template"
+    tpl = blocks[0]
+    for field in ("**Status:**", "**Date:**", "**Drives:**"):
+        assert field in tpl, f"the template carries no {field} field"
+    for section in ("## Context", "## Options Considered", "## Decision", "## Rationale",
+                    "## Consequences"):
+        assert section in tpl, f"the template is missing {section}"
+    assert "**Verdict:**" in tpl, (
+        "an option carries no Verdict, so a rejected alternative is recorded without saying "
+        "what it was rejected on")
+
+    flat = prose(text)
+    assert re.search(r"No rejected alternatives means it is not a decision record", flat), (
+        "decision-record.md drops the test for whether you are writing one. Without it a "
+        "principle gets filed as a decision and read as though something was weighed")
+    assert re.search(r"Titles state a claim, not a topic", flat), (
+        "the title convention is gone -- a record titled with a topic makes a reader open the "
+        "file to find out what was decided")
+    assert re.search(r'design-track enabled="false"', text), (
+        "the design track is not declared off by default, so adopting the template turns on a "
+        "gate nobody asked for")
+
+    # A reader, or it is a template nobody validates. check-references.py already reads both
+    # bolded fields -- assert the citation runs both ways.
+    refs = open(os.path.join(SKILLS, "breakdown", "scripts", "check-references.py"),
+                encoding="utf-8").read()
+    assert "decision-record.md" in refs, (
+        "check-references.py validates a record's fields without citing where they are defined")
+    # A row naming a reader that EXISTS ON DISK, reached by a link that resolves.
+    #
+    # Two weaker versions of this were satisfied by something else in the file: "the script is
+    # mentioned" matched the prose about `**Drives:**`, and "some row looks like a path" matched
+    # the `/prd Phase 4` row. The table lists three readers and only one of them is a program
+    # today -- so the claim is that at least one is, and the way to be sure is to resolve it.
+    readers = text.split("## What reads this", 1)
+    assert len(readers) == 2, "decision-record.md has no 'what reads this' section"
+    rows = [ln.strip() for ln in readers[1].splitlines() if ln.strip().startswith("|")][2:]
+    resolving = [t for r in rows for _l, t in md_links(r.split("|")[1])
+                 if os.path.isfile(os.path.normpath(os.path.join(SCHEMA, t)))]
+    assert resolving, (
+        "decision-record.md's reader table names no reader that exists on disk. A template "
+        "whose conventions nothing validates is a suggestion, and the two fields this one is "
+        "built around already have a program that reads them")
 
 # ------------------------------------------------------------------- behavioural
 

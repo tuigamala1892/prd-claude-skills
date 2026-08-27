@@ -40,7 +40,10 @@ into another; using it here would claim two features existed where there was alw
 never touches a status, and refuses to rename onto an existing feature for the same reason.
 
 **A rename is a decision.** Where it accompanies a change of scope it wants a decision record
-rather than a silent file move; the script's final line is written to be pasted into one.
+rather than a silent file move; the script's final line is written to be pasted into one. The
+template and its conventions are in [`decision-record.md`](../schema/decision-record.md) — and
+its first test is whether you have a *rejected alternative* to record. If you do not, what you
+are writing is a principle and belongs in `architecture.md`.
 
 ## Initialization
 

@@ -1002,7 +1002,8 @@ can land until the transformation is specified and checkable.
 | **45** — three status vocabularies, three names | **Landed** 2026-08-27 | `145282d` |
 | **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `28b85b9` |
 | **33 + 34** — EARS criteria, and criterion priority | **Landed** 2026-08-27 | `4f81d54` |
-| **29 + 27 + 35 + 1 + 2 + 5** — the rest of the template | **Landed** 2026-08-27 | `_` |
+| **29 + 27 + 35 + 1 + 2 + 5** — the rest of the template | **Landed** 2026-08-27 | `15bb097` |
+| **4 + 11 + 12 + 36** — conventions, derived list, dual read, record | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -1648,6 +1649,143 @@ is no `<phases>` element. That is item 9's F3 lesson exactly: *a check that fail
 absence is documented is a check pinned to prose*. The fix is the same one Phase 3 arrived at —
 assert over the **parsed template**, which is a structural claim about what the block is, rather
 than a word hunt over the document that describes it.
+---
+
+## 4 + 11 + 12 + 36 — the conventions, the derived list, the dual read, and the record
+
+**Addresses:** P8, P12, P24, F3 · **Files:** `schema/decision-record.md` (new),
+`schema/scripts/build-what-next.py` (new), `schema/scripts/migrate.py`, `schema/migration.md`,
+`schema/prd-format.md`, `schema/core.md`, `skills/breakdown/scripts/rename-feature.py`,
+`skills/breakdown/scripts/check-references.py`, `commands/prd.md`,
+`tests/fixture/prd/schema-4/**`, `tests/fixture/prd/SCHEMAS.json`, `tests/test_toolchain.py`,
+`tests/mutants/phase4-4-11-12-36.py` (new)
+
+### Item 4 became two rules that refuse, and one that item 3 inherits
+
+Most of item 4's text — *"migrate the corpus conventions into the templates"* — landed with the
+schema-4 group, because the conventions **are** the template. What was left was the half that
+makes them mean something:
+
+- **R7:** an `excluded` feature carries a non-empty `<rationale>`.
+- **R8:** a `superseded` feature carries `<superseded-by slug=>`, the slug resolves, and **no
+  index entry points at it**.
+
+**Both transform nothing.** A migration cannot invent a rationale for a decision it was not
+present for. What it can do is refuse to finish while one is missing, which turns *"somebody will
+notice"* into an exit code at the moment the file is being touched anyway.
+
+**And they are checked on every feature file, not only on the ones being transformed.** The first
+version attached them to a step, so an already-migrated tree could violate them in silence — a
+rule about the artefact, wired as if it were a rule about the transformation. The distinction is
+worth keeping: *what must be true of this file* and *what this change must do* are different
+assertions, and only one of them belongs to a step.
+
+**The reclassification itself is item 3's, and what it inherits is written down**: derive a
+**ceiling**, never a value. A derivation that reports a value can contradict an author; one that
+reports a ceiling cannot. Item 3 arrives a phase later and should implement rather than invent
+it.
+
+### Item 11 shipped with its producer, because the alternative is measured
+
+Item 11 specifies `<authoring-gaps>` as *"DERIVED by item 6, never hand-maintained"* — and item 6
+is in Phase 5. **An element with no producer is the defect item 51 exists because of**, so
+`build-what-next.py` lands with the schema and item 6 becomes its caller rather than its author.
+
+The argument is not theoretical. The corpus this schema was measured against listed **zero** TBD
+items while carrying **twenty-one**. Hand-maintaining twenty-one entries against twenty-one files
+has never once happened.
+
+**It aggregates pointers, never copies.** A `<gap>` row carries slug, id, kind and date and *not*
+the body, so a gap is written in one place and corrected in one place. A `<feature>` row covers
+the other case: short of `defined` with no `<gaps>` block at all, so there is nothing to point at
+and the shortfall is named directly.
+
+**`excluded` and `superseded` are not shortfalls** and do not appear in the list. They are
+decisions, and putting a resolved thing on a list of unresolved ones is how a list stops being
+read.
+
+### Item 12 is one line of behaviour and the check is the deliverable
+
+`<status>` moved under `<meta>`. `list-prds.py` takes the *first* `<status>` in the file, so both
+shapes work — but that had been true by accident of a regex, and item 12's whole content is that
+it must stay true **on purpose** until every artefact is migrated.
+
+So the check puts a migrated and an unmigrated `what-next.md` in one directory in front of the
+real finder and asserts both are seen, neither reports `NO MARKER`, and the pair does not read as
+`DISAGREE`. A PRD that cannot be found is a PRD that gets overwritten — F3, which cost an
+interview before it was fixed.
+
+### Item 36 was adopted, and the load-bearing part is not the section list
+
+The template came from a project with nineteen records and a settled house style, so the checks
+read a convention that already exists rather than asking for a migration.
+
+**The part worth checking is the test, not the shape:** *no rejected alternatives means it is not
+a decision record — it is a principle.* Without that line a principle gets filed as a decision and
+read as though something was weighed, which is item 37's failure mode in its most ordinary form.
+
+`**Drives:**` already had a reader before the template existed — `check-references.py` has
+validated it since item 39 — so this item gave an existing check something to validate *against*.
+
+### The finding this group produced: a rename has three new sites
+
+Item 11 changed `what-next.md`'s feature references from `ref="features/x.md"` paths to
+`slug="x"` rows in the derived block. The rename check caught it immediately, and the fix widened
+`rename-feature.py` by one pattern — `slug="…"` as an **attribute**, which also covers
+`<depends-on slug=>` and `<superseded-by slug=>`.
+
+| Site | Arrived with |
+|---|---|
+| the filename | original |
+| `<slug>` | original |
+| `index.md`'s `file=` | original |
+| `what-next.md`'s `ref=` | original |
+| inbound markdown links | original |
+| `what-next.md` (the sixth) | found by the fixture, item 42 |
+| `<depends-on slug=>` | item 27 |
+| `<superseded-by slug=>` | item 1 |
+| `<gap slug=>` in `<authoring-gaps>` | item 11 |
+
+Item 42 listed five. There are nine. **That is the argument for the postcondition rather than for
+the list** — the script asserts that nothing resolves to the old slug afterwards, which is a claim
+that survives the schema growing, and the list never could.
+
+### Verification
+
+Suite 82 → **86**. Three of the four checks run something rather than read it.
+
+Mutation: **19/19 caught** against a stated-green baseline (`tests/mutants/phase4-4-11-12-36.py`) — after two passes at 14/19 and 18/19.
+
+### Five misses, and one of them is a new variant
+
+| Miss | Why it survived | Fix |
+|---|---|---|
+| an empty `<rationale>` is accepted | the test built a *missing* rationale, never an empty one | build the empty case |
+| a dangling successor is accepted | the same fixture violated **two** rules, so the other one satisfied the assertion | one assertion, one rule — two fixtures |
+| the guide's `ceiling` sentence is deleted | the word appears three times | scope to the sentence that *binds* reclassification to it |
+| *never hand-maintained* is deleted | the phrase is also in the template's XML comment | scope to the section that argues it |
+| the record names no reader | the script is also named in the `**Drives:**` prose, and a second row looked like a path | require a **link that resolves to a file on disk** |
+
+**Two rules, one assertion** is the variant worth naming. The `superseded` fixture was both
+missing a resolvable successor *and* still listed in the index, so the assertion `exit 1 and
+"R8" in stderr` was satisfied whichever rule fired. Disabling either one left the check green.
+It is the site-counting defect in a place counting sites would not have found it — the sites were
+in the **fixture**, not in the document.
+
+> **The rule, extended.** Count what satisfies a check — and count what satisfies its *fixture*
+> too. A fixture that breaks two rules at once tests neither.
+
+The last row took three attempts, which is the clearest measure of how hard this class is to see
+by reading: *"the script is mentioned"*, then *"some row looks like a path"*, then *"a link that
+resolves"*. Only the third is a claim about the world rather than about the text.
+
+### And an orphan, left visible on purpose
+
+The `list-prds.py` mutant also trips `/prd`'s overwrite-guard check, which runs the same script.
+The harness reported it as an orphan — *a check failed that no mutant expected* — which is
+exactly the ambiguity that warning exists to surface, and the reason one round earlier in this
+build reported 6/13 when the truth was 11/13. Here it is a second check firing rather than a
+MISSED being misattributed, and the spec file says so rather than silencing it.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

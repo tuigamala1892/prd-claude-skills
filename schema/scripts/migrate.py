@@ -167,6 +167,88 @@ def _split_notes(text):
             + text[m.end():])
 
 
+def _wrap_what_next_meta(text):
+    """R9 (items 11, 12): lift <status> and <last-updated> into a <meta> block.
+
+    Only what is DERIVABLE FROM THE FILE. <prd-slug>, <next-command> and <toolchain-version>
+    are not in it -- the first is the directory's, the second is a choice, the third is item
+    24's stamp -- so the step is PARTIAL until a person or `schema-migrator` supplies them.
+
+    <status> stays the first <status> in the file, inside <meta> or not. That is not an accident
+    of `list-prds.py`'s regex; it is the reason the element is placed where a naive reader finds
+    it, and it is what keeps F3's dual check working across a partly migrated tree (item 12).
+    """
+    if re.search(r"<meta>.*?<status>", text, re.S):
+        return text
+    m = re.search(r"( *)<status>.*?</status>(\s*\n *<last-updated>.*?</last-updated>)?", text,
+                  re.S)
+    if not m:
+        return text
+    base = m.group(1)
+    inner = "\n".join(f"{base}  {ln.strip()}" for ln in m.group(0).strip().splitlines()
+                       if ln.strip())
+    return text[:m.start()] + f"{base}<meta>\n{inner}\n{base}</meta>" + text[m.end():]
+
+
+def _definition(text):
+    m = META.search(text)
+    if not m:
+        return None
+    d = re.search(r"<definition>\s*([a-z-]+)\s*</definition>", m.group(1))
+    return d.group(1) if d else None
+
+
+def convention_problems(text, path=None, index_slugs=None):
+    """R7 and R8 (item 4): the conventions a corpus invented, as rules a postcondition can hold.
+
+    These transform NOTHING. A migration cannot invent a rationale for a decision it was not
+    present for -- what it can do is refuse to finish while one is missing, which turns "somebody
+    will notice" into an exit code at the moment the file is being touched anyway.
+
+    `index_slugs` is the set of slugs index.md still points at. R8's third clause needs it and
+    is skipped when the index was not read, rather than passing silently: a check that cannot
+    run says so at its caller.
+    """
+    problems = []
+    definition = _definition(text)
+
+    if definition == "excluded":
+        body = re.search(r"<rationale>(.*?)</rationale>", text, re.S)
+        if not body or not body.group(1).strip():
+            problems.append("R7: <definition>excluded</definition> with no <rationale>. A "
+                            "feature nobody will build is a decision, and a decision nobody "
+                            "can reconstruct is a gap in the record")
+
+    if definition == "superseded":
+        successor = re.search(r'<superseded-by\s+slug="([^"]*)"', text)
+        if not successor or not successor.group(1).strip():
+            problems.append("R8: <definition>superseded</definition> with no "
+                            "<superseded-by slug=>. Without the pointer the feature is merely "
+                            "missing, and nothing says what absorbed it")
+        elif path:
+            sibling = os.path.join(os.path.dirname(path), successor.group(1) + ".md")
+            if not os.path.isfile(sibling):
+                problems.append(f"R8: <superseded-by slug=\"{successor.group(1)}\"> names a "
+                                f"feature that does not exist")
+        slug = re.search(r"<slug>\s*([a-z0-9-]+)\s*</slug>", text)
+        if index_slugs is not None and slug and slug.group(1) in index_slugs:
+            problems.append(f"R8: {slug.group(1)} is superseded and index.md still points at "
+                            f"it. A merged feature leaves the planning view; leaving the entry "
+                            f"makes the feature count wrong and gives --priority something to "
+                            f"select that nobody intends to build")
+    return problems
+
+
+def _index_slugs(root):
+    """Slugs index.md still points at, or None when there is no index to read."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        if "index.md" in filenames:
+            text = read(os.path.join(dirpath, "index.md"))
+            return {m for m in re.findall(r'file="features/([a-z0-9-]+)\.md"', text)}
+    return None
+
+
 def _stamp_criteria(text):
     """Add priority="P1" and derived-from="{id}" to every criterion lacking them.
 
@@ -231,6 +313,17 @@ RULES = [
     # <user-story>, <depends-on>, <gaps> and <architecturally-significant> are content a
     # machine has nothing to derive from. `done` requires the story, which is what a person or
     # `schema-migrator` supplies.
+    # R9 is what-next.md's half of schema-4 (items 11 and 12). Mechanical: the <meta> wrap.
+    # Judgement: <prd-slug> and <next-command>, `kind=` on each step, and rehoming <tbd-items>
+    # entries into the feature files' own <gaps> -- which is why the entries are LEFT IN PLACE
+    # rather than dropped. A migration that deleted them would lose the only record of what an
+    # interview did not finish.
+    ("R9", "schema-4", "what-next",
+     lambda t: not re.search(r"<meta>.*?<status>", t, re.S),
+     _wrap_what_next_meta,
+     lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S))
+               and "<prd-slug>" in t and "<tbd-items>" not in t),
+
     ("R6", "schema-4", "feature",
      lambda t: _meta_has(t, "priority") or ("<notes>" in t and "<considerations>" not in t)
                or "<user-story>" not in t,
@@ -248,6 +341,7 @@ PARTIAL_OF = {
     "R5": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
     "R6": lambda t: not _meta_has(t, "priority")
                     and ("<notes>" not in t or "<considerations>" in t),
+    "R9": lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S)),
 }
 
 # Artefacts a step does not change. Named rather than defaulted: "no rule matched" and "no rule
@@ -255,7 +349,7 @@ PARTIAL_OF = {
 UNCHANGED = {
     "schema-2": {"prd", "what-next"},
     "schema-3": {"prd", "what-next", "project-context"},
-    "schema-4": {"prd", "what-next", "project-context", "crd"},
+    "schema-4": {"prd", "project-context", "crd"},
 }
 
 
@@ -373,6 +467,7 @@ def main():
     escalations, failures, short = [], [], []
     migrated = already = partial = 0
     root = args.path if os.path.isdir(args.path) else (os.path.dirname(args.path) or ".")
+    index_slugs = _index_slugs(root)
 
     for path in artefacts(args.path):
         text = read(path)
@@ -394,6 +489,16 @@ def main():
                 print(f"  {current:<10} {kind:<16} {rel}")
             continue
 
+        # R7/R8 are asserted on EVERY feature file the run sees, before anything else decides
+        # what to do with it. They are rules about the artefact rather than about a
+        # transformation, so attaching them to a step would have let an already-migrated tree
+        # violate them in silence -- which is what the first version of this did.
+        if kind == "feature":
+            broken = convention_problems(text, path, index_slugs)
+            if broken:
+                failures.append(f"{rel}: " + "; ".join(broken) + " -- NOT WRITTEN")
+                continue
+
         if VERSIONS.index(current) >= VERSIONS.index(args.target):
             already += 1
             if not args.quiet:
@@ -401,6 +506,9 @@ def main():
             continue
 
         new, applied, problems, verdict = apply_steps(text, kind, current, args.target)
+
+        if kind == "feature":
+            problems = problems + convention_problems(new, path, index_slugs)
 
         # Invariants that hold across every step, checked before anything is kept.
         if verdict == "MIGRATED" and not problems:
@@ -462,7 +570,7 @@ def applied_adds_values(applied):
     for them and must not be asserted. Stated per rule rather than switched off globally,
     because the invariant is the only thing standing between a rename and an edit for R1-R3.
     """
-    return any(rid in ("R4", "R5", "R6") for rid in applied)
+    return any(rid in ("R4", "R5", "R6", "R9") for rid in applied)
 
 
 if __name__ == "__main__":

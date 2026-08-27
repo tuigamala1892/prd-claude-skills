@@ -90,6 +90,12 @@ def reference_patterns(old, new):
         (re.compile(r"<slug>\s*%s\s*</slug>" % o), "<slug>%s</slug>" % n),
         (re.compile(r"\]\(\s*%s\.md\s*\)" % o), "](%s.md)" % n),
         (re.compile(r'"\s*%s\.md\s*"' % o), '"%s.md"' % n),
+        # slug= as an ATTRIBUTE. Three elements arrived with the schema-4 group and every one
+        # of them resolves to a feature: <depends-on slug=>, <superseded-by slug=> and the
+        # <gap slug=> rows in what-next.md's derived <authoring-gaps>. Item 42 listed five
+        # reference sites, the fixture found a sixth, and this phase added three more -- which
+        # is the argument for the postcondition rather than for the list.
+        (re.compile(r'slug="\s*%s\s*"' % o), 'slug="%s"' % n),
     ]
 
 

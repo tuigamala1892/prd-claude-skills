@@ -101,33 +101,47 @@ the feature file does not carry a copy.
 
 ## `what-next.md` — what the interview did not finish
 
+**Two lists, and the file needs both.** One is *authoring gaps* — what is not yet specified. The
+other is *post-PRD work* — spikes, infrastructure, design. An earlier version had a single
+`<next-steps>` holding the second while the template described the first, so neither was
+maintained.
+
 ```xml
 <what-next>
-  <status>in-progress|complete</status>
-  <last-updated>{{YYYY-MM-DD}}</last-updated>
+  <meta>
+    <prd-slug>{{project-slug}}</prd-slug>
+    <status>in-progress|complete</status>       <!-- what /prd --resume looks for -->
+    <last-updated>{{YYYY-MM-DD}}</last-updated>
+    <next-command>/breakdown</next-command>
+    <toolchain-version>2.0.0</toolchain-version>
+  </meta>
 
-  <tbd-items>
-    <!-- Items marked "for later" during the session -->
-    <item section="features" ref="features/auth.md">
-      Define acceptance criteria for password reset flow
-    </item>
-    <!-- More TBD items -->
-  </tbd-items>
+  <!-- DERIVED. Never hand-maintained. See below. -->
+  <authoring-gaps>
+    <summary defined="34" in-progress="1" tbd="21" excluded="7" superseded="2"/>
+    <gap slug="{{feature-slug}}" id="2" kind="dependency" raised="{{YYYY-MM-DD}}"/>
+    <feature slug="{{feature-slug}}" definition="tbd">no criteria written</feature>
+  </authoring-gaps>
 
+  <!-- HUMAN-AUTHORED. Post-PRD work. Markdown bodies. -->
   <next-steps>
-    <!-- What to work on next when resuming -->
-    <step>Complete acceptance criteria for authentication features</step>
-    <step>Review tech stack decision with team</step>
+    <step kind="spike">{{what it must measure, and why that matters}}</step>
+    <step kind="infrastructure">{{...}}</step>
+    <step kind="data-model">{{...}}</step>
+    <step kind="ux">{{...}}</step>
+    <step kind="breakdown">{{...}}</step>
     <!-- A step that has already happened records that it did, and when -->
     <step kind="decision" status="done">
     Architecture: default layering taken deliberately, not asked about. {{YYYY-MM-DD}}
     </step>
   </next-steps>
 
-  <session-notes>
-    <!-- Any context helpful for resuming -->
-    {{Notes about decisions made, alternatives considered, etc.}}
-  </session-notes>
+  <risks>
+    <risk><description>{{...}}</description><mitigation>{{...}}</mitigation></risk>
+  </risks>
+
+  <open-questions href="../../product/open-questions.md"/>   <!-- pointer, or inline -->
+  <session-notes>{{context helpful for resuming}}</session-notes>
 </what-next>
 ```
 
@@ -135,14 +149,61 @@ the feature file does not carry a copy.
 both and reports `DISAGREE` when they differ, because a PRD findable through one file and not the
 other is a PRD that gets silently replaced. See core §3.
 
-**`<step>` takes two optional attributes, and the pair is one shape, not two.** `kind` says what
-sort of step it was; `status="done"` says it already happened. A step with neither is future work,
-which is the common case and why both are optional.
+### `<authoring-gaps>` is derived, and that is what makes it survive
 
-`/prd`'s Phase 4 is the producer that needs them: when the architecture conversation is *declined*
-it writes no `architecture.md`, and *"defaults taken deliberately"* must stay distinguishable from
-*"nobody was asked"*. An absent file cannot tell those apart; a `kind="decision" status="done"`
-step can. This is the only mechanism recording that a phase ran and chose nothing.
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir}
+```
+
+**Never hand-maintained.** A PRD with twenty-one unfinished features has twenty-one entries to
+keep in step with twenty-one files, and hand-maintenance of that has never once happened — the
+corpus this schema was measured against listed **zero** TBD items while carrying twenty-one.
+Generating it is the only version of this that stays true.
+
+It **aggregates** rather than re-derives. Each `<gap>` row is a pointer to a feature's own
+`<gap>` — slug, id, kind, date, no body — so there is one place a gap is written and one place
+it is corrected. A `<feature>` row is for a feature with *no* `<gaps>` block that is nonetheless
+short of `defined`: nothing to carry, so the shortfall is named directly.
+
+`<summary>` counts the `<definition>` values. It is the line a person reads first and the only
+number in the file that is not a pointer.
+
+### `kind=` on a step is what routes it
+
+| `kind` | What it is | Where it goes |
+|---|---|---|
+| `spike` | technical validation, with what it must measure | investigation |
+| `infrastructure` | environment, pipelines, access | before the work that needs it |
+| `data-model` | modelling to settle before building | before the layer that uses it |
+| `ux` | design work | alongside |
+| `breakdown` | ready to generate tasks from | `/breakdown` |
+| `decision` | a decision taken, usually with `status="done"` | the record |
+
+**`kind` is not there so `/breakdown` can consume a sequence.** It must not: the ordering in this
+file is a second model's unvalidated inference, and `<depends-on>` plus `plan-layers` replace it.
+What survives here is the *rationale* — why a spike matters, what it must measure — which is the
+part no dependency graph can hold.
+
+### Two elements that are deliberately not read
+
+**`<risks>` is for the person resuming the work**, and nothing consumes it. Recorded so that its
+absence from every consumer list reads as intent rather than as an oversight.
+
+**`<open-questions>` may be a pointer.** A register of questions outlives any one PRD, so a
+project that keeps one project-wide should link it rather than copy entries back inline. The
+`href` form and an inline list are both valid; `check-references.py` validates `OQ-NNN` citations
+either way.
+
+### Migrating a prose `what-next.md` (item 12)
+
+**`/prd`'s initialization reads `<status>` from `what-next.md` *or* `index.md`, and that dual
+check stays** until every artefact is migrated. A PRD that cannot be found is a PRD that gets
+overwritten — F3, which cost an interview before it was fixed.
+
+So the marker must stay readable in **both** shapes: `<status>` sits directly under
+`<what-next>` in the old file and under `<meta>` in the new one, and `list-prds.py` takes the
+first `<status>` in the file either way. That is not an accident of the regex; it is the reason
+the element was left where a naive reader finds it.
 
 ## `features/{feature-slug}.md` — one feature
 

@@ -14,6 +14,7 @@ WHAT IS CHECKED
   OQ-NNN citations    resolve to an entry in the open-questions register
                       a citation of a *resolved* question is reported with what resolved it
   **Drives:** links   in each decision record, resolve to a file that exists
+                      (the record's template and conventions: schema/decision-record.md)
   P-NNN citations     resolve to a <principle id=> in architecture.md's <principles> section
   significant features are named by some record's **Drives:**, or the absence is reported
 

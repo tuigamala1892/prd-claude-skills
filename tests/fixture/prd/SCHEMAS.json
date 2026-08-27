@@ -63,11 +63,11 @@
     },
     "schema-4": {
       "status": "current",
-      "description": "Items 1, 2, 5, 27, 29 and 35: the rest of the feature template. <user-story> before the description, <depends-on slug= kind=> after it, <gaps> between the criteria and the notes, <notes> split into <data-model> and <considerations>, an optional <architecturally-significant> in <meta>, and the duplicated <priority> removed from <meta>. No <phases> element, deliberately.",
+      "description": "Items 1, 2, 5, 11, 12, 27, 29 and 35: the rest of the feature template, and what-next.md's parseable skeleton. <user-story> before the description, <depends-on slug= kind=> after it, <gaps> between the criteria and the notes, <notes> split into <data-model> and <considerations>, an optional <architecturally-significant> in <meta>, and the duplicated <priority> removed from <meta>. No <phases> element, deliberately.",
       "projects": ["link-shelf", "staff-service"],
       "frozen": false,
       "migration_from_previous": "mixed",
-      "judgement_elements": ["user-story", "depends-on", "gaps", "architecturally-significant", "data-model", "definition"],
+      "judgement_elements": ["user-story", "depends-on", "gaps", "architecturally-significant", "data-model", "definition", "prd-slug", "next-command", "tbd-items", "authoring-gaps", "step"],
       "notes": "quokka-telemetry is where the specification-gap bar first fires: it carries a <gap kind=\"specification\"> and is therefore in-progress rather than defined. Item 43 recorded that rule as sound in principle and unexercised in fact; this is the fixture exercising it."
     }
   },

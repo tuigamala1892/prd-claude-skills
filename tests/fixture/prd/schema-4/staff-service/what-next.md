@@ -1,12 +1,19 @@
 <what-next>
-  <status>defined</status>
-  <last-updated>2026-08-25</last-updated>
+  <meta>
+    <prd-slug>staff-service</prd-slug>
+    <status>defined</status>
+    <last-updated>2026-08-25</last-updated>
+    <next-command>/breakdown</next-command>
+  </meta>
 
-  <tbd-items>
-  </tbd-items>
+  <authoring-gaps>
+    <summary defined="3" in-progress="1" tbd="0" excluded="0" superseded="0"/>
+    <gap slug="quokka-telemetry" id="1" kind="dependency" raised="2026-08-27"/>
+    <gap slug="quokka-telemetry" id="2" kind="specification" raised="2026-08-27"/>
+  </authoring-gaps>
 
   <next-steps>
-    <step>Run /breakdown against index.md to generate tasks</step>
+    <step kind="breakdown">Run /breakdown against index.md to generate tasks</step>
   </next-steps>
 
   <session-notes>
