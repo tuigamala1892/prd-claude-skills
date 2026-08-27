@@ -1843,7 +1843,9 @@ grouping that keeps each commit a single concern:
 | **5d — the definition bar** | 58 · 3 · 6 · 7 · 40 · 8 | 58 is the table of assertions, 6 is its caller, 3 feeds it, 40 supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the same checker four times — the argument Phase 3 made about `architecture.md`, arriving again. |
 | **5e — the residue** | 10 · 24 · 32 · 38 | Independent of each other and of the above. Last because nothing waits on them. |
 
-**5a and 5c are complete.** Neither matched its own row: 46-48 were a whole schema version with a migration and a new fixture, so 5a took two commits; and 5c turned out to be three items rather than five, because 19 and 20 depend on item 16 and belong in 5b. **The split was right about the seams and wrong twice about the contents**, which is the ledger doing its job rather than failing at it. **5b is next.**
+**5a and 5c are complete.** Neither matched its own row: 46-48 were a whole schema version with a migration and a new fixture, so 5a took two commits; and 5c turned out to be three items rather than five, because 19 and 20 depend on item 16 and belong in 5b. **The split was right about the seams and wrong twice about the contents**, which is the ledger doing its job rather than failing at it.
+
+**5a, 5c, 5b and 5d are complete, and the boundary this row warned about did move.** 5d predicted it: *"item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus."* Read against it, two of its eight tests needed a different mechanical half, one of its two gate conditions turned out to be a schema change, and its first run found four defects in the reference fixture. **5e is next**, and nothing waits on it, which is why it is last.
 
 **5a and 5c first, in that order.** Both are edits to existing consumers with checkable
 postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
@@ -1861,8 +1863,8 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
 | **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
-| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Next* | — |
-| **10 + 24 + 32 + 38** — the residue | *Not started* | — |
+| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `PENDING` |
+| **10 + 24 + 32 + 38** — the residue | *Next* | — |
 
 **Suite at branch point:** 86 checks, `failed 0`, `known 0`.
 
@@ -2524,6 +2526,204 @@ key defect two commits ago: **the test was wrong in a way that made the subject 
 **No mutation round.** The check *is* a mutation round — it breaks five things and asserts five
 detections — and wrapping it in `mutate.py` would have mutated the mutator.
 ---
+
+---
+
+## 58 + 3 + 6 + 7 + 40 + 8 — the definition bar, and the first run of it found four defects
+
+**Commit:** `PENDING` · **Addresses:** A7/R12, P26, P16, P23 · **Files:**
+`schema/checks.md` (new), `schema/core.md`, `skills/breakdown/scripts/check-status.py` (new),
+`skills/breakdown/scripts/check-definition.py` (new), `skills/breakdown/scripts/check-rename.py`
+(new), `skills/breakdown/scripts/check-references.py`, `agents/prd-criteria-author.md` (new),
+`commands/prd.md`, `tests/fixture/prd/SCHEMAS.json`, `tests/mutants/definition-bar.py` (new),
+`tests/mutants/significance-screen.py` (new), `tests/test_toolchain.py`
+
+### Why six items are one commit
+
+The group's own row said it: *"58 is the table of assertions, 6 is its caller, 3 feeds it, 40
+supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the
+same checker four times."* That held. Item 6's eleven-assertion prose list cannot be split from
+the table that gives each assertion an owner, and the owners cannot be written without deciding
+which half of item 40 is mechanical — which is item 8's boundary from the other side.
+
+### What landed
+
+- **58** — [`schema/checks.md`](../../schema/checks.md): twenty-one assertions, one owning script
+  each, every caller named. Modelled on `parity.md` deliberately: **every owner and every caller
+  is checked by running it**, so a row whose script has been deleted or whose caller has stopped
+  invoking it fails rather than reads well.
+- **3** — `check-status.py`. Declared `<definition>` against the ceiling the file's own structure
+  supports, `<gaps>` well-formedness, and gap age.
+- **6** — `/prd`'s Phase 7 becomes a **caller**: four runnable invocations, a table of what each
+  output line means, and the trailing *Consistency Checks* section stops restating them.
+- **7** — `--resume` re-runs those checks across **every** feature before resuming, in
+  Initialization, where the resume decision is actually made.
+- **40** — `check-definition.py`. Five of the eight tests, mechanically; the other three named and
+  routed rather than approximated.
+- **8** — `agents/prd-criteria-author.md`, two modes, `tools: Read Glob Grep` — the proposal-only
+  rule enforced by what the agent *holds* rather than by what it says.
+
+### Departure 1 — item 3's rule was restated in elements, and its byte counts are gone
+
+The measured rule tested for *"a data-model / dependency / relationship marker in the notes"* and
+*">=1000 bytes of notes"*, with `<=2 criteria` scoring `tbd`. Both were proxies for elements that
+did not exist when it was written: at schema-4 the marker became `<data-model>` and the dependency
+became `<depends-on>`.
+
+**Run as specified, against the reference fixture, that rule scores three of four `defined`
+features as `tbd`** — because the fixture's features are small on purpose. A small feature that is
+completely specified is not under-defined, and a proxy kept alongside the thing it stood for is a
+second answer to one question. So the ceiling is now section 4.2's `Required content` column and
+nothing else: 0 criteria → `tbd`; ≥1 criterion → `in-progress`; plus `<user-story>` and no
+specification gap → `defined`. **Zero contradictions on both fixture projects**, which is the same
+baseline Rule B recorded, reached by reading elements instead of counting bytes.
+
+### Departure 2 — the ambiguous band moved rather than disappeared
+
+Item 3's rule was three-valued, and the third value meant *the counters cannot see this one*. The
+element ladder is deterministic and has no ambiguous band — but the question it could not answer
+did not go away, it went to `check-definition.py`, which has eight tests for it. `check-status.py`
+asks whether the label is **contradicted by the file's own structure**; the bar asks whether the
+feature is **actually well defined**. Two questions, two scripts, two exit codes.
+
+**The silent direction is asserted as hard as the loud one.** A feature declared *below* its
+ceiling exits 0 and prints `ESCALATE`; only `--strict` raises it. That is the case the whole
+ceiling design exists for, and the mutation round breaks it in that direction specifically.
+
+### Departure 3 — item 58's table was wrong about two owners, and the corrections are in it
+
+The plan's table named `check-banned.py` (56) and `check-artefacts.py` (22, 43, 44). Neither name
+exists:
+
+| Plan said | Actually |
+|---|---|
+| `check-banned.py` owns `<banned>` and `<task-limits>` | landed at item 56 as **`check-rules.py`**, with `check-architecture.py` owning the `<rules>` parse |
+| `check-artefacts.py` owns schema conformance | **not built.** Item 22 is Phase 6, deliberately last |
+
+The second is carried as a **row with no owner** rather than omitted, and the suite asserts at
+least one such row exists. An assertion this plan has specified and not built is a fact about the
+project; deleting the row would make Phase 6 invisible in the only place that enumerates it.
+
+### Departure 4 — one half of item 40's gate is deferred, and it is a schema change
+
+The gate is *"the mechanical tests pass **and** a review has been recorded"*. The first half is
+`check-definition.py`. **The second half has nowhere to be recorded**: no artefact carries a
+review marker, and adding one is a schema version — a migration step, a fixture, a frozen hash.
+
+`SCHEMAS.json` already predicted this, listing schema-6 as arriving with items 38 and 40. That
+entry is now updated to say what it is *for* rather than that it is a placeholder, and item 38 is
+in the next group. `/prd` says the missing half out loud rather than treating its absence as a
+pass, which is the honest reading of a gate with one working half.
+
+### Departure 5 — two of item 40's tests got a different mechanical half than the plan implies
+
+- **Test 5** (*external dependencies as providers with roles, not brand names*) has no per-feature
+  home on the PRD path — external dependencies live in `index.md`. Its mechanical half is
+  therefore *every `<dependency>` names a `<purpose>`*: a name with no role is exactly a brand
+  name, which is the half a script can settle.
+- **Test 6** (*decision records discharged, not merely cited*) splits. `check-references.py`
+  already resolves every `ADR-NNN` and reports a citation of a superseded record; whether the
+  record's obligations appear as criteria is judgement. So the bar asserts **neither** and names
+  both — a rule stated in two programs is a rule that will be changed in one of them.
+
+### Departure 6 — the ASR screen reads two of six `because` values, and says which four it will not
+
+Item 6 asks for *"architecturally-significant candidates, screened by the published ASR heuristics
+and reported as candidates only, never applied"*. Only two of the six `because` values leave a
+mark in a file a script can read: a **quality attribute** named in the feature's own text, and
+**cross-cutting** reach, measured as the number of other documents that chose to name this
+feature. `first-of-a-kind`, `risk` and `constraint` are judgements with no signal in the file, and
+guessing them produces a candidate list nobody reads.
+
+It lives in `check-references.py` rather than in a new script, because that file already reads
+`<architecturally-significant>` from the other direction — a flagged feature no record drives.
+One element, one reader, now in both directions: flagged-and-undriven is `STALE`, unflagged-and-
+qualifying is `CANDIDATE`.
+
+**A candidate never reaches the exit code, including under `--strict`.** A heuristic that can fail
+a build has been promoted to a rule behind everyone's back, and the mutation round breaks it in
+exactly that direction. Reach also excludes `index.md` and `what-next.md`, which name every
+feature by construction and would otherwise hand each one two free edges; the check asserts the
+number, not merely that a candidate was reported.
+
+### The finding: the bar fires on four of six `defined` features in the reference fixture
+
+First run, no mutation:
+
+| Feature | Fails |
+|---|---|
+| `list-links` | t2 — no `unwanted-behaviour` criterion; t4 — no `<data-model>` |
+| `zebra-signin` · `walrus-export` · `narwhal-theme` | t4 — no `<data-model>` |
+
+`save-link` and `tag-links` pass every mechanical test, so this is a bar with both controls
+present rather than one that reports on everything.
+
+**The fixture is not relabelled and not rewritten, and both refusals have reasons.** Section 4.2's
+own principle is that a wrong status usually signals wrong *content*, so lowering four
+`<definition>` tags to silence the bar is the failure mode the gate is deliberately too weak to
+force. And fixing the content means editing `schema-4`, whose PRD features are byte-identical to
+`schema-5`'s and whose hash is frozen — plus `schema-1` through `schema-3`, since the migration's
+golden comparison would otherwise stop matching. That is a schema-6 change, and it is recorded as
+one in `SCHEMAS.json` rather than left as a surprise for whoever runs the check next.
+
+**This is item 59's shape arriving one commit later**: the first time an assertion is actually run
+against the corpus, it finds something. Four somethings, all of them real, none of them visible to
+a static reading of the same files.
+
+### What item 6's eleven bullets became
+
+| Item 6 said | Owner |
+|---|---|
+| derive status for every feature, report each mismatch with a reason | `check-status.py` |
+| index ↔ `features/` reconcile; orphans, dangling entries, a feature file still carrying `<priority>` | `check-rename.py` |
+| a `superseded` pointer nothing references any more | `check-rename.py`, reported not refused |
+| no reference anywhere to a slug that has no file | `check-rename.py` |
+| criterion `id` uniqueness within a feature | `check-definition.py` |
+| `<user-story>` present, in three parts, with a non-tautological *so that* | `check-status.py` (presence, for the ceiling) · `check-definition.py` (shape and screen) |
+| `excluded` without `<rationale>`; `superseded` without a successor or still indexed | `check-status.py` |
+| EARS pattern coverage; a criterion whose `pattern` is missing | `check-definition.py`, test 2 |
+| unassigned criterion priority, as a count | `check-definition.py` |
+| architecturally-significant candidates, screened and reported as candidates | `check-references.py` |
+| external references resolve | `check-references.py` (item 39, already) |
+| `<gaps>` well-formed, and the status rule | `check-status.py` |
+| gap age, reported rather than judged | `check-status.py` |
+
+Nothing in that list is unimplemented and nothing is implemented twice — which is what item 58 was
+for, and it took writing the table to notice that *"no reference to a slug that has no file"* had
+four claimants and *"user story present"* needed two, for different reasons.
+
+### Verification
+
+`python tests/test_toolchain.py` — **96 → 103**, `failed 0`, `known 0`.
+
+**Two mutation rounds, 23 mutants, 23 caught**, both with a green baseline and every file restored
+by hash:
+
+| Round | Mutants | Result |
+|---|---|---|
+| `tests/mutants/definition-bar.py` | 17 | **17/17 caught** |
+| `tests/mutants/significance-screen.py` | 6 | **6/6 caught** |
+
+**A second file rather than an amended first one.** The first round is a measurement of seventeen
+mutants against the code as it stood; the significance screen and the priority spread were written
+after it, and re-running an edited first round would have replaced that record rather than
+extended it.
+
+**The four mutants worth naming** are the ones a looser check would have survived:
+
+- the ceiling turned back into a *value*, so a feature held **below** what its content supports
+  becomes a defect — the exact failure the first version of item 3's rule had on a real corpus
+- test 7's **inbound** half silenced, which is the half that gets skipped and the half that
+  catches contract gaps
+- reach counting `index.md` and `what-next.md`, which name every feature by construction: the
+  screen still reports candidates, it just reports *everything*. A check asserting only that a
+  candidate appeared would pass it, which is why the check asserts the number
+- a candidate made to fail under `--strict`, promoting a heuristic to a rule
+
+Every script was also watched failing by hand before any check was written: a copy of the fixture
+with one element removed at a time, including the three off-ladder rules (`excluded` with no
+rationale, `superseded` with no successor, `superseded` still indexed) which no fixture exercises
+and which were run against a scratch PRD built for them.
 
 ## What the machine sleeping taught, which was not about sleep
 

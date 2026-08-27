@@ -398,6 +398,7 @@ and when, in the body, and leave it in place.
 | [`prd-format.md`](prd-format.md) | identity, criteria, status, priority |
 | [`migration.md`](migration.md) | every element it moves between versions |
 | [`decision-record.md`](decision-record.md) | identity — a record's `**Drives:**` resolves to a feature |
+| [`checks.md`](checks.md) | status, criteria, gaps — it names the script that decides each |
 | [`crd-format.md`](../skills/crd/references/crd-format.md) | identity, criteria, status, priority, scope, confidence |
 | [`project-format.md`](../skills/crd/references/project-format.md) | status |
 | [`task-format-spec.md`](../skills/breakdown/references/task-format-spec.md) | identity, criteria |

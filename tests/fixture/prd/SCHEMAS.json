@@ -90,8 +90,9 @@
     },
     "schema-6": {
       "arrives_with": ["item 38", "item 40"],
-      "description": "Placeholder. Nothing outstanding in Phase 5 changes an authored artefact's shape; item 38's gate and item 40's definition bar are the two items most likely to, and neither has been designed yet.",
-      "unblocks": []
+      "description": "No longer a placeholder: item 40 landed and named exactly one thing it needs from this version. The bar's gate is 'the mechanical tests pass AND a review has been recorded', check-definition.py is the whole of the first half, and no artefact carries anywhere to record the second. Item 38's gate belongs in the same version because it is the other consumer of a recorded judgement.",
+      "unblocks": [],
+      "content_work": "The reference fixture's `defined` labels predate the bar and four features fail its mechanical tests: link-shelf/list-links (no unwanted-behaviour criterion and no <data-model>), and staff-service/zebra-signin, walrus-export and narwhal-theme (no <data-model>). Fixing the CONTENT rather than the label is what section 4.2 requires -- lowering four <definition> tags to silence a check is the failure mode the gate is deliberately too weak to force. It lands HERE rather than as a quiet edit because the PRD features are byte-identical across schema-1..5, so the fix reaches four frozen fixtures and the migration's golden comparison, and rule 2 says a frozen fixture changes only when the migration's expected output does."
     }
   }
 }

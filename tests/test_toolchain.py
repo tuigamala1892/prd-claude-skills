@@ -5828,6 +5828,591 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# ------------------------------------------ the definition bar (58/3/6/7/40/8, group 5d)
+
+
+def _checks_table():
+    """schema/checks.md's table, as (assertion, owner, callers, item) tuples."""
+    path = os.path.join(SCHEMA, "checks.md")
+    assert os.path.isfile(path), (
+        "schema/checks.md does not exist. Item 6 had accumulated eleven assertions and four "
+        "other items claimed the same ground; the table is what gives each one an owner")
+    text = open(path, encoding="utf-8").read()
+    section = text.split("## The table", 1)
+    assert len(section) == 2, "checks.md has no table section"
+    rows = [r.strip() for r in section[1].split("\n---\n", 1)[0].splitlines()
+            if r.strip().startswith("|")]
+    out = []
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        assert len(cells) == 4, f"malformed checks row ({len(cells)} cells): {row[:60]}"
+        out.append(tuple(cells))
+    return path, text, out
+
+
+@check("every assertion has one owning script, and every caller named actually runs it",
+       finding="A7")
+def _():
+    """Item 58.
+
+    `"No reference anywhere to a slug that has no file"` was owned by items 6, 22, 39, 40 and 42
+    at once, and item 6 alone had accumulated eleven assertions in a prose list. The repository's
+    idiom is one script, one job, one exit code, and a table is only worth having if it is run:
+    every owner must exist and every caller named must cite the script it claims to call.
+    """
+    path, text, rows = _checks_table()
+    assert len(rows) >= 15, (
+        f"checks.md lists {len(rows)} assertions. The toolchain has more than that under "
+        f"skills/*/scripts alone, so the table is a stub rather than an inventory")
+
+    on_disk = {}
+    for root, _dirs, files in os.walk(REPO):
+        if ".git" in root:
+            continue
+        for name in files:
+            if name.endswith((".py", ".sh")):
+                on_disk.setdefault(name, os.path.join(root, name))
+
+    owners, unowned = [], 0
+    for assertion, owner, callers, item in rows:
+        if owner == "—":
+            # A specified-but-unbuilt assertion is kept as a row, not deleted: it is what
+            # Phase 6 is. It must still name the item that will build it.
+            assert re.search(r"\d", item), f"unowned row names no item: {assertion[:50]}"
+            unowned += 1
+            continue
+        script = owner.strip("`")
+        owners.append(script)
+        assert script in on_disk, f"checks.md gives `{assertion[:40]}` an owner that does not exist: {script}"
+        named = re.findall(r"`([^`]+)`", callers)
+        assert named, f"{script} is listed with no caller -- a script nobody calls is a file"
+        for caller in named:
+            full = os.path.join(REPO, caller.replace("/", os.sep))
+            assert os.path.isfile(full), f"{script}: caller {caller} does not exist"
+            body = open(full, encoding="utf-8", errors="replace").read()
+            assert script in body, (
+                f"{caller} is listed as calling {script} and never names it. A row without an "
+                f"invocation is a claim, not a caller")
+
+    assert len(set(owners)) == len(owners), (
+        f"two assertions share an owner: {[o for o in owners if owners.count(o) > 1]}. One "
+        f"script, one job -- a script that owns two assertions has two reasons to exit 1")
+    assert unowned, (
+        "every row has an owner, so the table has stopped recording what is NOT built. Item 22 "
+        "is Phase 6 and its row is the evidence anybody ever counted it")
+
+    # The core is where the elements are defined, and a table of assertions over them that does
+    # not cite it is a second vocabulary waiting to happen.
+    assert "core.md" in text, "checks.md never cites the core it makes assertions about"
+
+
+@check("a feature's declared definition is checked against its own content -- by running it",
+       finding="P26")
+def _():
+    """Item 3, and the direction is the whole design.
+
+    The rule derives a CEILING, never a value. Report where declared exceeds what the content
+    supports; stay silent where it sits below, because an author may hold a feature at
+    `in-progress` for reasons the file cannot express. A rule that derives a value calls that a
+    defect -- which is what the first version of this rule did, on a real corpus.
+
+    So the silent direction is asserted as hard as the loud one: a check that reported both would
+    contradict the author, and one that reported neither would be decorative.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-status.py")
+    assert os.path.isfile(script), "check-status.py does not exist, so <definition> has no reader"
+
+    root = tempfile.mkdtemp(prefix="status-3-")
+    try:
+        def work(project="staff-service"):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture(project), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, "--today", "2026-08-30", *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        # --- the baseline. The reference fixture must be clean, or every assertion below is
+        #     measured against noise.
+        d = work()
+        p = run(d)
+        assert p.returncode == 0 and "0 contradictions" in p.stdout, (
+            f"the current fixture already contradicts itself:\n{p.stdout}{p.stderr}")
+
+        # --- LOUD: a label that claims more than the file carries.
+        d = work()
+        edit(d, "features/narwhal-theme.md", "<user-story>", "<user-story-was>")
+        edit(d, "features/narwhal-theme.md", "</user-story>", "</user-story-was>")
+        p = run(d)
+        assert p.returncode == 1 and "narwhal-theme" in p.stdout and "user-story" in p.stdout, (
+            f"a `defined` feature with no user story was not contradicted:\n{p.stdout}")
+
+        # --- LOUD: the one rule core 6 states outright -- `defined` cannot carry a
+        #     specification gap. quokka-telemetry is the fixture feature that carries one.
+        d = work()
+        edit(d, "features/quokka-telemetry.md",
+             "<definition>in-progress</definition>", "<definition>defined</definition>")
+        p = run(d)
+        assert p.returncode == 1 and "quokka-telemetry" in p.stdout, (
+            f"`defined` with a specification gap was accepted:\n{p.stdout}")
+        assert "specification" in p.stdout, (
+            f"the contradiction does not say WHICH gap bars the label:\n{p.stdout}")
+
+        # --- SILENT: content that supports MORE than the author declared. This must not fail
+        #     the run. An author holding something back is the case the ceiling exists for.
+        d = work()
+        edit(d, "features/walrus-export.md",
+             "<definition>defined</definition>", "<definition>tbd</definition>")
+        p = run(d)
+        assert p.returncode == 0, (
+            f"a feature declared BELOW its ceiling failed the check. Deriving a ceiling rather "
+            f"than a value is the entire design of item 3:\n{p.stdout}")
+        assert "ESCALATE" in p.stdout and "walrus-export" in p.stdout, (
+            f"the observation was not reported at all, which is the other failure:\n{p.stdout}")
+        assert run(d, "--strict").returncode == 1, (
+            "--strict does not raise escalations to failures, so there is no way to run the "
+            "check in a mode that insists on them")
+
+        # --- the gap rules, which the ceiling depends on.
+        d = work()
+        edit(d, "features/quokka-telemetry.md", 'kind="dependency" raised="2026-08-27"',
+             'kind="wibble" raised="soon"')
+        p = run(d)
+        assert p.returncode == 1, f"a malformed <gap> was accepted:\n{p.stdout}"
+        assert "wibble" in p.stdout and "soon" in p.stdout, (
+            f"the report names neither the bad kind nor the bad date:\n{p.stdout}")
+
+        # --- age is reported and never judged.
+        d = work()
+        p = run(d)
+        assert "AGE" in p.stdout and "days ago" in p.stdout, (
+            f"gap age is not reported, so an item raised months ago and one raised yesterday "
+            f"read identically:\n{p.stdout}")
+
+        # It reports; it never repairs.
+        d = work()
+        before = open(os.path.join(d, "features", "quokka-telemetry.md"), "rb").read()
+        run(d)
+        assert open(os.path.join(d, "features", "quokka-telemetry.md"), "rb").read() == before, (
+            "check-status.py modified a feature file. A wrong status usually signals wrong "
+            "CONTENT, and silently relabelling hides that")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("each mechanical test of the well-defined bar fires -- by breaking one at a time",
+       finding="P26")
+def _():
+    """Item 40.
+
+    Five of the eight tests are mechanical and each is broken here separately, because a bar that
+    reports something on a broken feature proves only that it reports something. The judgement
+    half is deliberately absent from the script and is asserted on the agent instead.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+    assert os.path.isfile(script), "check-definition.py does not exist, so section 4.2's bar is prose"
+
+    root = tempfile.mkdtemp(prefix="bar-40-")
+    try:
+        def work():
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture("link-shelf"), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        # --- the baseline, and it is NOT clean. save-link and tag-links pass every mechanical
+        #     test; list-links declares `defined` with no failure-path criterion and no data
+        #     model, which is exactly the state P23 measured across a real corpus. The fixture
+        #     predates the bar, SCHEMAS.json records the fix as schema-6 work, and until then
+        #     this is a live positive control rather than a hypothetical one.
+        d = work()
+        p = run(d)
+        assert p.returncode == 1, (
+            "the bar passed a corpus in which a `defined` feature has no unwanted-behaviour "
+            "criterion. If the fixture has been fixed, update this check deliberately")
+        assert "list-links" in p.stdout, f"the bar names no feature:\n{p.stdout}"
+        clean = [l for l in p.stdout.splitlines()
+                 if "BAR" in l and ("save-link" in l or "tag-links" in l)]
+        assert not clean, (
+            f"a feature that passes every mechanical test was reported anyway: {clean}")
+
+        # --- test 2: the failure path. Turn the one unwanted-behaviour criterion into a happy
+        #     path and the feature must stop qualifying.
+        d = work()
+        edit(d, "features/save-link.md", 'pattern="unwanted-behaviour" priority="P0"',
+             'pattern="event-driven" priority="P0"')
+        edit(d, "features/save-link.md", 'pattern="unwanted-behaviour" priority="P1"',
+             'pattern="event-driven" priority="P1"')
+        p = run(d)
+        assert "BAR t2" in p.stdout and "save-link" in p.stdout, (
+            f"a feature whose criteria are entirely happy-path passed test 2:\n{p.stdout}")
+
+        # --- test 2, other half: a criterion with no pattern cannot be counted at all.
+        d = work()
+        edit(d, "features/save-link.md", ' pattern="unwanted-behaviour" priority="P0"',
+             ' priority="P0"')
+        p = run(d)
+        assert "BAR t2" in p.stdout and "pattern" in p.stdout, (
+            f"a criterion with no `pattern` was counted anyway:\n{p.stdout}")
+
+        # --- test 4: the data model.
+        d = work()
+        edit(d, "features/save-link.md", "<data-model>", "<data-model-was>")
+        edit(d, "features/save-link.md", "</data-model>", "</data-model-was>")
+        p = run(d)
+        assert "BAR t4" in p.stdout and "save-link" in p.stdout, (
+            f"a `defined` feature with no data model passed test 4:\n{p.stdout}")
+
+        # --- test 5: a dependency with a name and no role is a brand name.
+        d = work()
+        edit(d, "index.md", "<purpose>HTTP API framework</purpose>", "")
+        p = run(d)
+        assert "BAR t5" in p.stdout and "fastapi" in p.stdout, (
+            f"a dependency with no <purpose> passed test 5:\n{p.stdout}")
+
+        # --- test 7, outbound: an edge to a feature that does not exist.
+        d = work()
+        edit(d, "features/tag-links.md", '<depends-on slug="save-link" kind="data"/>',
+             '<depends-on slug="ghost" kind="data"/>')
+        p = run(d)
+        assert "BAR t7" in p.stdout and "ghost" in p.stdout, (
+            f"a <depends-on> naming nothing passed test 7:\n{p.stdout}")
+
+        # --- test 7, inbound: THE one that gets skipped. A feature makes a claim on another and
+        #     declares no dependency, and the report must name both ends.
+        d = work()
+        edit(d, "features/list-links.md", "No pagination:",
+             "Filtering belongs to tag-links. No pagination:")
+        p = run(d)
+        assert "EDGE" in p.stdout and "list-links" in p.stdout and "tag-links" in p.stdout, (
+            f"an undeclared inbound claim was not reported:\n{p.stdout}")
+        assert run(d, "--strict").returncode == 1, (
+            "--strict does not raise the one-way edges, so there is no mode that insists on them")
+
+        # --- test 8: the tautology screen, and it must not fire on a real story.
+        d = work()
+        edit(d, "features/save-link.md",
+             "I want to store a URL with an optional title, so that I can come\n  back to it "
+             "without keeping a browser tab open.",
+             "I want to store a URL, so that I can store a URL.")
+        p = run(d)
+        assert "BAR t8" in p.stdout and "save-link" in p.stdout, (
+            f"a `so that` clause restating the `I want` clause passed test 8:\n{p.stdout}")
+        assert "BAR t8" not in run(work()).stdout, (
+            f"test 8 fires on the fixture's real user stories, so it is a false positive "
+            f"machine rather than a screen")
+
+        # --- item 34's count: a distribution, reported and not judged. A corpus where
+        #     everything is P0 carries no information, and neither does one where nothing is set;
+        #     no threshold between those is defensible, so the check asserts the COUNT exists and
+        #     tracks the file rather than asserting what it should be.
+        d = work()
+        p = run(d)
+        assert re.search(r"criterion priority: .*P0 \d+", p.stdout), (
+            f"the bar reports no criterion-priority distribution:\n{p.stdout}")
+        assert "P2" not in p.stdout.split("criterion priority:")[1], (
+            f"the fixture has no P2 criterion and the tally claims one:\n{p.stdout}")
+        edit(d, "features/save-link.md", 'priority="P1" derived-from="4"',
+             'priority="P2" derived-from="4"')
+        assert "P2 1" in run(d).stdout.split("criterion priority:")[1], (
+            "the tally does not track the file it is counting")
+
+        # --- the gate reports and the label stays the author's.
+        d = work()
+        before = open(os.path.join(d, "features", "list-links.md"), "rb").read()
+        run(d)
+        assert open(os.path.join(d, "features", "list-links.md"), "rb").read() == before, (
+            "check-definition.py edited a feature. The bar is deliberately weaker than refusing "
+            "the label: a gate that blocks it invites relabelling rather than fixing")
+
+        # --- the judgement half is NOT in the script.
+        body = open(script, encoding="utf-8").read()
+        for named in ("judgement", "review-definition"):
+            assert named in body, (
+                f"check-definition.py does not say where the tests it cannot settle go. A script "
+                f"silently passing over a class of input is worse than one that says so")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the index, the feature directory and every reference reconcile -- by running it",
+       finding="P27")
+def _():
+    """Items 6 and 42.
+
+    `rename-feature.py` proves the operation it just performed. This proves the STATE, at any
+    moment, which is the half that decays: a PRD is edited by hand for weeks after the last
+    rename, and an unindexed file is a residue, real drift, or a legitimately retired feature.
+    Only the third has a marker.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-rename.py")
+    assert os.path.isfile(script), "check-rename.py does not exist"
+
+    root = tempfile.mkdtemp(prefix="rename-6-")
+    try:
+        def work():
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture("link-shelf"), d)
+            return d
+
+        def run(d):
+            return subprocess.run([sys.executable, script, d],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        d = work()
+        p = run(d)
+        assert p.returncode == 0, f"the current fixture does not reconcile with itself:\n{p.stdout}"
+
+        # A rename that stopped half way: the index moved and the file did not.
+        d = work()
+        edit(d, "index.md", 'file="features/tag-links.md"', 'file="features/tagging.md"')
+        p = run(d)
+        assert p.returncode == 1 and "tagging.md" in p.stdout and "tag-links.md" in p.stdout, (
+            f"neither the dangling entry nor the orphaned file was named:\n{p.stdout}")
+
+        # The file moved and its own <slug> did not.
+        d = work()
+        edit(d, "features/list-links.md", "<slug>list-links</slug>", "<slug>list-the-links</slug>")
+        p = run(d)
+        assert p.returncode == 1 and "list-the-links" in p.stdout, (
+            f"a feature whose <slug> disagrees with its filename was accepted:\n{p.stdout}")
+
+        # Item 1's residue: a <priority> left behind in a feature file.
+        d = work()
+        edit(d, "features/list-links.md", "<slug>list-links</slug>",
+             "<slug>list-links</slug>\n    <priority>must-have</priority>")
+        p = run(d)
+        assert p.returncode == 1 and "priority" in p.stdout, (
+            f"a feature file still carrying <priority> was accepted:\n{p.stdout}")
+
+        # A reference to a slug with no file -- the postcondition a rename has to satisfy.
+        d = work()
+        edit(d, "features/save-link.md", "<description>",
+             '<depends-on slug="ghost" kind="data"/>\n\n  <description>')
+        p = run(d)
+        assert p.returncode == 1 and "ghost" in p.stdout, (
+            f"a <depends-on> resolving to nothing was accepted:\n{p.stdout}")
+
+        # And the exit condition nobody evaluates: reported, not refused.
+        d = work()
+        with open(os.path.join(d, "features", "old-shelf.md"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write('<feature>\n  <meta><name>Old shelf</name><slug>old-shelf</slug>'
+                    '<definition>superseded</definition></meta>\n'
+                    '  <superseded-by slug="save-link"/>\n</feature>\n')
+        p = run(d)
+        assert p.returncode == 0, (
+            f"an unindexed `superseded` file was treated as a defect. It is removed from the "
+            f"index deliberately:\n{p.stdout}")
+        assert "RETIRED" in p.stdout and "old-shelf" in p.stdout, (
+            f"a superseded pointer nothing references any more went unreported:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/prd calls the checks rather than restating them, and --resume re-runs them all",
+       finding="P16")
+def _():
+    """Items 6, 7 and 58.
+
+    Item 6 is the CALLER, not the container. The assertions live in scripts with exit codes; this
+    asserts the invocations exist where they have to run, and that `--resume` runs them across the
+    whole PRD rather than across what the session touched -- the untouched features are exactly
+    the ones whose labels have gone stale.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    root = "${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/"
+
+    phase7 = prd[prd.find("### Phase 7:"):prd.find("### Phase 8:")]
+    assert phase7.strip(), "prd.md has no Phase 7"
+    for script in ("check-status.py", "check-rename.py", "check-references.py",
+                   "check-definition.py"):
+        # The RUNNABLE invocation, not the name. A command that discusses a script in prose
+        # keeps discussing it after the command line is deleted.
+        assert f"{root}{script} " in phase7, (
+            f"Phase 7 never RUNS {script}; item 6's whole content is that the validation phase "
+            f"is a caller of scripts rather than a list of prose questions")
+
+    init = prd[prd.find("## Initialization"):prd.find("## Workflow Phases")]
+    for script in ("check-status.py", "check-definition.py"):
+        assert f"{root}{script} " in init, (
+            f"--resume does not re-run {script}. Stamping only what this session touched is how "
+            f"a label drifts from its content in the first place (item 7)")
+    assert re.search(r"over \*\*all\*\* of them", init), (
+        "the resume check does not say it runs across every feature, so it reads as a check of "
+        "the ones about to be edited")
+
+    assert "checks.md" in prd, (
+        "/prd never cites the assertion table, so the next assertion added here will be added "
+        "here rather than given an owner")
+
+    # The four prose questions must not also live in the trailing section: one rule, one place.
+    tail = prd[prd.find("## Consistency Checks to Perform"):]
+    assert tail.strip(), "prd.md lost its Consistency Checks section"
+    assert "Phase 7" in tail, (
+        "the trailing consistency section restates checks instead of pointing at the phase that "
+        "runs them, which is the duplication item 6 exists to remove")
+
+
+@check("an unflagged feature that looks significant is a candidate, and never a failure",
+       finding="P17")
+def _():
+    """Items 6 and 35.
+
+    `<architecturally-significant>` is a declared judgement, so item 6 asks for candidates to be
+    *screened and reported, never applied*. Both halves are asserted: the screen must fire on a
+    feature that plainly qualifies, and it must never reach the exit code -- including under
+    --strict, because a heuristic that can fail a build has been promoted to a rule behind
+    everyone's back.
+    """
+    import re as _re
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+
+    root = tempfile.mkdtemp(prefix="asr-35-")
+    try:
+        def work(project):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture(project), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def unflag(d, rel):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            stripped = _re.sub(r"\s*<architecturally-significant[^>]*/>", "", text)
+            assert stripped != text, f"{rel} carries no flag to remove"
+            open(p, "w", encoding="utf-8", newline="\n").write(stripped)
+
+        # --- a flagged feature is never a candidate. The flag is the author's answer, and
+        #     re-asking a question somebody has already answered is how a report gets ignored.
+        d = work("staff-service")
+        p = run(d)
+        assert p.returncode == 0, f"the reference check refused a clean fixture:\n{p.stdout}"
+        assert "0 significance candidates" in p.stdout, (
+            f"a feature that already declares the flag was screened anyway:\n{p.stdout}")
+
+        # --- unflag both, and the screen must find the one that plainly qualifies.
+        d = work("staff-service")
+        unflag(d, "features/zebra-signin.md")
+        unflag(d, "features/quokka-telemetry.md")
+        p = run(d)
+        assert "CANDIDATE" in p.stdout and "zebra-signin" in p.stdout, (
+            f"a sign-in feature holding passwords was not screened as a candidate:\n{p.stdout}")
+        assert "quality-attribute" in p.stdout, (
+            f"the candidate does not say WHICH heuristic matched, so there is nothing to argue "
+            f"with:\n{p.stdout}")
+
+        # --- and it never reaches the exit code, in either mode.
+        assert p.returncode == 0, f"a candidate failed the run:\n{p.stdout}"
+        strict = run(d, "--strict")
+        assert strict.returncode == 0, (
+            f"--strict turned a heuristic into a gate. A candidate is a screen for a "
+            f"conversation:\n{strict.stdout}")
+
+        # --- reach counts documents that CHOSE to name the feature. index.md and what-next.md
+        #     name every feature by construction, and counting them would hand every feature two
+        #     free edges. save-link is named by three others; the number is the assertion.
+        d = work("link-shelf")
+        p = run(d)
+        m = _re.search(r"save-link\.md: cross-cutting \(named by (\d+) other documents\)", p.stdout)
+        assert m, f"the fixture's most-depended-on feature was not screened:\n{p.stdout}"
+        assert m.group(1) == "3", (
+            f"reach counted {m.group(1)} documents. index.md and what-next.md name every "
+            f"feature, so including them makes the threshold meaningless")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the criteria challenger proposes, never writes, and carries both of its modes",
+       finding="P23")
+def _():
+    """Item 8.
+
+    A same-persona author would deepen the bias the corpus already has: the best-defined features
+    carry negative cases and abstention behaviour, which is exactly what someone who has just
+    written the happy path does not add. So the agent is adversarial, opt-in per feature, and
+    proposes only -- and `proposes only` is asserted against its TOOLS rather than its prose,
+    because an agent holding Write can write whatever its prose says.
+    """
+    path = os.path.join(AGENTS, "prd-criteria-author.md")
+    assert os.path.isfile(path), "agents/prd-criteria-author.md does not exist"
+    fm, body = parse_frontmatter(path)
+    assert fm.get("name") == "prd-criteria-author", f"declares name {fm.get('name')!r}"
+
+    tools = str(fm.get("tools") or "")
+    for writing in ("Write", "Edit", "NotebookEdit"):
+        assert writing not in tools, (
+            f"the agent is given {writing}. It proposes criteria and the author accepts or "
+            f"rejects each one; an agent that can write closes the loop this item says must "
+            f"stay open")
+
+    flat = prose(body)
+    for mode in ("propose-criteria", "review-definition"):
+        assert mode in body, f"the agent does not carry its {mode} mode"
+    # Its checklist is the six EARS patterns -- that is what turns a vague brief into a
+    # specific question about which pattern is unrepresented.
+    for pattern in ("ubiquitous", "event-driven", "state-driven", "optional-feature",
+                    "unwanted-behaviour", "complex"):
+        assert pattern in body, f"the agent's checklist is missing the {pattern} pattern"
+    assert re.search(r"user-story|user story", flat, re.I), (
+        "the agent does not draft the user story, so 44 of 64 features still name no user")
+    assert "data-model" in body, (
+        "the agent does not propose the data-model note, which `defined` requires")
+
+    # It is dispatched, per feature, from both ends of the workflow.
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    dispatches = re.findall(r'subagent_type:\s*"prd-criteria-author"', prd)
+    assert len(dispatches) >= 2, (
+        f"{len(dispatches)} dispatch(es) of the challenger. It has two modes and two moments -- "
+        f"proposing criteria while the feature is being written, and reviewing a definition "
+        f"before the label is set")
+    assert re.search(r"opt-in, per feature", prose(prd)), (
+        "nothing says the challenger is opt-in per feature. Run unattended across twenty `tbd` "
+        "features it produces plausible criteria nobody agreed to, and a `defined` derived from "
+        "those is true and worthless")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

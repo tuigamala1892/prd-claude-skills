@@ -84,6 +84,21 @@ prose guards in this repository became programs after being documented and then 
 `--resume` with no incomplete PRD is not an error, it just means there is nothing to resume.
 Offer the complete ones and the option to start fresh.
 
+**Then re-run Phase 7's checks across the whole PRD before resuming anything.** Not over the
+features this session is about to touch — over **all** of them:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {prd_dir}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-rename.py {prd_dir}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py {prd_dir}
+```
+
+A PRD is edited over weeks, and **the features this session does not touch are exactly the ones
+whose labels have gone stale.** Stamping only what was touched is how a label drifts from its
+content in the first place, so a resume that checked only its own work would be the mechanism
+rather than the cure. Report what they say before asking where to continue — a `CONTRADICTION` in
+a feature nobody has opened for a month is the most useful thing this command can tell you.
+
 ### Then ask what the repository already knows about itself
 
 **Unconditionally, and regardless of how Phase 2's greenfield question will be answered:**
@@ -198,6 +213,32 @@ the one attribute a migration is forbidden to guess, and this is the only moment
 feature can hold a `P2` criterion and usually does.
 
 If "later": Mark as TBD in what-next.md
+
+#### Offer the challenger, one feature at a time
+
+Once a feature's criteria are drafted, offer — do not assume — a second pass by an agent whose
+job is to find the case you both missed:
+
+> *"Want me to have a second pair of eyes look for the cases we did not cover?"*
+
+```
+Task(
+  subagent_type: "prd-criteria-author",
+  prompt: <mode: propose-criteria; the feature file path; its index entry; the feature files
+           its <depends-on> names and the ones that name it; any decision record it cites>,
+  run_in_background: false,
+  description: "Propose criteria for {slug}"
+)
+```
+
+Everything the agent needs is in that prompt: it cannot load this command, and naming one here
+does nothing. **One feature per dispatch** — sixty-four features in one context is P5, arriving
+at the authoring end.
+
+It returns proposals: criteria, a `<user-story>`, a `<data-model>` note, and which of the six EARS
+patterns has no criterion. **You paste what the user accepts; the agent never writes.** Run across
+every `tbd` feature unattended it would produce plausible criteria nobody agreed to, and a
+`defined` label derived from those would be *true* and worthless. Keep it opt-in, per feature.
 
 ### Phase 4: Design (Architecture)
 
@@ -334,28 +375,80 @@ For each optional section, ask if they want to include it:
 
 ### Phase 7: Validation
 
-Before finalizing, run consistency checks:
+**Two halves, and only the first is a conversation.**
+
+Ask the questions no script can settle:
 - Do the chosen technologies support all must-have features?
 - Are there any contradictions in requirements?
 - Flag any concerns as questions to the user
 
-**Then check the references that leave the PRD**, if the document cites any `ADR-NNN` or
-`OQ-NNN`:
+**Then run the checks, and treat their exit codes as the answer.** This phase is a *caller*: each
+script below owns exactly one assertion, is independently runnable and returns its own exit code.
+[`checks.md`](../schema/checks.md) is the table of which script owns what — consult it rather than
+re-deriving an assertion here, because a rule stated in two places is a rule that will be changed
+in one of them.
 
 ```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {prd_dir}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-rename.py {prd_dir}
 python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py {prd_dir}
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py {prd_dir}
 ```
 
 Pass `{prd_dir}` as an argument. `${CLAUDE_PLUGIN_ROOT}` is expanded by the harness where this
 command is written, and is **not** exported to the shell the script runs in — a script reading it
 from its own environment gets nothing.
 
-`DANGLING` lines are citations that resolve to nothing: report them and offer to fix them here,
-while the author is still in the conversation. That is the whole reason this runs at authoring
-time as well as at `/breakdown` — the consumer-side check is the one that must refuse, and this
-one is early warning, at the moment the person who knows the answer is present.
+**Run all four. Do not stop at the first non-zero exit**: they check different things, and the
+first refusal is not evidence about the other three. Report the combined output.
 
-This never edits the open-questions register. It is maintained by hand and outlives the PRD.
+| Line | Owner | What it means, and what you do |
+|---|---|---|
+| `CONTRADICTION` | `check-status.py` | The label claims more than the file supports. Report it and offer to fix the **content** |
+| `ESCALATE` | `check-status.py` | The content supports a higher label than the author set. Mention it once. **Never relabel** — an author may hold a feature low for reasons the file cannot express |
+| `AGE` | `check-status.py` | How old each gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday |
+| `DANGLING` | `check-rename.py`, `check-references.py` | A reference resolves to nothing. Fix it here, while the person who knows the answer is present |
+| `RETIRED` | `check-rename.py` | A `superseded` pointer nothing references any more. Offer to remove it; it is housekeeping, not a defect |
+| `STALE` | `check-references.py` | A citation of a record that has been superseded, or a significant feature no record drives |
+| `BAR tN` | `check-definition.py` | A `defined` feature fails mechanical test N of the well-defined bar |
+| `EDGE` | `check-definition.py` | Another feature makes a claim on this one and declares no dependency. Triage each; **the fix belongs in the owning feature** |
+
+**Mismatches are reported, not auto-corrected.** A wrong status is usually a signal that the
+*content* is wrong, and silently relabelling hides that. In particular: **never lower a
+`<definition>` to make a `BAR` line go away.** The bar is a gate on the label and the label is the
+author's to set — that is why it reports rather than refuses.
+
+`check-references.py` never edits the open-questions register. It is maintained by hand and
+outlives the PRD.
+
+**The judgement half of the bar is not here.** Four of item 40's eight tests need a reader, not a
+script — whether the scope names what the feature does *not* own, whether a criterion exists only
+to serve a neighbour, whether a cited decision record is discharged rather than merely cited,
+whether the benefit is a real benefit. Offer the
+[`prd-criteria-author`](../agents/prd-criteria-author.md) agent in its second mode, one feature at
+a time, for any feature the author intends to label `defined`:
+
+```
+Task(
+  subagent_type: "prd-criteria-author",
+  prompt: <mode: review-definition; the feature file path; its index entry; its neighbours;
+           any decision record it cites; the BAR lines already reported for it>,
+  run_in_background: false,
+  description: "Review the definition of {slug}"
+)
+```
+
+Pass the `BAR` lines you already have. The mechanical tests are settled before the agent is
+dispatched, and an agent re-deciding them would produce a second answer to a question that has
+one.
+
+**`defined` needs both halves**: the mechanical tests passing *and* a review recorded. Where the
+PRD carries no place to record that review, say so plainly to the author rather than treating the
+absence as a pass.
+
+**One script this phase should call does not exist yet.** `check-artefacts.py` — every artefact
+matches the shared schema and declares its `schema_version` — is item 22, and `checks.md` carries
+it as a row with no owner rather than omitting it. Do not improvise it here.
 
 ### Phase 8: Interactive Review
 
@@ -431,13 +524,15 @@ is silent:
 
 ## Consistency Checks to Perform
 
-Before finalizing, verify:
-1. All must-have features are achievable with the chosen tech stack
-2. Dependencies list includes everything needed for the features
-3. No circular dependencies or contradictions in requirements
-4. Brownfield integrations are compatible with existing constraints
+**They are Phase 7, and they are not restated here.** This section used to list four prose
+questions that Phase 7 also asked, which is two places to change one rule and the reason item 6
+exists. Phase 7 holds the questions, the four scripts and the table of what each output line
+means; `checks.md` holds who owns which assertion.
 
-Flag any issues as questions before generating output.
+Two things this section did carry that Phase 7's list did not, kept as questions for the
+conversation rather than as a second checklist: whether the **dependencies list covers everything
+the features need**, and whether **brownfield integrations are compatible with the constraints
+`PROJECT.md` already records**.
 
 ## Completion
 
