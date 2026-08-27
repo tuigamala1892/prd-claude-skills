@@ -1863,7 +1863,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
 | **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
-| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `PENDING` |
+| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `7966ed7` |
 | **10 + 24 + 32 + 38** — the residue | *Next* | — |
 
 **Suite at branch point:** 86 checks, `failed 0`, `known 0`.
@@ -2531,7 +2531,7 @@ detections — and wrapping it in `mutate.py` would have mutated the mutator.
 
 ## 58 + 3 + 6 + 7 + 40 + 8 — the definition bar, and the first run of it found four defects
 
-**Commit:** `PENDING` · **Addresses:** A7/R12, P26, P16, P23 · **Files:**
+**Commit:** `7966ed7` · **Addresses:** A7/R12, P26, P16, P23 · **Files:**
 `schema/checks.md` (new), `schema/core.md`, `skills/breakdown/scripts/check-status.py` (new),
 `skills/breakdown/scripts/check-definition.py` (new), `skills/breakdown/scripts/check-rename.py`
 (new), `skills/breakdown/scripts/check-references.py`, `agents/prd-criteria-author.md` (new),
