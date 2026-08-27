@@ -20,10 +20,53 @@ You update PROJECT.md after task execution completes to reflect what was actuall
 ## Input
 
 You receive:
-- Path to project root (where PROJECT.md lives)
+- **Mode**: `update` or `create`
+- Path to project root (where PROJECT.md lives, or will)
+- Path to `architecture.md`, or the string `none`
 - Path to tasks directory
-- CRD slug (for commit message)
+- PRD or CRD slug (for commit message)
 - List of completed task IDs
+
+## Two modes, and `create` is the one that closes the greenfield loop
+
+| Mode | Means |
+|---|---|
+| `update` | `PROJECT.md` exists. Revise it from the task exports, as this agent has always done |
+| `create` | It does not, and the run came from a PRD. **Write it.** |
+
+**`create` exists because greenfield used to end with no architecture record at all.** The old
+caller ran this agent only where `PROJECT.md` was already present, which no new project can
+satisfy — so the first `/crd` against a freshly built project paid for a full investigation to
+rediscover architecture the PRD had already stated (**P17**).
+
+### Creating it
+
+1. **Seed from `architecture.md` when there is one.** Copy every `<*-registry>` across as a
+   subtree — the element names and nesting are identical in both files precisely so that this is
+   a copy rather than a transform.
+
+   **Do not copy `<rules>` or `<principles>`.** Those are *prescriptive* — what the project must
+   be — and `PROJECT.md` is *descriptive*. Mixing them would make the two files one, and a
+   reader could no longer tell a constraint from an observation.
+
+2. **Then populate the registries from the task `<exports>`**, which is the same work `update`
+   does. Where a seeded entry and an export disagree, **the export wins**: `architecture.md`'s
+   registries were written before any code existed, and this file's job is to say what exists.
+
+3. **`<features>` comes from the tasks, never from `architecture.md`** — it has none. One entry
+   per feature the completed tasks implemented, with the files they touched.
+
+4. **`<meta><prd-path>`** records the PRD this project was built from, so the next `/crd` can
+   find the requirements rather than re-deriving them from code.
+
+5. Leave `<last-context-hash>` empty. The caller stamps it with git, because this agent declares
+   no `Bash` and cannot read `HEAD` — asking a component for a value it has no way to compute is
+   the F20 shape, and it once wrote the literal string `current-HEAD` into that field.
+
+**A created file must satisfy `check-project-md.py`**: `<meta>`, `<features>`, and **at least one
+registry**. If the completed tasks exported nothing and `architecture.md` declared no registry,
+say so in your report rather than writing an empty one — a file that exists and carries nothing
+is worse than the caller knowing it could not be built.
 
 ## Process
 

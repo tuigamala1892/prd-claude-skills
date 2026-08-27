@@ -25,6 +25,8 @@ Parse these from the prompt:
 |----------|----------|-------------|
 | `--task-file <path>` | Yes | Absolute path to task XML file |
 | `--worktree-path <path>` | Yes | Path to worktree with implementation |
+| `--rules <path>` | No | `architecture.json`. Absent means the project declares no rules, and Step 4b is skipped |
+| `--base <ref>` | No | The branch the worktree was cut from. Required for `change` rules to be in force |
 
 ## Verification Process
 
@@ -120,6 +122,38 @@ Example: `Verify: \`app/models/__init__.py\` exports ProjectStatus and PersonaTy
    ```bash
    grep -E "(ProjectStatus|PersonaType)" app/models/__init__.py
    ```
+
+### Step 4b: Enforce the Project's Rules
+
+**Only when the caller passed `--rules <path>`.** A project with no `architecture.md` skips this
+entirely and behaves exactly as it always has.
+
+```bash
+python {skill_dir}/../breakdown/scripts/check-rules.py \
+    --rules {rules_path} --mode verify --worktree {worktree_path} --base {base_branch}
+```
+
+**All five kinds fire here**, because this is the first point where there is code and a diff:
+
+| Kind | Sees | On violation |
+|---|---|---|
+| `import` | files under the rule's `match` | **fail the task** |
+| `content` | file contents under `match` | **fail the task** |
+| `edge` | a module under `from` importing something under `to` | **fail the task** |
+| `change` | the diff against `--base` | **fail the task** |
+| `judgement` | prose for you to weigh | **report only — never fail** |
+
+**Pass `--base`, or `change` rules are not in force and say so.** Without it the script reports
+`UNRESOLVED` for every `change` rule rather than passing them silently — a rule that cannot see
+its evidence must say so, not return green.
+
+**A `judgement` finding must never fail a task.** These are prose guards, and S3's whole point is
+that prose guards get weighed rather than obeyed. Put them in the report where a human will read
+them. A rule that claims to enforce and does not is what P16 is about, and inventing enforcement
+here would be that defect committed deliberately.
+
+**Report the `reason` verbatim** in the failure feedback. The implementer's next attempt needs to
+know what to do instead, and *"violates rule 3"* does not tell them.
 
 ### Step 5: Determine Pass/Fail
 

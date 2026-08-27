@@ -49,6 +49,20 @@ Staleness follows from that: the context is stale when commits since the recorde
 write itself, and a documentation commit does not make the documentation out of date. Comparing
 the hash to HEAD directly -- which is what every consumer used to do -- reports "STALE"
 immediately after a successful update, every single time.
+
+WHY ANY REGISTRY, NOT THE PAIR (plan item 25, review finding R8)
+
+This used to hard-require `api-registry` and `schema-registry` alongside `meta` and `features`.
+That pair is REST plus relational -- the right pair for the project this toolchain was built for
+and the wrong pair for four of the five architecture patterns the plan works through. A CLI
+project seeded with only a `<command-registry>` failed a guard it should have passed.
+
+The two names were a proxy for *a consumer can read this*, and the proxy stays honest if it asks
+for **at least one** registry instead of two particular ones. Each consumer then checks what it
+actually reads: `crd-impact-analysis` refuses clearly when the specific registry it is about to
+open is absent, rather than this script mandating a shape on its behalf.
+
+Well-formedness is this script's job. Which registry a project needs is its architecture's.
 """
 
 import os
@@ -61,6 +75,12 @@ BLOCK = re.compile(r"<project-context.*?</project-context>", re.S)
 BARE_AMP = re.compile(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)")
 HASH_EL = re.compile(r"(<last-context-hash>)(.*?)(</last-context-hash>)", re.S)
 SHA = re.compile(r"^[0-9a-f]{7,40}$")
+
+# The set is OPEN (plan item 25). These are the six the toolchain ships readers for; the
+# validator requires *at least one* registry rather than any particular pair. See WHY ANY
+# REGISTRY, NOT THE PAIR in the docstring.
+KNOWN_REGISTRIES = ("api-registry", "schema-registry", "event-registry",
+                    "command-registry", "service-registry", "screen-registry")
 
 
 def git(project, *args):
@@ -125,11 +145,19 @@ def main():
         return 1
 
     sections = [c.tag for c in root]
-    missing = [s for s in ("meta", "features", "api-registry", "schema-registry")
-               if s not in sections]
+    missing = [s for s in ("meta", "features") if s not in sections]
     if missing:
         print(f"REFUSED: {path} is missing {', '.join(missing)} -- consumers read these",
               file=sys.stderr)
+        return 1
+
+    registries = [t for t in sections if t.endswith("-registry")]
+    if not registries:
+        print(f"REFUSED: {path} declares no registry. This file's whole job downstream is to "
+              f"tell a change what contracts already exist; with no <*-registry> there is "
+              f"nothing for `crd-impact-analysis` to match a change against.", file=sys.stderr)
+        print(f"  Any one of: {', '.join(KNOWN_REGISTRIES)}, or another your architecture "
+              f"needs.", file=sys.stderr)
         return 1
 
     print(f"PROJECT.md valid: " + ", ".join(

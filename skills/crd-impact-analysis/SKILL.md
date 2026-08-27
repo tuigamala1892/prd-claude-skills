@@ -24,8 +24,16 @@ You analyze how a proposed change will affect an existing codebase using PROJECT
 
 Read PROJECT.md and parse:
 - `<features>` - Map of existing features
-- `<api-registry>` - Map of API endpoints
-- `<schema-registry>` - Map of database models
+- **Any `<*-registry>` the project declares.** `<api-registry>` and `<schema-registry>` are the
+  two `PROJECT.md` has always carried; a project may also declare `<event-registry>`,
+  `<command-registry>`, `<service-registry>` or `<screen-registry>` (item 25). Read whichever
+  are present — the set is open because API-plus-schema is REST plus relational, and that is the
+  wrong pair for most architectures.
+
+**Refuse clearly when the registry you are about to read is absent.** `check-project-md.py`
+requires *at least one* registry rather than a particular pair, so it will not have stopped a
+project that has none of the kind you need. Say which registry is missing and what that means
+for the analysis; do not report an empty impact as though you had looked and found nothing.
 
 ### Step 2: Parse Change Description
 
@@ -138,13 +146,25 @@ Return structured impact analysis:
     <feature id="settings">Add theme toggle to Appearance section</feature>
   </affected-features>
 
-  <affected-apis>
-    <api path="/api/settings" change="Theme field added to settings object"/>
-  </affected-apis>
+  <affected-contracts>
+    <contract kind="api"     ref="PUT /api/settings">Theme field added to settings object</contract>
+    <contract kind="schema"  ref="User">No change -- uses the existing JSONB settings column</contract>
+    <contract kind="event"   ref="OrderPlaced@v2">New optional field; consumers unaffected</contract>
+    <contract kind="command" ref="deploy --dry-run">New flag</contract>
+  </affected-contracts>
 
-  <affected-schemas>
-    <schema model="User" change="No schema change - uses existing JSONB settings"/>
-  </affected-schemas>
+**`kind` matches the registry the contract came from**, so the enum extends when the registry set
+does rather than being a second list to keep in step. `api` and `schema` for the two registries
+`PROJECT.md` has always had; `event`, `command`, `service` and `screen` for the four item 25
+opened up.
+
+**This replaces `<affected-apis>` and `<affected-schemas>`.** Opening the registry set without
+this would be half a change, and the half that shows: impact analysis could *read* an event or a
+command registry and would have had nowhere to report the impact.
+
+**`<affected-apis>` is still accepted on read** — every CRD written before this exists — and is
+equivalent to `<affected-contracts>` holding only `kind="api"` entries. Item 41's migration
+rewrites them.
 
   <breaking-changes>none</breaking-changes>
 

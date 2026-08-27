@@ -34,6 +34,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from keep_awake import keep_awake  # noqa: E402
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(REPO, "skills")
 AGENTS = os.path.join(REPO, "agents")
@@ -503,7 +506,12 @@ def _():
 
     # The write path must refuse on its own, not rely on care taken earlier. It is now an exit
     # code, and the command must treat it as binding rather than advisory.
-    phase8 = text[text.find("### Phase 8"):text.find("## Output Formats")]
+    # Located by CONTENT, not by number. This was pinned to "### Phase 8" and item 51
+    # inserted a Design phase ahead of it, renumbering the output phase to 9. A check
+    # pinned to a heading number fails on a renumber, which is not a change in meaning.
+    m_out = re.search(r"### Phase \d+: Output", text)
+    assert m_out, "/prd has no Output phase"
+    phase8 = text[m_out.start():text.find("## Output Formats")]
     assert re.search(r"check-writable\.py docs/prd/", phase8), (
         "Phase 8 writes docs/prd/[slug]/ without running the overwrite guard")
     assert re.search(r"exit code is binding|\*\*Exit 1\*\*", phase8, re.I), (
@@ -2334,6 +2342,1039 @@ def _():
     assert not bad, "\n    " + "\n    ".join(bad)
 
 
+
+@check("a rule file that cannot be obeyed stops the run -- by running the guard", finding="P18")
+def _():
+    """items 25/28/37. Absent is fine; present-and-broken must refuse, naming the element.
+
+    The asymmetry is the whole finding. A silently ignored rule file is worse than none,
+    because the rule is not in force and the operator believes it is -- which is P16's failure
+    mode one level up. So this runs the script rather than reading it: `the script mentions
+    <layers>` is a property every useless validator also has.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-architecture.py")
+    assert os.path.isfile(script), "check-architecture.py is missing"
+
+    def run(root, *extra):
+        return subprocess.run([sys.executable, script, root, *extra],
+                              capture_output=True, text=True)
+
+    root = tempfile.mkdtemp(prefix="prd-arch-")
+    try:
+        def project(name, body):
+            d = os.path.join(root, name)
+            os.makedirs(d, exist_ok=True)
+            if body is not None:
+                with open(os.path.join(d, "architecture.md"), "w",
+                          encoding="utf-8", newline="\n") as f:
+                    f.write(body)
+            return d
+
+        VALID = """# Architecture: Demo
+<architecture version="1.0">
+  <rules>
+    <layers>
+      <layer id="1" name="contracts" depends-on=""/>
+      <layer id="2" name="producers" depends-on="1"/>
+      <layer id="3" name="consumers" depends-on="1"/>
+      <layer id="4" name="integration" depends-on="2,3"/>
+    </layers>
+    <testing default="tdd" runner="pytest">
+      <policy match="web/**" kind="component" runner="vitest"/>
+    </testing>
+    <task-limits default="3"><limit match="contracts/**" max-files="5"/></task-limits>
+    <banned>
+      <rule kind="import" match="contexts/**" symbol="httpx" reason="ADR-004: by event">
+        <except match="contexts/*/adapters/outbound/**" reason="third-party APIs are HTTP"/>
+      </rule>
+      <rule kind="judgement" reason="ADR-011: tolerate replay">not idempotent</rule>
+    </banned>
+    <scaffold template="none"/>
+  </rules>
+  <principles><principle id="P-001">Delete rather than configure.</principle></principles>
+  <event-registry/>
+</architecture>
+"""
+        # 1. Absent is a normal, common, non-error result. Every project predating this file.
+        p = run(project("absent", None))
+        assert p.returncode == 0, f"absent architecture.md refused: {p.stderr}"
+        assert "defaults apply" in p.stdout, (
+            "an absent rule file must say the defaults apply, not merely stay silent -- "
+            f"got: {p.stdout!r}")
+
+        # 2. A valid one passes, and reports what it found rather than just 'ok'.
+        p = run(project("valid", VALID))
+        assert p.returncode == 0, f"a valid architecture.md was refused:\n{p.stderr}"
+        for expected in ("layers 4", "banned 2", "testing tdd", "task-limits 3",
+                         "principles 1", "event-registry"):
+            assert expected in p.stdout, (
+                f"the summary does not name {expected!r}; an operator cannot tell which rules "
+                f"are in force. got: {p.stdout!r}")
+        assert "1 refusing, 1 reporting" in p.stdout, (
+            "the summary must separate rules that refuse from rules that only report -- "
+            "claiming enforcement the toolchain does not deliver is the failure P16 is about")
+
+        # 3. Every refusal class, each asserted on its NAMED cause rather than on exit 1.
+        #    An exit code alone cannot tell a guard from a coincidence (item 54's false pass).
+        broken = {
+            "cycle": (VALID.replace('<layer id="1" name="contracts" depends-on=""/>',
+                                    '<layer id="1" name="contracts" depends-on="4"/>'),
+                      "cycle"),
+            "unknown-dep": (VALID.replace('depends-on="2,3"', 'depends-on="2,9"'),
+                            "is not declared here"),
+            "dup-id": (VALID.replace('<layer id="3" name="consumers" depends-on="1"/>',
+                                     '<layer id="2" name="consumers" depends-on="1"/>'),
+                       "declared twice"),
+            "no-kind": (VALID.replace('<rule kind="import" match="contexts/**"',
+                                      '<rule match="contexts/**"'), "no kind"),
+            "no-reason": (VALID.replace(' reason="ADR-004: by event"', ''), "no reason"),
+            "missing-attr": (VALID.replace(' symbol="httpx"', ''), "missing 'symbol'"),
+            "bad-testing": (VALID.replace('default="tdd"', 'default="sometimes"'),
+                            "is not one of tdd, none"),
+            "bad-limit": (VALID.replace('max-files="5"', 'max-files="none"'),
+                          "not a positive integer"),
+            "dup-principle": (VALID.replace('</principles>',
+                                            '<principle id="P-001">again</principle></principles>'),
+                              "declared twice"),
+            "no-principle-id": (VALID.replace('<principle id="P-001">', '<principle>'), "no id"),
+            "bare-amp": (VALID.replace('<event-registry/>',
+                                       '<event-registry><e n="a&b"/></event-registry>'),
+                         "bare ampersand"),
+            "no-block": ("# Architecture\n\nProse only, no machine-readable section.\n",
+                         "no <architecture> block"),
+        }
+        for name, (body, expect) in broken.items():
+            p = run(project(f"broken-{name}", body))
+            assert p.returncode == 1, (
+                f"{name}: a rule file that cannot be obeyed exited {p.returncode}. "
+                f"Silently ignoring it is the finding.\n{p.stdout}{p.stderr}")
+            assert expect in p.stderr, (
+                f"{name}: refused, but never named the cause {expect!r}. A refusal an operator "
+                f"cannot act on is barely better than none.\n{p.stderr}")
+
+        # 4. --json is what a caller consumes; the graph must survive the round trip.
+        p = run(project("valid-json", VALID), "--json")
+        assert p.returncode == 0, p.stderr
+        data = json.loads(p.stdout)
+        layers = data["layer_blocks"][0]["layers"]
+        assert [l["id"] for l in layers] == ["1", "2", "3", "4"], layers
+        assert layers[3]["depends_on"] == ["2", "3"], (
+            "depends-on must parse as a LIST -- a single-valued read collapses the fan-in that "
+            f"makes the graph a DAG rather than a chain: {layers[3]}")
+        assert [r["kind"] for r in data["banned"]] == ["import", "judgement"]
+        assert data["banned"][0]["excepts"][0]["match"].startswith("contexts/"), (
+            "an <except> that does not survive parsing is a rule the implementer will write "
+            "around for no reason")
+
+        # 5. Wired in. A guard nothing calls is the producer-without-a-reader this plan is about.
+        caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+        phase1 = caller[:caller.find("### Phase 2")]
+        assert "check-architecture.py" in phase1, (
+            "the rule-file guard is not called in /breakdown Phase 1, so a broken rule file is "
+            "discovered by not being obeyed")
+        assert prose("Stop and report it verbatim") in prose(phase1), (
+            "Phase 1 does not bind the exit code to stopping")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the layer graph plan-layers documents is the one the validator emits", finding="P18")
+def _():
+    """Item 28's core, asserted the way 23a learned to assert a schema: mechanically.
+
+    Two earlier versions of this check were decorative and mutation killed both. The first
+    asserted plan-layers *mentions* `architecture.md`; the phrase appears five times, so
+    deleting the branch that honours a declared graph left the word behind. The second asserted
+    it mentions `layer_blocks` and `depends_on`; those appear several times too, so renaming the
+    field in the documented example still passed.
+
+    **A substring check over a document that repeats the token cannot detect the removal of one
+    occurrence.** So this parses the example instead and compares it against what
+    `check-architecture.py --json` really writes -- the same producer-versus-spec comparison
+    item 23a used, after three schema revisions had drifted while being read rather than run.
+    """
+    import shutil
+    import tempfile
+
+    planner = open(os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md"),
+                   encoding="utf-8").read()
+
+    blocks = re.findall(r"```json\s*\n(.*?)```", planner, re.S)
+    assert blocks, "plan-layers documents no JSON example, so the graph's shape is prose"
+
+    documented = None
+    for b in blocks:
+        try:
+            documented = json.loads("{" + b.strip().rstrip(",") + "}")
+        except Exception:
+            continue
+        if "layer_blocks" in documented:
+            break
+        documented = None
+    assert documented is not None, (
+        "no JSON example in plan-layers parses and carries `layer_blocks`. The planner reads "
+        "check-architecture.py --json output; an example that does not parse is not that")
+
+    # What the producer actually emits, taken by running it rather than by reading it.
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-architecture.py")
+    root = tempfile.mkdtemp(prefix="prd-graph-")
+    try:
+        with open(os.path.join(root, "architecture.md"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write('<architecture version="1.0"><rules><layers>'
+                    '<layer id="1" name="contracts" depends-on=""/>'
+                    '<layer id="2" name="producers" depends-on="1"/>'
+                    '<layer id="3" name="consumers" depends-on="1"/>'
+                    '<layer id="4" name="integration" depends-on="2,3"/>'
+                    '</layers></rules><api-registry/></architecture>\n')
+        proc = subprocess.run([sys.executable, script, root, "--json"],
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        emitted = json.loads(proc.stdout)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    doc_block = documented["layer_blocks"][0]
+    emit_block = emitted["layer_blocks"][0]
+
+    assert set(doc_block) == set(emit_block), (
+        f"the documented block's keys {sorted(doc_block)} are not the ones the validator emits "
+        f"{sorted(emit_block)}. The planner would look for a field that is not written")
+    assert set(doc_block["layers"][0]) == set(emit_block["layers"][0]), (
+        f"documented layer keys {sorted(doc_block['layers'][0])} != emitted "
+        f"{sorted(emit_block['layers'][0])}")
+
+    # The fan-in is the property that made this a DAG rather than a chain, so assert it
+    # survives BOTH the producer and the document.
+    fan_in = [l for l in emit_block["layers"] if len(l["depends_on"]) > 1]
+    assert fan_in, "the validator collapsed a multi-valued depends-on; the graph is now a chain"
+    doc_fan_in = [l for l in doc_block["layers"] if len(l.get("depends_on") or []) > 1]
+    assert doc_fan_in, (
+        "the documented example has no layer depending on more than one other, so it does not "
+        "show the planner the case that matters. Read as a chain, producers and consumers "
+        "become sequential -- destroying the independence the architecture was chosen for")
+
+    # The rules that are genuinely prose, asserted as whole sentences rather than tokens --
+    # and each must carry its CONDITION, not only its consequence. A mutation that deleted the
+    # condition while leaving "that graph, exactly as declared" survived an earlier version of
+    # this check: the planner was still told what to do, and no longer told when.
+    for sentence in (
+        "architecture.json with a non-empty layer_blocks",   # the condition
+        "that graph, exactly as declared",                   # the consequence
+        "no architecture.json, or empty layer_blocks",       # the other condition
+        "the five tiers below, as always",                   # the other consequence
+        "Do not merge the two",
+        "a DAG, not a chain",
+    ):
+        assert prose(sentence) in prose(planner), (
+            f"plan-layers no longer states: {sentence!r}")
+    assert re.search(r"default graph|the default tiers", planner), (
+        "the shipped five tiers are not marked as a DEFAULT. That relabelling is the whole of "
+        "item 28: they were the graph, with no override, so a project that disagreed had to "
+        "fork the plugin (P18)")
+
+    # The wiring: producer in Phase 1, carrier in Phase 3, or a validated graph is dropped.
+    breakdown = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase1 = breakdown[:breakdown.find("### Phase 2")]
+    assert re.search(r"check-architecture\.py[^\n]*--json[^\n]*architecture\.json", phase1), (
+        "Phase 1 does not derive architecture.json from `check-architecture.py --json`. A "
+        "second parser of the same markdown can disagree with the one that validated it")
+    # The carrier itself, not a sentence near it. Phase 3's invocation must NAME the file, or
+    # the graph is validated in Phase 1 and then dropped on the floor.
+    section = breakdown[breakdown.find("Invoke the `breakdown-plan-layers`"):]
+    section = section[:section.find("**For CRD:**")]
+    # The INVOCATION sentence, not the section around it. A later paragraph discussing the file
+    # is not the same as handing it over -- and half-edited instructions that say both are this
+    # repository's most repeated defect. Item 60 was exactly that: the correct rule was added
+    # without removing the four blocks it contradicted, so the document stated both.
+    invocation = section[:section.find(chr(10) + chr(10))]
+    assert "architecture.json" in invocation, (
+        "the sentence invoking plan-layers does not name architecture.json, so a declared graph "
+        "is validated in Phase 1 and then dropped. A later paragraph mentioning the file is not "
+        "the same as passing it:" + chr(10) + invocation)
+    # The CLAIM, not its phrasing: a declared graph replaces the defaults and is not
+    # merged with them. Item 31 reworded "the five tiers below" to "the default tiers"
+    # -- correctly, since Phase 3 no longer carries a list -- and this assertion had
+    # pinned the old words. Assert what must stay true.
+    assert prose("Not merged with them") in prose(section), (
+        "Phase 3 no longer states that a declared graph REPLACES the default tiers. Merging "
+        "them is how a project acquires layers it explicitly rejected")
+
+
+@check("`<testing default>` reaches execution as data, not as a fourth opinion", finding="P18")
+def _():
+    """P18's second row: an opinion enforced in more places than it is documented.
+
+    The mandate is not in `tdd-workflow.md`, which only describes Red/Green/Refactor. It is
+    imposed by `task-format-spec.md` marking the section required and `review-criteria.md`
+    making it critical -- so a project declaring `<testing default="none">` that changed only
+    some of them has every task fail batch review at /breakdown and never reach execution.
+
+    Each assertion below is a **whole sentence that exists for one reason**, not a token. A
+    token check passes for as long as the word is anywhere in the file, which is how the first
+    two versions of this check survived having the branch deleted.
+    """
+    def read(*parts):
+        return open(os.path.join(*parts), encoding="utf-8").read()
+
+    required = {
+        "breakdown-generate-tasks/SKILL.md": (
+            os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+            ['in which case omit <test-requirements>',
+             'review-tasks reads the same declaration']),
+        "breakdown/references/task-format-spec.md": (
+            os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+            ['decides whether this section is required',
+             'required when <testing default="tdd">']),
+        "breakdown/references/review-criteria.md": (
+            os.path.join(SKILLS, "breakdown", "references", "review-criteria.md"),
+            ['test-requirements is required unless the project declares']),
+        "execute-batch/SKILL.md": (
+            os.path.join(SKILLS, "execute-batch", "SKILL.md"),
+            ['do not open architecture.md here',
+             'has no <test-requirements>',
+             'the section\'s presence is the declaration']),
+    }
+    bad = []
+    for label, (path, sentences) in required.items():
+        text = prose(read(*[path]))
+        for sentence in sentences:
+            if prose(sentence).lower() not in text.lower():
+                bad.append(f"{label}: no longer states {sentence!r}")
+    assert not bad, "\n    " + "\n    ".join(bad)
+
+    # execute-batch must not decide TEST POLICY by opening a file: the task it is holding
+    # already carries that decision, and a second channel can disagree with the artefact being
+    # implemented.
+    #
+    # Asserted POSITIVELY, and that is the third correction to this one assertion. It began as
+    # "the word `architecture` must not appear in the argument table", which failed when item
+    # 56 legitimately gave execute-batch a `--rules` path to FORWARD to execute-verify. Narrowed
+    # to "architecture.md must not appear in the TDD section", it failed again -- that section
+    # has to *mention* the file to explain that the declaration is honoured upstream.
+    #
+    # Mentioning a file and opening it are different acts, and only one of them is the defect.
+    # So assert what must be TRUE rather than hunting for words that must be absent; the
+    # sentences below are already required by the table at the top of this check.
+    batch = read(SKILLS, "execute-batch", "SKILL.md")
+    tdd_section = batch[batch.find("**`{tdd_workflow_line}` is conditional"):
+                        batch.find("**Example - launching")]
+    assert tdd_section, "execute-batch lost the section explaining the TDD branch"
+    assert prose("Read the task instead") in prose(tdd_section), (
+        "execute-batch's TDD section no longer says where the answer comes from. The task's own "
+        "<test-requirements> IS the declaration; anything else is a second source of truth")
+
+    # A `--rules` argument is legitimate -- <banned> rules need the worktree and the diff, which
+    # exist only at verify time -- but it must be forwarded, never consumed for test policy.
+    args = batch[batch.find("## Input Arguments"):batch.find("## Execution Flow")]
+    if "--rules" in args:
+        assert "forward" in args.lower(), (
+            "execute-batch takes a --rules path without saying it forwards it. If it consumes "
+            "the rules itself, the TDD policy has two sources again")
+
+    # tdd-workflow.md describes the procedure and must not acquire the mandate: a fourth
+    # enforcement site makes the opinion harder to override rather than easier.
+    workflow = prose(read(SKILLS, "execute-batch", "references", "tdd-workflow.md")).lower()
+    for claim in ("tdd is mandatory", "every project must write tests first"):
+        assert claim not in workflow, (
+            f"tdd-workflow.md now asserts {claim!r}. The mandate is imposed upstream; a fourth "
+            f"site is one more place to change and one more that can be missed (P18)")
+
+
+@check("PROJECT.md requires a registry, not the REST pair -- by running the guard", finding="P35")
+def _():
+    """Review finding R8, plan item 25. The pair was REST plus relational.
+
+    `check-project-md.py` hard-required api-registry AND schema-registry, so a CLI project
+    seeded with only a <command-registry> failed a guard it should have passed -- the toolchain
+    re-vendoring its own architecture one level below where item 28 freed it.
+
+    The two names were a proxy for *a consumer can read this*. Requiring any one keeps the proxy
+    honest without mandating a shape.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "check-project-md.py")
+    assert os.path.isfile(script)
+
+    HEAD = ("# Project: demo\n<project-context version=\"1.0\">\n"
+            "  <meta><last-updated>2026-08-26T00:00:00Z</last-updated>"
+            "<last-context-hash>abc1234</last-context-hash></meta>\n"
+            "  <features><feature id=\"f\" status=\"complete\"><name>F</name>"
+            "<files>src/f.py</files></feature></features>\n")
+
+    cases = {
+        "command-only": ("  <command-registry><command name=\"run\"/></command-registry>\n", 0),
+        "event-only": ("  <event-registry><event name=\"Placed\"/></event-registry>\n", 0),
+        "screen-only": ("  <screen-registry><screen name=\"Home\"/></screen-registry>\n", 0),
+        "rest-pair": ("  <api-registry/>\n  <schema-registry/>\n", 0),
+        "none": ("", 1),
+    }
+    root = tempfile.mkdtemp(prefix="prd-pmd-")
+    try:
+        for name, (registry, expected) in cases.items():
+            d = os.path.join(root, name)
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "PROJECT.md"), "w",
+                      encoding="utf-8", newline="\n") as f:
+                f.write(HEAD + registry + "</project-context>\n")
+            p = subprocess.run([sys.executable, script, d], capture_output=True, text=True)
+            assert p.returncode == expected, (
+                f"{name}: expected exit {expected}, got {p.returncode}. A registry set fixed at "
+                f"REST-plus-relational is the opinion item 25 exists to open.\n"
+                f"{p.stdout}{p.stderr}")
+
+        # Refusing with no registry must say what to supply, not merely that something is absent.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "none")],
+                           capture_output=True, text=True)
+        assert "command-registry" in p.stderr and "event-registry" in p.stderr, (
+            "the refusal does not name the registries a project might supply, so it reads as "
+            f"'you are missing the two I know about':\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("principle citations resolve, and criterion priorities are not mistaken for them",
+       finding="P24")
+def _():
+    """The tenth of item 39's 190 references, deferred until <principles> had a home.
+
+    The deferral is now closed, and the second half of this check is why it needed care:
+    item 34's criterion priorities are written P0, P1 and P2. A citation pattern without the
+    hyphen would report a dangling principle on every prioritised criterion in the corpus --
+    550 of them -- which is a validator that has to be switched off to get any work done.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="prd-princ-")
+    try:
+        prd = os.path.join(root, "docs", "prd", "demo", "features")
+        os.makedirs(prd)
+        with open(os.path.join(root, "architecture.md"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write("<architecture version=\"1.0\"><principles>"
+                    "<principle id=\"P-001\">Delete rather than configure.</principle>"
+                    "<principle id=\"P-002\">One artefact, one concern.</principle>"
+                    "</principles><api-registry/></architecture>\n")
+        with open(os.path.join(root, "docs", "prd", "demo", "index.md"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write("<prd><meta><slug>demo</slug></meta></prd>\n")
+
+        feature = os.path.join(prd, "a.md")
+
+        def write(desc):
+            with open(feature, "w", encoding="utf-8", newline="\n") as f:
+                f.write("<feature><meta><slug>a</slug></meta>\n"
+                        f"<description>{desc}</description>\n"
+                        "<acceptance-criteria>\n"
+                        "  <criterion id=\"1\" pattern=\"event-driven\" priority=\"P0\">"
+                        "When x, the system shall y.</criterion>\n"
+                        "  <criterion id=\"2\" pattern=\"unwanted-behaviour\" priority=\"P1\">"
+                        "If x fails, the system shall z.</criterion>\n"
+                        "  <criterion id=\"3\" pattern=\"state-driven\" priority=\"P2\">"
+                        "While x, the system shall w.</criterion>\n"
+                        "</acceptance-criteria></feature>\n")
+
+        target = os.path.join(root, "docs", "prd", "demo")
+
+        def run(*extra):
+            return subprocess.run([sys.executable, script, target, *extra],
+                                  capture_output=True, text=True)
+
+        # Resolving citations pass -- and P0/P1/P2 must not be counted at all.
+        write("Follows P-001, and P-2 by its numeric part.")
+        p = run()
+        assert p.returncode == 0, f"valid principle citations refused:\n{p.stdout}{p.stderr}"
+        assert "2 references checked" in p.stdout, (
+            "expected exactly the two P-NNN citations. Counting the criterion priorities P0, "
+            f"P1 and P2 would make this 5 and every prioritised criterion a dangling "
+            f"reference:\n{p.stdout}")
+
+        # A dangling one is refused and named as written.
+        write("Follows P-001 and P-404.")
+        p = run()
+        assert p.returncode == 1, f"a dangling principle exited 0:\n{p.stdout}"
+        assert "P-404" in p.stdout, f"the dangling citation is not named:\n{p.stdout}"
+        assert "P-001" not in p.stdout.replace("P-0011", ""), (
+            f"a resolving citation was reported as dangling:\n{p.stdout}")
+
+        # Citations with nowhere to resolve are an error naming the flag, not a quiet pass.
+        os.rename(os.path.join(root, "architecture.md"), os.path.join(root, "arch.off"))
+        write("Follows P-001.")
+        p = run()
+        assert p.returncode == 1, (
+            "a principle citation with no architecture.md passed quietly, which is how a "
+            f"validator becomes decorative:\n{p.stdout}")
+        assert "--architecture" in p.stdout, (
+            f"the error does not name the flag that would fix it:\n{p.stdout}")
+
+        # The docstring must no longer claim principles are the deferred exclusion.
+        text = open(script, encoding="utf-8").read()
+        assert "180 of the corpus" not in prose(text) or "now" in prose(text).lower(), (
+            "check-references.py still advertises principles as not checked")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("architecture.md has a producer, and it runs before dependencies", finding="P17")
+def _():
+    """Item 51. Items 25 and 28 gave the file a home, a schema and four readers, and no writer.
+
+    A reader with no producer is the mirror of this plan's own central finding, and it went
+    unnoticed for twenty-six items. So this asserts the property in BOTH directions -- the thing
+    item 23 says every element needs -- rather than only checking that a Design phase exists.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+
+    # --- the producer exists, and is placed where its inputs are ready ----------------
+    phases = re.findall(r"### Phase (\d+): ([^\n]+)", prd)
+    numbers = [int(n) for n, _t in phases]
+    assert numbers == sorted(numbers) and len(set(numbers)) == len(numbers), (
+        f"/prd's phases are not a clean ascending sequence: {phases}")
+
+    by_name = {t.lower(): int(n) for n, t in phases}
+    design = [n for t, n in by_name.items() if "design" in t]
+    features = [n for t, n in by_name.items() if "feature" in t]
+    deps = [n for t, n in by_name.items() if "dependenc" in t]
+    assert design, "/prd has no Design phase, so architecture.md has no producer (item 51)"
+    assert features and deps, f"/prd lost its Features or Dependencies phase: {phases}"
+    assert features[0] < design[0] < deps[0], (
+        f"Design is at phase {design[0]}, Features at {features[0]}, Dependencies at {deps[0]}. "
+        f"Design must follow features (so the conversation knows what is being built) and "
+        f"precede dependencies (which are partly DECIDED by the architecture -- asking them "
+        f"first inverts the causality)")
+
+    design_body = prd[prd.find(f"### Phase {design[0]}:"):
+                      prd.find(f"### Phase {design[0] + 1}:")]
+    assert design_body.strip(), "the Design phase is a heading with no body"
+
+    # --- it must actually write the file, and validate what it wrote ------------------
+    assert "architecture.md" in design_body, (
+        "the Design phase never names architecture.md, so it produces nothing")
+    assert "check-architecture.py" in design_body, (
+        "the Design phase writes a rule file and never validates it. /prd is the one moment the "
+        "person who made the decision is still in the conversation to fix it")
+    assert "${CLAUDE_PLUGIN_ROOT}" in design_body, (
+        "the script is invoked without ${CLAUDE_PLUGIN_ROOT}. OQ1's probe established that a "
+        "bare relative path fails -- cwd is the project, not the plugin")
+
+    # --- the default branch must write nothing AND be recorded -----------------------
+    flat = prose(design_body)
+    assert prose("Write no architecture.md") in flat, (
+        "the Design phase does not say that taking the default writes nothing. A PRD with no "
+        "rule file must stay a valid PRD, or item 28 breaks every artefact on the day it lands")
+    # Asserted as a structure inside the phase, not as the string "what-next.md" -- that
+    # filename appears three times in this section, so removing the instruction that records
+    # the decision leaves the word behind. Third time this class of check has been caught out
+    # in this phase: scope to the region that owns the claim, and assert a shape.
+    recorded = re.search(r"```xml\s*\n\s*<step\b[^>]*\bkind=[\"']decision[\"'][^>]*>",
+                         design_body)
+    assert recorded, (
+        "the Design phase's default branch writes no recorded decision. 'Defaults, "
+        "deliberately' and 'nobody was asked' must be distinguishable later, and an absent "
+        "architecture.md cannot tell them apart -- so declining has to leave a mark somewhere")
+    assert "what-next.md" in design_body[:recorded.start()], (
+        "the decision record is not attributed to what-next.md, so nothing says where it lands")
+
+    # --- it must read before it writes (item 52's check, used rather than duplicated) --
+    assert re.search(r"follow\s*/\s*extend\s*/\s*override", flat, re.I), (
+        "the Design phase does not offer follow / extend / override, so a repository that "
+        "already declares an architecture gets asked from a blank page (P34)")
+
+    # --- and the whole point: a producer whose output has readers --------------------
+    readers = {
+        "breakdown/SKILL.md": os.path.join(SKILLS, "breakdown", "SKILL.md"),
+        "breakdown-plan-layers/SKILL.md": os.path.join(
+            SKILLS, "breakdown-plan-layers", "SKILL.md"),
+        "breakdown-analyze-prd/SKILL.md": os.path.join(
+            SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+        "breakdown-generate-tasks/SKILL.md": os.path.join(
+            SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+    }
+    # A reader must devote a HEADING or a numbered step to the file -- the word appearing
+    # somewhere in a 400-line skill is not evidence that anything reads it. `plan-layers` is
+    # exempt from the heading rule because its own check already compares the documented JSON
+    # against live producer output, which is far stronger than any prose assertion here.
+    unread = []
+    for label, path in readers.items():
+        text = open(path, encoding="utf-8").read()
+        if "plan-layers" in label:
+            if "architecture.json" not in text:
+                unread.append(f"{label} (no architecture.json)")
+            continue
+        owns = re.search(r"^#{2,4} [^\n]*architecture", text, re.M | re.I) or \
+            re.search(r"^\d+\. \*\*[^\n]*(architecture|project's own rules)", text, re.M | re.I)
+        if not owns:
+            unread.append(f"{label} (no section owning it)")
+    assert not unread, (
+        "architecture.md now has a producer and these named readers give it no section of their "
+        "own: " + ", ".join(unread) + ". A producer with no reader is P4, and this plan's "
+        "closing argument is that neither half may stand alone")
+
+    # --- the template it writes must be the one the validator accepts ----------------
+    fmt = os.path.join(SKILLS, "breakdown", "references", "architecture-format.md")
+    assert os.path.isfile(fmt)
+    assert "architecture-format.md" in design_body, (
+        "the phase that WRITES architecture.md does not cite the format specification. A "
+        "citation elsewhere in the file is not the same thing: the producer and the schema drift "
+        "apart exactly where the writing happens, which is P30 by construction")
+    # And the citation must resolve, or it is a pointer to nothing.
+    for link in re.findall(r"\]\(([^)]*architecture-format\.md)\)", design_body):
+        target = os.path.normpath(os.path.join(COMMANDS, link))
+        assert os.path.isfile(target), f"the format link does not resolve: {link} -> {target}"
+
+
+
+@check("the layer set is derived from content, not taken as a list", finding="P33")
+def _():
+    """Item 31. The CRD path derived the layer set and then undid it; the PRD path never asked.
+
+    `/breakdown` Phase 4 took `[0-setup, 1-foundation, 2-backend, 3-frontend, 4-integration]`
+    unconditionally for every PRD, so a PRD with no frontend got a frontend layer. The CRD path
+    asked the right question -- does this change span tiers? -- and then ended with *"Always
+    include Layer 4 (integration) for wiring changes together"*, which made the minimum possible
+    plan two layers, two batches and two rounds of generate -> review -> retry for a change that
+    might be one edit to one file.
+
+    The derivation is a TABLE, so this parses the table rather than grepping for sentences. It
+    also must not forbid the phrase it deletes: Phase 2 shipped a check that failed on the
+    sentence quoting the old instruction to explain the change, which forbade documenting the
+    history it enforced.
+    """
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    planner = open(os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md"),
+                   encoding="utf-8").read()
+
+    phase3 = caller[caller.find("### Phase 3:"):caller.find("### Phase 4:")]
+    phase4 = caller[caller.find("### Phase 4:"):caller.find("### Phase 5:")]
+    assert phase3 and phase4, "/breakdown lost Phase 3 or Phase 4"
+
+    # --- the derivation exists as a table, with a condition per layer ------------------
+    rows = {}
+    for line in phase3.splitlines():
+        m = re.match(r"\s*\|\s*`?([0-9]-[a-z]+)`?\s*\|([^|]*)\|", line)
+        if m:
+            rows[m.group(1)] = prose(m.group(2)).lower()
+    for layer in ("0-setup", "1-foundation", "2-backend", "3-frontend", "4-integration"):
+        assert layer in rows, (
+            f"Phase 3 has no derivation row for {layer}. Without a stated condition the layer is "
+            f"either always present or always absent, and 'always present' is the defect")
+
+    # --- integration must be conditional on tier COUNT, which is the deleted line -----
+    integration = rows["4-integration"]
+    assert "more than one" in integration or "two or more" in integration, (
+        f"the integration layer's condition is {integration!r}, which does not depend on how "
+        f"many other tiers survived. `Always include Layer 4` is what made the minimum plan two "
+        f"layers instead of one -- there is nothing to integrate when only one tier moved")
+
+    # --- Phase 4 must not restore the unconditional list -----------------------------
+    literal = re.search(r"\[\s*0-setup\s*,\s*1-foundation\s*,\s*2-backend", phase4)
+    assert not literal, (
+        "Phase 4 again names the five layers as a literal list. It must process exactly the "
+        "layers layer_plan.json contains, or it silently restores the unconditional tiers "
+        "Phase 3 just derived away:\n" + literal.group(0))
+    assert "layer_plan.json" in phase4, (
+        "Phase 4 does not take its layer set from layer_plan.json, so the derivation has no "
+        "consumer")
+
+    # --- the degenerate case, stated on both sides -----------------------------------
+    # BOTH ends, not either. This was an `or`, and a mutant deleting Phase 3's rule was
+    # satisfied by Phase 4's mention of it. An `or` across two locations means each one alone
+    # suffices -- which is exactly what a producer/consumer pair must never allow, and halves
+    # the strength of the assertion for free.
+    assert prose("one layer holding one task") in prose(phase3), (
+        "Phase 3 no longer states the degenerate case. One layer holding one task is not a "
+        "plan; running it directly is the small path P21 asks for, arriving from the right "
+        "question rather than from a file-count threshold")
+    assert prose("one layer with one task") in prose(phase4), (
+        "Phase 4 no longer acts on the degenerate case, so Phase 3 derives it and nothing "
+        "honours it")
+
+    # --- the planner's own output must carry the derivation, parsed not grepped -------
+    blocks = re.findall(r"```json\s*\n(.*?)```", planner, re.S)
+    plan = None
+    for b in blocks:
+        try:
+            candidate = json.loads(b)
+        except Exception:
+            continue
+        if isinstance(candidate, dict) and "layers" in candidate:
+            plan = candidate
+            break
+    assert plan is not None, (
+        "plan-layers documents no parseable layer plan, so its output shape is prose")
+    assert "layers_dropped" in plan, (
+        "the documented layer plan has no `layers_dropped`. A derivation that drops a tier "
+        "without saying so leaves an operator who expected four tasks and got one with no "
+        "explanation -- the report is half the item")
+    assert "degenerate" in plan, (
+        "the documented layer plan cannot express the single-layer single-task case, so the "
+        "caller has nothing to branch on")
+    assert isinstance(plan["layers_dropped"], list) and plan["layers_dropped"], (
+        "`layers_dropped` is documented as empty, so the example never shows what a dropped "
+        "layer looks like")
+    for entry in plan["layers_dropped"]:
+        assert "reason" in entry, (
+            f"a dropped layer carries no reason: {entry}. 'Dropped: 3-frontend' without "
+            f"'no components in this document' is not something an operator can act on")
+
+    # --- skip-layering and skip-batching must stay distinct --------------------------
+    flat = prose(phase3)
+    assert prose("Skip batching") in flat and prose("Skip layering") in flat, (
+        "Phase 3 does not keep skip-layering and skip-batching apart. Twenty endpoints in one "
+        "tier is a large change that needs no layering and still wants batching, and a "
+        "threshold on file count gets that backwards")
+
+
+
+@check("`<banned>` and `<task-limits>` are enforced -- by running the enforcer", finding="P35")
+def _():
+    """Item 56. Item 28 gave a project somewhere to declare constraints; item 37 put `<rules>`
+    in the exit-code column. Neither named an enforcer, so both rows stood for nothing.
+
+    Every kind is run against a real violation and a real clean case. `the script mentions
+    <banned>` is a property every useless validator also has, and this phase has already shipped
+    five checks with exactly that defect.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-rules.py")
+    assert os.path.isfile(script), "check-rules.py is missing"
+
+    ARCH = (
+        '<architecture version="1.0"><rules>\n'
+        '<task-limits default="3"><limit match="contracts/**" max-files="5"/></task-limits>\n'
+        '<banned>\n'
+        '  <rule kind="import" match="contexts/**" symbol="httpx|requests"\n'
+        '        reason="ADR-004: contexts communicate by event, never by call">\n'
+        '    <except match="contexts/*/adapters/outbound/**" reason="third-party APIs are HTTP"/>\n'
+        '  </rule>\n'
+        '  <rule kind="content" match="services/*/src/**" pattern="(postgres|mysql)://"\n'
+        '        reason="ADR-002: no shared datastore across services"/>\n'
+        '  <rule kind="edge" from="services/*/" to="services/*/"\n'
+        '        reason="ADR-002: services are independently deployable"/>\n'
+        '  <rule kind="change" path="contracts/**" action="modify"\n'
+        '        reason="published events are immutable; add a version, never edit"/>\n'
+        '  <rule kind="judgement" reason="ADR-011: consumers must tolerate replay">\n'
+        '    handler with side effects that are not idempotent\n'
+        '  </rule>\n'
+        '</banned></rules></architecture>\n')
+
+    root = tempfile.mkdtemp(prefix="prd-rules-")
+    try:
+        def write(rel, text):
+            full = os.path.join(root, rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+            return full
+
+        arch = write("architecture.md", ARCH)
+
+        def run(*args):
+            p = subprocess.run([sys.executable, script, "--rules", arch, *args],
+                               capture_output=True, text=True)
+            return p.returncode, p.stdout, p.stderr
+
+        # ---------------- review mode: only import/content, plus task-limits -------------
+        clean = write("t-clean.xml",
+                      "<task><requirements><requirement id=\"1\">Publish an event."
+                      "</requirement></requirements>\n<files-to-create>\n"
+                      "- contexts/orders/handlers.py\n</files-to-create></task>")
+        rc, out, err = run("--mode", "review", "--task", clean)
+        assert rc == 0, f"a compliant task was refused:\n{err}"
+        assert "judgement" in out, (
+            "a judgement rule did not appear in the report. It must be surfaced for a human "
+            "even when nothing refuses -- reporting is the whole of what that kind does")
+
+        bad = write("t-bad.xml",
+                    "<task><requirements><requirement id=\"1\">Call billing with httpx.post()."
+                    "</requirement></requirements>\n<files-to-create>\n"
+                    "- contexts/orders/client.py\n</files-to-create></task>")
+        rc, out, err = run("--mode", "review", "--task", bad)
+        assert rc == 1, (
+            "a task SPECIFYING a banned import was not refused at review. Catching it here is "
+            "free -- no code exists yet -- and the cost of missing it is a rejected task after "
+            f"an implementation run:\n{out}{err}")
+        assert "ADR-004" in err, (
+            f"the rule's reason was not reported verbatim. A bare rule number does not tell an "
+            f"implementer what to do instead:\n{err}")
+
+        exempt = write("t-exempt.xml",
+                       "<task><requirements><requirement id=\"1\">Call Stripe with httpx."
+                       "</requirement></requirements>\n<files-to-create>\n"
+                       "- contexts/billing/adapters/outbound/stripe.py\n"
+                       "</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", exempt)
+        assert rc == 0, (
+            "the rule's own <except> did not suppress the violation. An exception that does not "
+            f"apply makes the rule unusable and pushes people toward per-task exemptions:\n{err}")
+
+        over = write("t-over.xml", "<task><files-to-create>\n- app/a.py\n- app/b.py\n"
+                                   "- app/c.py\n- app/d.py\n</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", over)
+        assert rc == 1 and "task-limits" in err, (
+            f"4 files against a default limit of 3 was not refused:\n{err}")
+
+        # `content` must fire at review too, not only `import`. This was a genuine coverage
+        # gap: a mutant restricting review to imports alone passed every assertion here.
+        content_bad = write("t-content.xml",
+                            "<task><requirements><requirement id=\"1\">Set DSN to "
+                            "postgres://shared/warehouse.</requirement></requirements>\n"
+                            "<files-to-create>\n- services/a/src/db.py\n"
+                            "</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", content_bad)
+        assert rc == 1 and "[content]" in err, (
+            "a task SPECIFYING a banned content pattern was not refused at review. `content` "
+            "and `import` are the two kinds that can fire before code exists, and catching "
+            f"either one there is free:\n{err}")
+        assert "ADR-002" in err, f"the content rule's reason was not reported:\n{err}"
+
+        scoped = write("t-scoped.xml", "<task><files-to-create>\n- contracts/a.py\n"
+                                       "- contracts/b.py\n- contracts/c.py\n- contracts/d.py\n"
+                                       "- contracts/e.py\n</files-to-create></task>")
+        rc, _out, err = run("--mode", "review", "--task", scoped)
+        assert rc == 0, (
+            "the scoped <limit match=\"contracts/**\" max-files=\"5\"> was not honoured. "
+            f"Three files is right for a UI change and wrong for adding an event type:\n{err}")
+
+        # ---------------- verify mode: all five, against code and diff ------------------
+        wt = os.path.join(root, "wt")
+        os.makedirs(wt)
+        for cmd in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+            subprocess.run(["git", "-C", wt, *cmd], capture_output=True)
+        write("wt/contracts/order.py", "SCHEMA = {'v': 1}\n")
+        write("wt/services/b/api.py", "def thing(): ...\n")
+        write("wt/services/a/src/ok.py", "from services.a.api import x\n")
+        write("wt/services/a/api.py", "x = 1\n")
+        subprocess.run(["git", "-C", wt, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", wt, "commit", "-qm", "base"], capture_output=True)
+        base = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+
+        rc, out, err = run("--mode", "verify", "--worktree", wt, "--base", base)
+        assert rc == 0, f"a clean worktree was refused:\n{err}"
+
+        write("wt/contexts/orders/client.py", "import httpx\n")
+        write("wt/services/a/src/db.py", "DSN = 'postgres://shared/db'\n")
+        write("wt/services/a/src/cross.py", "from services.b.api import thing\n")
+        write("wt/contracts/order.py", "SCHEMA = {'v': 1, 'extra': True}\n")
+        subprocess.run(["git", "-C", wt, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", wt, "commit", "-qm", "violations"], capture_output=True)
+
+        rc, out, err = run("--mode", "verify", "--worktree", wt, "--base", base)
+        assert rc == 1, f"a worktree violating four rules was not refused:\n{out}"
+        for kind in ("import", "content", "edge", "change"):
+            assert f"[{kind}]" in err, (
+                f"the {kind} rule did not fire. Each of the four refusing kinds detects "
+                f"something the others cannot, and a silent one is a rule the operator believes "
+                f"is in force:\n{err}")
+
+        # The dotted import is the case that matters and the one a naive matcher misses.
+        assert "cross.py" in err, (
+            "a dotted cross-service import was not caught. `from services.b.api import thing` "
+            "is how a Python file crosses a service boundary; a matcher understanding only "
+            f"slashes misses the commonest form of the violation:\n{err}")
+        assert "ok.py" not in err, (
+            "a service importing its OWN module was reported as a boundary crossing. A rule "
+            f"that fires on compliant code gets switched off:\n{err}")
+
+        # judgement never changes the exit code, and never lands in the refusing stream.
+        assert "[judgement]" in out and "[judgement]" not in err, (
+            "a judgement rule reached the refusing stream. S3: prose guards get weighed rather "
+            "than obeyed, so these report and never block a merge. A rule that claims to "
+            f"enforce and does not is what P16 is about.\nout={out}\nerr={err}")
+
+        # A `change` rule with no diff must say it is not in force, not pass quietly.
+        rc, out, err = run("--mode", "verify", "--worktree", wt)
+        assert "UNRESOLVED" in out, (
+            "with no --base, the change rule passed silently instead of reporting that it could "
+            f"not see its evidence:\n{out}")
+
+        # ---------------- both checkpoints must actually call it ------------------------
+        reviewer = open(os.path.join(SKILLS, "breakdown-review-tasks", "SKILL.md"),
+                        encoding="utf-8").read()
+        verifier = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"),
+                        encoding="utf-8").read()
+        # Asserted as a RUNNABLE INVOCATION inside a fenced block, not as the string
+        # "check-rules.py". Both files also mention the script in prose -- review-tasks in its
+        # criterion 7, execute-verify in its argument table -- so a mutant deleting the command
+        # left the word behind and passed an earlier version of this check.
+        for label, text in (("breakdown-review-tasks", reviewer),
+                            ("execute-verify", verifier)):
+            invocations = [b for b in re.findall(r"```bash\s*\n(.*?)```", text, re.S)
+                           if "check-rules.py" in b]
+            assert invocations, (
+                f"{label} names check-rules.py in prose but never runs it. A checkpoint that "
+                f"describes the enforcer instead of invoking it enforces nothing -- which is "
+                f"P16 in the component whose whole job is enforcement")
+            body = invocations[0]
+            assert "--rules" in body and "--mode" in body, (
+                f"{label}'s invocation is missing --rules or --mode:\n{body}")
+
+        # The judgement verdict, taken from the TABLE ROW that carries it. The paragraph below
+        # that table also contains "never fail", so a mutant flipping the row survived an
+        # earlier assertion that merely looked for those words somewhere in the file.
+        row = None
+        for line in verifier.splitlines():
+            if line.strip().startswith("|") and "judgement" in line:
+                row = [c.strip() for c in line.strip().strip("|").split("|")]
+        assert row, "execute-verify has no table row for the judgement kind"
+        verdict = prose(row[-1]).lower()
+        assert "never fail" in verdict or "report only" in verdict, (
+            f"execute-verify's judgement row says {verdict!r}. S3: prose guards get weighed "
+            f"rather than obeyed, so these report and never block a merge. A rule that claims "
+            f"to enforce and does not is exactly what P16 is about")
+        assert "fail the task" not in verdict, (
+            f"execute-verify now fails tasks on a judgement finding: {verdict!r}. That is "
+            f"inventing enforcement the toolchain cannot deliver")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+
+@check("greenfield ends with an architecture record, not without one", finding="P17")
+def _():
+    """Item 26. P17's output half: the finalizer ran only where PROJECT.md already existed.
+
+    `test -f {project_path}/PROJECT.md` is a condition no greenfield run can satisfy, so a new
+    project ran the entire pipeline and ended with no architecture record at all -- and the
+    first /crd against it then paid for a full crd-investigate to rediscover architecture the
+    PRD had already stated. The toolchain HAD an architecture artefact and greenfield was the
+    only path that could not reach it.
+    """
+    execute = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    agent = open(os.path.join(AGENTS, "project-context-finalizer.md"), encoding="utf-8").read()
+
+    step = execute[execute.find("### Step 10"):]
+    step = step[:step.find("### Step 11")] or step[:4000]
+    assert step, "/execute lost its finalize-context step"
+
+    # The gate must BRANCH, not skip. Asserted from the decision table rather than from prose:
+    # the surrounding paragraphs necessarily discuss the old behaviour to explain the change,
+    # so a substring check would find the history rather than the rule.
+    actions = {}
+    for line in step.splitlines():
+        if line.strip().startswith("|") and line.count("|") >= 3:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] and not set(cells[0]) <= set("- "):
+                actions[prose(cells[0]).lower()] = prose(cells[-1]).lower()
+    assert actions, "/execute Step 10 has no decision table, so the branch is prose"
+
+    creates = [v for k, v in actions.items() if "no project.md" in k and "prd" in k]
+    assert creates, (
+        f"no row covers 'no PROJECT.md, run came from a PRD'. That is the greenfield case, and "
+        f"skipping it silently is the whole of P17's output half. rows={list(actions)}")
+    assert "create" in creates[0], (
+        f"the greenfield row does not create PROJECT.md: {creates[0]!r}")
+
+    updates = [v for k, v in actions.items() if "project.md exists" in k]
+    assert updates and "update" in updates[0], (
+        "the existing-PROJECT.md row no longer updates it, so item 26 broke the path that "
+        "already worked")
+
+    # The agent must be able to act on it.
+    assert re.search(r"^#+ .*[Tt]wo modes", agent, re.M) or "`create`" in agent, (
+        "project-context-finalizer has no create mode, so /execute branches to an agent that "
+        "cannot do the work")
+    for sentence in ("Do not copy <rules> or <principles>",
+                     "the export wins"):
+        assert prose(sentence) in prose(agent), (
+            f"the finalizer no longer states: {sentence!r}. Seeding is a COPY of the registries "
+            f"only -- architecture.md is prescriptive and PROJECT.md is descriptive, and "
+            f"collapsing that distinction makes a constraint indistinguishable from an "
+            f"observation")
+
+    # A created file has to satisfy the validator that guards every consumer.
+    assert prose("at least one\nregistry") in prose(agent) or \
+        prose("at least one registry") in prose(agent), (
+        "the finalizer does not know that check-project-md.py requires a registry, so `create` "
+        "can produce a file that fails the guard on the next run")
+
+
+@check("impact analysis reports contracts, not only APIs", finding="P35")
+def _():
+    """Item 57. Item 25 opened the registry set; without this, that is half a change.
+
+    `crd-impact-analysis` could now READ an event or a command registry and would have had
+    nowhere to report the impact -- it emitted `<affected-apis>` and `<affected-schemas>` and
+    nothing else. The half that shows.
+    """
+    fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+               encoding="utf-8").read()
+    skill = open(os.path.join(SKILLS, "crd-impact-analysis", "SKILL.md"),
+                 encoding="utf-8").read()
+    agent = open(os.path.join(AGENTS, "crd-impact-analyzer.md"), encoding="utf-8").read()
+
+    # Producer and schema must agree, and the sample must parse -- P10's shape is a producer
+    # and a spec that drifted, so compare them rather than reading each.
+    for label, text in (("crd-format.md", fmt), ("crd-impact-analysis", skill),
+                        ("crd-impact-analyzer", agent)):
+        m = re.search(r"<affected-contracts>.*?</affected-contracts>", text, re.S)
+        assert m, f"{label} does not carry <affected-contracts>"
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(m.group(0))
+        except Exception as e:
+            raise AssertionError(f"{label}'s <affected-contracts> sample does not parse: {e}")
+        kinds = {c.get("kind") for c in root.findall("contract")}
+        assert None not in kinds, f"{label} has a <contract> with no kind"
+        assert {"api", "schema"} <= kinds, (
+            f"{label}'s sample drops a kind PROJECT.md has always had: {sorted(kinds)}")
+        assert kinds - {"api", "schema"}, (
+            f"{label}'s sample shows only api and schema, so it does not demonstrate the open "
+            f"set that is the entire point of the change: {sorted(kinds)}")
+        for c in root.findall("contract"):
+            assert c.get("ref"), f"{label} has a <contract> with no ref"
+
+    # The old elements stay READABLE. Every CRD written before this exists.
+    assert "affected-apis" in fmt, (
+        "crd-format.md no longer mentions <affected-apis>. It is deprecated, not deleted -- "
+        "every CRD written before this change carries it, and item 41 rewrites them")
+    assert re.search(r"affected-apis.*[Dd]eprecated", fmt), (
+        "<affected-apis> is present but not marked deprecated, so a reader cannot tell which "
+        "of the two shapes to write")
+
+    # The reader must refuse clearly rather than reporting an empty impact.
+    assert prose("do not report an empty impact") in prose(skill).lower(), (
+        "crd-impact-analysis does not say what to do when the registry it needs is absent. "
+        "check-project-md.py requires ANY registry, not a particular one, so it will not have "
+        "stopped a project that lacks the kind this analysis reads -- and an empty impact "
+        "reported as a finding is worse than a refusal")
+
+    # And the layer derivation must key off the new shape, or item 31 reads a dead element.
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase3 = caller[caller.find("### Phase 3:"):caller.find("### Phase 4:")]
+    # Per ROW, not per section. The mutant that got through reverted only the foundation row
+    # to `<affected-schemas>`; the backend row still said "contract" and "kind=", so a check
+    # looking for those anywhere in Phase 3 passed while half the derivation read a deprecated
+    # element. Two rows, two independent assertions.
+    rows = {}
+    for line in phase3.splitlines():
+        m = re.match(r"\s*\|\s*`?([0-9]-[a-z]+)`?\s*\|[^|]*\|([^|]*)\|", line)
+        if m:
+            rows[m.group(1)] = m.group(2)
+    for layer in ("1-foundation", "2-backend"):
+        assert layer in rows, f"the derivation table lost its {layer} row"
+        evidence = rows[layer]
+        assert "contract" in evidence, (
+            f"{layer}'s evidence column is {evidence.strip()!r}, which does not read "
+            f"<affected-contracts>. Item 57 generalised impact analysis from APIs to contracts; "
+            f"a derivation still keyed to the deprecated element puts an event or command "
+            f"change in no tier at all")
+        for dead in ("<affected-apis>", "<affected-schemas>"):
+            assert dead not in evidence, (
+                f"{layer}'s evidence column still reads {dead}, which item 57 deprecated")
+
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
@@ -2371,68 +3412,69 @@ def behaviour_checks():
 # ------------------------------------------------------------------------ runner
 
 def main():
-    ap = argparse.ArgumentParser(description="Regression suite for the toolchain")
-    ap.add_argument("--behaviour", action="store_true",
-                    help="also run the plugin-load check (needs the `claude` CLI, ~30s)")
-    ap.add_argument("-v", "--verbose", action="store_true", help="show failure detail for KNOWN")
-    args = ap.parse_args()
+    with keep_awake():
+        ap = argparse.ArgumentParser(description="Regression suite for the toolchain")
+        ap.add_argument("--behaviour", action="store_true",
+                        help="also run the plugin-load check (needs the `claude` CLI, ~30s)")
+        ap.add_argument("-v", "--verbose", action="store_true", help="show failure detail for KNOWN")
+        args = ap.parse_args()
 
-    width = max(len(r["name"]) for r in _RESULTS) + 2
-    passed = failed = known = fixed = 0
-    problems = []
+        width = max(len(r["name"]) for r in _RESULTS) + 2
+        passed = failed = known = fixed = 0
+        problems = []
 
-    print(f"Regression suite -- {len(_RESULTS)} static checks\n" + "=" * (width + 34))
-    for r in _RESULTS:
-        tag = f"[{r['finding']}]" if r["finding"] else ""
-        try:
-            r["fn"]()
-            err = None
-        except AssertionError as e:
-            err = str(e)
-        except Exception as e:                      # a broken check is a failure
-            err = f"check raised {type(e).__name__}: {e}"
+        print(f"Regression suite -- {len(_RESULTS)} static checks\n" + "=" * (width + 34))
+        for r in _RESULTS:
+            tag = f"[{r['finding']}]" if r["finding"] else ""
+            try:
+                r["fn"]()
+                err = None
+            except AssertionError as e:
+                err = str(e)
+            except Exception as e:                      # a broken check is a failure
+                err = f"check raised {type(e).__name__}: {e}"
 
-        if err is None and r["expect_fail"]:
-            status, fixed = "FIXED", fixed + 1
-            problems.append((r["name"], f"now passes -- remove expect_fail={r['expect_fail']!r} "
-                                        f"so it becomes a permanent regression guard"))
-        elif err is None:
-            status, passed = "pass", passed + 1
-        elif r["expect_fail"]:
-            status, known = f"KNOWN/{r['expect_fail']}", known + 1
-            if args.verbose:
+            if err is None and r["expect_fail"]:
+                status, fixed = "FIXED", fixed + 1
+                problems.append((r["name"], f"now passes -- remove expect_fail={r['expect_fail']!r} "
+                                            f"so it becomes a permanent regression guard"))
+            elif err is None:
+                status, passed = "pass", passed + 1
+            elif r["expect_fail"]:
+                status, known = f"KNOWN/{r['expect_fail']}", known + 1
+                if args.verbose:
+                    problems.append((r["name"], err))
+            else:
+                status, failed = "FAIL", failed + 1
                 problems.append((r["name"], err))
-        else:
-            status, failed = "FAIL", failed + 1
-            problems.append((r["name"], err))
 
-        print(f"  {status:<12} {r['name']:<{width}} {tag}")
+            print(f"  {status:<12} {r['name']:<{width}} {tag}")
 
-    if args.behaviour:
-        print("\nBehavioural check (read-only)\n" + "=" * (width + 34))
-        try:
-            n = behaviour_checks()
-            print(f"  {'pass':<12} plugin registers all {n} entries on disk")
-            passed += 1
-        except Exception as e:
-            print(f"  {'FAIL':<12} plugin load")
-            problems.append(("plugin load", str(e)))
-            failed += 1
+        if args.behaviour:
+            print("\nBehavioural check (read-only)\n" + "=" * (width + 34))
+            try:
+                n = behaviour_checks()
+                print(f"  {'pass':<12} plugin registers all {n} entries on disk")
+                passed += 1
+            except Exception as e:
+                print(f"  {'FAIL':<12} plugin load")
+                problems.append(("plugin load", str(e)))
+                failed += 1
 
-    if problems:
-        print("\nDetail\n" + "=" * (width + 34))
-        for name, detail in problems:
-            print(f"\n  {name}\n    {detail}")
+        if problems:
+            print("\nDetail\n" + "=" * (width + 34))
+            for name, detail in problems:
+                print(f"\n  {name}\n    {detail}")
 
-    print(f"\n{'-' * (width + 34)}")
-    print(f"passed {passed}   failed {failed}   known {known}   fixed {fixed}")
-    if known:
-        print(f"\n{known} check(s) encode a target state not yet reached. They are expected to "
-              f"fail\nuntil the named remediation item lands, then must have the marker removed.")
-    if fixed:
-        print(f"\n{fixed} check(s) marked as expected failures now PASS. Remove the marker.")
+        print(f"\n{'-' * (width + 34)}")
+        print(f"passed {passed}   failed {failed}   known {known}   fixed {fixed}")
+        if known:
+            print(f"\n{known} check(s) encode a target state not yet reached. They are expected to "
+                  f"fail\nuntil the named remediation item lands, then must have the marker removed.")
+        if fixed:
+            print(f"\n{fixed} check(s) marked as expected failures now PASS. Remove the marker.")
 
-    return 1 if (failed or fixed) else 0
+        return 1 if (failed or fixed) else 0
 
 
 if __name__ == "__main__":

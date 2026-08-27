@@ -12,6 +12,38 @@ This document defines the XML schema for implementation task files.
 
 ## Sections
 
+### 0. Constraints (Optional)
+
+What [`architecture.md`](architecture-format.md) binds this task to. Absent when the project
+declares no rule file, or declares nothing that reaches this task's files.
+
+```xml
+<context>
+  ...
+  <constraints>
+  Banned: httpx|requests under contexts/** -- ADR-004: contexts communicate by event, never by
+    call. Exception: contexts/*/adapters/outbound/** (third-party APIs are called over HTTP).
+  Test policy: tdd, runner vitest (web/**)
+  Max files: 5 (contracts/**)
+  Principle P-001: prefer deleting code to configuring it
+  </constraints>
+</context>
+```
+
+**Constraints:**
+
+- A rule the task does not carry is a rule that does not exist at implementation time. Task files
+  are self-contained by mandate and the implementer cannot open `architecture.md`.
+- Carry the rule's **`reason` verbatim**. *"Banned: HTTP client to another context's service —
+  ADR-004: contexts communicate by event, never by call"* says what to do instead; a rule number
+  does not.
+- Carry a rule's `<except>` when it also covers this task's files. An implementer who cannot see
+  the exception writes around a rule that does not apply to them.
+- Carry only what reaches this task. The whole rule file in every task is the volume cost P22
+  describes, paid for content the task never reads.
+- **Never invent one.** An absent element means the project declared nothing relevant. An empty
+  one is indistinguishable from an invented one at the far end.
+
 ### 1. Meta (Required)
 
 Task identification and classification.
@@ -31,7 +63,8 @@ Task identification and classification.
 - `id`: Must match pattern `L[1-4]-[0-9]{3}`
 - `layer`: One of: `1-foundation`, `2-backend`, `3-frontend`, `4-integration`
 - `priority`: Integer 1-99
-- `estimated-files`: Integer 1-3 (max 3 files per task)
+- `estimated-files`: Integer, 1 to the task's effective limit — `<task-limits>` from
+  `architecture.md`, defaulting to 3
 - `cwd`: Optional. **Relative to the worktree root**, and must stay inside it
 
 #### `<cwd>` — where this task's commands run
@@ -188,9 +221,24 @@ Specific, verifiable requirements.
 - No ambiguous terms like "appropriate", "good", "proper"
 - Include exact file paths, class names, field names
 
-### 6. Test Requirements (Required)
+### 6. Test Requirements (Required by default)
 
 Tests to write BEFORE implementation (TDD).
+
+> **`<testing default=>` decides whether this section is required, and three components must
+> agree.** The TDD mandate does not live in `tdd-workflow.md`, which only describes
+> Red/Green/Refactor — it is imposed here, by this section being required, and in
+> `review-criteria.md`, which makes it critical twice. A project declaring
+> `<testing default="none">` in [`architecture.md`](architecture-format.md) would otherwise have
+> every task fail batch review at `/breakdown` and never reach `execute-batch` at all.
+>
+> So: **required when `<testing default="tdd">` or when no `architecture.md` declares otherwise**
+> — which is every project that has ever run this toolchain — and **absent when the project
+> declares `default="none"`**. Do not emit it empty; an empty required section is a different
+> claim from a project that switched TDD off, and only one of them is a defect.
+>
+> TDD is right for most projects and wrong for a spike. The toolchain should be able to say which
+> it is running.
 
 ```xml
 <test-requirements>
@@ -250,7 +298,11 @@ Explicit list of files this task creates or modifies.
 ```
 
 **Constraints:**
-- Maximum 3 files (excluding test file)
+- Maximum `<task-limits>` files (excluding test file), **defaulting to 3**. Read
+  `architecture.md`'s `<task-limits default=>` when the project declares one, and
+  honour a scoped `<limit match= max-files=>` for files under that glob. Three is the
+  shipped default, not a law — see
+  [`architecture-format.md`](architecture-format.md)
 - Use full relative paths from project root
 - List in order of creation
 

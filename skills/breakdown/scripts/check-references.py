@@ -14,24 +14,38 @@ WHAT IS CHECKED
   OQ-NNN citations    resolve to an entry in the open-questions register
                       a citation of a *resolved* question is reported with what resolved it
   **Drives:** links   in each decision record, resolve to a file that exists
+  P-NNN citations     resolve to a <principle id=> in architecture.md's <principles> section
+
+PRINCIPLES WERE THE DEFERRED TENTH (item 39, closed by items 28 and 37)
+
+This script originally checked 180 of the corpus's 190 references and said so: a principle had
+nowhere to live until item 28 gave `architecture.md` its `<principles>` section, so there was
+nothing for a citation to resolve against, and validating one would have asserted a file that
+did not exist. That section now exists, so the remaining 10 are checked here -- and the
+exclusion is removed rather than left quietly in force.
+
+**`P-NNN`, and the hyphen is load-bearing.** `P0`, `P1` and `P2` without one are item 34's
+criterion priorities and appear throughout a PRD; matching those would report a dangling
+principle on every prioritised criterion in the corpus.
 
 WHAT IS NOT CHECKED, AND WHY
 
-Principle citations (10 mentions in the corpus). A principle has no home until item 28 gives
-`architecture.md` its `<principles>` section, so there is nothing to resolve a citation against.
-Validating them against a file that does not exist yet would be the failure this plan is about.
-That is 180 of the corpus's 190 references covered here and 10 deferred, deliberately.
+Nothing, now. The heading is kept so the next thing to be deferred is written down here rather
+than skipped in silence: a validator quietly passing over a class of input is worse than one
+that says what it passes over.
 
 The register itself is never written. It is human-maintained and outlives any one PRD; this
 script reports and never repairs (plan item 39).
 
 USAGE
 
-    check-references.py <prd-dir> [--adr-dir DIR] [--questions FILE] [--strict] [--quiet]
+    check-references.py <prd-dir> [--adr-dir DIR] [--questions FILE]
+                        [--architecture FILE] [--strict] [--quiet]
 
   <prd-dir>      directory holding index.md, what-next.md and features/
   --adr-dir      decision records. Default: discovered, see DISCOVERY below
   --questions    the open-questions register, a single markdown file
+  --architecture architecture.md. Default: discovered by walking up from <prd-dir>
   --strict       exit non-zero on warnings too, not just on dangling references
   --quiet        print the summary line only
 
@@ -65,6 +79,10 @@ MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 # An id in a filename: `ADR-007-title.md`, `007-title.md`, `adr007.md`.
 FILENAME_ID = re.compile(r"^(?:adr[-_]?)?(\d{1,4})\b", re.I)
 RESOLVED_HEADING = re.compile(r"^#{1,6}\s*(.*\bOQ-(\d{1,4})\b.*)$", re.M)
+# The hyphen separates a principle from item 34's criterion priorities (P0, P1, P2).
+PRINCIPLE_CITATION = re.compile(r"\bP-(\d{1,4})\b")
+PRINCIPLES_BLOCK = re.compile(r"<principles[\s>].*?</principles>", re.S)
+PRINCIPLE_ID = re.compile(r"""<principle\b[^>]*\bid=["']([^"']+)["']""", re.I)
 
 
 def read(path):
@@ -155,11 +173,50 @@ def cite(text, pattern):
     return out
 
 
+def discover_architecture(prd_dir):
+    """architecture.md at the project root -- walk up from the PRD, stopping at the repo root."""
+    cur = prd_dir
+    for _ in range(6):
+        candidate = os.path.join(cur, "architecture.md")
+        if os.path.isfile(candidate):
+            return candidate
+        if os.path.isdir(os.path.join(cur, ".git")):
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return None
+
+
+def index_principles(path):
+    """Map a matchable key -> the principle id as declared.
+
+    A file may declare `id="P-001"` while a feature cites `P-1`; both name the same principle and
+    a reader would not hesitate between them, so the numeric part is a key too. Leading zeros are
+    stripped for MATCHING only -- what gets reported is the citation as written, because sending
+    someone to look for a string that is not in their file is its own defect. This script did
+    exactly that with ADR-007 before it was fixed.
+    """
+    text = read(path)
+    block = PRINCIPLES_BLOCK.search(text)
+    if not block:
+        return {}
+    out = {}
+    for pid in PRINCIPLE_ID.findall(block.group(0)):
+        out[pid] = pid
+        m = re.search(r"(\d+)", pid)
+        if m:
+            out[str(int(m.group(1)))] = pid
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True, description=__doc__.splitlines()[0])
     ap.add_argument("prd_dir")
     ap.add_argument("--adr-dir")
     ap.add_argument("--questions")
+    ap.add_argument("--architecture")
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
@@ -173,8 +230,13 @@ def main():
     q_path = os.path.abspath(args.questions) if args.questions else discover_questions(
         prd_dir, adr_dir)
 
+    arch_path = (os.path.abspath(args.architecture) if args.architecture
+                 else discover_architecture(prd_dir))
+
     records = index_records(adr_dir) if adr_dir and os.path.isdir(adr_dir) else None
     questions = index_questions(q_path) if q_path and os.path.isfile(q_path) else None
+    principles = (index_principles(arch_path)
+                  if arch_path and os.path.isfile(arch_path) else None)
 
     errors, warnings, counted = [], [], 0
 
@@ -195,6 +257,18 @@ def main():
                                 f"{records[rid]['superseded_by']}")
             elif "supersed" in records[rid]["status"].lower():
                 warnings.append(f"{rel}:{line}: {written} is superseded and names no successor")
+
+        for pid, written, line in cite(text, PRINCIPLE_CITATION):
+            counted += 1
+            if principles is None:
+                errors.append(f"{rel}:{line}: cites {written} and no architecture.md was found "
+                              f"-- pass --architecture")
+            elif not principles:
+                errors.append(f"{rel}:{line}: cites {written} but "
+                              f"{os.path.basename(arch_path)} declares no <principles> section")
+            elif pid not in principles and written not in principles:
+                errors.append(f"{rel}:{line}: {written} is not a principle in "
+                              f"{os.path.basename(arch_path)}")
 
         for qid, written, line in cite(text, OQ_CITATION):
             counted += 1

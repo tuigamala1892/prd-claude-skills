@@ -23,6 +23,13 @@ import sys
 import time
 import uuid
 
+
+# keep_awake moved to tests/keep_awake.py so every long-running harness can reach it;
+# this file had the only copy and a mutation round slept overnight for want of it.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from keep_awake import keep_awake  # noqa: E402
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -103,54 +110,6 @@ def claude(prompt, cwd, results_dir, name, timeout, extra=()):
     return {"rc": rc, "text": text or "", "elapsed": elapsed, "session": sid,
             "timed_out": timed_out}
 
-
-class keep_awake:
-    """Stop the machine sleeping while a run is in progress (Windows; no-op elsewhere).
-
-    A run 10 resume was suspended from 23:24 to 08:13 because the machine slept overnight.
-    Nothing was lost -- the process resumed and the ledger stayed consistent -- but a
-    2-hour run occupied 10 hours of wall clock, and the harness's own timeout never fired,
-    because a suspended process gets no chance to act on a wall-clock deadline.
-
-    Deliberately *not* ES_DISPLAY_REQUIRED: the screen may sleep, only the system must
-    stay up. SetThreadExecutionState is per-thread state and this harness is
-    single-threaded, so setting it here covers the whole run.
-
-    Confirmed working at the OS level: `powercfg /requests` from an elevated prompt lists
-    python.exe under SYSTEM while a run is in progress. (That command needs administrator
-    rights, so the harness itself can only check the API's return value.)
-    """
-
-    ES_CONTINUOUS = 0x80000000
-    ES_SYSTEM_REQUIRED = 0x00000001
-
-    def __enter__(self):
-        self.held = False
-        if sys.platform != "win32":
-            return self
-        try:
-            import ctypes
-            self._k32 = ctypes.windll.kernel32
-            # Returns the previous state, or 0 on failure.
-            if self._k32.SetThreadExecutionState(self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED):
-                self.held = True
-                print("  (sleep inhibited for the duration of this run)", flush=True)
-            else:
-                print("  (WARNING: could not inhibit sleep; a long run may be suspended)",
-                      flush=True)
-        except Exception as e:
-            print(f"  (WARNING: could not inhibit sleep: {e})", flush=True)
-        return self
-
-    def __exit__(self, *_exc):
-        # Always release, including on Ctrl-C or an exception. Leaving the flag set would
-        # keep the machine awake indefinitely after the harness exits.
-        if self.held:
-            try:
-                self._k32.SetThreadExecutionState(self.ES_CONTINUOUS)
-            except Exception:
-                pass
-        return False
 
 
 def refused(text):

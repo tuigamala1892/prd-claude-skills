@@ -205,7 +205,44 @@ Infer:
 
 - Make up features not in the PRD
 - Guess at specific implementation details
-- Include your own opinions about architecture
+- **Invent architecture.** Do *apply* what `architecture.md` states — see below. The distinction
+  matters: this line used to read *"include your own opinions about architecture"*, which
+  correctly forbade invention and also forbade obeying a rule the project had written down.
+  There was nowhere for such a rule to come from until item 25, so the two were the same
+  instruction; now they are not.
 - Truncate or summarize features
+
+## `architecture.md`, when the caller hands you one
+
+The caller runs `check-architecture.py` in its Phase 1 and passes you the file's content when a
+valid one exists. It is the project's **prescriptive** artefact — what must be true — and it
+outranks anything you would otherwise infer.
+
+**On the index pass**, record it into `analysis.index.json` under `architecture`:
+
+```json
+"architecture": {
+  "declared": true,
+  "layers": [{"id": "1", "name": "contracts", "depends_on": []}],
+  "testing": {"default": "tdd", "runner": "pytest"},
+  "task_limits": {"default": 3},
+  "registries": {"event-registry": [ ... ], "api-registry": [ ... ]},
+  "principles": [{"id": "P-001", "text": "..."}]
+}
+```
+
+Copy it; do not paraphrase it. `"declared": false` with nothing else when no file was given.
+
+**A registry is a data model at project scope**, so read one exactly as you read a feature's
+`<notes><data-model>`: an entry that already exists is a fact, not an inference. When a feature
+implies an endpoint the `<api-registry>` already records, emit the registry's shape rather than
+your own, and mark it `"source": "registry"` instead of `"inferred_from"`. The same holds for
+every other registry the file declares — the set is open, and a `<command-registry>` or
+`<event-registry>` constrains a CLI or an event-driven project exactly as an API registry
+constrains a REST one.
+
+**This is the one thing that reduces inference rather than adding to it.** P19's charge is that
+this skill is *instructed* to infer while the toolchain forbids marking the inference. Every
+entry answered from a registry is one fewer place that applies.
 
 Return the complete JSON analysis.

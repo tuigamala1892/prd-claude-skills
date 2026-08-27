@@ -60,13 +60,49 @@ These constraints are NON-NEGOTIABLE:
 
 3. **Interface contracts**: Dependencies use type signatures with imports, NOT full implementation code.
 
-4. **Max 3 files**: Each task creates/modifies maximum 3 files (test file is additional).
+4. **Max files: `<task-limits>`, defaulting to 3.** Each task creates/modifies at most that
+   many files (the test file is additional). Three is the *default*, not the law: read
+   `<task-limits default=>` from `architecture.md` when the project declares one, and honour a
+   scoped `<limit match= max-files=>` for tasks whose files fall under that glob. Three files is
+   right for a UI change and wrong for adding an event type, where the schema, the producer, the
+   consumer, the projection and the test are one change.
 
-5. **TDD approach**: Test requirements come BEFORE implementation. Tests are written first.
+5. **TDD: `<testing default=>`, defaulting to `tdd`.** Test requirements come BEFORE
+   implementation and tests are written first — **unless** `architecture.md` declares
+   `<testing default="none">`, in which case omit `<test-requirements>` and say so in
+   `<constraints>`. Do not emit an empty section: `review-tasks` reads the same declaration and
+   will not require what the project switched off. Carry the matching `<policy kind= runner=>`
+   for the paths this task touches into `<constraints>`, so the implementer runs the right
+   runner rather than the default one.
 
 6. **No placeholders**: NEVER write "TODO", "TBD", "...", or any placeholder. If you don't know something, make a reasonable decision and document it.
 
 7. **Concrete values**: Use specific names, paths, values. Never "appropriate" or "suitable".
+
+## `architecture.md`, and what to carry from it
+
+When the project declares one, the caller passes you its `<rules>` and `<principles>`. Task files
+are self-contained by mandate, and the implementer cannot open `architecture.md` — so a rule the
+task does not carry is a rule that does not exist at implementation time.
+
+**Carry, into `<constraints>`:**
+
+| From | Carry | Why |
+|---|---|---|
+| `<banned>` | every rule whose `match`/`path`/`from` glob covers a file this task touches, **with its `reason` verbatim** | the reason says what to do instead; a rule number does not |
+| | the rule's `<except>` entries, when one also covers the task's files | an implementer who cannot see the exception writes around a rule that does not apply |
+| `<testing>` | the `default`, and the `<policy>` matching this task's paths | the runner is not always the default one |
+| `<task-limits>` | the effective limit for this task | it is the number `<files-to-create>` must satisfy |
+| `<principles>` | any principle the source feature cites by id | a citation with no text at the far end is a dangling reference |
+
+**Do not carry** the whole rule file, the layer graph, or the registries wholesale. A registry
+entry comes in only where a task *touches* that contract, and then as the entry itself in
+`<dependencies>` — a full inventory in every task is the volume cost P22 is about, paid for
+content the task never reads.
+
+**Never invent a constraint.** `<constraints>` holds what `architecture.md` says. If it declares
+nothing relevant to this task, the element is absent — an empty rule list is not the same claim
+as no rule file, and a reader downstream cannot tell an invented rule from a declared one.
 
 ## Task File Format
 
@@ -106,6 +142,16 @@ Generate XML files following this exact structure:
     tests/
       models/
     </project-structure>
+  
+    <constraints>
+    <!-- From architecture.md, when the project declares one. Copy the `reason` verbatim: -->
+    <!-- Banned: httpx|requests under contexts/** -- ADR-004: contexts communicate by event, -->
+    <!--   never by call. Exception: contexts/*/adapters/outbound/**                          -->
+    <!-- Test policy: tdd, runner vitest (web/**)                                             -->
+    <!-- Max files: 5 (contracts/**)                                                          -->
+    <!-- Principle P-001: prefer deleting code to configuring it                              -->
+    </constraints>
+
   </context>
 
   <dependencies>

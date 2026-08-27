@@ -362,15 +362,37 @@ did not, and the report is where that difference matters most.
 Running the project's pipeline stays out of scope: `/execute` has no business owning it. Not
 implying it ran is a different question, and this is the answer to it.
 
-### Step 10: Finalize Context (CRD Projects)
+### Step 10: Finalize Context (Every Project)
 
-Only for projects carrying a `PROJECT.md` — greenfield runs skip this entirely and silently.
+**This used to run only where `PROJECT.md` already existed**, which no greenfield run can
+satisfy — so a greenfield project ran the whole pipeline and ended with no architecture record
+at all, and the first `/crd` against it then paid for a full `crd-investigate` to rediscover
+architecture the PRD had already stated (**P17**). The toolchain had an architecture artefact
+and greenfield was the only path that could not reach it.
 
 ```bash
-test -f {project_path}/PROJECT.md
+test -f {project_path}/PROJECT.md   && echo UPDATE
+test -f {project_path}/architecture.md && echo SEED-AVAILABLE
 ```
 
-**If it exists, dispatch the finalizer agent.** Do not do this work inline:
+| State | Action |
+|---|---|
+| `PROJECT.md` exists | **update** it, exactly as before |
+| No `PROJECT.md`, run came from a **PRD** | **create** it — from `architecture.md` when there is one, plus the task exports |
+| No `PROJECT.md`, run came from a **CRD** | stop and say so. A CRD targets an existing project, and `/breakdown` already required a `PROJECT.md` to scope the change — reaching here without one means something removed it mid-run |
+
+**Seeding is a copy, not a transform**, and that is why item 25 put the registries at the same
+nesting level in both files. `<api-registry>`, `<schema-registry>` and any other `<*-registry>`
+move across as subtrees; `<rules>` and `<principles>` **stay behind**, because they are
+prescriptive and `PROJECT.md` is descriptive. What the project *must* be is not a record of what
+it *is*.
+
+**A seeded `PROJECT.md` still has to earn its registries from the code.** `architecture.md`'s
+registries are written before any code exists and are usually empty; the task `<exports>` are
+what actually populate them. Where the two disagree, **the exports win** — they describe what was
+built, and this file's whole job downstream is to say what exists.
+
+**Dispatch the finalizer agent for both the update and the create.** Do not do this work inline:
 
 ```
 Task(
@@ -388,11 +410,17 @@ here would be inert text (**F20**):
 ```
 Update PROJECT.md to reflect what was implemented.
 
+Mode:                                 update | create
 Project root (PROJECT.md lives here): {project_path}
+Architecture file to seed from:       {project_path}/architecture.md, or "none"
 Tasks directory:                      {tasks_path}
-CRD slug:                             {prd_slug}
+PRD or CRD slug:                      {prd_slug}
 Completed task ids:                   {verified_tasks from ledger-status.sh}
 ```
+
+**`Mode` is stated rather than inferred.** The agent has `Read` and could test for the file
+itself, but then two components decide the same thing and can disagree — and the caller is the
+one that already ran the test above.
 
 Take the completed ids from the **ledger**, not from a running total — they are the tasks
 whose commits exist, which is the only list that has ever been reliable.
@@ -445,7 +473,7 @@ the same thing. Two descriptions of one job, with nothing deciding which runs, i
 shape of **F20**. Dispatching by `subagent_type` loads the agent definition by construction,
 so there is only one description now and it is the better one.
 
-**Note this path has never run.** `PROJECT.md` is CRD-only and every §5.2 run has been
+**Note the update path has never run.** `PROJECT.md` was CRD-only and every §5.2 run has been
 greenfield, so neither the old inline version nor this one has been exercised. Treat it as
 specified-but-unproven until a CRD fixture exists.
 

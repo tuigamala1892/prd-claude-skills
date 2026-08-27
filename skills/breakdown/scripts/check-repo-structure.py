@@ -32,11 +32,32 @@ That window is a property repo-per-service **chose** -- it is why those teams ve
 is deliberately not taken. The refusal says what would be needed rather than implying the layout
 is wrong.
 
+WHERE THE VALUE COMES FROM, AND WHY THERE ARE TWO PLACES (item 28)
+
+Repository layout is a property of the **codebase**, not of a document about it, so
+`architecture.md` owns it: item 28 puts `<repo-structure>` inside `<rules>`, beside the layer
+graph and the test policy. The input document's own copy is the fallback, for the many PRDs
+written before that file existed and for projects that never write one.
+
+Resolution order, and it is a choice rather than a synchronisation (plan section 4.1):
+
+  1. `{project-root}/architecture.md` -- authoritative when it declares the element
+  2. the input document
+  3. `single`
+
+**A disagreement is reported, not refused.** A PRD saying `single` while `architecture.md` says
+`monorepo` is what happens the first time a project writes the newer file, and refusing would
+break a valid repository to punish a stale sentence. The project file wins and both values are
+named, so the stale one is visible and can be deleted. What is never acceptable is preferring one
+silently, which is the drift the ownership rule exists to prevent.
+
 USAGE
 
-    check-repo-structure.py <input-file> [--quiet]
+    check-repo-structure.py <input-file> [--project-root DIR] [--quiet]
 
-  <input-file>  a PRD index.md or a CRD document
+  <input-file>     a PRD index.md or a CRD document
+  --project-root   where architecture.md lives. Default: the input file's directory,
+                   walked up to the repository root
 
   exit 0  `single` or `monorepo`. The value is printed as `repo_structure=<value>`
   exit 1  REFUSED -- `multi-repo`, or a value that is not one of the three
@@ -52,9 +73,32 @@ VALUES = ("single", "monorepo", "multi-repo")
 ELEMENT = re.compile(r"<repo-structure>\s*([a-z-]+)\s*</repo-structure>", re.I)
 
 
+def find_architecture(start, explicit=None):
+    """architecture.md at the project root. Walk up from the input, stopping at the repo root."""
+    import os as _os
+    if explicit:
+        candidate = _os.path.join(_os.path.abspath(explicit), "architecture.md")
+        return candidate if _os.path.isfile(candidate) else None
+    cur = _os.path.abspath(start)
+    if _os.path.isfile(cur):
+        cur = _os.path.dirname(cur)
+    for _ in range(6):
+        candidate = _os.path.join(cur, "architecture.md")
+        if _os.path.isfile(candidate):
+            return candidate
+        if _os.path.isdir(_os.path.join(cur, ".git")):
+            break
+        parent = _os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("input_file")
+    ap.add_argument("--project-root")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -70,7 +114,24 @@ def main():
     # Absent is `single`, deliberately. Every PRD written before this element existed means one
     # repository, and defaulting to a refusal would break all of them to guard against a layout
     # none of them use.
-    value = (m.group(1).lower() if m else "single")
+    doc_value = (m.group(1).lower() if m else None)
+
+    arch_path = find_architecture(path, args.project_root)
+    arch_value, disagree = None, None
+    if arch_path:
+        am = ELEMENT.search(open(arch_path, encoding="utf-8", errors="replace").read())
+        if am:
+            arch_value = am.group(1).lower()
+
+    if arch_value and doc_value and arch_value != doc_value:
+        disagree = (arch_value, doc_value)
+
+    if arch_value:
+        value, source = arch_value, "architecture.md"
+    elif doc_value:
+        value, source = doc_value, "the input document"
+    else:
+        value, source = "single", "defaulted (no <repo-structure> anywhere)"
 
     if value not in VALUES:
         print(f"REFUSED: <repo-structure> is {value!r}, which is not one of "
@@ -94,8 +155,12 @@ def main():
         return 1
 
     if not args.quiet:
-        source = "declared" if m else "defaulted (no <repo-structure> element)"
         print(f"repo_structure={value}  [{source}]")
+        if disagree:
+            print(f"  DISAGREE: architecture.md says {disagree[0]!r} and the input document "
+                  f"says {disagree[1]!r}.")
+            print(f"  The project file wins -- layout is a property of the codebase, not of a "
+                  f"document about it. Delete the stale one rather than keeping both in step.")
         if value == "monorepo":
             print("Tasks may declare <meta><cwd>; verification runs from there (item 54).")
     return 0

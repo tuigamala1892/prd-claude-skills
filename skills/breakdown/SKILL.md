@@ -95,23 +95,63 @@ Execute these phases in order:
 
 7. Create `{tasks_dir}`
 8. If it exists, check for existing `.done` markers to resume
-9. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+9. **Read the project's own rules first, and refuse a rule file that cannot be obeyed:**
 
    ```bash
-   python {skill_dir}/scripts/check-repo-structure.py {input_file}
+   python {skill_dir}/scripts/check-architecture.py {target_dir}
    ```
 
-   - **Exit 0**: stdout is `repo_structure=single|monorepo`. Carry the value: `monorepo` is
-     what lets a task declare `<meta><cwd>` (item 54), and `single` means tasks run at the
-     repository root as they always have.
+   `architecture.md` is the project's prescriptive artefact — the layer graph, the test policy,
+   the task file limit, the banned patterns and the scaffold. It lives at the project root
+   beside `PROJECT.md`, it is **optional**, and it is read here rather than later because the
+   two steps below both consult it.
+
+   - **Exit 0, `no architecture.md`**: the common case, and not a problem. The shipped defaults
+     apply — `references/layer-definitions.md` for the graph, TDD, three files per task —
+     and everything proceeds exactly as it did before this file existed.
+   - **Exit 0, `architecture.md valid`**: **write the parsed form down, and pass that on:**
+
+     ```bash
+     python {skill_dir}/scripts/check-architecture.py {target_dir} --json > {tasks_dir}/architecture.json
+     ```
+
+     Every later phase reads `{tasks_dir}/architecture.json`, never `architecture.md` itself.
+     The graph has already been validated — acyclic, ids unique, every `depends-on` known — and
+     a second reader re-parsing the markdown by eye would be a second parser that can disagree
+     with the one that did the checking. `--json` is that parser's own output.
+
+     Write nothing when the file is absent: a missing `architecture.json` is how every later
+     phase knows to take the defaults, and an empty one is a different claim.
+   - **Exit 1**: `REFUSED:` names every rule it could not read, with the element and the reason.
+     **Stop and report it verbatim.** Create nothing.
+
+   **Absent is fine; present-and-broken must stop the run.** A rule file that is silently
+   ignored is worse than no rule file at all, because the rule is not in force and the operator
+   believes it is — P16's failure mode, one level up from prose.
+
+   For CRD input the project root is `{project_path}`. The file belongs to the codebase, not to
+   the document that changes it.
+
+10. **Read the repository structure, and refuse `multi-repo` here rather than at merge time:**
+
+   ```bash
+   python {skill_dir}/scripts/check-repo-structure.py {input_file} --project-root {target_dir}
+   ```
+
+   - **Exit 0**: stdout is `repo_structure=single|monorepo` and names where the value came from.
+     Carry the value: `monorepo` is what lets a task declare `<meta><cwd>` (item 54), and
+     `single` means tasks run at the repository root as they always have.
    - **Exit 1**: `REFUSED:`. **Stop and report it verbatim.** Create nothing.
+   - A `DISAGREE:` line means `architecture.md` and the input document state different layouts.
+     The project file wins — layout is a property of the codebase, not of a document about it —
+     and the run continues. Report the line; the stale copy is for a human to delete.
 
    The assumption is already enforced — `create-worktree.sh` refuses a subdirectory — but it
    fires during batch execution, several phases after the layout was knowable. A repo-per-service
    project currently gets a layer plan, a manifest and a full task set before anything objects,
    then fails with a message about worktrees that does not name the cause (**P36**).
 
-10. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
+11. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
    python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]
@@ -126,6 +166,11 @@ Execute these phases in order:
    - **Exit 1**: `DANGLING` lines name a citation that resolves to nothing. **Report them and
      stop.** A feature whose scope was settled by a record that no longer exists will be broken
      down without it, and the task will look complete.
+
+   `ADR-NNN`, `OQ-NNN`, `**Drives:**` links and `P-NNN` principle citations are all resolved.
+   The last of those is why step 9 runs first: a principle resolves against
+   `architecture.md`'s `<principles>` section, and the script discovers that file by walking up
+   from the PRD. Pass `--architecture` when it lives somewhere the walk will not reach.
 
    Skip only when the PRD cites nothing: the script exits 0 on a PRD with no citations, so
    running it unconditionally costs nothing and there is no condition to evaluate.
@@ -216,36 +261,89 @@ Save the analysis to `{tasks_dir}/analysis.json`
 
 If layer_plan.json exists, skip this phase.
 
-**For PRD:**
-Invoke the `breakdown-plan-layers` skill with the analysis JSON.
+**Both paths, one planner.** Invoke the `breakdown-plan-layers` skill with the analysis JSON
+**and, when it exists, `{tasks_dir}/architecture.json`** — the validated form of the project's
+declared layer graph, written in Phase 1.
 
-Request organization into 4-5 layers:
-1. **0-setup**: Template copy, initial commit, environment (greenfield only).
-   Does NOT create the repository - `/execute` requires `{project_path}` to be an
-   existing git repository, so Layer 0 commits into it rather than initialising it.
-2. **1-foundation**: Database models, migrations, base config
-3. **2-backend**: API endpoints, services, business logic
-4. **3-frontend**: React components, state management, routing
-5. **4-integration**: Wiring, E2E flows, polish
+The two paths differ only in what the evidence is, not in how the question is answered: a PRD
+supplies it as inferred models, endpoints and components; a CRD supplies it as
+`<affected-schemas>`, `<affected-apis>` and `<affected-files>`. Both are answering *which tiers
+does this work touch?*
 
-**For CRD:**
-Layer planning is simpler based on `<impact-analysis>`:
+**When `architecture.json` declares `layer_blocks`, that graph replaces the default tiers
+entirely.** Not merged with them: a project that declared its own tiers did not ask for
+`0-setup` or `4-integration`, and grafting them on is how a project acquires layers it
+explicitly rejected. Pass the file and say which case applies.
 
-- If `<affected-schemas>` has changes: Include Layer 1 (foundation)
-- If `<affected-apis>` has changes: Include Layer 2 (backend)
-- If frontend files in `<affected-files>`: Include Layer 3 (frontend)
-- Always include Layer 4 (integration) for wiring changes together
 
-CRD typically produces 2-3 layers, not 5.
+**A tier with no work in it is not a tier.** Ask, of each candidate layer, whether this
+document actually puts work there — and drop the ones it does not. The layer set is **derived**,
+on both paths:
+
+| Layer | Included when | Evidence |
+|---|---|---|
+| `0-setup` | greenfield **and** a scaffold is named | `<scaffold>`, or Phase 2's template |
+| `1-foundation` | there are data models, migrations or shared types | analysis `data_models`; CRD `<contract kind="schema">` |
+| `2-backend` | there are endpoints, services or background work | analysis `api_endpoints`; CRD `<contract kind="api|event|command">` |
+| `3-frontend` | there are components, screens or routes | analysis `frontend_components`; CRD frontend paths in `<affected-files>` |
+| `4-integration` | **more than one other tier is present**, or a requirement is explicitly cross-cutting | the count above |
+
+**The PRD path used to take all five unconditionally**, so a PRD with no frontend got a frontend
+layer and a batch that generated nothing worth having. The CRD path already asked the question
+that matters — *does this change span dependency tiers?* — and answered it from what the change
+touches. This is that derivation, extended rather than invented (**P33**).
+
+**Layer 4 is no longer automatic, and that line was the expensive one.** *"Always include Layer 4
+for wiring changes together"* made the minimum possible plan two layers, two batches and two
+rounds of generate → review → retry, for a change that might be one edit to one file. **There is
+nothing to integrate when only one tier moved.**
+
+**When `architecture.json` declares a graph, derive over *that* graph**, not over the five above:
+a declared layer with no work in it is dropped on the same rule. The graph says what tiers
+*exist*; the document says which ones this work *touches*.
+
+#### The degenerate case: no plan at all
+
+**When the derivation yields one layer holding one task, there is no plan to make. Run the
+task.** Skip layering, skip batching, skip the layer directory; generate the single task and say
+so. This is the small path P21 asks for, arriving as a consequence of asking the right question
+rather than as a `--small` flag with a file-count threshold.
+
+**Two decisions, and they are not the same one.** *Skip layering* when the work spans one tier.
+*Skip batching* when a layer holds few enough tasks. Twenty endpoints in one tier is a large
+change that needs no layering and still wants batching — a threshold on file count would have got
+that backwards, which is why there is no threshold here to set.
+
+#### Report the routing decision
+
+An operator who expected four tasks and got one must be told why:
+
+```
+Layers: 2-backend only (1 task)
+  Dropped: 1-foundation (no schema changes), 3-frontend (no components),
+           4-integration (single tier -- nothing to wire)
+  Single task in a single layer: running it directly, no batching.
+```
+
+**And cross-check `<scope>` rather than routing on it.** A CRD's `<scope>` is no longer an input
+to this decision — *"impact analysis said `small`, breakdown produced 14 tasks"* is worth
+flagging as a sign that one of the two is wrong, but the derivation above already knows more than
+a band boundary does.
 
 Save the layer plan to `{tasks_dir}/layer_plan.json`
 
 ### Phase 4: Generate Tasks (Per Layer)
 
-Determine layers to process based on input type:
-- **PRD Greenfield**: `[0-setup, 1-foundation, 2-backend, 3-frontend, 4-integration]`
-- **PRD Brownfield**: `[1-foundation, 2-backend, 3-frontend, 4-integration]` (skip Layer 0)
-- **CRD**: Only layers identified in Phase 3 based on impact analysis
+**Process exactly the layers `layer_plan.json` contains — never a list written here.**
+Phase 3 derived the set from what the document actually puts work in, and re-deriving it from
+input type would silently restore the five unconditional tiers it just dropped (**P33**).
+
+Brownfield has no `0-setup` because nothing scaffolds an existing project, and a PRD with no
+frontend has no `3-frontend` for the same reason: the layer is absent from the plan, not skipped
+here.
+
+**If the plan holds one layer with one task**, Phase 3 already said so: generate that task, skip
+the batching loop below, and do not create a `.done` marker for a layer that was never a layer.
 
 For each layer in order:
 
