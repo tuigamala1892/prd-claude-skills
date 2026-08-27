@@ -3374,6 +3374,151 @@ def _():
                 f"{layer}'s evidence column still reads {dead}, which item 57 deprecated")
 
 
+# ------------------------------------------------------------------- schema core
+
+SCHEMA = os.path.join(REPO, "schema")
+
+# The four artefact root elements. A template for one of these is schema, and schema in a
+# command file cannot be cited by a skill -- which is how three separate definitions of
+# `<criterion>` came to exist and drift apart (item 44).
+ARTEFACT_ROOTS = {"prd", "crd", "feature", "what-next"}
+
+
+def md_links(text):
+    """(label, target) for every inline markdown link whose target is a local path."""
+    out = []
+    for label, target in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text):
+        if target.startswith(("http://", "https://", "#", "mailto:")):
+            continue
+        out.append((label, target.split("#", 1)[0]))
+    return out
+
+
+def xml_blocks(text):
+    """Root element name of every ```xml fenced block, in order."""
+    roots = []
+    for body in re.findall(r"```xml\n(.*?)```", text, re.S):
+        m = re.search(r"<([A-Za-z][\w-]*)", body)
+        if m:
+            roots.append(m.group(1))
+    return roots
+
+
+@check("the schema core is one definition that both paths cite -- and its citations resolve",
+       finding="P30")
+def _():
+    """Item 44.
+
+    Three documents restated the criterion shape before the core existed and had already
+    drifted: `crd-format.md` marks `<scope>` and `<confidence>` required, and the command that
+    writes CRDs emitted neither.
+
+    Asserting that drift is gone by grepping for a phrase would survive the drift coming back.
+    So this parses instead:
+
+      1. the core declares a version, and it is the one SCHEMAS.json calls current;
+      2. every local link out of the core resolves to a file that exists;
+      3. the core's "who cites this file" table is not aspirational -- each named document
+         really does link to the core, or to the intermediary its own row names.
+
+    (3) is the load-bearing one. A row added without wiring is exactly how a shared definition
+    becomes a stored one.
+    """
+    core_path = os.path.join(SCHEMA, "core.md")
+    assert os.path.isfile(core_path), "schema/core.md does not exist"
+    core = open(core_path, encoding="utf-8").read()
+
+    m = re.search(r'<schema-core\s+version="([^"]+)"\s*/>', core)
+    assert m, "schema/core.md declares no <schema-core version=...>"
+    declared = m.group(1)
+
+    schemas = json.load(open(os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json"),
+                             encoding="utf-8"))
+    assert declared == schemas["current"], (
+        f"schema/core.md declares {declared!r}; SCHEMAS.json calls {schemas['current']!r} "
+        f"current. A core that has moved on from its fixtures is a migration nobody rehearsed")
+
+    for _label, target in md_links(core):
+        resolved = os.path.normpath(os.path.join(SCHEMA, target))
+        assert os.path.isfile(resolved), f"schema/core.md links {target}, which does not exist"
+
+    # Scope to the citation table's own section. Matching the whole document would let any
+    # other table in it satisfy the check.
+    region = core.split("## Who cites this file", 1)
+    assert len(region) == 2, "schema/core.md has no 'Who cites this file' section"
+    rows = [r.strip() for r in region[1].splitlines() if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r]           # drop the header and its rule
+    assert len(rows) >= 6, f"only {len(rows)} citing documents listed; the table is a stub"
+
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        links = md_links(cells[0])
+        assert links, f"citation row names no document: {row}"
+        rel = links[0][1]
+        doc = os.path.normpath(os.path.join(SCHEMA, rel))
+        assert os.path.isfile(doc), f"citation row names {rel}, which does not exist"
+
+        doc_links = md_links(open(doc, encoding="utf-8").read())
+        targets = {os.path.basename(t) for _l, t in doc_links}
+        via = re.search(r"via `([^`]+)`", cells[1])
+        wanted = via.group(1) if via else "core.md"
+        assert wanted in targets, (
+            f"{rel} is listed as citing the core"
+            + (f" via {wanted}" if via else "")
+            + f", but links no {wanted}. A row without a citation is a claim, not a citation")
+
+        # An indirect citation is a chain, and a chain is only as good as its second hop.
+        # Asserting the first hop alone would pass while the intermediary had quietly stopped
+        # citing the core -- which is the drift this whole item exists to stop.
+        if via:
+            # Resolve the intermediary from the citing document's own link, not by guessing a
+            # directory: `crd-format.md` lives under skills/crd/references/ and `prd-format.md`
+            # beside the core, and only the citing file knows which.
+            hop_rel = next(t for _l, t in doc_links if os.path.basename(t) == wanted)
+            hop = os.path.normpath(os.path.join(os.path.dirname(doc), hop_rel))
+            assert os.path.isfile(hop), f"{rel} cites the core via {hop_rel}, which does not exist"
+
+            # Scoped to the intermediary's PREAMBLE -- everything before its first section.
+            # "links core.md somewhere" is satisfied by any passing mention and cannot be
+            # falsified by one edit, which makes it decorative. A format document has to say
+            # up front that its shared elements are defined elsewhere, because a reader who
+            # gets as far as the templates without being told has already been misled.
+            preamble = re.split(r"^## ", open(hop, encoding="utf-8").read(), 1, re.M)[0]
+            assert "core.md" in {os.path.basename(t) for _l, t in md_links(preamble)}, (
+                f"{rel} reaches the core through {wanted}, but {wanted} does not cite core.md "
+                f"before its first section -- the chain is broken at its second hop")
+
+
+@check("no artefact template lives in a command file", finding="P30")
+def _():
+    """Item 44's first consequence, and the mechanism behind the drift it fixes.
+
+    A template inside `commands/*.md` cannot be cited by a skill, so the skill grows a copy.
+    This parses every fenced xml block in the two commands and in the orchestrating skill and
+    asserts none is rooted at an artefact element -- a structural claim about what the block
+    IS, rather than a search for forbidden words.
+
+    `<step>` fragments stay: they are the payload of an instruction, and the one that survives
+    names the schema file defining its shape.
+    """
+    offenders, cites = [], []
+    homes = {
+        os.path.join(COMMANDS, "prd.md"): "prd-format.md",
+        os.path.join(COMMANDS, "crd.md"): "crd-format.md",
+        os.path.join(SKILLS, "crd", "SKILL.md"): "crd-format.md",
+    }
+    for path, home in homes.items():
+        text = open(path, encoding="utf-8").read()
+        for root in xml_blocks(text):
+            if root in ARTEFACT_ROOTS:
+                offenders.append(f"{os.path.relpath(path, REPO)} carries a <{root}> template")
+        if home not in {os.path.basename(t) for _l, t in md_links(text)}:
+            cites.append(f"{os.path.relpath(path, REPO)} links no {home}")
+
+    assert not offenders, "\n    " + "\n    ".join(offenders)
+    assert not cites, (
+        "a command that writes an artefact must name where the artefact is defined, or the "
+        "template comes back:\n    " + "\n    ".join(cites))
 
 # ------------------------------------------------------------------- behavioural
 

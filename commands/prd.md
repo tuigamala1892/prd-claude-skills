@@ -213,7 +213,8 @@ that in those words.
 defaults, and a PRD with no rule file stays a valid PRD — which is what keeps every existing
 artefact working.
 
-**But record that the phase ran**, in `what-next.md`:
+**But record that the phase ran**, in `what-next.md` — the `<step kind= status=>` shape defined
+in [`prd-format.md`](../schema/prd-format.md):
 
 ```xml
 <step kind="decision" status="done">
@@ -382,187 +383,22 @@ thinking, and a slug collision should not be the reason it disappears.
 
 ## Output Formats
 
-### index.md (Main PRD)
+**The templates are not in this file. They are schema, and schema in a command cannot be cited
+by a skill** — which is how `/prd`, `/crd` and `crd-format.md` came to hold three separate
+definitions of `<criterion>` that had already drifted apart.
 
-```xml
-<prd>
-  <meta>
-    <name>{{Project Name}}</name>
-    <slug>{{project-slug}}</slug>
-    <status>in-progress|complete</status>
-    <created>{{YYYY-MM-DD}}</created>
-    <updated>{{YYYY-MM-DD}}</updated>
-  </meta>
+Write every artefact against [`prd-format.md`](../schema/prd-format.md): `index.md`,
+`what-next.md`, `features/{slug}.md`, and `architecture.md` when Phase 4 was discussed. The
+elements shared with the CRD path — identity, acceptance criteria, status, priority — are defined
+once in [`core.md`](../schema/core.md) and cited from there.
 
-  <overview>
-    <problem>
-    {{Problem statement}}
-    </problem>
-    <users>
-    {{Target users description}}
-    </users>
-    <value-proposition>
-    {{Core value proposition}}
-    </value-proposition>
-  </overview>
+Two things that file says which are easy to get wrong here, repeated because getting them wrong
+is silent:
 
-  <tech-stack>
-    <type>greenfield|brownfield</type>
-    <repo-structure>single|monorepo|multi-repo</repo-structure>
-    <selected>
-    {{Selected tech stack with components}}
-    </selected>
-    <rationale>
-    {{Why this stack was chosen}}
-    </rationale>
-    <!-- Include for brownfield projects -->
-    <integrations>
-    {{Existing systems to integrate with}}
-    </integrations>
-    <migration-notes>
-    {{Data migration and rollout considerations}}
-    </migration-notes>
-  </tech-stack>
-
-  <features>
-    <!-- List all features with links to detail files -->
-    <feature priority="must-have" file="features/{{slug}}.md">
-      <name>{{Feature Name}}</name>
-      <summary>{{One-line summary}}</summary>
-    </feature>
-    <!-- Repeat for all features -->
-  </features>
-
-  <dependencies>
-    <dependency>
-      <name>{{Dependency Name}}</name>
-      <version>{{Version or "any"}}</version>
-      <purpose>{{What it's used for}}</purpose>
-    </dependency>
-    <!-- Repeat for all dependencies -->
-  </dependencies>
-
-  <!-- Optional sections - only include if documented -->
-  <motivation>
-  {{Motivation and use cases if included}}
-  </motivation>
-
-  <competitive-analysis>
-  {{Competitive analysis if included}}
-  </competitive-analysis>
-
-  <non-functional>
-  {{Non-functional requirements if included}}
-  </non-functional>
-</prd>
-```
-
-### what-next.md
-
-```xml
-<what-next>
-  <status>in-progress|complete</status>
-  <last-updated>{{YYYY-MM-DD}}</last-updated>
-
-  <tbd-items>
-    <!-- Items marked "for later" during the session -->
-    <item section="features" ref="features/auth.md">
-      Define acceptance criteria for password reset flow
-    </item>
-    <!-- More TBD items -->
-  </tbd-items>
-
-  <next-steps>
-    <!-- What to work on next when resuming -->
-    <step>Complete acceptance criteria for authentication features</step>
-    <step>Review tech stack decision with team</step>
-  </next-steps>
-
-  <session-notes>
-    <!-- Any context helpful for resuming -->
-    {{Notes about decisions made, alternatives considered, etc.}}
-  </session-notes>
-</what-next>
-```
-
-### features/[feature-slug].md
-
-```xml
-<feature>
-  <meta>
-    <name>{{Feature Name}}</name>
-    <slug>{{feature-slug}}</slug>
-    <priority>must-have|should-have|could-have</priority>
-    <status>defined|tbd|in-progress</status>
-  </meta>
-
-  <description>
-  {{Detailed feature description}}
-  </description>
-
-  <acceptance-criteria>
-    <criterion id="1">
-      <given>{{Initial context}}</given>
-      <when>{{Action taken}}</when>
-      <then>{{Expected outcome}}</then>
-    </criterion>
-    <!-- More criteria -->
-  </acceptance-criteria>
-
-  <notes>
-  {{Any additional notes, edge cases, or considerations}}
-  </notes>
-</feature>
-```
-
-### `architecture.md` (project root, only when Phase 4 was discussed)
-
-Not under `docs/prd/{slug}/`: it describes the **codebase**, and `/prd` supports several PRDs in
-one repository. Full element reference in
-[`architecture-format.md`](../skills/breakdown/references/architecture-format.md).
-
-```markdown
-# Architecture: {{Project Name}}
-
-## Overview
-{{prose a human reads; the toolchain never parses this}}
-
-## Machine-Readable Section
-<architecture version="1.0">
-  <rules>
-    <layers>
-      <layer id="1" name="foundation" depends-on=""/>
-      <layer id="2" name="backend"    depends-on="1"/>
-      <layer id="3" name="frontend"   depends-on="2"/>
-      <layer id="4" name="integration" depends-on="2,3"/>
-    </layers>
-    <testing default="tdd" runner="pytest">
-      <policy match="web/**" kind="component" runner="vitest"/>
-    </testing>
-    <task-limits default="3"/>
-    <repo-structure>single</repo-structure>
-    <banned>
-      <rule kind="import" match="core/**" symbol="requests|httpx"
-            reason="ADR-002: core must be usable as a library">
-        <except match="core/adapters/**" reason="adapters exist to call out"/>
-      </rule>
-    </banned>
-    <scaffold template="python" path="webapps/backends/python"/>
-  </rules>
-  <principles>
-    <principle id="P-001">{{a rule with no alternatives weighed}}</principle>
-  </principles>
-  <api-registry/>
-  <schema-registry/>
-</architecture>
-```
-
-**`<rules>` is obeyed; `<principles>` is read.** Something written as a principle when it needed
-to be a constraint gets weighed rather than enforced, while the author believes it is in force.
-
-**Registries may be any set the architecture needs** — `<event-registry>`, `<command-registry>`,
-`<service-registry>`, `<screen-registry>` — not only the REST-and-relational pair. Leave them
-empty at PRD time: they are filled from the code after `/execute`.
+- **Feature priority is written on the `index.md` entry, not in the feature file.** A ranking has
+  no meaning inside the thing being ranked.
+- **A feature's `<status>` is how completely it is *defined*, never how much of it is built.**
+  Nothing has been built when `/prd` runs.
 
 ## Tone & Style
 

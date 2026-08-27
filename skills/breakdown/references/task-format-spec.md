@@ -106,6 +106,15 @@ generator produce it systematically.
 
 All background information needed to understand the task.
 
+**`<prd-excerpt>` carries acceptance criteria, and they mean what
+[core §2](../../../schema/core.md#2-acceptance-criteria) says they mean** — a `<criterion>` from
+a PRD feature file and one from a CRD are the same element, so a task generated from either
+carries the same thing. Copy a criterion's `id` with it: core §1 makes ids citable precisely so
+that a task, a commit and a review can name the same requirement and be talking about it.
+
+Items 16 and 17 replace the copied prose with a structural carry. The element they will carry is
+already defined; only its transport changes.
+
 ```xml
 <context>
   <prd-excerpt>

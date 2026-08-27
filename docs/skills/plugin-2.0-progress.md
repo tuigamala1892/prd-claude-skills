@@ -983,6 +983,151 @@ split; deleting `<affected-apis>` looks tidy and breaks every CRD already writte
 
 ---
 
+---
+
+## Phase 4 — The schema core and its migration.
+
+Plan order: `44` → `45` → `41` → `33` · `34` · `29` · `27` · `35` · `1` · `2` · `4` · `5` · `11` ·
+`12` · `36`, on branch `phase-4-schema-core`.
+
+The order inside this phase is an argument, not a preference. **44 is first** because a shared
+core defined *after* the elements it shares is a merge rather than an extraction. **45 next**,
+because renaming three vocabularies is cheap before they have consumers. **41 third** — the
+migration is written *before* the items that rewrite artefacts, not after, because none of them
+can land until the transformation is specified and checkable.
+
+| Item | Status | Commit |
+|---|---|---|
+| **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `_` |
+
+---
+
+## 44 — one definition, two paths, and three copies that had already drifted
+
+**Addresses:** P30 · **Files:** `schema/core.md` (new), `schema/prd-format.md` (new),
+`commands/prd.md`, `commands/crd.md`, `skills/crd/SKILL.md`,
+`skills/crd/references/crd-format.md`, `skills/crd/references/project-format.md`,
+`skills/breakdown/SKILL.md`, `skills/breakdown/references/task-format-spec.md`,
+`tests/test_toolchain.py`, `tests/mutants/phase4-44.py` (new), `CLAUDE.md`
+
+### What "extraction, not merge" meant in practice
+
+The plan's ordering note is the whole design of this item and it is easy to read past. Item 44
+lists elements that items 33, 34, 29, 45 and 49 will *change* — EARS criteria, `<gaps>`, renamed
+status tags, `P0|P1|P2`. It is tempting to read that as *build the core out of the new shapes*,
+which would mean writing the core after those items.
+
+**The core is populated with today's shapes instead**, and each section that is scheduled to
+change says so in a block quote naming the item that will change it. That is what makes the rest
+of the phase an edit to one file rather than a reconciliation of two — which is the difference
+between an extraction and a merge, and the reason the plan put this item first.
+
+### The drift was real, and it was found rather than assumed
+
+Three documents defined `<criterion>`: `commands/prd.md`'s feature template, `commands/crd.md`'s
+Phase 6 template, and `crd-format.md`. A fourth, `skills/crd/SKILL.md`, carried its own copy of
+the whole `<crd>` shape. They had already come apart:
+
+| Divergence | Where |
+|---|---|
+| `<scope>` and `<confidence>` marked **required** | `crd-format.md` |
+| ...and emitted by neither producer | `commands/crd.md`, `skills/crd/SKILL.md` |
+| `<affected-contracts>` (item 57, Phase 3) | `crd-format.md` only — both producers predate it |
+| `<step kind= status=>` written by `/prd` Phase 4 (item 51, Phase 3) | absent from the `what-next.md` template it writes into |
+
+The last two are the useful ones: **both are Phase 3 items that updated the spec and left a
+producer behind.** Item 51 wrote a producer for a `<step>` shape the template does not document,
+and item 57 opened `<affected-contracts>` in the format reference while two templates went on
+showing the deprecated pair. Neither was visible while the definitions lived in four places; both
+were unavoidable the moment they had to be written down once.
+
+### Deviations from the plan
+
+- **A new top-level `schema/` directory**, holding `core.md` and `prd-format.md`. The plan says
+  the core is "a single reference that each cites" without saying where it lives. Putting it in
+  either path's `references/` would make the other path a guest in it, which is the asymmetry the
+  item exists to remove.
+
+- **The three existing format references stay where they are.** `crd-format.md`,
+  `project-format.md` and `task-format-spec.md` each cite the core and none moved. Moving them
+  would have been tidier and is not what item 44 asks for; the tidy rule that would justify it —
+  *schema in `schema/`, operating guidance in `references/`* — does not actually hold, because
+  `project-format.md` and `task-format-spec.md` each have two owning skills. Recorded so that a
+  later consolidation is a decision rather than a discovery.
+
+- **`/crd`'s templates were extracted too, which the item does not mention.** It names only
+  `/prd`'s. But `commands/crd.md` and `skills/crd/SKILL.md` held the same defect in the same
+  shape, and two of the four drifts above are theirs. Leaving them would have fixed the argument
+  on one path and not the other.
+
+- **`<step status=>` is a fifth tag spelled `status`**, and the core says so rather than claiming
+  four. It is PRD-only, so it is defined in `prd-format.md`; but the count is stated in the core,
+  because the core is where someone goes to get that count right.
+
+### The finding item 45 inherits
+
+The plan's item 45 renames three vocabularies. **There are four**, and the fourth is the one the
+rename leaves alone:
+
+| Tag | Records | Item 45 |
+|---|---|---|
+| `<status>` in `index.md` / `what-next.md` | how far the **interview** got | *unchanged* |
+| `<status>` in a feature's `<meta>` | how completely it is **defined** | → `<definition>` |
+| `<status>` in a CRD's `<meta>` | where it is in the **process** | → `<workflow>` |
+| `status=` on `PROJECT.md`'s `<feature>` | how much exists **in code** | → `built=` |
+
+This is not an omission in the plan so much as a consequence it did not state: the rename does
+not leave one tag ambiguous, **it frees the word.** After item 45, `<status>` means exactly one
+thing — and that thing is the only one of the four with a shipped reader today, `list-prds.py`.
+Renaming it would break `--resume` for no gain.
+
+### Verification
+
+Two checks, both parsing rather than matching prose, and both watched failing.
+
+**`the schema core is one definition that both paths cite -- and its citations resolve`.** Three
+assertions: the version the core declares equals `SCHEMAS.json`'s `current`; every local link out
+of the core resolves; and every row of the core's *"who cites this file"* table names a document
+that really does link back — directly, or through the intermediary its own row names.
+
+**`no artefact template lives in a command file`.** Parses every fenced `xml` block in the two
+commands and the CRD skill and asserts none is rooted at `<prd>`, `<crd>`, `<feature>` or
+`<what-next>`. A structural claim about what a block *is*, not a search for forbidden words — and
+it also requires each command to link the file that defines what it writes, because a citation
+removed is how the template comes back.
+
+Suite 66 → **68** checks. Mutation: **6/6 caught** against a stated-green baseline
+(`tests/mutants/phase4-44.py`).
+
+### What the mutation round changed, which reading could not
+
+**The second hop was decorative, and one mutant proved it.** The citation check originally
+verified that `commands/prd.md` links `prd-format.md`, and stopped there. Mutant 4 broke the
+*second* hop — `prd-format.md`'s own citation of the core — and the suite reported nothing. A
+chain checked at its first link is not a chain that has been checked.
+
+Then the fix was wrong in an instructive way. Asserting *"the intermediary links `core.md`
+somewhere"* made the check green again — and unfalsifiable, because `prd-format.md` cites the
+core in two places and `crd-format.md` in five. **No single edit could break it, which means no
+single edit could ever have been caught by it.** It is the same failure the first version had,
+one level down.
+
+What holds is the region: the intermediary must cite the core **in its preamble**, before its
+first section heading. One site, and the right one — a reader who reaches the templates without
+being told the shared elements are defined elsewhere has already been misled.
+
+> Phase 3's lesson was *scope to the region that owns the claim*. This adds the test for whether
+> you have: **if no single edit can break the check, it is not checking.** Counting the sites
+> that satisfy an assertion is quicker than a mutation round, and finds the same defect.
+
+**And a modelling error the check caught in me.** The second-hop assertion first resolved the
+intermediary by joining its basename to `schema/` — correct for `prd-format.md`, wrong for
+`crd-format.md`, which lives under `skills/crd/references/`. The suite went red before the
+mutation round could start. Resolving the hop from the *citing document's own link* is both
+correct and the smaller assumption: only the citing file knows where its intermediary is.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

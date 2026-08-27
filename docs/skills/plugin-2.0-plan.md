@@ -1,6 +1,7 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** In implementation as of 2026-08-25, on branch `phase-1-live-defects`. This document
+**Status:** In implementation as of 2026-08-25; Phases 1–3 merged, Phase 4 in progress on branch
+`phase-4-schema-core`. This document
 stays a **specification**; what has actually landed, and where the implementation departed from
 what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
 is implemented except what that file lists.

@@ -190,57 +190,25 @@ Then: [expected result]
 
 ### Phase 6: CRD Generation
 
-Create the CRD document at `{project_path}/docs/crd/{slug}.md`:
+Create the CRD document at `{project_path}/docs/crd/{slug}.md`.
 
-```xml
-<crd>
-  <meta>
-    <name>{{Change Name}}</name>
-    <slug>{{change-slug}}</slug>
-    <type>{{feature-add|feature-modify|feature-remove|refactor}}</type>
-    <created>{{YYYY-MM-DD}}</created>
-    <status>ready</status>
-  </meta>
+**The template is not in this file.** Write it against
+[`crd-format.md`](../skills/crd/references/crd-format.md), which defines every CRD-specific
+section, and which cites [`core.md`](../schema/core.md) for the elements the PRD path shares —
+identity, acceptance criteria, status, priority, `<scope>` and `<confidence>`.
 
-  <context>
-    <project-ref>PROJECT.md</project-ref>
-    <prd-ref>{{docs/prd/slug/index.md if exists}}</prd-ref>
-    <related-features>
-      <feature-ref id="{{feature-id}}">{{Feature name (relationship)}}</feature-ref>
-    </related-features>
-  </context>
+This command used to carry its own copy, and the copy had drifted: it omitted `<scope>` and
+`<confidence>`, which `crd-format.md` marks **required**, and it predated
+`<affected-contracts>`. Nothing was wrong with either author — there were two templates for one
+document, and only one of them got the change.
 
-  <change-request>
-    <summary>{{Summary of the change}}</summary>
-    <motivation>{{Why this change is needed}}</motivation>
-  </change-request>
+Two fields to check before writing, because they are the ones the drift lost:
 
-  <impact-analysis>
-    <affected-files>
-      <file action="modify">{{file path}}</file>
-      <file action="create">{{file path}}</file>
-    </affected-files>
-    <affected-features>
-      <feature id="{{id}}">{{Description of impact}}</feature>
-    </affected-features>
-    <breaking-changes>{{none or description}}</breaking-changes>
-  </impact-analysis>
-
-  <requirements>
-    <requirement id="1" priority="must-have">
-      {{Specific requirement}}
-    </requirement>
-  </requirements>
-
-  <acceptance-criteria>
-    <criterion id="1">
-      <given>{{Context}}</given>
-      <when>{{Action}}</when>
-      <then>{{Expected result}}</then>
-    </criterion>
-  </acceptance-criteria>
-</crd>
-```
+- **`<scope>` and `<confidence>` are required**, and both come from Phase 4's impact analysis
+  rather than from you. If the analysis did not produce them, that is what to report — not a
+  value to invent.
+- **`<affected-contracts kind=...>`, not `<affected-apis>`.** The `kind` comes from the registry
+  the contract was found in, so an event or a command has somewhere to be reported.
 
 ### Phase 7: Interactive Review
 

@@ -126,11 +126,17 @@ seeding a subtree **copy** rather than a transform.
 
 | Attribute/Element | Required | Description |
 |-------------------|----------|-------------|
-| `id` | Yes | Unique slug identifier |
-| `status` | Yes | `complete`, `partial`, `planned` |
+| `id` | Yes | Unique slug identifier — core [§1](../../../schema/core.md#1-identity) |
+| `status` | Yes | `complete`, `partial`, `planned` — core [§3](../../../schema/core.md#3-status), fourth row |
 | `name` | Yes | Human-readable feature name |
 | `files` | Yes | Comma-separated list of primary files |
 | `crd-ref` | No | Reference to CRD that created/modified this feature |
+
+**This `status` records how much of the feature exists in code, and it is the only one of the
+four that does.** A PRD feature file's `<status>` says how completely the feature is *defined* —
+a fully specified feature that nobody has started is `defined` there and `planned` here, and both
+are correct at once. `PROJECT.md` is descriptive: it is written from the code, so a value here
+that the code does not support is a bug in the investigation, not a plan.
 
 ### API Registry Section
 

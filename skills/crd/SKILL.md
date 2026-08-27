@@ -119,43 +119,17 @@ Create directory if needed:
 mkdir -p {project_path}/docs/crd
 ```
 
-Write CRD file at `{project_path}/docs/crd/{slug}.md`:
+Write the CRD at `{project_path}/docs/crd/{slug}.md` **against
+[`references/crd-format.md`](references/crd-format.md)**, which defines every section, and which
+cites [`core.md`](../../schema/core.md) for the elements shared with the PRD path.
 
-```xml
-<crd>
-  <meta>
-    <name>{name}</name>
-    <slug>{slug}</slug>
-    <type>{type}</type>
-    <created>{date}</created>
-    <status>ready</status>
-  </meta>
+The template is not repeated here. It was, and this file plus `commands/crd.md` plus
+`crd-format.md` were three copies of one document shape that had already diverged over
+`<scope>`, `<confidence>` and `<affected-contracts>`.
 
-  <context>
-    <project-ref>PROJECT.md</project-ref>
-    <related-features>
-      {from impact analysis}
-    </related-features>
-  </context>
-
-  <change-request>
-    <summary>{summary}</summary>
-    <motivation>{motivation}</motivation>
-  </change-request>
-
-  <impact-analysis>
-    {from impact analysis skill}
-  </impact-analysis>
-
-  <requirements>
-    {captured requirements}
-  </requirements>
-
-  <acceptance-criteria>
-    {captured criteria}
-  </acceptance-criteria>
-</crd>
-```
+`<impact-analysis>` is written from what `/crd-impact-analysis` returned, verbatim where it is
+structured. It is the only section this phase does not author, and `<scope>` and `<confidence>`
+come with it — both are required, and neither is yours to invent if the analysis omitted them.
 
 ### Phase 8: Completion
 

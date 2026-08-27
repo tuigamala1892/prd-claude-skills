@@ -2,6 +2,12 @@
 
 CRD documents capture focused change requests for existing codebases. They are designed to be processed by `/breakdown` for task generation.
 
+**Elements shared with the PRD path are defined in
+[`core.md`](../../../schema/core.md), not here** — identity, acceptance criteria, the status
+vocabularies, priority, `<scope>` and `<confidence>`. This file shows them in place and states
+what is CRD-specific about their use; it does not redefine them. Three documents held three
+copies of the criterion shape before the core existed, and they had already drifted.
+
 ## File Location
 
 `{project_root}/docs/crd/{slug}.md`
@@ -39,7 +45,12 @@ CRD documents capture focused change requests for existing codebases. They are d
 | `slug` | Yes | String | URL-safe identifier (lowercase, hyphens) |
 | `type` | Yes | `feature-add`, `feature-modify`, `feature-remove`, `refactor` | Change type |
 | `created` | Yes | YYYY-MM-DD | Creation date |
-| `status` | Yes | `draft`, `ready`, `in-progress`, `complete` | Current status |
+| `status` | Yes | see [core §3](../../../schema/core.md#3-status) | Where this change is in the process |
+
+**`<slug>` and `<status>` are core elements.** The slug is core §1 — stable, global, and the
+filename under `docs/crd/`. The status is core §3's *third* row: it records where the change is
+in the **process**, which is not what the same tag means in a PRD feature file. The values and
+their transitions are at the foot of this document.
 
 ### Context Section
 
@@ -127,8 +138,8 @@ CRD documents capture focused change requests for existing codebases. They are d
 | `affected-schemas` | No | **Deprecated.** Accepted on read; equivalent to `kind="schema"` |
 | `breaking-changes` | Yes | "none" or list of breaking changes with severity |
 | `new-dependencies` | No | External packages to add |
-| `scope` | Yes | `small` (1-3 files), `medium` (4-8), `large` (9+) |
-| `confidence` | Yes | `high`, `medium`, `low` - certainty of impact analysis |
+| `scope` | Yes | Core [§5](../../../schema/core.md#5-scope-and-confidence) — `small` (1-3 files), `medium` (4-8), `large` (9+) |
+| `confidence` | Yes | Core [§5](../../../schema/core.md#5-scope-and-confidence) — `high`, `medium`, `low` |
 
 **`kind` matches the registry the contract came from**, so the enum extends when the registry set
 does rather than being a second list to keep in step. `api` and `schema` for the two registries
@@ -168,8 +179,15 @@ rewrites them.
 
 | Attribute | Required | Values | Description |
 |-----------|----------|--------|-------------|
-| `id` | Yes | Integer | Unique requirement ID |
-| `priority` | Yes | `must-have`, `should-have`, `could-have` | MoSCoW priority |
+| `id` | Yes | Core [§1](../../../schema/core.md#1-identity) — integer, unique within `<requirements>` | Citable requirement ID |
+| `priority` | Yes | Core [§4](../../../schema/core.md#4-priority) — MoSCoW | Which requirements are in scope |
+
+**This list is CRD-only, and it exists because Given/When/Then cannot state a requirement.** A
+scenario says what happens in one case; a requirement says what the system must do. The PRD path
+has no equivalent list because it has no equivalent need — it carries criteria alone.
+
+Item 46 retires this section once item 33 lands: an EARS criterion *is* a requirement, so the
+split stops being necessary and the two unlinked lists become one with one id space.
 
 ### Acceptance Criteria Section
 
@@ -197,6 +215,11 @@ rewrites them.
   </criterion>
 </acceptance-criteria>
 ```
+
+**Defined in [core §2](../../../schema/core.md#2-acceptance-criteria), and identical to the PRD
+path's.** Same element, same attributes, same meaning — which is what lets
+`breakdown-generate-tasks` read a CRD's criteria and a feature file's criteria without a branch.
+The examples above are examples; the rules are in the core.
 
 ## Complete Example
 

@@ -22,10 +22,17 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 
 The skill automatically detects whether the input is a PRD or CRD:
 
-| Root Element | Format | Description |
+| Root Element | Format | Defined in |
 |--------------|--------|-------------|
-| `<prd>` | PRD | Full product requirements (greenfield or brownfield) |
-| `<crd>` | CRD | Change request for existing project |
+| `<prd>` | PRD | [`prd-format.md`](../../schema/prd-format.md) |
+| `<crd>` | CRD | [`crd-format.md`](../crd/references/crd-format.md) |
+
+**The two formats differ; the elements this skill actually consumes do not.** Acceptance
+criteria, identity, status and priority are defined once in
+[`core.md`](../../schema/core.md) and are the same on both paths — which is why detection
+selects a *reader*, not a second set of rules. Where this skill treats a PRD and a CRD
+differently below, that difference is in what the document is *about*, never in what a
+`<criterion>` means.
 
 **CRD handling:**
 - CRDs are always brownfield (no Layer 0)

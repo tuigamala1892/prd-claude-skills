@@ -45,6 +45,10 @@ The key innovation demonstrated is **context fork** - skills that run in isolate
 All three live at the **repository root**, not under `.claude/` — see the note at the top.
 
 ```
+schema/                       # Artefact schema owned by neither path (item 44)
+├── core.md                   # The single definition of every shared element
+└── prd-format.md             # What /prd writes; cites core.md
+
 commands/                     # User-invocable commands (all three entry points)
 ├── prd.md                    # /prd
 ├── crd.md                    # /crd
@@ -319,3 +323,8 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
 - TDD is mandatory: `<test-requirements>` is a required section in `task-format-spec.md` and a
   critical criterion in `review-criteria.md`; `execute-batch` runs the red/green cycle
 - Run `tests/test_toolchain.py` before and after any change to skill frontmatter or git commands
+- **Artefact templates do not live in command files.** `commands/prd.md` and `commands/crd.md`
+  cite `schema/prd-format.md` and `skills/crd/references/crd-format.md`; both cite
+  `schema/core.md`, which is the single definition of every element the two paths share. A
+  template in a command cannot be cited by a skill, so the skill grows a copy — that is how
+  three definitions of `<criterion>` came to exist and disagree. Two checks enforce it.
