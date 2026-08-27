@@ -393,9 +393,10 @@ Layers: 2-backend only (1 task)
 ```
 
 **And cross-check `<scope>` rather than routing on it.** A CRD's `<scope>` is no longer an input
-to this decision — *"impact analysis said `small`, breakdown produced 14 tasks"* is worth
-flagging as a sign that one of the two is wrong, but the derivation above already knows more than
-a band boundary does.
+to this decision — the derivation above already knows more than a band boundary does. The
+cross-check itself is **not yours to perform here**: it needs the task count, which does not
+exist until Phase 5, and it is `check-scope.py` rather than a paragraph asking you to notice
+(item 49, and **P16** for the fifth time).
 
 Save the layer plan to `{tasks_dir}/layer_plan.json`
 
@@ -500,9 +501,36 @@ For each layer in order:
    that as a generation failure, not a formatting nit: every downstream consumer sizes the work
    from this file.
 
-3. Report completion summary:
+3. **Hold the analysis's predictions against what generation actually produced:**
+
+   ```bash
+   python {skill_dir}/scripts/check-scope.py {tasks_dir}
+   ```
+
+   Item 49. `<scope>` and `<confidence>` were required fields on the CRD path with **no
+   consumer anywhere in the toolchain** — which is why items 29 and 31 were written as if from
+   nothing. This is their reader, and it is the same one on both paths: the CRD's declared
+   `<scope>`, and `analyze-prd`'s per-feature prediction, against the task count in the manifest
+   the previous step just built from disk.
+
+   **It exits 0 even when it reports, and that is deliberate.** A prediction losing an argument
+   with an observation is information, not a failure, and a check that can block on a model's
+   size estimate is one that gets disabled the first time it is wrong. Put its output in the
+   summary; do not treat `DISAGREES` as a stop.
+
+   **It fires on gross disagreement only.** Bands are counted in files and the observation in
+   tasks, so the units do not line up — `small` against `medium` is noise, `small` against
+   `large` means one of the two is wrong. Both answers are worth having: an under-analysed
+   change, or a generator that ran away.
+
+   **`confidence` is reported, never compared** — there is nothing to hold it against. It says
+   where the analyser was guessing, which is the one thing its output cannot otherwise recover.
+
+4. Report completion summary:
    - Total tasks generated — **the number the script reports**, not the number planned
    - Tasks per layer
+   - **Anything `check-scope.py` reported**, verbatim — a cross-check whose output is summarised
+     away is a cross-check nobody acts on
    - Any review failures requiring attention
    - If the count differs from `layer_plan.json`, say so and say why; a plan revised during
      generation is the plan working, not failing

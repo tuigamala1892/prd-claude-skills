@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""Compare what the analysis PREDICTED against what generation PRODUCED (plan item 49).
+
+`<scope>` and `<confidence>` were required fields on the CRD path with no consumer anywhere in
+the toolchain -- which is why items 29 and 31 were written as if from nothing. This is their
+reader, and it is the same reader on both paths.
+
+WHY A CROSS-CHECK AND NOT A ROUTING INPUT
+
+A size estimate from a model is soft. That is tolerable precisely BECAUSE it selects nothing: no
+layer set, no batch size, no filter. Item 31 demoted `<scope>` from routing for exactly this
+reason. What a soft prediction is good for is disagreeing with an observation -- "impact analysis
+called this small; generation produced 14 tasks" means one of the two is wrong, and both answers
+are worth having.
+
+GROSS DISAGREEMENT ONLY
+
+Bands are counted in FILES (core §5) and the observation is counted in TASKS, and a task creates
+at most three files, so the two units do not line up. Comparing numbers would produce a check
+that fires constantly and is therefore ignored -- the fate of every alarm nobody can silence. So
+the comparison is band against band, and only NON-ADJACENT bands disagree:
+
+    small  vs medium   quiet      the units do not line up; this is noise
+    medium vs large    quiet
+    small  vs large    REPORTED   one of the two is wrong
+
+CONFIDENCE IS REPORTED, NEVER COMPARED
+
+`<confidence>` grades the analysis, not the output, so there is nothing to hold it against. It is
+listed so an operator can see where the analyser was guessing before deciding whether to trust a
+data model it inferred. Item 38's gate reads the same field.
+
+WHAT THIS DOES NOT DO
+
+Exit 0 even when it reports. A prediction losing an argument with an observation is information,
+not a failure -- and a check that can block on a model's size estimate is a check that will be
+disabled the first time it is wrong. Exit 1 is reserved for a file it cannot read.
+
+USAGE
+
+    check-scope.py <tasks-dir> [--quiet]
+
+  exit 0  the comparison ran; disagreements, if any, are on stdout
+  exit 1  analysis.json or manifest.json is missing or does not parse
+  exit 2  usage error
+"""
+
+import argparse
+import json
+import os
+import sys
+
+# Core §5's bands, in files. Ordered, because "non-adjacent" is a statement about the order.
+BANDS = ["small", "medium", "large"]
+BAND_OF_COUNT = [(3, "small"), (8, "medium")]  # above the last boundary is "large"
+
+CONFIDENCE = ["low", "medium", "high"]
+
+
+def band_of(count):
+    for ceiling, name in BAND_OF_COUNT:
+        if count <= ceiling:
+            return name
+    return "large"
+
+
+def disagrees(predicted, observed):
+    """True only for non-adjacent bands. Unknown values never disagree -- they are absent data,
+    and reporting absent data as a conflict is how a check earns its reputation for crying wolf.
+    """
+    if predicted not in BANDS or observed not in BANDS:
+        return False
+    return abs(BANDS.index(predicted) - BANDS.index(observed)) > 1
+
+
+def load(path, what):
+    if not os.path.isfile(path):
+        print(f"cannot compare: no {what} at {path}", file=sys.stderr)
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError) as e:
+        print(f"cannot compare: {what} does not parse ({e})", file=sys.stderr)
+        return None
+
+
+def task_counts(manifest):
+    """Tasks per source feature, and how many could not be attributed.
+
+    ATTRIBUTION IS ITEM 16's, AND IT HAS NOT LANDED. A task file carries no <source-feature>
+    yet, so on the PRD path nothing here can be attributed and the per-feature comparison has
+    nothing to run on. That is reported as a number rather than passed over in silence: a
+    cross-check that quietly compares nothing is indistinguishable from one that found no
+    disagreement, and this repository has shipped that mistake before.
+    """
+    per_feature, unattributed = {}, 0
+    for task in manifest.get("tasks") or []:
+        slug = task.get("source_feature")
+        if slug:
+            per_feature[slug] = per_feature.get(slug, 0) + 1
+        else:
+            unattributed += 1
+    return per_feature, unattributed
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("tasks_dir")
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args()
+
+    analysis = load(os.path.join(args.tasks_dir, "analysis.json"), "analysis.json")
+    manifest = load(os.path.join(args.tasks_dir, "manifest.json"), "manifest.json")
+    if analysis is None or manifest is None:
+        return 1
+
+    total = len(manifest.get("tasks") or [])
+    per_feature, unattributed = task_counts(manifest)
+    signals = analysis.get("feature_signals") or []
+
+    reports, lines = [], []
+
+    # ---- the CRD path: one document, so the total IS the observation. No attribution needed.
+    declared = analysis.get("scope")
+    if declared:
+        observed = band_of(total)
+        lines.append(f"scope: analysis said {declared}; generation produced {total} task(s) "
+                     f"({observed})")
+        if disagrees(declared, observed):
+            reports.append(f"scope: the analysis called this {declared} and generation produced "
+                           f"{total} task(s), which is {observed}. One of the two is wrong -- "
+                           f"either the change was under-analysed or the generator ran away")
+
+    # ---- the PRD path: one prediction per feature, compared where the tasks can be attributed.
+    for row in signals:
+        slug = row.get("feature")
+        predicted = row.get("scope")
+        if not slug or slug not in per_feature:
+            continue
+        observed = band_of(per_feature[slug])
+        if disagrees(predicted, observed):
+            reports.append(f"scope: {slug} was analysed as {predicted} and generated "
+                           f"{per_feature[slug]} task(s), which is {observed}")
+
+    if signals and unattributed:
+        lines.append(f"scope: {unattributed} of {total} task(s) name no source feature, so they "
+                     f"were not compared (item 16 adds the attribution)")
+
+    # ---- confidence: reported, never compared.
+    unsure = [r for r in signals if r.get("confidence") in ("low", "medium")]
+    if unsure:
+        lines.append("confidence: the analyser was not sure of " +
+                     ", ".join(f"{r.get('feature')} ({r.get('confidence')})"
+                               for r in sorted(unsure, key=lambda r: CONFIDENCE.index(
+                                   r.get("confidence")))))
+    declared_conf = analysis.get("confidence")
+    if declared_conf in ("low", "medium"):
+        lines.append(f"confidence: the impact analysis rated itself {declared_conf}")
+
+    if not args.quiet:
+        for line in lines:
+            print(f"  {line}")
+        for line in reports:
+            print(f"  DISAGREES  {line}")
+        if not lines and not reports:
+            print("  nothing to compare: the analysis carried no scope or confidence")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -28,6 +28,10 @@ format marks `<scope>` and `<confidence>` **required**; the command that writes 
 neither. Nothing was wrong with either author — there were two documents, and only one of them
 got the change.
 
+**Its counterpart is [`parity.md`](parity.md)**, which records every capability one path has and
+the other does not, with a probe for each. This file is what the two paths share; that one is the
+distance between them, and neither is readable without the other.
+
 **It is not a container for everything schema-shaped.** An element belongs here when **both
 paths use it**. A PRD's `<user-story>` and a CRD's `<impact-analysis>` are each one path's own,
 and moving them here would turn a shared definition into a directory.
@@ -45,13 +49,14 @@ written to remove, and the surest way to grow one is to define it somewhere nobo
 | `<acceptance-criteria>` / `<criterion>` | [2](#2-acceptance-criteria) | `/prd`, `/crd` | `breakdown-generate-tasks`, as `<test-requirements>` |
 | status vocabularies | [3](#3-status) | `/prd`, `/crd`, `crd-investigate` | `list-prds.py`, `/breakdown`, `/crd` |
 | priority vocabularies | [4](#4-priority) | `/prd`, `/crd` | `/breakdown`'s `--priority` and `--requirement-level` |
-| `<scope>`, `<confidence>` | [5](#5-scope-and-confidence) | `crd-impact-analysis` | *(none yet — item 49)* |
+| `<scope>`, `<confidence>` | [5](#5-scope-and-confidence) | `crd-impact-analysis`, `breakdown-analyze-prd` | `check-scope.py`, `/breakdown`'s report |
 | `<gaps>` / `<gap>` | [6](#6-gaps--what-a-document-knows-it-is-missing) | `/prd`, `/crd` | `breakdown-analyze-prd`, `breakdown-review-tasks`, `/breakdown`'s report |
 
-The empty cell in the last row is stated rather than hidden. `<scope>` and `<confidence>` are
-required fields on the CRD path with no consumer anywhere in the toolchain; they are in this
-file because item 49 gives them one on **both** paths, and putting them here first is what stops
-the PRD path inventing a second pair.
+That last row was an empty cell until item 49, and it was stated rather than hidden: `<scope>`
+and `<confidence>` were required fields on the CRD path with **no consumer anywhere in the
+toolchain**. They were put in this file before they had one, which is what stopped the PRD path
+inventing a second pair — and item 49 then gave them producers and readers on both paths rather
+than only on the one that already declared them.
 
 ---
 
@@ -292,8 +297,27 @@ change that was under-analysed or a generator that ran away. Nothing selects a l
 incomplete context lower it. A specific unknown is a different thing and gets its own element at
 item 29.
 
-Both are required on the CRD path today. **Neither has a reader**, which is recorded here as a
-defect rather than as a schema.
+### Who produces each, on each path (item 49)
+
+| | Predicted by | Observed by | Compared by |
+|---|---|---|---|
+| CRD | `crd-impact-analysis`, into the CRD | `build-manifest.py`, into `manifest.json` | `check-scope.py` |
+| PRD | `breakdown-analyze-prd`, **per feature**, into `analysis.json` | `build-manifest.py` | `check-scope.py`, per feature |
+
+**Nothing is written back to the PRD.** The prediction lives in `analysis.json` and the
+observation in `manifest.json` — an earlier design derived `<scope>` from the task count *after*
+breakdown, which is not a prediction to disagree with, and which would have had `/breakdown`
+mutating the PRD, something nothing else in this toolchain does and §4.1 has no rule for.
+
+**The comparison fires on gross disagreement only, and that is the whole tolerance.** A size
+estimate from a model is soft; it is tolerable precisely *because* it routes nothing. `small`
+against `medium` says nothing worth a line of output. `small` against `large` says one of the two
+is wrong, which is the only case worth an operator's attention.
+
+**The bands are counted in files, and the observation is counted in tasks.** That conversion is
+why the comparison is band-to-band rather than number-to-number, and why only non-adjacent bands
+disagree. A task creates at most three files, so the two units do not line up and pretending they
+do would produce a check that fires constantly and is therefore ignored.
 
 ---
 

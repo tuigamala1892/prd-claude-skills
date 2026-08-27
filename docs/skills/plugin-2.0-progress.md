@@ -1843,6 +1843,8 @@ grouping that keeps each commit a single concern:
 | **5d — the definition bar** | 58 · 3 · 6 · 7 · 40 · 8 | 58 is the table of assertions, 6 is its caller, 3 feeds it, 40 supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the same checker four times — the argument Phase 3 made about `architecture.md`, arriving again. |
 | **5e — the residue** | 10 · 24 · 32 · 38 | Independent of each other and of the above. Last because nothing waits on them. |
 
+**5a is complete** (two commits, not one: 46-48 were a schema version with a migration and a new fixture, which is not "small"). **5c is next.**
+
 **5a and 5c first, in that order.** Both are edits to existing consumers with checkable
 postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
 the two expensive ones — a full sitting each, which is what they need rather than what is left over.
@@ -1855,8 +1857,8 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | Item | Status | Commit |
 |---|---|---|
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
-| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | *In progress* | — |
-| **13 + 14 + 15 + 19 + 20** — the filters | *Not started* | — |
+| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `PENDING` |
+| **13 + 14 + 15 + 19 + 20** — the filters | *Next* | — |
 | **16 + 17 + 30 + 59** — the carry | *Not started* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
@@ -2057,6 +2059,132 @@ mutant file, and **verifying the anchor matched exactly once before launching th
 than after. A harness that reports on an anchor it never applied is not lying, but it is a result
 that needs reading rather than skimming.
 
+
+---
+
+## 49 + 50 — two required fields get a reader, and the parity ledger becomes a test
+
+**Commit:** `PENDING` · **Addresses:** P19, P21, P30 · **Files:** `schema/core.md`,
+`schema/parity.md` (new), `skills/breakdown-analyze-prd/SKILL.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/check-scope.py` (new), `tests/mutants/scope_and_parity.py`,
+`tests/test_toolchain.py`
+
+### Why these two are one commit
+
+49 is the last thing the CRD path had that the PRD path lacked, and 50 is the check that stops
+the gap reopening. Landing 49 without 50 would have closed the last measured asymmetry with
+nothing measuring the next one — which is exactly how the twelve in §5 J accumulated.
+
+### What landed
+
+- **49** — `<scope>` and `<confidence>` reach the PRD path and, more to the point, **get a reader
+  on both**. `breakdown-analyze-prd`'s feature pass emits one prediction per feature into
+  `analysis.json`; `check-scope.py` holds it against the task count in `manifest.json`.
+- **50** — [`schema/parity.md`](../../schema/parity.md): sixteen capabilities, each with a
+  verdict, and each claim carrying a `file :: string` probe the suite runs.
+
+### The defect being fixed was not "the PRD path lacks two fields"
+
+It was that **both fields were required on the CRD path and read by nothing at all.** A required
+field nobody reads is worse than an absent one, because it looks like a signal — and this one
+misled the plan itself: items 29 and 31 were each written as if from nothing, when `<confidence>`
+and `<scope>` had been sitting in `crd-format.md` the whole time.
+
+So the shape of the fix is the reverse of what the item title suggests. Giving the PRD path the
+fields was the cheap half. The half that mattered was `check-scope.py`, which is the first thing
+in this toolchain that reads either.
+
+### Three decisions inside the cross-check, and each is about not being ignored
+
+**It exits 0 even when it reports.** A prediction losing an argument with an observation is
+information, not a failure. A check that can block on a model's size estimate is one that gets
+disabled the first time it is wrong, and then it protects nothing.
+
+**It fires on gross disagreement only.** Core §5's bands are counted in **files**; the observation
+is counted in **tasks**; a task creates at most three files. The units do not line up, so the
+comparison is band against band and only *non-adjacent* bands disagree — `small` against `medium`
+is noise and `small` against `large` means one of the two is wrong. **The quiet case is as much
+the subject as the loud one**, and it is mutated like one: a mutant that makes the check fire on
+every adjacent pair is caught, because a cross-check nobody can silence is a cross-check nobody
+reads.
+
+**`confidence` is reported and never compared.** It grades the analysis, not the output, so there
+is nothing to hold it against. It says *where the analyser was guessing*, which is the one thing
+its output cannot otherwise recover.
+
+### Item 49's PRD half is blocked on item 16, and the script says so in a number
+
+The per-feature comparison needs tasks attributed to features, and a task file carries no
+`<source-feature>` until **item 16** — which is in this same phase, in group 5b, and the plan's
+sequencing note does not mention the dependency.
+
+The script does not paper over it. It counts what it could not attribute and prints
+*"4 of 4 task(s) name no source feature, so they were not compared (item 16 adds the
+attribution)"*. **A cross-check that silently compares nothing is indistinguishable from one that
+found no disagreement**, and this repository has shipped that exact mistake before. The
+document-level comparison — the CRD path, where one document means the total *is* the observation
+— works today and is what the check currently exercises.
+
+### Item 50: the ledger had to become an artefact before it could become a test
+
+The plan's fourth bullet asks that *"a capability present on one path and absent on the other is
+listed, with a reason — the ledger above becomes a test rather than a paragraph that goes stale."*
+
+The ledger in question is §5 J's *"Who is ahead where"*, and it lives in the **plan**, which is a
+specification written at a moment in time. A check reading it would assert that the toolchain
+still matches a snapshot, which is the opposite of what is wanted. So the table moved into the
+repository as `schema/parity.md`, and it is core.md's counterpart: one file is what the two paths
+share, the other is the distance between them.
+
+**Every claim carries a probe**, and the probes are what make it a test rather than a document.
+`Uncertainty recorded as gaps | schema/prd-format.md :: <gaps> | crd-format.md :: <gaps> | both`
+fails if either file stops containing the string. A `prd-only` row fails if the CRD side quietly
+grows evidence. An asymmetric row fails if its reason is missing. All three are mutated.
+
+**`open` is a verdict, not a failure.** Three rows carry it — declared dependency edges, a data
+model channel, and the architecturally-significant flag are all PRD-only with nobody having
+decided whether they should be. The suite **lists** them rather than refusing them, because an
+unexamined asymmetry is a fact about this project and the defect the file prevents is one nobody
+has written down.
+
+**Verdicts are about capability, not spelling.** `<scope>` is an element in a CRD and a field in
+`analysis.json` on the PRD path, and the row says `both`. A table keyed on element names would
+have reported a difference that means nothing — and the symmetric difference of the two format
+documents is sixty elements, almost all of which are legitimately one path's own.
+
+### The same mistake twice in one session, one commit after writing it down
+
+The round reported `6/8`, and **both survivors were the site-counting rule** — the defect recorded
+in the previous entry, made again immediately:
+
+- `feature_signals` appears twice in `breakdown-analyze-prd` — in the output block and in a
+  paragraph about the output block. Asserting the bare string was satisfied by the prose while the
+  schema was renamed out from under it.
+- `check-scope.py` appears **three** times in `/breakdown` — once as a command and twice in prose
+  about the command. Deleting the command left two mentions and a green suite.
+
+Both now assert a **region and a shape**: `"feature_signals"` inside a fenced ```json block, and
+the runnable `scripts/check-scope.py {tasks_dir}` rather than the filename. The round then
+reported 8/8.
+
+**This is the rule's sixth and seventh confirmation, and knowing it was not enough.** The previous
+entry states it plainly, and it was written the same afternoon. What actually caught both was a
+mutant — which is the argument for the harness, and it is a stronger argument than the rule.
+
+### Verification
+
+`python tests/test_toolchain.py` — **89 → 91**, `failed 0`, `known 0`. The parity check prints its
+open rows on every run: *(3 open asymmetry/ies: Declared dependency edges; A data model channel;
+Architectural significance flag)*.
+
+Behaviour watched by hand before the checks were written, over all three of `check-scope.py`'s
+shapes: a gross disagreement reported at both levels, an adjacent pair staying quiet, and a
+missing input exiting 1 rather than reporting nothing.
+
+**Mutation round:** `tests/mutants/scope_and_parity.py`, eight mutants, **8/8 caught** after the
+two survivors above were fixed. Every anchor was verified to match exactly once **before** the
+round was launched — the correction to last round's method, where two attempts were wasted on
+anchors that never applied.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

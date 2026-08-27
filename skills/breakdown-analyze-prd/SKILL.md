@@ -17,7 +17,7 @@ file's content:
 | Pass | Input | You write | Sections below |
 |---|---|---|---|
 | **index** | `index.md` alone | `analysis.index.json` | 1, 2, 6, 7 |
-| **feature** | one file from `features/` | `analysis.feature.{slug}.json` | 3, 4, 5, plus the feature's own criteria |
+| **feature** | one file from `features/` | `analysis.feature.{slug}.json` | 3, 4, 5, 8, plus the feature's own criteria |
 
 If you are handed a whole PRD — an index *and* its feature files in one prompt — **stop and say
 so** rather than analysing it. That is the caller skipping Phase 2's split, and the result is the
@@ -74,6 +74,30 @@ Analyze features and UI layout to identify:
 - Type (page, layout, widget, form, etc.)
 - Related feature
 
+### 8. Scope and confidence — two signals, feature pass only
+
+**Item 49. Both are predictions about *this feature*, and neither routes anything.**
+
+- **`scope`** — `small` (1-3 files), `medium` (4-8), `large` (9+), per
+  [core §5](../../schema/core.md#5-scope-and-confidence). How much code you expect this feature
+  to take. Predict from the criteria and the data model, not from the prose length.
+- **`confidence`** — `high`, `medium`, `low`. How sure you are of **this analysis**, not of the
+  feature. Ambiguous wording, a data model you had to infer, and endpoints implied rather than
+  stated all lower it.
+
+**Neither is a judgement about whether the feature is good or ready.** `<gaps>` records specific
+unknowns and `<definition>` records completeness; those are the author's and you do not touch
+them. `confidence` is yours, and it says *where you were guessing* — which is the one thing
+downstream cannot recover from your output.
+
+**A low confidence is not a failure and must not be avoided.** An analyser that reports `high`
+everywhere has told the gate nothing, and the gate then has to trust every inferred model
+equally. If you inferred the data model because the feature declared none, say `medium` at best.
+
+**The index pass emits neither.** `index.md` carries a summary line per feature, which is not
+evidence of size and is certainly not evidence of how sure you are about a data model you have
+not seen.
+
 ### 6. Dependencies
 
 From `<dependencies>`:
@@ -97,7 +121,8 @@ your half of it and the caller's Step 4 combines them.
   them, and inferring from a summary line is how a model gets invented that no feature asked for.
 - **feature pass** → `data_models`, `api_endpoints`, `components`, `acceptance_criteria`, each
   carrying `"inferred_from": "<feature slug>"` so the merge can attribute every entry. Plus
-  `"feature": "<slug>"` at the top level, so a fragment is self-identifying.
+  `"feature": "<slug>"`, `"scope"` and `"confidence"` at the top level, so a fragment is
+  self-identifying and carries its own two signals.
 
 Every inferred entry **must** carry `inferred_from`. The merge unions fragments and cannot ask
 where an entry came from; an entry that cannot be attributed to a feature is one nobody can
@@ -173,9 +198,18 @@ Return a JSON object with this structure:
   ],
   "feature_edges": [
     {"from": "tag-links", "to": "save-link", "kind": "data"}
+  ],
+  "feature_signals": [
+    {"feature": "save-link", "scope": "small", "confidence": "high"},
+    {"feature": "tag-links", "scope": "medium", "confidence": "medium"}
   ]
 }
 ```
+
+**`feature_signals` is the merged shape.** A feature pass emits `"feature"`, `"scope"` and
+`"confidence"` at its own top level; the caller's Step 4 collects one row per fragment. It is a
+list rather than a map for the same reason every other section here is: the merge unions
+fragments and never has to decide what a duplicate key means.
 
 ### `data_models` come from `<notes><data-model>`, not from inference
 

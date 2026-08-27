@@ -5002,6 +5002,201 @@ def _():
         "later' still leaves nothing behind")
 
 
+# ------------------------------------------- scope, confidence and parity (49/50, schema-5)
+
+
+@check("the analysis predicts size and certainty, and something reads them -- by running it",
+       finding="P19")
+def _():
+    """Item 49.
+
+    `<scope>` and `<confidence>` were REQUIRED fields on the CRD path with no consumer anywhere
+    in the toolchain -- which is why items 29 and 31 were each written as if from nothing. A
+    required field nobody reads is worse than an absent one: it looks like a signal.
+
+    The producer half is asserted on the analyser, and the reader half BY RUNNING IT, over three
+    shapes -- a gross disagreement, an adjacent pair that must stay quiet, and a missing file.
+    A cross-check that reports everything is one nobody reads, so the quiet case is as much the
+    subject here as the loud one.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-scope.py")
+    assert os.path.isfile(script), "check-scope.py does not exist, so item 49's fields have no reader"
+
+    # The RUNNABLE invocation, not the string. /breakdown names check-scope.py three times --
+    # once as a command and twice in prose about it -- so a bare substring is satisfied by the
+    # prose alone and survives the command being deleted. That is the site-counting rule, and
+    # it cost this suite a hollow check one commit ago and another one here.
+    skill_raw = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/check-scope.py {tasks_dir}" in skill_raw, (
+        "/breakdown never RUNS the cross-check on the tasks directory. Naming the script in "
+        "prose is what item 49 replaced, not what it asked for")
+
+    # The producer: the FEATURE pass emits both, and the index pass is told not to. Asserted in
+    # the OUTPUT BLOCK -- the analyser also discusses the key in prose, and prose is not a
+    # schema the caller's merge can read.
+    analyser = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    blocks = re.findall(r"```json\n(.*?)```", analyser, re.S)
+    assert blocks, "breakdown-analyze-prd declares no output shape at all"
+    assert any('"feature_signals"' in b for b in blocks), (
+        "breakdown-analyze-prd's output shape carries no per-feature scope/confidence, so "
+        "check-scope.py reads a key nothing writes -- which is the defect item 49 exists to "
+        "remove, reintroduced from the other end")
+    flat = prose(analyser)
+    assert re.search(r"index pass emits neither", flat), (
+        "the analyser does not say the index pass withholds these. index.md carries a summary "
+        "line per feature, which is not evidence of size")
+
+    root = tempfile.mkdtemp(prefix="scope-49-")
+    try:
+        def run(analysis, manifest):
+            d = os.path.join(root, "t")
+            shutil.rmtree(d, ignore_errors=True)
+            os.makedirs(d)
+            for name, obj in (("analysis.json", analysis), ("manifest.json", manifest)):
+                with open(os.path.join(d, name), "w", encoding="utf-8", newline="\n") as f:
+                    json.dump(obj, f)
+            return subprocess.run([sys.executable, script, d], capture_output=True, text=True)
+
+        tasks = lambda n, slug=None: {"tasks": [
+            dict({"id": "L1-%03d" % i}, **({"source_feature": slug} if slug else {}))
+            for i in range(n)]}
+
+        # Gross disagreement, on both paths at once.
+        p = run({"scope": "small", "confidence": "medium",
+                 "feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "low"}]},
+                tasks(11, "save-link"))
+        assert p.returncode == 0, (
+            f"the cross-check exited {p.returncode}. A prediction losing an argument with an "
+            f"observation is information, not a failure -- one that can block gets disabled")
+        assert p.stdout.count("DISAGREES") == 2, (
+            f"expected a disagreement at the document level AND the feature level:\n{p.stdout}")
+        assert "save-link" in p.stdout and "11" in p.stdout, (
+            f"the report does not name the feature or the count:\n{p.stdout}")
+        assert "low" in p.stdout, (
+            f"confidence is not reported. It grades the analysis and has nothing to be compared "
+            f"against, which is exactly why it has to be SAID:\n{p.stdout}")
+
+        # Adjacent bands stay quiet. Bands are files and the observation is tasks, so the units
+        # do not line up -- a check that fires on that noise is one nobody reads.
+        p = run({"scope": "small", "confidence": "high",
+                 "feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "high"}]},
+                tasks(5, "save-link"))
+        assert p.returncode == 0 and "DISAGREES" not in p.stdout, (
+            f"small against medium was reported as a disagreement:\n{p.stdout}")
+
+        # Unattributed tasks are COUNTED, never passed over. Item 16 has not landed, so on the
+        # PRD path this is the normal case -- and a cross-check that silently compares nothing
+        # is indistinguishable from one that found nothing wrong.
+        p = run({"feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "high"}]}, tasks(4))
+        assert re.search(r"4 of 4 task\(s\) name no source feature", p.stdout), (
+            f"tasks that could not be attributed were not counted:\n{p.stdout}")
+
+        # A missing input is a failure, which is a different answer from a quiet comparison.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "absent")],
+                           capture_output=True, text=True)
+        assert p.returncode == 1, (
+            f"a missing analysis.json exited {p.returncode}, not 1. 'Nothing to compare' and "
+            f"'nothing disagreed' must not share an exit code")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("parity between the paths is a table with probes, and the probes resolve", finding="P30")
+def _():
+    """Item 50, and its fourth bullet is the point: the plan's `who is ahead where` ledger
+    becomes a TEST rather than a paragraph that goes stale.
+
+    Five of the asymmetries §5 J resolved existed because nobody had read the two paths side by
+    side. A prose description of the difference is exactly as durable as the week it was written
+    in -- so every claim in the table carries a `file :: string` probe, and every probe is run.
+
+    `open` is a legitimate verdict. The rows nobody has decided about are LISTED, not refused:
+    an unexamined asymmetry is a fact about this project, and the defect this file prevents is
+    one nobody has written down.
+    """
+    path = os.path.join(SCHEMA, "parity.md")
+    assert os.path.isfile(path), (
+        "schema/parity.md does not exist. core.md records what the two paths share; without its "
+        "counterpart the distance between them is measured by nobody")
+    text = open(path, encoding="utf-8").read()
+
+    section = text.split("## The table", 1)
+    assert len(section) == 2, "parity.md has no table section"
+    rows = [r.strip() for r in section[1].splitlines() if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r.strip("| ")]
+    assert len(rows) >= 12, (
+        f"parity.md lists {len(rows)} capabilities. §5 J compared twelve and the table should "
+        f"not have shrunk below what has already been read")
+
+    verdicts, opens, probes = set(), [], 0
+    for row in rows:
+        # Split on UNESCAPED pipes. A cell legitimately contains `P0\|P1\|P2` -- markdown's own
+        # escape -- and splitting naively turned a six-cell row into eight.
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", row.strip("|"))]
+        assert len(cells) == 6, f"malformed parity row ({len(cells)} cells): {row[:60]}"
+        capability, prd, crd, verdict, settled, why = cells
+        verdicts.add(verdict)
+        assert verdict in ("both", "prd-only", "crd-only"), (
+            f"{capability}: unknown verdict {verdict!r}")
+
+        # A verdict and its evidence must agree. This is the half that cannot go stale: an `--`
+        # whose counterpart quietly appeared, or a `both` whose evidence was deleted, fails.
+        if verdict == "both":
+            assert prd != "—" and crd != "—", f"{capability}: `both` with a missing side"
+        else:
+            missing, present = (crd, prd) if verdict == "prd-only" else (prd, crd)
+            assert missing == "—", f"{capability}: {verdict} but both sides carry evidence"
+            assert present != "—", f"{capability}: {verdict} and neither side has any"
+            assert settled in ("yes", "**open**", "open"), (
+                f"{capability}: an asymmetry must say whether it was decided or is open")
+            assert len(why) > 20, (
+                f"{capability}: an asymmetric row with no reason. A difference nobody wrote "
+                f"down is the thing this file exists to prevent")
+            if "open" in settled:
+                opens.append(capability)
+
+        for cell in (prd, crd):
+            if cell == "—":
+                continue
+            assert "::" in cell, f"{capability}: evidence {cell!r} is not `file :: string`"
+            rel, needle = [x.strip() for x in cell.split("::", 1)]
+            rel = rel.strip("`")
+            needle = needle.strip("`")
+            full = os.path.join(REPO, rel.replace("/", os.sep))
+            assert os.path.isfile(full), f"{capability}: parity.md cites a missing file {rel}"
+            body = open(full, encoding="utf-8").read()
+            assert needle in body, (
+                f"{capability}: {rel} no longer contains {needle!r}. The capability moved and "
+                f"the table did not -- which is the staleness the probes exist to catch")
+            probes += 1
+
+    assert probes >= 20, f"only {probes} probes resolve; the table is mostly assertion"
+    assert {"both", "prd-only", "crd-only"} & verdicts == verdicts, "unknown verdict slipped in"
+    assert "both" in verdicts, (
+        "no row is `both`, so the table records only differences and cannot show a resolution")
+    assert "crd-only" in verdicts and "prd-only" in verdicts, (
+        "the table leans entirely one way. §5 J's finding was that the CRD path was AHEAD on "
+        "five of six concerns, and a table that cannot express that is measuring the wrong thing")
+
+    # The other three bullets of item 50 are already checks; assert they exist rather than
+    # restating them here, so there is one statement of each rule and not two.
+    suite = open(os.path.join(REPO, "tests", "test_toolchain.py"), encoding="utf-8").read()
+    for name in ("the schema core is one definition that both paths cite",
+                 "three status vocabularies, three distinct names"):
+        assert name in suite, f"item 50 relies on `{name}`, which is not in the suite"
+
+    if opens:
+        print("    (%d open asymmetry/ies: %s)" % (len(opens), "; ".join(opens)))
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
