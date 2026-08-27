@@ -283,8 +283,8 @@ on both paths:
 | Layer | Included when | Evidence |
 |---|---|---|
 | `0-setup` | greenfield **and** a scaffold is named | `<scaffold>`, or Phase 2's template |
-| `1-foundation` | there are data models, migrations or shared types | analysis `data_models`; CRD `<affected-schemas>` |
-| `2-backend` | there are endpoints, services or background work | analysis `api_endpoints`; CRD `<affected-apis>` |
+| `1-foundation` | there are data models, migrations or shared types | analysis `data_models`; CRD `<contract kind="schema">` |
+| `2-backend` | there are endpoints, services or background work | analysis `api_endpoints`; CRD `<contract kind="api|event|command">` |
 | `3-frontend` | there are components, screens or routes | analysis `frontend_components`; CRD frontend paths in `<affected-files>` |
 | `4-integration` | **more than one other tier is present**, or a requirement is explicitly cross-cutting | the count above |
 

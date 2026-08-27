@@ -91,14 +91,12 @@ CRD documents capture focused change requests for existing codebases. They are d
     <feature id="settings">Add theme toggle to Appearance section</feature>
   </affected-features>
 
-  <affected-apis>
-    <api path="/api/settings" change="Add theme field to settings object"/>
-  </affected-apis>
-
-  <affected-schemas>
-    <!-- Or: none -->
-    <schema model="User" change="No schema change - uses existing settings JSONB"/>
-  </affected-schemas>
+  <affected-contracts>
+    <contract kind="api"     ref="PUT /api/settings">Theme field added to settings object</contract>
+    <contract kind="schema"  ref="User">No change -- uses the existing JSONB settings column</contract>
+    <contract kind="event"   ref="OrderPlaced@v2">New optional field; consumers unaffected</contract>
+    <contract kind="command" ref="deploy --dry-run">New flag</contract>
+  </affected-contracts>
 
   <breaking-changes>none</breaking-changes>
   <!-- Or: -->
@@ -124,12 +122,27 @@ CRD documents capture focused change requests for existing codebases. They are d
 |---------|----------|-------------|
 | `affected-files` | Yes | List of files with action (create, modify, delete) |
 | `affected-features` | Yes | Features from PROJECT.md that are impacted |
-| `affected-apis` | No | API endpoints that change |
-| `affected-schemas` | No | Database models that change |
+| `affected-contracts` | No | Contracts that change, of any kind the project's registries declare |
+| `affected-apis` | No | **Deprecated.** Accepted on read; equivalent to `affected-contracts` with `kind="api"` |
+| `affected-schemas` | No | **Deprecated.** Accepted on read; equivalent to `kind="schema"` |
 | `breaking-changes` | Yes | "none" or list of breaking changes with severity |
 | `new-dependencies` | No | External packages to add |
 | `scope` | Yes | `small` (1-3 files), `medium` (4-8), `large` (9+) |
 | `confidence` | Yes | `high`, `medium`, `low` - certainty of impact analysis |
+
+**`kind` matches the registry the contract came from**, so the enum extends when the registry set
+does rather than being a second list to keep in step. `api` and `schema` for the two registries
+`PROJECT.md` has always had; `event`, `command`, `service` and `screen` for the four item 25
+opened up.
+
+**This replaces `<affected-apis>` and `<affected-schemas>`.** Opening the registry set without
+this would be half a change, and the half that shows: impact analysis could *read* an event or a
+command registry and would have had nowhere to report the impact.
+
+**`<affected-apis>` is still accepted on read** — every CRD written before this exists — and is
+equivalent to `<affected-contracts>` holding only `kind="api"` entries. Item 41's migration
+rewrites them.
+
 
 ### Requirements Section
 

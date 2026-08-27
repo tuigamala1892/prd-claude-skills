@@ -34,6 +34,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from keep_awake import keep_awake  # noqa: E402
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(REPO, "skills")
 AGENTS = os.path.join(REPO, "agents")
@@ -3237,6 +3240,141 @@ def _():
 
 
 
+@check("greenfield ends with an architecture record, not without one", finding="P17")
+def _():
+    """Item 26. P17's output half: the finalizer ran only where PROJECT.md already existed.
+
+    `test -f {project_path}/PROJECT.md` is a condition no greenfield run can satisfy, so a new
+    project ran the entire pipeline and ended with no architecture record at all -- and the
+    first /crd against it then paid for a full crd-investigate to rediscover architecture the
+    PRD had already stated. The toolchain HAD an architecture artefact and greenfield was the
+    only path that could not reach it.
+    """
+    execute = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    agent = open(os.path.join(AGENTS, "project-context-finalizer.md"), encoding="utf-8").read()
+
+    step = execute[execute.find("### Step 10"):]
+    step = step[:step.find("### Step 11")] or step[:4000]
+    assert step, "/execute lost its finalize-context step"
+
+    # The gate must BRANCH, not skip. Asserted from the decision table rather than from prose:
+    # the surrounding paragraphs necessarily discuss the old behaviour to explain the change,
+    # so a substring check would find the history rather than the rule.
+    actions = {}
+    for line in step.splitlines():
+        if line.strip().startswith("|") and line.count("|") >= 3:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] and not set(cells[0]) <= set("- "):
+                actions[prose(cells[0]).lower()] = prose(cells[-1]).lower()
+    assert actions, "/execute Step 10 has no decision table, so the branch is prose"
+
+    creates = [v for k, v in actions.items() if "no project.md" in k and "prd" in k]
+    assert creates, (
+        f"no row covers 'no PROJECT.md, run came from a PRD'. That is the greenfield case, and "
+        f"skipping it silently is the whole of P17's output half. rows={list(actions)}")
+    assert "create" in creates[0], (
+        f"the greenfield row does not create PROJECT.md: {creates[0]!r}")
+
+    updates = [v for k, v in actions.items() if "project.md exists" in k]
+    assert updates and "update" in updates[0], (
+        "the existing-PROJECT.md row no longer updates it, so item 26 broke the path that "
+        "already worked")
+
+    # The agent must be able to act on it.
+    assert re.search(r"^#+ .*[Tt]wo modes", agent, re.M) or "`create`" in agent, (
+        "project-context-finalizer has no create mode, so /execute branches to an agent that "
+        "cannot do the work")
+    for sentence in ("Do not copy <rules> or <principles>",
+                     "the export wins"):
+        assert prose(sentence) in prose(agent), (
+            f"the finalizer no longer states: {sentence!r}. Seeding is a COPY of the registries "
+            f"only -- architecture.md is prescriptive and PROJECT.md is descriptive, and "
+            f"collapsing that distinction makes a constraint indistinguishable from an "
+            f"observation")
+
+    # A created file has to satisfy the validator that guards every consumer.
+    assert prose("at least one\nregistry") in prose(agent) or \
+        prose("at least one registry") in prose(agent), (
+        "the finalizer does not know that check-project-md.py requires a registry, so `create` "
+        "can produce a file that fails the guard on the next run")
+
+
+@check("impact analysis reports contracts, not only APIs", finding="P35")
+def _():
+    """Item 57. Item 25 opened the registry set; without this, that is half a change.
+
+    `crd-impact-analysis` could now READ an event or a command registry and would have had
+    nowhere to report the impact -- it emitted `<affected-apis>` and `<affected-schemas>` and
+    nothing else. The half that shows.
+    """
+    fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+               encoding="utf-8").read()
+    skill = open(os.path.join(SKILLS, "crd-impact-analysis", "SKILL.md"),
+                 encoding="utf-8").read()
+    agent = open(os.path.join(AGENTS, "crd-impact-analyzer.md"), encoding="utf-8").read()
+
+    # Producer and schema must agree, and the sample must parse -- P10's shape is a producer
+    # and a spec that drifted, so compare them rather than reading each.
+    for label, text in (("crd-format.md", fmt), ("crd-impact-analysis", skill),
+                        ("crd-impact-analyzer", agent)):
+        m = re.search(r"<affected-contracts>.*?</affected-contracts>", text, re.S)
+        assert m, f"{label} does not carry <affected-contracts>"
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(m.group(0))
+        except Exception as e:
+            raise AssertionError(f"{label}'s <affected-contracts> sample does not parse: {e}")
+        kinds = {c.get("kind") for c in root.findall("contract")}
+        assert None not in kinds, f"{label} has a <contract> with no kind"
+        assert {"api", "schema"} <= kinds, (
+            f"{label}'s sample drops a kind PROJECT.md has always had: {sorted(kinds)}")
+        assert kinds - {"api", "schema"}, (
+            f"{label}'s sample shows only api and schema, so it does not demonstrate the open "
+            f"set that is the entire point of the change: {sorted(kinds)}")
+        for c in root.findall("contract"):
+            assert c.get("ref"), f"{label} has a <contract> with no ref"
+
+    # The old elements stay READABLE. Every CRD written before this exists.
+    assert "affected-apis" in fmt, (
+        "crd-format.md no longer mentions <affected-apis>. It is deprecated, not deleted -- "
+        "every CRD written before this change carries it, and item 41 rewrites them")
+    assert re.search(r"affected-apis.*[Dd]eprecated", fmt), (
+        "<affected-apis> is present but not marked deprecated, so a reader cannot tell which "
+        "of the two shapes to write")
+
+    # The reader must refuse clearly rather than reporting an empty impact.
+    assert prose("do not report an empty impact") in prose(skill).lower(), (
+        "crd-impact-analysis does not say what to do when the registry it needs is absent. "
+        "check-project-md.py requires ANY registry, not a particular one, so it will not have "
+        "stopped a project that lacks the kind this analysis reads -- and an empty impact "
+        "reported as a finding is worse than a refusal")
+
+    # And the layer derivation must key off the new shape, or item 31 reads a dead element.
+    caller = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase3 = caller[caller.find("### Phase 3:"):caller.find("### Phase 4:")]
+    # Per ROW, not per section. The mutant that got through reverted only the foundation row
+    # to `<affected-schemas>`; the backend row still said "contract" and "kind=", so a check
+    # looking for those anywhere in Phase 3 passed while half the derivation read a deprecated
+    # element. Two rows, two independent assertions.
+    rows = {}
+    for line in phase3.splitlines():
+        m = re.match(r"\s*\|\s*`?([0-9]-[a-z]+)`?\s*\|[^|]*\|([^|]*)\|", line)
+        if m:
+            rows[m.group(1)] = m.group(2)
+    for layer in ("1-foundation", "2-backend"):
+        assert layer in rows, f"the derivation table lost its {layer} row"
+        evidence = rows[layer]
+        assert "contract" in evidence, (
+            f"{layer}'s evidence column is {evidence.strip()!r}, which does not read "
+            f"<affected-contracts>. Item 57 generalised impact analysis from APIs to contracts; "
+            f"a derivation still keyed to the deprecated element puts an event or command "
+            f"change in no tier at all")
+        for dead in ("<affected-apis>", "<affected-schemas>"):
+            assert dead not in evidence, (
+                f"{layer}'s evidence column still reads {dead}, which item 57 deprecated")
+
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
@@ -3274,68 +3412,69 @@ def behaviour_checks():
 # ------------------------------------------------------------------------ runner
 
 def main():
-    ap = argparse.ArgumentParser(description="Regression suite for the toolchain")
-    ap.add_argument("--behaviour", action="store_true",
-                    help="also run the plugin-load check (needs the `claude` CLI, ~30s)")
-    ap.add_argument("-v", "--verbose", action="store_true", help="show failure detail for KNOWN")
-    args = ap.parse_args()
+    with keep_awake():
+        ap = argparse.ArgumentParser(description="Regression suite for the toolchain")
+        ap.add_argument("--behaviour", action="store_true",
+                        help="also run the plugin-load check (needs the `claude` CLI, ~30s)")
+        ap.add_argument("-v", "--verbose", action="store_true", help="show failure detail for KNOWN")
+        args = ap.parse_args()
 
-    width = max(len(r["name"]) for r in _RESULTS) + 2
-    passed = failed = known = fixed = 0
-    problems = []
+        width = max(len(r["name"]) for r in _RESULTS) + 2
+        passed = failed = known = fixed = 0
+        problems = []
 
-    print(f"Regression suite -- {len(_RESULTS)} static checks\n" + "=" * (width + 34))
-    for r in _RESULTS:
-        tag = f"[{r['finding']}]" if r["finding"] else ""
-        try:
-            r["fn"]()
-            err = None
-        except AssertionError as e:
-            err = str(e)
-        except Exception as e:                      # a broken check is a failure
-            err = f"check raised {type(e).__name__}: {e}"
+        print(f"Regression suite -- {len(_RESULTS)} static checks\n" + "=" * (width + 34))
+        for r in _RESULTS:
+            tag = f"[{r['finding']}]" if r["finding"] else ""
+            try:
+                r["fn"]()
+                err = None
+            except AssertionError as e:
+                err = str(e)
+            except Exception as e:                      # a broken check is a failure
+                err = f"check raised {type(e).__name__}: {e}"
 
-        if err is None and r["expect_fail"]:
-            status, fixed = "FIXED", fixed + 1
-            problems.append((r["name"], f"now passes -- remove expect_fail={r['expect_fail']!r} "
-                                        f"so it becomes a permanent regression guard"))
-        elif err is None:
-            status, passed = "pass", passed + 1
-        elif r["expect_fail"]:
-            status, known = f"KNOWN/{r['expect_fail']}", known + 1
-            if args.verbose:
+            if err is None and r["expect_fail"]:
+                status, fixed = "FIXED", fixed + 1
+                problems.append((r["name"], f"now passes -- remove expect_fail={r['expect_fail']!r} "
+                                            f"so it becomes a permanent regression guard"))
+            elif err is None:
+                status, passed = "pass", passed + 1
+            elif r["expect_fail"]:
+                status, known = f"KNOWN/{r['expect_fail']}", known + 1
+                if args.verbose:
+                    problems.append((r["name"], err))
+            else:
+                status, failed = "FAIL", failed + 1
                 problems.append((r["name"], err))
-        else:
-            status, failed = "FAIL", failed + 1
-            problems.append((r["name"], err))
 
-        print(f"  {status:<12} {r['name']:<{width}} {tag}")
+            print(f"  {status:<12} {r['name']:<{width}} {tag}")
 
-    if args.behaviour:
-        print("\nBehavioural check (read-only)\n" + "=" * (width + 34))
-        try:
-            n = behaviour_checks()
-            print(f"  {'pass':<12} plugin registers all {n} entries on disk")
-            passed += 1
-        except Exception as e:
-            print(f"  {'FAIL':<12} plugin load")
-            problems.append(("plugin load", str(e)))
-            failed += 1
+        if args.behaviour:
+            print("\nBehavioural check (read-only)\n" + "=" * (width + 34))
+            try:
+                n = behaviour_checks()
+                print(f"  {'pass':<12} plugin registers all {n} entries on disk")
+                passed += 1
+            except Exception as e:
+                print(f"  {'FAIL':<12} plugin load")
+                problems.append(("plugin load", str(e)))
+                failed += 1
 
-    if problems:
-        print("\nDetail\n" + "=" * (width + 34))
-        for name, detail in problems:
-            print(f"\n  {name}\n    {detail}")
+        if problems:
+            print("\nDetail\n" + "=" * (width + 34))
+            for name, detail in problems:
+                print(f"\n  {name}\n    {detail}")
 
-    print(f"\n{'-' * (width + 34)}")
-    print(f"passed {passed}   failed {failed}   known {known}   fixed {fixed}")
-    if known:
-        print(f"\n{known} check(s) encode a target state not yet reached. They are expected to "
-              f"fail\nuntil the named remediation item lands, then must have the marker removed.")
-    if fixed:
-        print(f"\n{fixed} check(s) marked as expected failures now PASS. Remove the marker.")
+        print(f"\n{'-' * (width + 34)}")
+        print(f"passed {passed}   failed {failed}   known {known}   fixed {fixed}")
+        if known:
+            print(f"\n{known} check(s) encode a target state not yet reached. They are expected to "
+                  f"fail\nuntil the named remediation item lands, then must have the marker removed.")
+        if fixed:
+            print(f"\n{fixed} check(s) marked as expected failures now PASS. Remove the marker.")
 
-    return 1 if (failed or fixed) else 0
+        return 1 if (failed or fixed) else 0
 
 
 if __name__ == "__main__":

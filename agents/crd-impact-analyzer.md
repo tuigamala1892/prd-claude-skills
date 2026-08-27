@@ -148,13 +148,12 @@ Categorize complexity:
     <feature id="settings">Add theme toggle to existing settings</feature>
   </affected-features>
 
-  <affected-apis>
-    <api path="/api/settings" change="Add theme field to settings object"/>
-  </affected-apis>
-
-  <affected-schemas>
-    <!-- None for this example -->
-  </affected-schemas>
+  <affected-contracts>
+    <contract kind="api"     ref="PUT /api/settings">Theme field added to settings object</contract>
+    <contract kind="schema"  ref="User">No change -- uses the existing JSONB settings column</contract>
+    <contract kind="event"   ref="OrderPlaced@v2">New optional field; consumers unaffected</contract>
+    <contract kind="command" ref="deploy --dry-run">New flag</contract>
+  </affected-contracts>
 
   <breaking-changes>none</breaking-changes>
   <!-- Or: -->

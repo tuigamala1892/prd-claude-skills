@@ -729,14 +729,19 @@ Plan order: `25` + `28` + `37` + `51` + `31` + `56` + `26` + `57`, on branch
 `phase-3-architecture-artefact`. The plan insists these are one item because splitting them means
 designing `architecture.md` four times.
 
+**Phase 3 is complete.** Eight items in six commits, 56 → 66 regression checks, and the toolchain's
+five vendored opinions are now a project's to change. Every item was verified by mutation against
+a stated-green baseline; the rounds are where the real findings were, and they are collected in
+*What six mutation rounds taught* below.
+
 | Item | Status | Commit |
 |---|---|---|
 | **25 + 28 + 37** — the artefact, its guard, its readers | **Landed** 2026-08-26 | `_` |
 | **51** — a Design phase in `/prd`, the producer | **Landed** 2026-08-26 | `_` |
 | **31** — derive the layer set from content, both paths | **Landed** 2026-08-26 | `_` |
 | **56** — enforce `<banned>` and `<task-limits>` | **Landed** 2026-08-26 | `_` |
-| **26** — seed PROJECT.md on greenfield | not started | |
-| **57** — impact analysis reports contracts, not APIs | not started | |
+| **26** — seed PROJECT.md on greenfield | **Landed** 2026-08-27 | `_` |
+| **57** — impact analysis reports contracts, not APIs | **Landed** 2026-08-27 | `_` |
 
 ---
 
@@ -913,6 +918,160 @@ Three patch scripts were lost to heredocs eating a backslash level: `\b` in a re
 literal `0x08` byte, which is the same defect that disabled item 21's word-boundary anchors and
 sent me debugging the layer above it. Every patch in this item is a **file** run with `python
 <path>`, never a `<<'PY'` heredoc. Quoting the heredoc is not sufficient.
+
+
+## 26 + 57 — closing the greenfield loop, and generalising what a contract is
+
+**Addresses:** P17 (output half), P35, A3/D3 · **Files:** `skills/execute/SKILL.md`,
+`agents/project-context-finalizer.md`, `skills/crd/references/crd-format.md`,
+`skills/crd-impact-analysis/SKILL.md`, `agents/crd-impact-analyzer.md`,
+`skills/breakdown/SKILL.md`, `tests/test_toolchain.py`
+
+### 26: the gate was a condition greenfield could never satisfy
+
+`test -f {project_path}/PROJECT.md` ran the finalizer only where the file already existed. No new
+project can satisfy that, so greenfield ran the whole pipeline and ended with **no architecture
+record at all** — and the first `/crd` against it then paid for a full `crd-investigate` to
+rediscover architecture the PRD had already stated.
+
+The gate now branches three ways: update where it exists, **create** where it does not and the
+run came from a PRD, and refuse where it does not and the run came from a CRD (which means
+something removed a file `/breakdown` had already required).
+
+**Two decisions the plan left open, both settled by the prescriptive/descriptive split:**
+
+- **Seeding copies the registries and leaves `<rules>` and `<principles>` behind.**
+  `architecture.md` says what the project *must* be; `PROJECT.md` says what it *is*. Copying the
+  rules across would collapse the one distinction that makes two files defensible — open
+  question 2 is uneasy about having two at all, and this is the answer to it. This is also why
+  item 25 put registries at the same nesting level in both: the seeding is a subtree **copy**,
+  not a transform.
+- **Where a seeded entry and a task export disagree, the export wins.** `architecture.md`'s
+  registries are written before any code exists and are usually empty; the exports describe what
+  was built, and this file's whole job downstream is to say what exists.
+
+`Mode` is passed explicitly rather than inferred by the agent. It has `Read` and could test for
+the file, but then two components decide the same thing and can disagree — and the caller has
+already run the test.
+
+### 57: opening the registry set without this would be the half that shows
+
+`crd-impact-analysis` could now *read* an event or command registry (item 25) and had nowhere to
+report the impact: it emitted `<affected-apis>` and `<affected-schemas>` and nothing else.
+
+`<affected-contracts>` with a `kind` that **matches the registry the contract came from**, so the
+enum extends when the registry set does rather than being a second list to keep in step — the
+mistake item 25 had just corrected one level up.
+
+**`<affected-apis>` is deprecated, not deleted.** This is the only Phase 3 item that changes a
+*published* artefact shape, and every CRD already written uses the old element. It stays readable
+and marked deprecated; item 41 rewrites them. Deleting it would have bought tidiness with every
+existing CRD.
+
+**Item 31 had to follow within hours of landing.** Its derivation keyed the backend tier off
+`<affected-apis>`; with contracts generalised, an *event* contract change is what puts work in an
+event-driven graph's `contracts` layer, which was unreachable from an impact analysis before.
+
+### Verification
+
+`python tests/test_toolchain.py` — **66 checks, 0 failed**, 1 known. Two new checks, **13/13
+mutants** against a green baseline.
+
+The two mutants worth naming are both *plausible tidying* rather than obvious breakage: copying
+`<rules>` into `PROJECT.md` looks like completeness and destroys the prescriptive/descriptive
+split; deleting `<affected-apis>` looks tidy and breaks every CRD already written.
+
+---
+
+## What the machine sleeping taught, which was not about sleep
+
+A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
+wake. **Nothing was lost and the result was correct** — but it occupied twelve hours of wall
+clock, and a harness timeout cannot fire against a suspended process, so the run neither
+finished nor failed until someone moved the mouse.
+
+**The fix already existed and covered one caller.** `keep_awake` was defined inside
+`tests/fixture/run_5_2.py`, used once, and its own docstring records the *identical* failure it
+was written for: *"a run 10 resume was suspended from 23:24 to 08:13… a 2-hour run occupied 10
+hours of wall clock, and the harness's own timeout never fired."* Written where it was
+discovered, never generalised. It is now `tests/keep_awake.py`, used by the fixture runner, the
+regression suite and every mutation harness.
+
+That is this repository's most repeated shape, arriving in the test tooling rather than in the
+skills: **a fix applied at the site of discovery rather than at the level of the problem.** Item
+60 was the same (a rule added without removing what it contradicted); so was P18's TDD mandate
+enforced in three places and documented in a fourth.
+
+### Two of my own errors, recorded because one of them broke a rule that was already written down
+
+**1. Wrapping `main()` swallowed the entry point.** The first `keep_awake` wrap indented
+`if __name__ == "__main__":` into the function, so the suite defined `main()`, never called it,
+printed nothing and **exited 0**. A harness that runs no checks and reports success is the worst
+available failure — and it is the reason the exit code alone is never the result.
+
+**2. `git checkout -- tests/test_toolchain.py` on a file with uncommitted work.** Item 54's entry
+says exactly this must not be done, and the reason. It discarded the item 26 and 57 checks;
+they were recovered by re-running the scratchpad patch script, which was luck rather than design.
+
+**A rule broken by the person who wrote it is a prose guard**, which is P16 — so it is now an
+exit code. `tests/dirty-guard.sh` refuses a checkout that would discard uncommitted work and
+names the line counts at risk. Watched refusing on a dirty file and passing on a clean one.
+
+
+## What six mutation rounds taught
+
+Phase 3 wrote **ten new regression checks and ran 71 mutants across six rounds.** The suite was
+green after every single check was first written, and **five of the first ten did no work at
+all.** That is the phase's most useful output, ahead of any of the eight items.
+
+### Every failure had the same root: asserting text rather than the claim it carries
+
+| Variant | How it presents | Example |
+|---|---|---|
+| **Too loose** — token presence | mutant deletes the mechanism, the word survives elsewhere, check passes | `architecture.md` appears five times in `plan-layers` |
+| **Too tight** — pinned phrasing | the document *improves* and the check fails | `"replaces the five tiers below"` after item 31 removed the list |
+| **Too broad** — forbidding a word | a different, *legitimate* mechanism trips it | banning "architecture" in `execute-batch`'s args, then item 56 added a legitimate `--rules` forward |
+| **`or` across locations** | either end alone satisfies a producer/consumer pair | the degenerate case, asserted in Phase 3 **or** Phase 4 |
+| **Whole-file scope** | finds the *explanation* of a mechanism after the mechanism is deleted | both callers of `check-rules.py` also describe it in prose |
+
+The last one generalises: **when a document mentions something twice — once to do it, once to
+explain it — a substring check finds the explanation.** Prose about a mechanism outlives the
+mechanism.
+
+### What works, strongest first
+
+1. **Find something to parse.** `plan-layers`' documented JSON is parsed and compared key-for-key
+   against live `check-architecture.py --json` output; `crd-format.md`'s `<affected-contracts>`
+   sample is parsed as XML and its `kind` set asserted. This is 23a's pattern and it survives any
+   rewording.
+2. **Scope to the region that owns the claim.** The invocation sentence, not the section. A
+   *table row*, not the table — the mutant that survived overnight reverted one row of the layer
+   derivation while the other row kept the words the check looked for.
+3. **Assert a shape.** A fenced block containing `<step kind="decision">`; a runnable invocation
+   inside a ```bash fence; a parsed phase sequence checked for ascending uniqueness.
+4. **Assert what must be TRUE, never what must be absent.** The `execute-batch` assertion took
+   three attempts before it stopped hunting for forbidden words and simply required the sentence
+   *"Read the task instead"*.
+
+### The instrument needs the same scepticism as the subject
+
+Four harness failures, each of which produced a confident wrong number:
+
+| Defect | Reported | Actually |
+|---|---|---|
+| stale expected check name after a rename | 6/13 | 11/13 |
+| suite **red before mutating** — a failing check catches everything | 13/13 | hollow |
+| suite run **concurrently** with a mutation harness | 2 FAILs | phantom |
+| `main()` never called after a bad wrap | exit 0, silent | zero checks run |
+
+Phase 1's rule gains two companions:
+
+> A green result whose mechanism has not been shown is not a result.
+> **A red result whose baseline has not been shown is not a result either.**
+> **And a result from an instrument that was itself modified mid-run is not a result at all.**
+
+The harness now refuses a non-green baseline, warns when a check fails that no mutant expected,
+and holds `keep_awake` so a long round is not suspended.
 
 
 ## What Phase 1 taught
