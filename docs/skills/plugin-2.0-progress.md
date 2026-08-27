@@ -1860,8 +1860,8 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
 | **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
-| **59** — the runtime test across the boundary | *Next* | — |
-| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
+| **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `PENDING` |
+| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Next* | — |
 | **10 + 24 + 32 + 38** — the residue | *Not started* | — |
 
 **Suite at branch point:** 86 checks, `failed 0`, `known 0`.
@@ -2395,6 +2395,134 @@ earlier in this phase.
 **Item 59 is not in this commit.** It is the runtime test across this boundary, it needs the
 toolchain driven headlessly, and it is the assertion that everything above is *specified* rather
 than *demonstrated*.
+
+---
+
+## 59 — the boundary is crossed, and the first crossing found two defects
+
+**Commit:** `PENDING` · **Addresses:** A8/R13 · **Files:** `tests/boundary-test.py` (new),
+`tests/test_toolchain.py`
+
+### What the item was for, and it delivered exactly that
+
+*"Items 13–17, 19, 20 and 30–32 all specify behaviour at that boundary and **no run has ever
+crossed it with an input this plan's schema describes**. For a document whose central
+methodological complaint is that static agreement is not evidence, that ratio is the wrong way
+round."*
+
+It has now been crossed, three times, and **the first crossing found two defects that no static
+reading would have shown.** That is the item paying for itself on the day it landed.
+
+### The shape: a grader, and a live mode, split
+
+`probe-p1.py` established this and stated why: *"a grader that has only ever been exercised by
+the expensive path is a grader nobody has checked."* So `--grade` runs offline against any task
+set, and `--run` builds a workspace, runs `/breakdown` live, and grades what it produced.
+
+The regression suite drives `--grade` on every run, **breaking each of the five assertions in
+turn** — a compliant task set passing is the weakest half, and a grader returning 0
+unconditionally would pass that and nothing else.
+
+**Assertion 3's break is the one worth naming.** It mutates `check-coverage.py` so it reports the
+**wrong** feature while keeping the count correct, and asserts the grader is not fooled. A test
+that does not force that cannot distinguish a check that counts from one that attributes.
+
+### The live result
+
+Three runs. The first two failed for reasons in the harness, and both are worth recording because
+one of them is a compliment to the toolchain.
+
+**Run 1 — `acceptEdits` was the wrong permission mode.** `/breakdown` is script-gated at Phases 1,
+2, 2a and 5, and `acceptEdits` permits file edits without permitting a bundled script to run.
+Every validator was denied.
+
+**What the agent under test did then is the finding.** It refused to hand-simulate them, and said
+why: *"These exist as scripts specifically because prose guards get ignored (the skill cites F15
+and P16 on this), so a run that fakes them produces output nobody has actually checked."* The
+skill's own argument for why guards are programs reached the agent reading it, and a run graded on
+simulated gates would have been worse than no run. The script now uses `bypassPermissions` and
+says why in a comment.
+
+**Run 2 — the harness nested the PRD inside the project**, and `preflight.sh` refuses a target
+containing `docs/prd/` (F15's own guard). The grader diagnosed it correctly rather than reporting
+a toolchain defect: *"preflight refused a clean tree, so its refusal below proves nothing."* That
+guard was written into assertion 5 on the assumption it would never fire; it fired on the second
+run, against the harness.
+
+**Run 3 — all five assertion groups ran.** Four clean:
+
+| | Result |
+|---|---|
+| 1 | **19 criterion copies verbatim against the PRD, zero reworded** |
+| 2 | 3 features named by 8 attributed tasks, resolving both ways |
+| 3 | removing `list-links`'s 2 tasks was reported as `list-links` **and nothing else** |
+| 4 | `{'must-have/P0': 5, 'should-have/P0': 3}` |
+| 5 | preflight refused the won't-have task and named it |
+
+**Assertion 1's headline held, and it is the one the plan singled out** as *"the one assertion
+that would have failed for the whole life of the toolchain"*. Nineteen criteria arrived with their
+ids and their text unaltered. P2 is fixed, demonstrated rather than specified.
+
+### Defect one: `<source-feature>` is single-valued, and a real run invented a notation
+
+The generator wrote `<satisfies-criteria>2,3</satisfies-criteria>` — bare, as the spec requires —
+while carrying the criteria as `<criterion id="list-links#2">`. **It invented `feature#id`**, and
+applied it in one of the two places, so the two halves of a task no longer refer to each other.
+
+The cause is a gap in **item 16**, not a defect in the run. A task that legitimately covers
+criteria from more than one feature — an integration task, most obviously — has no way to say
+whose criterion it is carrying, because `<source-feature>` holds one slug. Item 30's coverage
+check scopes cited ids per feature, so the neighbour's criterion is then reported as covered by
+nothing.
+
+**Run 2 hit the same wall and solved it differently**: it *split* the task rather than qualifying
+the ids, and said so — *"`<source-feature>` is single-valued and `check-coverage.py` scopes cited
+criteria per feature, so tag-links 3 would have been reported as covered by no task."* Two runs,
+two independent workarounds, one gap. That is as strong as this kind of evidence gets, and the
+plan never considered the case.
+
+**The grader reports it as a FINDING rather than a failure**, because the criterion *text* is
+unaltered — the thing item 17 exists to protect held. Conflating a qualified id with a reworded
+one would bury the interesting half. **It needs a plan item**; it is not fixed here, because item
+59's job is to measure and a schema change is the plan's decision to make.
+
+### Defect two: a task cited a criterion it did not carry
+
+`L1-003` declares `<source-feature>save-link</source-feature>` and
+`<satisfies-criteria>1</satisfies-criteria>` and carries **no `<criterion>` at all** — while its
+own prose asserts that *"its traceability is nonetheless real"*. It is not: item 17 requires the
+criterion to be carried, and validation rule 0 in `task-format-spec.md` says both directions must
+resolve within one file.
+
+**The live run therefore exits 1, and that is the honest result.** It is recorded here rather than
+worked around; a runtime test whose first crossing is made to pass by adjusting the test is a
+runtime test that has measured nothing.
+
+### What the run also produced, unprompted
+
+The `/breakdown` run reported three defects it found and fixed in its own output — a `conftest.py`
+that seven downstream tasks assumed and one task explicitly forbade; the orphaned criterion above;
+and a `4-integration` layer dropped against the documented rule by a criterion in neither skill.
+It also reported that a `breakdown-generate-tasks` fork made **false claims about a competing
+concurrent task set that did not exist**, and generated all four layers when scoped to one.
+
+None of that is graded here and none of it is this item's to fix. It is recorded because it is the
+first evidence of any kind about how these skills behave under a real run, and because the last
+one is a defect in a skill rather than in an artefact.
+
+### Verification
+
+`python tests/test_toolchain.py` — **95 → 96**, `failed 0`, `known 0`. The new check breaks all
+five assertions and confirms the grader notices each.
+
+**A bug in my own check, worth recording because it produced a false negative.**
+`open(path, "w").write(open(path).read().replace(...))` truncates the file *before* the inner read
+is evaluated, so it wrote an empty task — and the check then reported a missing failure that the
+grader had in fact produced. Read first, then write. It is the same species as the `check-scope.py`
+key defect two commits ago: **the test was wrong in a way that made the subject look wrong.**
+
+**No mutation round.** The check *is* a mutation round — it breaks five things and asserts five
+detections — and wrapping it in `mutate.py` would have mutated the mutator.
 ---
 
 ## What the machine sleeping taught, which was not about sleep

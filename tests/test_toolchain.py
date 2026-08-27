@@ -5668,6 +5668,166 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# ------------------------------------- the boundary test's grader (item 59), finding A8/R13
+
+
+@check("the boundary grader detects each of its five failures -- by breaking them", finding="A8")
+def _():
+    """Item 59's grader, exercised without spending a live run.
+
+    `boundary-test.py` splits `--grade` from `--run` for the reason probe-p1.py did: **a grader
+    that has only ever run behind the expensive path is a grader nobody has checked.** So this
+    drives the grader over a task set the check builds itself, then BREAKS each assertion in turn
+    and asserts the grader notices.
+
+    Passing on a compliant task set is the weakest half of this. A grader that returned 0
+    unconditionally would pass that and nothing else here.
+
+    Assertion 3 is the one worth insisting on and it is why the grader exists at all: a coverage
+    check reporting "1 feature has no task" passes any test that a check naming the WRONG feature
+    would also pass. The mutation below keeps the COUNT correct and changes only the name.
+    """
+    import shutil
+    import tempfile
+
+    grader = os.path.join(REPO, "tests", "boundary-test.py")
+    assert os.path.isfile(grader), "tests/boundary-test.py does not exist"
+
+    _p, reg = schema_registry()
+    prd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf")
+    crit = re.compile(r"<criterion\b([^>]*)>(.*?)</criterion>", re.S)
+
+    root = tempfile.mkdtemp(prefix="boundary-59-")
+    try:
+        project = os.path.join(root, "app")
+        os.makedirs(project)
+        for a in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "init"]):
+            subprocess.run(["git"] + a, cwd=project, capture_output=True, text=True)
+
+        def seed():
+            """A task set that satisfies all five assertions, built from the fixture PRD."""
+            tasks = os.path.join(root, "tasks")
+            shutil.rmtree(tasks, ignore_errors=True)
+            os.makedirs(os.path.join(tasks, "1-foundation"))
+            index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
+            n = 0
+            for tier, rel in re.findall(r'<feature\s+priority="([^"]+)" file="([^"]+)"', index):
+                slug = os.path.splitext(os.path.basename(rel))[0]
+                text = open(os.path.join(prd, rel), encoding="utf-8").read()
+                found = crit.findall(text)
+                n += 1
+                body = "\n".join("    <criterion%s>%s</criterion>" % (a, b) for a, b in found)
+                ids = ",".join(re.search(r'id="([^"]*)"', a).group(1) for a, _ in found)
+                with open(os.path.join(tasks, "1-foundation", "L1-%03d-%s.xml" % (n, slug)),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Build %s</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
+                            "    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
+                            "    <satisfies-criteria>%s</satisfies-criteria>\n"
+                            "    <requirement-level>P0</requirement-level>\n  </meta>\n"
+                            "  <context>\n    <acceptance-criteria>\n%s\n"
+                            "    </acceptance-criteria>\n  </context>\n</task>\n"
+                            % (n, slug, n, slug, tier, ids, body))
+            b = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
+                                                             "build-manifest.py"), tasks],
+                               capture_output=True, text=True)
+            assert b.returncode == 0, f"build-manifest.py failed: {b.stdout}\n{b.stderr}"
+            return tasks
+
+        def grade(tasks):
+            return subprocess.run([sys.executable, grader, "--grade", prd, tasks,
+                                   "--project", project], capture_output=True, text=True)
+
+        def a_task(tasks, needle):
+            for dp, _dn, fn in os.walk(tasks):
+                for n in fn:
+                    if needle in n:
+                        return os.path.join(dp, n)
+            raise AssertionError(f"no task file matching {needle}")
+
+        # A compliant set passes -- the baseline without which every failure below is hollow.
+        tasks = seed()
+        p = grade(tasks)
+        assert p.returncode == 0, f"a compliant task set was graded as failing:\n{p.stdout}\n{p.stderr}"
+        for n in ("1:", "2:", "3:", "4:", "5:"):
+            assert n in p.stdout, f"assertion group {n} did not run at all:\n{p.stdout}"
+
+        # 1. A REWORDED criterion. This is the assertion that would have failed for the whole
+        #    life of the toolchain, and the reason item 17 carries the element rather than prose.
+        tasks = seed()
+        path = a_task(tasks, "save-link")
+        text = open(path, encoding="utf-8").read()
+        i, j = text.index("<criterion"), text.index("</criterion>")
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text[:i] + text[i:j].replace("shall", "should", 1) + text[j:])
+        p = grade(tasks)
+        assert p.returncode == 1 and "REWORDED" in p.stderr, (
+            f"a criterion arriving reworded was not detected:\n{p.stdout}\n{p.stderr}")
+
+        # 2. Both directions: a name that resolves to nothing, and a feature nothing names.
+        tasks = seed()
+        path = a_task(tasks, "tag-links")
+        # Read BEFORE opening for write. `open(path, "w")` truncates, and an inner read
+        # evaluated as the write's argument then returns "" -- which is how this check first
+        # reported a missing failure that the grader had in fact produced.
+        text = open(path, encoding="utf-8").read()
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text.replace("<source-feature>tag-links</source-feature>",
+                         "<source-feature>ghost</source-feature>"))
+        p = grade(tasks)
+        assert p.returncode == 1 and "ghost" in p.stderr and "tag-links is in scope" in p.stderr, (
+            f"<source-feature> was not resolved in both directions:\n{p.stderr}")
+
+        # 4. A task with no tier. Item 19's element has no other reader.
+        tasks = seed()
+        path = a_task(tasks, "save-link")
+        text = open(path, encoding="utf-8").read()
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text.replace("    <requirement-level>P0</requirement-level>\n", ""))
+        p = grade(tasks)
+        assert p.returncode == 1 and "FAIL 4:" in p.stderr, (
+            f"a task carrying no <requirement-level> was not detected:\n{p.stderr}")
+
+        # 3. THE ONE. Break the coverage check so it names the wrong feature while keeping the
+        #    count right, and assert the grader is not fooled. A test that does not force this
+        #    cannot detect a check that counts correctly and attributes wrongly.
+        cov = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+        original = open(cov, encoding="utf-8").read()
+        try:
+            open(cov, "w", encoding="utf-8", newline="\n").write(original.replace(
+                '"uncovered_features": [{"slug": r["slug"], "tier": r["tier"]} for r in uncovered],',
+                '"uncovered_features": [{"slug": "save-link", "tier": r["tier"]} for r in uncovered],'))
+            p = grade(seed())
+            assert p.returncode == 1 and "attributes wrongly" in p.stderr, (
+                f"the grader accepted a coverage report that named the WRONG feature. That is "
+                f"the failure item 59's third assertion exists to catch:\n{p.stderr}")
+        finally:
+            open(cov, "w", encoding="utf-8", newline="\n").write(original)
+
+        # 5. Preflight stops refusing. Absence is not refusal, which is item 20's whole point.
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        original = open(flight, encoding="utf-8").read()
+        try:
+            open(flight, "w", encoding="utf-8", newline="\n").write(original.replace(
+                'wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)',
+                'wont=""'))
+            p = grade(seed())
+            assert p.returncode == 1 and "FAIL 5:" in p.stderr, (
+                f"the grader did not notice preflight had stopped refusing:\n{p.stderr}")
+        finally:
+            open(flight, "w", encoding="utf-8", newline="\n").write(original)
+
+        # And the live mode exists, is documented, and is not what runs here.
+        doc = open(grader, encoding="utf-8").read()
+        assert "--run" in doc and "claude" in doc, (
+            "boundary-test.py has no live mode, so item 59 is a grader with nothing to grade")
+        assert 'reg["current"]' in doc, (
+            "the live mode names a schema version instead of reading SCHEMAS.json; a runtime "
+            "test pinned to an old fixture tests a corpus three migrations out of date")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
