@@ -1857,7 +1857,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | Item | Status | Commit |
 |---|---|---|
 | **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
-| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `PENDING` |
+| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
 | **13 + 14 + 15 + 19 + 20** — the filters | *Next* | — |
 | **16 + 17 + 30 + 59** — the carry | *Not started* | — |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
@@ -2064,7 +2064,7 @@ that needs reading rather than skimming.
 
 ## 49 + 50 — two required fields get a reader, and the parity ledger becomes a test
 
-**Commit:** `PENDING` · **Addresses:** P19, P21, P30 · **Files:** `schema/core.md`,
+**Commit:** `cfc8796` · **Addresses:** P19, P21, P30 · **Files:** `schema/core.md`,
 `schema/parity.md` (new), `skills/breakdown-analyze-prd/SKILL.md`, `skills/breakdown/SKILL.md`,
 `skills/breakdown/scripts/check-scope.py` (new), `tests/mutants/scope_and_parity.py`,
 `tests/test_toolchain.py`
