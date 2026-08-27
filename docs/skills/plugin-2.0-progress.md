@@ -1806,6 +1806,62 @@ The harness reported it as an orphan — *a check failed that no mutant expected
 exactly the ambiguity that warning exists to surface, and the reason one round earlier in this
 build reported 6/13 when the truth was 11/13. Here it is a second check firing rather than a
 MISSED being misattributed, and the spec file says so rather than silencing it.
+
+---
+
+## Phase 5 — Consumers, and the parity pass.
+
+Plan order: `16` · `17` · `3` · `6` · `7` · `8` · `40` · `58` · `13` · `14` · `15` · `19` · `20` ·
+`30` · `32` · `46` · `47` · `48` · `49` · `50` · `38` · `24` · `10` · `59`, on branch
+`phase-5-consumers-and-parity`.
+
+**Twenty-four items, and the plan calls them "small, once the schema carries the data."** That is
+true of most of them and false of two, which is the reason this section exists before any of them
+have landed: **Phase 5 is the first phase that will not fit in one sitting**, and deciding where it
+breaks is cheaper done once, here, than rediscovered four times.
+
+The measurement, rather than the impression. Phase 5 carries ~560 lines of specification against
+Phase 4's ~595 — comparable volume, spread across 24 items instead of 15. But Phase 4 edited
+`schema/` (~1,200 lines) and shipped in six commits; Phase 5 edits the **consumers** — five
+breakdown skills (~2,000 lines), five execute skills (~2,000), the CRD path (~1,300), and a
+regression suite that is already 4,813 lines and 86 checks. Two items are not small at any reading:
+**40** is eight tests, a contract-grep across 93 edges and a second mode on item 8's agent, and
+**59** needs the toolchain driven headlessly under `bypassPermissions`.
+
+### The split, and why it falls where it does
+
+**This is a sequencing decision, not a schema one, which is why it is recorded here.** The plan
+stays a specification; it already fixes the *constraints* inside this phase — 30 after 16, 59 once
+17 and 30 land, 46 and 47 immediately after 33 and 34. Those constraints admit exactly one
+grouping that keeps each commit a single concern:
+
+| Group | Items | Why these are one commit |
+|---|---|---|
+| **5a — CRD parity** | 46 · 47 · 48 · 49 · 50 | The plan says 46 and 47 land *"immediately after 33 and 34"* — which landed in `4f81d54`. **They are already lagging**, and lagging is precisely how two vocabularies acquire consumers. 48 and 49 are the same reach-across in the other direction; 50 is the check that stops the distance reopening. |
+| **5b — the carry** | 16 · 17 · 30 · 59 | The boundary chain, in dependency order. 30 has nothing to check until `<source-feature>` exists; 59 is the first test that crosses the boundary 16, 17 and 30 specify. Splitting it means writing 59 twice. |
+| **5c — the filters** | 13 · 14 · 15 · 19 · 20 | Five refusals and two flags, all reading tags that now exist, spread across `/breakdown` and `/execute`. Genuinely small — and they are one commit because they are one behaviour: *the toolchain declines work it was told not to do, and says which.* |
+| **5d — the definition bar** | 58 · 3 · 6 · 7 · 40 · 8 | 58 is the table of assertions, 6 is its caller, 3 feeds it, 40 supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the same checker four times — the argument Phase 3 made about `architecture.md`, arriving again. |
+| **5e — the residue** | 10 · 24 · 32 · 38 | Independent of each other and of the above. Last because nothing waits on them. |
+
+**5a and 5c first, in that order.** Both are edits to existing consumers with checkable
+postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
+the two expensive ones — a full sitting each, which is what they need rather than what is left over.
+
+**What this split does not claim.** It does not reorder the phase: every constraint the plan states
+between items is preserved, and the groups run in an order that satisfies all of them. It prices
+nothing (A9 still holds), and 5d's boundary in particular is the one most likely to move, because
+item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus.
+
+| Item | Status | Commit |
+|---|---|---|
+| **46 + 47 + 48 + 49 + 50** — the parity pass | *In progress* | — |
+| **13 + 14 + 15 + 19 + 20** — the filters | *Not started* | — |
+| **16 + 17 + 30 + 59** — the carry | *Not started* | — |
+| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | *Not started* | — |
+| **10 + 24 + 32 + 38** — the residue | *Not started* | — |
+
+**Suite at branch point:** 86 checks, `failed 0`, `known 0`.
+
 ---
 
 ## What the machine sleeping taught, which was not about sleep

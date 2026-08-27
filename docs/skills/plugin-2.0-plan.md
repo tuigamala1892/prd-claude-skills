@@ -1,7 +1,9 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** In implementation as of 2026-08-25; Phases 1–3 merged, Phase 4 in progress on branch
-`phase-4-schema-core`. This document
+**Status:** In implementation as of 2026-08-25; Phases 1–4 complete, Phase 5 in progress on branch
+`phase-5-consumers-and-parity` — the only phase large enough to need splitting, and **the split into
+five commit groups is in the ledger**, being a sequencing decision rather than a change to what is
+specified here. This document
 stays a **specification**; what has actually landed, and where the implementation departed from
 what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
 is implemented except what that file lists.
@@ -2936,6 +2938,12 @@ Small, once the schema carries the data. **30 immediately after 16** — it has 
 crosses the boundary those items specify. **46 and 47 immediately after 33 and 34**: they are the
 same change reaching the CRD path, and letting them lag is exactly how two vocabularies acquire
 consumers.
+
+**Twenty-four items is more than one sitting**, and the constraints above admit one grouping that
+keeps each commit to a single concern. It is recorded in
+[`plugin-2.0-progress.md`](plugin-2.0-progress.md#phase-5--consumers-and-the-parity-pass), not here:
+the order *within* this phase is a claim about dependencies and belongs to the specification, while
+where the commits fall is a claim about a context window and does not.
 
 ### Phase 6 — Hold it in place.
 
