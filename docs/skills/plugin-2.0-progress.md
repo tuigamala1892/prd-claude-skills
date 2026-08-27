@@ -996,6 +996,26 @@ because renaming three vocabularies is cheap before they have consumers. **41 th
 migration is written *before* the items that rewrite artefacts, not after, because none of them
 can land until the transformation is specified and checkable.
 
+**Phase 4 is complete.** Fifteen items in six commits, **66 → 86** regression checks, `known 0`,
+and the artefact schema has moved through four versions with a migration that has been run over
+every one of them. **Not pushed to `origin`.**
+
+The phase's shape, in one line each:
+
+| | What it established |
+|---|---|
+| **44** | one definition of every shared element, and templates out of the command files |
+| **45** | three renames, and the word the fourth keeps |
+| **41** | the migration, its three consumers, and the marker that turned out to be the shape |
+| **33 + 34** | the criterion becomes a requirement, and the first judgement boundary |
+| **29 · 27 · 35 · 1 · 2 · 5** | the rest of the feature template, as one schema version |
+| **4 · 11 · 12 · 36** | conventions that refuse, a list that derives itself, a record with a reader |
+
+**Four schema versions, four fixtures, three migration steps** — one fully mechanical and two
+mixed. `SCHEMAS.json` declares which is which and what each mixed step's *judgement surface* is,
+so the golden comparison asserts exactly what the script owns and nothing about what it is
+forbidden to do.
+
 | Item | Status | Commit |
 |---|---|---|
 | **44** — one schema core, cited by both paths | **Landed** 2026-08-27 | `9fc531c` |
@@ -1003,7 +1023,7 @@ can land until the transformation is specified and checkable.
 | **41** — the migration, and its golden comparison | **Landed** 2026-08-27 | `28b85b9` |
 | **33 + 34** — EARS criteria, and criterion priority | **Landed** 2026-08-27 | `4f81d54` |
 | **29 + 27 + 35 + 1 + 2 + 5** — the rest of the template | **Landed** 2026-08-27 | `15bb097` |
-| **4 + 11 + 12 + 36** — conventions, derived list, dual read, record | **Landed** 2026-08-27 | `_` |
+| **4 + 11 + 12 + 36** — conventions, derived list, dual read, record | **Landed** 2026-08-27 | `3410f62` |
 
 ---
 
