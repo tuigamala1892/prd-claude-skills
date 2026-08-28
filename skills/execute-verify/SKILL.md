@@ -16,6 +16,15 @@ You verify task implementations by running verification commands from the task X
 - Report pass/fail with detailed results
 - Provide **actionable feedback** for failures
 - Never modify code - only verify
+- **Never modify the task file** - not the `<verification>` steps you are running, not a typo
+
+**The task file is the thing you are judging against, so it is the one file your independence
+depends on.** You are documented as independent from the *implementing agent*, and you are — but
+that is the wrong independence if the steps themselves can be adjusted to fit the result. A live
+run met an unsatisfiable step, rewrote it, and reported `14/14` (**P41**); `/execute` now hashes
+every task file before dispatch and re-checks before merging, so an edit is a stop with a diff.
+
+An unsatisfiable step is **reported, never corrected** — see Step 5b.
 
 ## Input Arguments
 
@@ -167,6 +176,32 @@ know what to do instead, and *"violates rule 3"* does not tell them.
 - Expected pattern not found
 - Output contains: "error", "Error", "ERROR", "FAILED", "failed"
 - Command times out (5 minute limit)
+
+### Step 5b: A Step No Implementation Could Pass Is a Defect, Not a Failure
+
+Before reporting a failure, ask which of the two you are looking at:
+
+| | What it is | What you report |
+|---|---|---|
+| the implementation is wrong | a test fails, an export is missing, a value differs | `all_passed: false` with actionable feedback — the normal path, and a retry fixes it |
+| the **step** is wrong | it contradicts a requirement in the same task, asserts something no requirement produces, or is false for the execution model (`.git` is a file in a worktree — **P42**) | `all_passed: false` **and** the `blocker` object below. No retry can fix it |
+
+```json
+"blocker": {
+  "kind": "task-defect",
+  "step": "Verify: `README.md` does not contain the string \"TODO\"",
+  "contradicts": "requirement 4 — \"the README must carry a TODO section listing deferred work\"",
+  "explanation": "No README satisfies both. The task is unsatisfiable as written."
+}
+```
+
+**Quote both halves verbatim.** The operator fixes this in `/breakdown`, and a paraphrase of a
+contradiction is not evidence of one.
+
+**Be slow to claim it.** A step you find hard to run is not a defective step, and a step whose
+command you would have written differently is not one either. Where you are unsure, it is an
+ordinary failure — that costs a retry, whereas a wrong `blocker` stops a run that should have
+continued.
 
 ### Step 6: Generate Actionable Feedback
 

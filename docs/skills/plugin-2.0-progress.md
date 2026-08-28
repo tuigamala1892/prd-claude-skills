@@ -3155,10 +3155,10 @@ be measured by running it.
 |---|---|---|
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
-| **63** — a task file is not editable by the run it judges | *Not started* | — |
+| **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `PENDING63` |
 | **65** — a task may name every feature it descends from | *Not started* | — |
 
-**Suite:** 112 checks at branch point → **116**. `failed 0`, `known 0`.
+**Suite:** 112 checks at branch point → **119**. `failed 0`, `known 0`.
 
 ---
 
@@ -3378,6 +3378,111 @@ made false without being edited. Four break the facts (the section renamed, `.gi
 directory, the branch fact deleted, siblings declared visible); six break the preference at both
 ends — where the step is written and where it is judged, since a rule stated in two places needs
 two mutants or it has one check and a decoy; and the eleventh edits neither document.
+
+## 63 — a task file is not editable by the run it judges
+
+**Commit:** `PENDING63` · **Addresses:** P41 · **Files:**
+`skills/execute/scripts/task-integrity.py` (new), `skills/execute/SKILL.md`,
+`skills/execute-layer/SKILL.md`, `skills/execute-batch/SKILL.md`,
+`skills/execute-verify/SKILL.md`, `agents/task-implementer.md`,
+`tests/mutants/task-integrity.py` (new), `tests/test_toolchain.py`
+
+### The rule, and the three parts the plan asked for
+
+**An implementer and an orchestrator may not modify a task file.** One sentence, and the
+interesting half is what to do instead — the live run had that right in every respect except
+where it wrote it down. It diagnosed an unsatisfiable `<verification>` step correctly and then
+repaired it, when the same diagnosis reported would have fixed the task for every future run.
+
+**A guard, not a paragraph.** `task-integrity.py record` snapshots every task file before
+anything is dispatched; `verify` re-hashes and prints a unified diff of what changed. Exit 0
+unchanged, 1 edited, **2 nothing recorded** — a third code because *"nothing to compare against"*
+must never be reported as *"unchanged"*, which is the same false green one level up.
+`/execute-layer` runs `verify` before the merge queue, so an edit stops the run **before** work
+is merged against a rewritten criterion, and `/execute` runs it again before it reports.
+
+**An escalation path**, which is what makes the guard bearable: `status: "blocked"` with a
+`blocker` object quoting the step and what it contradicts, from the implementer or the verifier;
+`execute-batch` neither retries it nor spends an attempt on it; `execute-layer` and `/execute`
+carry it as `task_defect`, whose report names the task, the contradiction and `/breakdown` as the
+place to fix it. A rule that leaves the operator stuck is a rule that gets removed.
+
+**The record.** An edit appends to `.execute/{slug}/task-edits.jsonl` with both hashes and a path
+to the diff, beside `ledger.jsonl` and under the same self-ignoring `.gitignore` — so a run's
+edits share a fate with the commits it produced.
+
+### Where the record must NOT go, and the check that holds it there
+
+**Not in `ledger.jsonl`.** It is the obvious place — one record of what a run did — and it is
+wrong: `ledger-status.sh` reads every line there as a task with a commit, and an entry without one
+reads as *a task whose commit has vanished*, which sets `gap=1` and truncates `verified_tasks`. A
+resume would then redo work that was done. A guard against a false green that manufactures a false
+red is not an improvement.
+
+The check asserts this by **running `ledger-status.sh` before and after an edit is recorded and
+comparing the JSON**, and the round includes the mutant that writes to `ledger.jsonl` instead. It
+is caught.
+
+### Two decisions worth writing down
+
+**The edited task is held back; its siblings still merge.** `should_stop` used to mean *merge
+what verified anyway*, and that rule stays for the tasks whose files were untouched — they were
+verified against their own snapshots and are exactly as sound as they were a minute ago. Only the
+edited task is unsound, because only its criteria moved. Dropping the batch would lose real work
+for someone else's defect.
+
+**Nothing restores the file.** Not the agent, not the layer, not the orchestrator. The diff is the
+only record of what happened, and rewriting the task back is one more edit by a run that has just
+been told it may not make them.
+
+### A defect found in `/execute` while wiring this, and left alone
+
+`/execute` Step 6 iterates a **hardcoded** layer list —
+`["0-setup", "1-foundation", "2-backend", "3-frontend", "4-integration"]` — and Critical Rule 1
+still reads *"Never skip layers: Execute in order (0→1→2→3→4)"*. Items 31 and 61 made the layer
+set derived, item 62 made the task schema admit any of them, and item 28 lets a project declare
+its own graph instantiated per service. A project whose layers are named anything else gets a run
+that iterates five names, finds no tasks under any of them, and reports a completed run of zero.
+
+This is P39's shape exactly — a consumer pinned to the five shipped names while the producer
+derives them — arriving in the file that consumes the derivation. **It is not item 63**, and
+fixing it here would be the fix-at-the-site-of-discovery habit this plan keeps naming. Recorded
+as **P44** for the plan to place.
+
+### The round found two of my own checks doing nothing, and it is the same defect twice
+
+**13 of 15 on the first pass, and neither survivor was a mutant that should have lived.** Both
+checks asserted a string against a whole file, and both strings existed somewhere else in it:
+
+| The check said | What it actually matched |
+|---|---|
+| `"task_edited" in text` | the stop-kind table row and a cross-reference in Step 9 — so deleting the **report section** left it passing |
+| `re.search("(do not\|never).{0,60}(retry\|increment)", whole_file)` | the usage-limit step's *"Do not increment the task's attempt count"*, four sections away |
+
+**This is the third time this exact shape has been caught by a round in this build**, and the
+second time I have written it after documenting it — item 61's survivor was an `or` across two
+locations, and Phase 2's rule already says *scope to the region that owns the claim*. Writing the
+rule down does not stop you writing the bug; the round does.
+
+Both are now region-scoped: the stop kinds are read out of Step 8's table **and** each must have
+its own `#### stop_reason_kind` section containing a `STOPPED:` report, and the retry ban is read
+from `### Step 7b` alone. The round gained two mutants that break the other half of each — the
+table row, and the step itself — because a check that only forbids a bad state passes on a file
+that has lost the good state too.
+
+### Verification
+
+`python tests/test_toolchain.py` — **116 → 119**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/task-integrity.py` — **17 of 17 caught**, after 13 of 15 on the first pass.
+
+Seventeen mutants for three checks, and the shape of the round follows the shape of what is
+guarded. Six break the script and are caught by running it — the stop stops being a stop, the
+diff becomes a summary, the record is never written, the record goes into the ledger, an appeared
+task stops counting. Five break the wiring, including the one that is not a deletion: the layer
+re-**records** instead of verifying, which is the plausible wrong version of this whole feature —
+it blesses the edit and reports success. Six break the escalation path, at each of the four files
+that carry it.
 
 ## What the machine sleeping taught, which was not about sleep
 

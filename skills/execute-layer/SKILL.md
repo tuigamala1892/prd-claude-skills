@@ -157,17 +157,47 @@ Parse batch result:
 - Report to the orchestrator immediately, passing `stop_reason_kind` and `stop_reason`
   through **unchanged**
 
-`stop_reason_kind` distinguishes two outcomes that must not be summarised into one:
+`stop_reason_kind` distinguishes four outcomes that must not be summarised into one:
 
 | Kind | What happened | What the operator must do |
 |------|---------------|---------------------------|
 | `abandoned` | A task failed 5 times | Read the errors; fix something |
 | `usage_limit` | The subscription window closed mid-run | Nothing, until it resets |
+| `task_defect` | A task cannot be satisfied as written | Fix the task with `/breakdown` |
+| `task_edited` | A task file changed after dispatch | Read the diff; decide what stands |
 
 Do not paraphrase a `usage_limit` stop into "task failed". Nothing failed — the run ran out of
-allowance, and the only correct next action is to resume later.
+allowance, and the only correct next action is to resume later. Do not paraphrase a `task_defect`
+into a failed task either: it was never implementable as written, and the agent that reported it
+rather than editing the task did the right thing.
 
 #### 5d. Merge What the Batch Verified
+
+**First, ask whether the task files are still the ones the batch was given.** This is the last
+moment before work is merged against them:
+
+```bash
+python {skill_dir}/../execute/scripts/task-integrity.py verify {tasks_path} {project_path} {prd_slug}
+```
+
+`{skill_dir}` is the base directory given at the top of this skill — the one ending in
+`skills/execute-layer`. The script belongs to `/execute`, which recorded the snapshot in its
+Step 3b; this is the same check run earlier, where it can still prevent a merge.
+
+| Exit | Meaning | What you do |
+|---|---|---|
+| 0 | every task file is byte-identical to the snapshot | merge, exactly as below |
+| 1 | `EDITED` — a task file changed, appeared or vanished | **merge every task whose file did not change, and no others.** Then return `should_stop: true`, `stop_reason_kind: "task_edited"`, and the script's own output as `stop_reason` |
+| 2 | `NO RECORD` — `/execute` Step 3b did not run | report it and stop; an unmade check is not a passing one |
+
+**Why the edited task is held back and the others are not.** A task verified against criteria the
+run rewrote is not verified — that is P41, and merging it launders the edit into the ledger as a
+commit. Its siblings were verified against their own untouched files and are exactly as sound as
+they were a minute ago; dropping them would lose real work for someone else's defect, which is
+the failure 5d exists to prevent.
+
+Do not restore the file. The diff is the only record of what happened, and rewriting the task
+back is one more edit by a run that has already been told it may not make them.
 
 The merge set is **5c's `verified` array**, in the order the batch returned it. That array is
 the only thing that knows what this batch just proved:
@@ -246,6 +276,44 @@ Output structured result for orchestrator:
   "stop_reason": "Task L2-006 abandoned after 5 attempts"
 }
 ```
+
+**If a task cannot be satisfied as written:**
+
+```json
+{
+  "layer": "0-setup",
+  "status": "stopped",
+  "tasks_total": 4,
+  "tasks_completed": 2,
+  "tasks_failed": 0,
+  "tasks_abandoned": 0,
+  "batches_executed": 1,
+  "should_stop": true,
+  "stop_reason_kind": "task_defect",
+  "stop_reason": "L0-003: verification step `Verify: README.md does not contain \"TODO\"` contradicts requirement 4, which mandates a TODO section",
+  "defect_task": "L0-003"
+}
+```
+
+**If a task file changed after dispatch:**
+
+```json
+{
+  "layer": "0-setup",
+  "status": "stopped",
+  "tasks_total": 4,
+  "tasks_completed": 2,
+  "tasks_failed": 0,
+  "tasks_abandoned": 0,
+  "batches_executed": 1,
+  "should_stop": true,
+  "stop_reason_kind": "task_edited",
+  "stop_reason": "EDITED 1 task file(s) changed since dispatch:\n  modified L0-003  0-setup/L0-003-readme.xml\nrecorded in .execute/demo/task-edits.jsonl",
+  "edited_tasks": ["L0-003"]
+}
+```
+
+Note `tasks_completed: 2` in both — the tasks that merged before the stop still merged.
 
 **If the run met a usage limit:**
 

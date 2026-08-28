@@ -7413,6 +7413,287 @@ def _():
         "the one pattern a live run actually produced is no longer listed")
 
 
+@check("a task file edited mid-run is a stop with a diff -- by running it", finding="P41")
+def _():
+    """Item 63, the guard.
+
+    The third live crossing met a Layer 0 task whose `<verification>` block was unsatisfiable, and
+    the run edited the task file and carried on to `14/14`. Nothing forbade it; nothing recorded
+    it. Prose here is the guard a model can reason past -- item 4.13 -- so this is a script with
+    an exit code, and this check RUNS it: record, edit, verify, and read what it wrote.
+
+    The last assertion is the one to keep. The edit record must not disturb `ledger-status.sh`,
+    because that is what a resume is derived from: an entry without a commit would read there as a
+    task whose commit had vanished, and the guard against a false green would have manufactured a
+    false red.
+    """
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "task-integrity.py")
+    assert os.path.isfile(script), "skills/execute/scripts/task-integrity.py is missing"
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    root = tempfile.mkdtemp(prefix="task-integrity-check-")
+    try:
+        tasks = os.path.join(root, "tasks", "0-setup")
+        app = os.path.join(root, "app")
+        os.makedirs(tasks)
+        os.makedirs(app)
+        tp, one, two = os.path.join(root, "tasks"), None, None
+
+        def task(tid, step):
+            path = os.path.join(tasks, f"{tid}-thing.xml")
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"<task><meta><id>{tid}</id></meta>"
+                        f"<verification><step>{step}</step></verification></task>\n")
+            return path
+
+        one = task("L0-001", "Run: pytest -q")
+        two = task("L0-002", "Run: ruff check .")
+
+        def run(*args):
+            p = subprocess.run([sys.executable, script, *args], capture_output=True,
+                               text=True, timeout=120)
+            return p.returncode, p.stdout or "", p.stderr or ""
+
+        # Nothing recorded is NOT `unchanged`, and must never be reported as one.
+        rc, out, err = run("verify", tp, app, "demo")
+        assert rc == 2, f"verify with no record exited {rc}, not 2:\n{out}{err}"
+        assert "UNCHANGED" not in out.upper(), (
+            "verify with nothing recorded reported the task files unchanged. An unmade check "
+            "reported as a passing one is the false green this whole guard exists to prevent")
+
+        rc, out, _ = run("record", tp, app, "demo")
+        assert rc == 0 and "RECORDED 2" in out, f"record exited {rc}: {out}"
+
+        rc, out, _ = run("verify", tp, app, "demo")
+        assert rc == 0 and "UNCHANGED 2" in out, f"clean verify exited {rc}: {out}"
+
+        # Now the P41 edit: one verification step rewritten to something satisfiable.
+        with open(one, "w", encoding="utf-8", newline="\n") as f:
+            f.write("<task><meta><id>L0-001</id></meta>"
+                    "<verification><step>Run: pytest -q -k not_the_broken_one</step>"
+                    "</verification></task>\n")
+        rc, out, err = run("verify", tp, app, "demo")
+        assert rc == 1, f"an edited task file exited {rc}, not 1 -- the guard did not fire"
+        assert "not_the_broken_one" in out and out.lstrip().startswith("---"), (
+            "the edit is reported without a diff of what changed. A summary of an edit to an "
+            f"acceptance criterion is not the evidence:\n{out[:400]}")
+        assert "L0-001" in err, f"the stop does not name the task:\n{err[:300]}"
+
+        # The record: an edit leaves a trace, which is the third part of item 63.
+        edits = os.path.join(app, ".execute", "demo", "task-edits.jsonl")
+        assert os.path.isfile(edits), (
+            "nothing recorded the edit. The ledger indexes commits, so without this the next "
+            "14/14 is unauditable in exactly the way P41's was")
+        entry = json.loads(open(edits, encoding="utf-8").read().splitlines()[0])
+        for field in ("task_id", "kind", "sha_before", "sha_after", "diff"):
+            assert entry.get(field), f"the edit record has no {field}: {entry}"
+        assert entry["sha_before"] != entry["sha_after"], "the record's two hashes are equal"
+        assert os.path.isfile(os.path.join(app, ".execute", "demo", entry["diff"])), (
+            f"the record points at a diff that was never written: {entry['diff']}")
+        assert open(os.path.join(app, ".execute", ".gitignore"),
+                    encoding="utf-8").read().strip() == "*", (
+            "the record is not self-ignoring, so a run's own bookkeeping shows up in the "
+            "project's `git status` -- record-task.sh writes this marker for the same reason")
+
+        # A removed task and an appeared task are both edits.
+        os.remove(two)
+        task("L0-003", "Run: true")
+        rc, _out, err = run("verify", tp, app, "demo")
+        assert rc == 1 and "removed" in err and "added" in err, (
+            f"a removed and an added task file were not both reported:\n{err[:400]}")
+
+        # And none of it may disturb the ledger a resume is derived from.
+        if shutil.which("git") and shutil.which("sh"):
+            def g(*args):
+                return subprocess.run(["git", "-C", app, *args], capture_output=True,
+                                      text=True, timeout=60)
+            for args in (["init", "-q", "-b", "trunk", "."],
+                         ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+                g(*args)
+            open(os.path.join(app, "README.md"), "w").write("x")
+            g("add", "-A")
+            g("commit", "-qm", "init")
+            sha = g("rev-parse", "HEAD").stdout.strip()
+            rec = os.path.join(SKILLS, "execute-merge", "scripts", "record-task.sh")
+            subprocess.run(["sh", rec, app, "demo", "L0-001", sha], capture_output=True,
+                           text=True, timeout=60)
+            status = os.path.join(SKILLS, "execute", "scripts", "ledger-status.sh")
+            before = subprocess.run(["sh", status, app, "demo", "3"], capture_output=True,
+                                    text=True, timeout=60).stdout
+            run("verify", tp, app, "demo")           # writes more edit records
+            after = subprocess.run(["sh", status, app, "demo", "3"], capture_output=True,
+                                   text=True, timeout=60).stdout
+            assert json.loads(before) == json.loads(after), (
+                "recording a task edit changed what ledger-status.sh reports. The edit record "
+                "must live beside the ledger and not in it: an entry with no commit reads there "
+                f"as a task whose commit has vanished.\nbefore {before}\nafter  {after}")
+    finally:
+        rmtree(root)
+
+
+@check("the guard runs before dispatch and again before anything merges", finding="P41")
+def _():
+    """Item 63, the wiring.
+
+    A guard nothing calls is a script, not a guard -- and both stamps in the manifest were
+    written for four months before anything read either of them (P28). So this asserts the calls
+    themselves, in the two skills that must make them, and the mode each one passes.
+    """
+    def invocations(path):
+        text = open(path, encoding="utf-8").read()
+        return [re.sub(r"\s+", " ", m.group(0)).strip()
+                for m in re.finditer(r"task-integrity\.py[^\n`]*", text)]
+
+    ex = os.path.join(SKILLS, "execute", "SKILL.md")
+    text = open(ex, encoding="utf-8").read()
+    calls = invocations(ex)
+    modes = [c.split()[1] for c in calls if len(c.split()) > 1]
+    assert "record" in modes, (
+        "/execute never records the task files, so there is nothing to compare them against "
+        "and the guard cannot fire at all")
+    assert "verify" in modes, "/execute never re-checks the task files before it reports"
+    for call in calls:
+        if call.split()[1:2] in (["record"], ["verify"]):
+            assert "{tasks_path}" in call and "{project_path}" in call and "{prd_slug}" in call, (
+                f"an invocation cannot address the run it belongs to: {call}")
+
+    # Order: the record is taken before any layer is dispatched, and re-checked after.
+    rec_at = text.index("task-integrity.py record")
+    dispatch_at = text.index("### Step 6: Execute Layers")
+    ver_at = text.rindex("task-integrity.py verify")
+    assert rec_at < dispatch_at < ver_at, (
+        "the snapshot is not taken before dispatch and re-checked after it; a hash taken after "
+        "the run cannot say what the run was given")
+
+    # And the two outcomes are reported as their own stop kinds, not folded into `abandoned`.
+    # Named in the table AND given a report of their own, each assertion scoped to its own
+    # region: `task_edited` appears in three places in this file, so `kind in text` was an `or`
+    # across locations and a mutant that removed the report section walked through it.
+    step8 = text.split("### Step 8: Handle Stop Condition", 1)
+    assert len(step8) == 2, "/execute no longer handles stop conditions at all"
+    step8 = step8[1].split("### Step 9", 1)[0]
+    named = {ln.strip().strip("|").split("|")[0].strip().strip("`")
+             for ln in step8.splitlines() if ln.strip().startswith("| `")}
+    for kind in ("abandoned", "usage_limit", "task_defect", "task_edited"):
+        assert kind in named, (
+            f"the stop-kind table does not name `{kind}`: {sorted(named)}. Four outcomes ask "
+            f"four different things of the operator, and a table missing one folds it into "
+            f"`abandoned`, which sends them to debug code that never failed")
+    for kind in ("task_defect", "task_edited"):
+        section = re.search(r'#### `stop_reason_kind: "%s"`(.*?)(?=\n#### |\Z)' % kind,
+                            step8, re.S)
+        assert section, (
+            f"`{kind}` is named in the table and never reported. The table says the kinds "
+            f"differ; only the report shows the operator what to do about this one")
+        assert "STOPPED:" in section.group(1), (
+            f"`{kind}`'s section shows no report block, so what the operator sees is left to "
+            f"the model that stopped -- which is where P41's run wrote its own account")
+    assert re.search(r"exit code 2|Exit 2|`NO RECORD`", text), (
+        "/execute does not say what to do when nothing was recorded -- the case where the check "
+        "silently becomes a claim nobody made")
+
+    layer = os.path.join(SKILLS, "execute-layer", "SKILL.md")
+    ltext = open(layer, encoding="utf-8").read()
+    lcalls = invocations(layer)
+    assert any(c.split()[1:2] == ["verify"] for c in lcalls), (
+        "execute-layer never re-checks the task files, so an edit is caught only after every "
+        "batch of the run has merged against it")
+    merge_at = ltext.index("/execute-merge --task-id")
+    check_at = ltext.index("task-integrity.py verify")
+    assert check_at < merge_at, (
+        "the task files are checked after the merge invocation rather than before it. Merging "
+        "work verified against a rewritten task launders the edit into the ledger as a commit")
+
+
+@check("an unsatisfiable task is reported, and reporting it has somewhere to go", finding="P41")
+def _():
+    """Item 63, the escalation path -- and the half that makes the guard bearable.
+
+    A rule that leaves the operator stuck is a rule that gets removed, so the ban on editing a
+    task file is only half of this item. The other half is that `blocked` has a shape, survives
+    the batch without being retried, and reaches `/execute` as its own stop kind.
+
+    Asserted by PARSING the documented JSON rather than by looking for words about it.
+    """
+    def blocks(path):
+        text = open(path, encoding="utf-8").read()
+        out = []
+        for m in re.finditer(r"```json\n(.*?)```", text, re.S):
+            body = re.sub(r"^\s*RESULT:\s*", "", m.group(1))
+            try:
+                out.append(json.loads(body))
+            except ValueError:
+                pass
+        return out
+
+    agent = os.path.join(AGENTS, "task-implementer.md")
+    atext = open(agent, encoding="utf-8").read()
+    assert re.search(r"task file[^.]{0,80}read-only|not (modify|edit) the task file",
+                     prose(atext), re.I), (
+        "the implementer is not told the task file is read-only, which is the one sentence "
+        "item 63 is: an implementer and an orchestrator may not modify a task file")
+
+    blocked = [b for b in blocks(agent) if b.get("status") == "blocked"]
+    assert blocked, ("the implementer has no documented `blocked` result, so an agent that "
+                     "diagnoses an unsatisfiable task has nothing to return but a failure")
+    blocker = blocked[0].get("blocker") or {}
+    for field in ("kind", "step", "contradicts"):
+        assert blocker.get(field), (
+            f"the blocker carries no `{field}`: {blocker}. The operator fixes this in "
+            f"/breakdown, and both halves of the contradiction have to be quoted or they cannot")
+    assert blocked[0].get("commit_hash") is None, (
+        "a blocked task documents a commit; nothing was implemented, so there is nothing to merge")
+
+    ver = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"), encoding="utf-8").read()
+    assert re.search(r"never modify the task file|not modify the task file", ver, re.I), (
+        "the verifier may still edit the task file it is verifying against -- which is the "
+        "wrong independence exactly: independent of the implementer, not of the criteria")
+    assert re.search(r'"kind":\s*"task-defect"', ver), (
+        "the verifier has no way to report a step no implementation could pass, so its only "
+        "vocabulary for an unsatisfiable task is `failed`, which buys five retries of it")
+
+    btext = open(os.path.join(SKILLS, "execute-batch", "SKILL.md"), encoding="utf-8").read()
+    stops = [b for b in blocks(os.path.join(SKILLS, "execute-batch", "SKILL.md"))
+             if b.get("stop_reason_kind") == "task_defect"]
+    assert stops, "execute-batch never returns a `task_defect` stop, so a blocked task is lost"
+    assert stops[0].get("defect_task") and stops[0]["defect_task"] not in (
+        stops[0].get("failed", []) + stops[0].get("abandoned", [])), (
+        "the defective task is reported as failed or abandoned. It failed nothing and spent no "
+        "attempt; naming it either way sends the operator to debug the implementation")
+    # Scoped to the step that owns the claim. Searched across the whole file this passed on the
+    # usage-limit step's `Do not increment the task's attempt count`, four sections away -- the
+    # `or across locations` failure again, and the mutant that deleted the sentence survived.
+    step7b = btext.split("### Step 7b", 1)
+    assert len(step7b) == 2, (
+        "execute-batch has no step for a `blocked` result, so an unsatisfiable task rejoins the "
+        "retry queue as an ordinary failure")
+    step7b = prose(step7b[1].split("\n### ", 1)[0])
+    assert re.search(r"(do not|never)[^.]{0,80}(queue a retry|retry)", step7b, re.I), (
+        "a blocked task can still be retried. Five attempts against a task no implementation "
+        "can satisfy is five guaranteed failures and an `abandoned` report naming the wrong thing")
+    assert re.search(r"(do not|never)[^.]{0,80}increment", step7b, re.I), (
+        "a blocked task still spends an attempt, so a task nobody could implement burns the "
+        "budget a resume needs -- the same waste item 4.14 removed for the usage limit")
+
+    ltext = open(os.path.join(SKILLS, "execute-layer", "SKILL.md"), encoding="utf-8").read()
+    row = [ln for ln in ltext.splitlines() if ln.startswith("| `task_defect`")]
+    assert row, "execute-layer does not carry `task_defect` through to the orchestrator"
+    assert re.search(r"breakdown", row[0]), (
+        f"the layer does not say whose defect a `task_defect` is: {row[0].strip()}")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

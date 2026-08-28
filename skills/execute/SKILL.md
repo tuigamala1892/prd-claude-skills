@@ -144,6 +144,36 @@ rewording fixes a guard that can be reasoned with. An exit code cannot be reason
 Note the script never creates anything — in particular it will not `git init` a target that
 is not a repository. `/execute` does not create repositories.
 
+### Step 3b: Record the Task Files, Before Anything Is Dispatched
+
+**A task file is the acceptance criteria this run is judged against, and the run may not edit
+it.** Neither you nor any agent you dispatch may modify, add or remove a file under
+`{tasks_path}`. That is the rule; this is the guard that makes it more than a sentence:
+
+```bash
+python {skill_dir}/scripts/task-integrity.py record {tasks_path} {project_path} {prd_slug}
+```
+
+It snapshots every task file beside the ledger, in `{project_path}/.execute/{prd_slug}/`.
+`/execute-layer` re-checks after every batch, before merging, and Step 9 re-checks before this
+run reports anything at all.
+
+**Why an exit code and not a paragraph.** The third live crossing met a Layer 0 task whose
+`<verification>` block was unsatisfiable — one step asserted a substring absent that another
+requirement mandated present. Its diagnosis was right, its fix was reasonable, and it **edited
+the task file and carried on** to `14/14`. Nothing forbade it, and the ledger indexes commits, so
+nothing recorded it either (**P41**). The run reported what it had done, in detail and unprompted
+— which is the finding stated precisely: *honesty was the only thing standing between a rewritten
+acceptance criterion and a green result.*
+
+**What to do instead has a name and a stop kind**: `task_defect` in Step 8. An unsatisfiable
+verification step is a `/breakdown` defect, and this run ends naming the task and the
+contradiction rather than repairing it.
+
+`--reset` discards this record with the rest of `{project_path}/.execute/{prd_slug}/`, which is
+right: a fresh run re-records. A `--resume` re-records too, against the task files as they stand
+now — so an operator who fixed a task between runs is not fighting the previous run's snapshot.
+
 ### Step 4: Handle State
 
 **Always start by asking git what is already done**, before deciding anything:
@@ -266,8 +296,15 @@ Wait for layer completion and parse `LAYER_RESULT`.
 
 ### Step 8: Handle Stop Condition
 
-A layer returns `should_stop: true` for one of two reasons, and `stop_reason_kind` says which.
-**Report them differently**, because they ask different things of the operator.
+A layer returns `should_stop: true` for one of four reasons, and `stop_reason_kind` says
+which. **Report them differently**, because they ask different things of the operator:
+
+| Kind | What happened | Whose defect |
+|---|---|---|
+| `abandoned` | a task failed five times | the code, or the task |
+| `usage_limit` | the window closed mid-run | nobody's |
+| `task_defect` | a task cannot be satisfied as written | `/breakdown`'s |
+| `task_edited` | a task file changed after dispatch | **this run's** |
 
 In both cases: run `ledger-status.sh` first and take the completed count from it, then
 regenerate the state file with `write-state.py`. A stop is exactly when a hand-maintained
@@ -313,6 +350,56 @@ Rules for this message, all of them things that have gone wrong in reports befor
 - **`status` is `stopped`, never `completed`.** `write-state.py` will not write `completed`
   while tasks remain; do not contradict it in the prose above it.
 
+#### `stop_reason_kind: "task_defect"` — the task cannot be satisfied as written
+
+An agent met a `<verification>` step that contradicts the task's own requirements, or asserts
+something no requirement produces, and **stopped instead of repairing it**. That is the correct
+behaviour and the report should say so plainly, because the alternative is the one that produced
+P41.
+
+```
+STOPPED: L0-003 cannot be satisfied as written
+
+Step:        Verify: `README.md` does not contain the string "TODO"
+Contradicts: requirement 4 — "the README must carry a TODO section listing deferred work"
+Reported by: task-implementer (attempt 1 of 5; the attempt does not count)
+
+Completed: 6/18 tasks
+Nothing was edited. This is a /breakdown defect, not an implementation failure.
+
+Fix the task, then resume:
+  /breakdown {prd_path} --layer 0-setup     # regenerate, or edit the task file yourself
+  /execute {tasks_path} --resume
+```
+
+**Do not count it as a failed attempt, and do not call the task abandoned.** It failed no test;
+it was never implementable as specified. And do not offer to fix the task here — the operator
+editing a task file between runs is the supported path, this run doing it is the defect.
+
+#### `stop_reason_kind: "task_edited"` — a task file changed after dispatch
+
+The guard fired. `task-integrity.py` found a task file that is not the one this run was given,
+and the diff is in `{project_path}/.execute/{prd_slug}/task-edits.jsonl`.
+
+```
+STOPPED: task file L0-003 changed after dispatch
+
+  modified L0-003  0-setup/L0-003-readme.xml
+  diff: .execute/{prd_slug}/task-edits/L0-003-1.diff
+
+Completed: 6/18 tasks (merges of unedited tasks stand)
+NOT merged: L0-003
+
+Every result for an edited task is unsound: it was verified against criteria this run wrote.
+Restore the task file from /breakdown, or accept the edit deliberately by re-running
+/breakdown, then:
+  /execute {tasks_path} --resume
+```
+
+**Report the diff, do not summarise it.** A summary of an edit to an acceptance criterion is a
+second-hand account of the only evidence that matters. And do not restore the file yourself:
+that is one more edit by the run, and it destroys the diff.
+
 ### Step 9: Reconcile State Against Git, Then Report
 
 Before reporting anything, ask git what actually happened:
@@ -327,6 +414,19 @@ sh {skill_dir}/scripts/ledger-status.sh {project_path} {prd_slug} {total_tasks}
 ```json
 {"recorded":18,"verified":18,"missing":[],"first_unverified":null,"expected":18}
 ```
+
+Then ask whether the task files are still the ones you were given:
+
+```bash
+python {skill_dir}/scripts/task-integrity.py verify {tasks_path} {project_path} {prd_slug}
+```
+
+- **Exit 0** — stdout says how many were checked. Carry that line into the report.
+- **Exit 1** — report it as `task_edited` above, and **do not report the run as completed**,
+  whatever the ledger says. A task verified against criteria this run rewrote is not verified.
+- **Exit 2** — `NO RECORD`. Step 3b did not run, so nothing can be said either way. Say that,
+  rather than reporting task files unchanged: an unmade check reported as a passing one is the
+  false green this whole guard exists to prevent.
 
 Then regenerate the state file from the same evidence, so the file and your report cannot
 disagree:
@@ -375,16 +475,21 @@ Layers:
 
 Total: 44/44 tasks completed
 Verified: each task's own declared steps, in its worktree, before merge
+Task files: 44 unchanged since dispatch (sha256)
 Not run: the project's build or test suite -- that belongs to CI
 Duration: 2h 15m
 Retries: 3 (all succeeded)
 ```
 
-**Those two lines are not boilerplate and must not be dropped.** "44/44 completed" is a claim
+**Those three lines are not boilerplate and must not be dropped.** "44/44 completed" is a claim
 about merges, and every reader hears it as a claim about the build. The ledger records
 `verified: task-steps` for exactly this reason — the narrower true thing rather than the wider
 implied one. A task that merges green and breaks CI is otherwise indistinguishable from one that
 did not, and the report is where that difference matters most.
+
+The third line is the one P41 costs nothing to add. `44/44` is a claim about merges against
+criteria, and until the guard existed nothing said the criteria were the ones `/breakdown` wrote.
+Print the count `task-integrity.py` printed — not a claim of your own that they are unchanged.
 
 Running the project's pipeline stays out of scope: `/execute` has no business owning it. Not
 implying it ran is a different question, and this is the answer to it.
@@ -676,3 +781,5 @@ This skill runs in `context: fork`:
 4. **Preserve worktrees**: Never delete worktrees on failure
 5. **Sequential merges**: Merge one task at a time to avoid conflicts
 6. **Update state**: Write state after every significant event
+7. **Never edit a task file**: not you, not any agent you dispatch. An unsatisfiable task is
+   reported, never repaired — see Step 3b and Step 8's `task_defect`
