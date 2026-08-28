@@ -2948,7 +2948,7 @@ observed.
 
 | Item | Status | Commit |
 |---|---|---|
-| **22 + 23** — the artefact check, and the reader audit | **Landed** 2026-08-28 | `PENDING` |
+| **22 + 23** — the artefact check, and the reader audit | **Landed** 2026-08-28 | `56f4554` |
 
 **Suite:** 109 checks at branch point → **112**. `failed 0`, `known 0`.
 
@@ -2956,7 +2956,7 @@ observed.
 
 ## 22 + 23 — one shape check, one reader audit, and the audit found three
 
-**Commit:** `PENDING` · **Addresses:** P10, P4, P2 · **Files:** `schema/readers.md` (new),
+**Commit:** `56f4554` · **Addresses:** P10, P4, P2 · **Files:** `schema/readers.md` (new),
 `schema/scripts/check-artefacts.py` (new), `schema/scripts/check-readers.py` (new),
 `schema/checks.md`, `schema/core.md`, `commands/prd.md`, `skills/breakdown/SKILL.md`,
 `tests/mutants/hold-it-in-place.py` (new), `tests/test_toolchain.py`
