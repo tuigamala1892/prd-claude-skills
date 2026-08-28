@@ -3154,7 +3154,7 @@ be measured by running it.
 | Item | Status | Commit |
 |---|---|---|
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
-| **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `PENDING64` |
+| **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | *Not started* | — |
 | **65** — a task may name every feature it descends from | *Not started* | — |
 
@@ -3299,7 +3299,7 @@ it. The round was re-run in the background with room to finish.
 
 ## 64 — the generator is told where its commands run, and told to stop guessing
 
-**Commit:** `PENDING64` · **Addresses:** P42 · **Files:**
+**Commit:** `7709000` · **Addresses:** P42 · **Files:**
 `skills/breakdown-generate-tasks/SKILL.md`,
 `skills/breakdown/references/review-criteria.md`,
 `tests/mutants/generator-context.py` (new), `tests/test_toolchain.py`
