@@ -1849,6 +1849,23 @@ grouping that keeps each commit a single concern:
 
 **Three groups found a defect on their first real run** — 59 at the boundary, 40 in four of six `defined` fixture features, 38 in a feature carrying an open decision and tasks. That is the phase's most useful output, and none of the three was visible to a static reading of the same files.
 
+The phase's shape, in one line each:
+
+| | What it established |
+|---|---|
+| **46 · 47 · 48** | the CRD path takes the parity changes, as schema-5 with a migration |
+| **49 · 50** | two required fields get a reader, and parity becomes a table with probes |
+| **13 · 14 · 15** | the toolchain declines work it was told not to do, and names what it declined |
+| **16 · 17 · 30 · 19 · 20** | the pipeline stops discarding the document it came from |
+| **59** | the boundary is crossed for the first time, and the crossing found two defects |
+| **58 · 3 · 6 · 7 · 40 · 8** | one assertion, one owner — and `defined` acquires a bar it can fail |
+| **10 · 24 · 32 · 38** | three stamps, a summary and a switch that nothing had ever read |
+
+**Twenty-four items, seven commits, 86 → 109 regression checks, `known 0`**, and five mutation
+rounds across the phase — 17/17, 6/6, 18/18 and one re-run — every one with a green baseline and
+every file restored by hash. **Not pushed to `origin`**, which is now 13 commits behind `main`
+before this phase is merged at all.
+
 **5a and 5c first, in that order.** Both are edits to existing consumers with checkable
 postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
 the two expensive ones — a full sitting each, which is what they need rather than what is left over.
@@ -1857,6 +1874,12 @@ the two expensive ones — a full sitting each, which is what they need rather t
 between items is preserved, and the groups run in an order that satisfies all of them. It prices
 nothing (A9 still holds), and 5d's boundary in particular is the one most likely to move, because
 item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus.
+
+> **Read against it, and the prediction held.** Two of item 40's eight tests needed a different
+> mechanical half than the plan implies, one of its two gate conditions turned out to be a schema
+> change, and the boundary between its script and its agent is where both moved. The sentence
+> above is kept rather than corrected: a prediction that was right about *where* the uncertainty
+> lay is the evidence that the split was reasoned rather than guessed.
 
 | Item | Status | Commit |
 |---|---|---|
