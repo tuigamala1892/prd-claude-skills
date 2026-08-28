@@ -2950,7 +2950,31 @@ observed.
 |---|---|---|
 | **22 + 23** — the artefact check, and the reader audit | **Landed** 2026-08-28 | `56f4554` |
 
-**Suite:** 109 checks at branch point → **112**. `failed 0`, `known 0`.
+**Suite:** 109 checks at branch point → **112**. `failed 0`, `known 0`. **Not pushed to
+`origin`.**
+
+**Phase 6 is complete, and so is the plan.** Six phases, **60 items** (plus `23a`, Phase 1's
+split of item 23's first bullet), 62 commits over four days, and **39 → 112 regression checks**
+with `known 0` throughout.
+
+| Phase | Items | What it established |
+|---|---|---|
+| **1** | 8 | Fix what is broken today. No schema change |
+| **2** | 4 | Make the rest testable — a fixture per schema version, and size refused before a prompt is built |
+| **3** | 6 | The architecture artefact: five vendored opinions become a project's own file |
+| **4** | 15 | The schema core, its migration, and four schema versions |
+| **5** | 24 | Every consumer catches up, and the parity pass between the two paths |
+| **6** | 2 | Hold it in place: one shape check, one reader audit |
+
+**Four items found a defect the first time they were actually run** — 59 at the `/breakdown` →
+`/execute` boundary, 40 in four of six `defined` fixture features, 38 in a feature carrying an
+open decision and tasks, and 23 in three CRD elements with a producer and no consumer. **None was
+visible to a static reading of the same files**, which is the plan's own thesis surviving contact
+with its own corpus.
+
+**What is left is not plan items.** `SCHEMAS.json` records the schema-6 content work these runs
+turned up — five fixture files whose content predates the bars now applied to them — and
+`readers.md` carries three `open` rows. Both are written down, which is the whole point.
 
 ---
 
