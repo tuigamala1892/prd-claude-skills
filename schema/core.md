@@ -399,6 +399,7 @@ and when, in the body, and leave it in place.
 | [`migration.md`](migration.md) | every element it moves between versions |
 | [`decision-record.md`](decision-record.md) | identity — a record's `**Drives:**` resolves to a feature |
 | [`checks.md`](checks.md) | status, criteria, gaps — it names the script that decides each |
+| [`readers.md`](readers.md) | every element it defines, and whether anything reads it |
 | [`crd-format.md`](../skills/crd/references/crd-format.md) | identity, criteria, status, priority, scope, confidence |
 | [`project-format.md`](../skills/crd/references/project-format.md) | status |
 | [`task-format-spec.md`](../skills/breakdown/references/task-format-spec.md) | identity, criteria |
@@ -409,3 +410,9 @@ and when, in the body, and leave it in place.
 
 **Adding an element here means adding a row above.** An element in the core that nothing cites
 is not shared — it is stored.
+
+**And it means the element needs a reader.** [`readers.md`](readers.md) is where that is
+enforced: every element any schema document defines must be named by some script, skill, command
+or agent, or appear there with a verdict and a reason. `check-readers.py` runs it, and the rule
+is this plan's closing argument — *P2 and P4 were both invisible to a suite that reads the files,
+because the failure is an absent consumer rather than a wrong string.*

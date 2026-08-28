@@ -33,7 +33,12 @@ named must cite it by name. That is what stops this table describing a toolchain
 
 **A row with no owner is kept, not deleted.** An assertion this plan has specified and not yet
 built is a fact about the project; the defect this file exists to prevent is one nobody wrote
-down. Those rows are what Phase 6 is.
+down. Those rows were what Phase 6 was.
+
+**There are none left, and that is a state rather than an achievement to protect.** Item 22 was
+the last one; its row now names `check-artefacts.py`. The next assertion somebody specifies and
+does not build belongs here as an ownerless row on the day it is specified, not on the day
+somebody remembers it.
 
 ---
 
@@ -63,7 +68,8 @@ down. Those rows are what Phase 6 is.
 | A rename finishes across every reference, or rolls back | `rename-feature.py` | `commands/prd.md` | 42 |
 | An artefact moves exactly one schema version forward, or escalates | `migrate.py` | `skills/migrate/SKILL.md` · `agents/schema-migrator.md` · `schema/migration.md` | 41 |
 | `what-next.md` is derived from the PRD, never hand-maintained, and stamped once | `build-what-next.py` | `schema/prd-format.md` | 11, 12, 24 |
-| Every artefact matches the shared schema, and declares its `schema_version` | — | — | 22 |
+| Every artefact is the shape its schema version describes | `check-artefacts.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` | 22 |
+| Every element the schema defines has a reader, or a recorded reason it has none | `check-readers.py` | `tests/test_toolchain.py` | 23 |
 
 ---
 
@@ -80,6 +86,11 @@ that needs judgement, run by a script, produces a confident wrong answer.
 `record-task.sh`, `classify-failure.sh`, `write-state.py` and `ledger-status.sh` *do* things
 rather than decide whether something is true. Listing them here would turn a table of assertions
 into a table of scripts, and the distinction is the whole point of the file.
+
+**The elements themselves.** [`readers.md`](readers.md) is the companion to this table: this one
+says which script decides each assertion, that one says which element has a reader and which
+deliberately has none. A row here without a reader there is a check nobody consumes; an element
+there without a row here is an assertion nobody owns.
 
 **Anything a check emits as a report rather than an exit code.** `check-status.py`'s escalations,
 `check-definition.py`'s one-way edges and `check-rename.py`'s retired pointers are all findings

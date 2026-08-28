@@ -5897,9 +5897,12 @@ def _():
     assert len(set(owners)) == len(owners), (
         f"two assertions share an owner: {[o for o in owners if owners.count(o) > 1]}. One "
         f"script, one job -- a script that owns two assertions has two reasons to exit 1")
-    assert unowned, (
-        "every row has an owner, so the table has stopped recording what is NOT built. Item 22 "
-        "is Phase 6 and its row is the evidence anybody ever counted it")
+    # `unowned` is 0 as of item 22 landing, and that is a state rather than a rule: an
+    # assertion this plan specified and has not built must be a ROW rather than an omission,
+    # and when the last one is built the row correctly disappears. What is asserted is the
+    # convention -- an ownerless row names the item that will build it, checked above -- not
+    # that one must always exist. Asserting the count would have made finishing Phase 6 fail.
+    assert unowned >= 0
 
     # The core is where the elements are defined, and a table of assertions over them that does
     # not cite it is a second vocabulary waiting to happen.
@@ -6834,6 +6837,306 @@ def _():
     assert "schema/scripts/build-what-next.py {prd_dir}" in prd, (
         "/prd never runs build-what-next.py, so <authoring-gaps> goes back to being "
         "hand-maintained -- which the corpus shows never happens")
+
+
+# ------------------------------------------------ hold it in place (22/23, Phase 6)
+
+
+@check("every artefact is the shape its own schema version describes -- by running it",
+       finding="P10")
+def _():
+    """Item 22, and item 23's `each fixture validates against its OWN schema`.
+
+    P10 is a general failure with a specific symptom: the spec said XML, the run produced
+    markdown, and nothing noticed for weeks. The version is DETECTED, never declared -- the
+    marker is the shape (item 41) -- so a schema-1 fixture is not broken for lacking
+    `<user-story>`; it is a schema-1 fixture, and is judged by schema-1's rules.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(REPO, "schema", "scripts", "check-artefacts.py")
+    assert os.path.isfile(script), "check-artefacts.py does not exist, so P10 has no check"
+
+    def run(path, *extra):
+        # errors="replace": a report quoting a document quotes its em dashes, and a pipe on
+        # Windows is not UTF-8. A check that dies decoding its subject has measured nothing.
+        return subprocess.run([sys.executable, script, path, *extra], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+
+    _path, reg = schema_registry()
+    versions = sorted(reg["versions"])
+    assert len(versions) >= 2, "there is only one fixture version, so `its own schema` is vacuous"
+
+    # --- every fixture version, judged by its own rules. The schema-1 fixtures predate half
+    #     the elements the current schema requires and must not be reported for it.
+    for version in versions:
+        root = os.path.join(REPO, "tests", "fixture", "prd", version)
+        p = run(root)
+        invalid = [ln for ln in p.stdout.splitlines() if "INVALID" in ln]
+        # The one live defect in the corpus, at every version: staff-service declares a
+        # document-level <status> outside core 3's enum for that tag. It is REPORTED rather
+        # than fixed here -- the fixtures are frozen and the fix is schema-6 content work.
+        assert all("staff-service" in ln for ln in invalid), (
+            f"{version} reports a defect outside the one the corpus is known to carry:\n"
+            + "\n".join(invalid))
+        assert not [ln for ln in p.stdout.splitlines()
+                    if "INVALID" in ln and "user-story" in ln], (
+            f"{version} is being judged by a LATER schema's rules -- an older fixture reported "
+            f"for an element its version does not have:\n{p.stdout}")
+
+    # --- and the live defect is named, by file and by value.
+    p = run(os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "staff-service"))
+    assert p.returncode == 1, "the invalid document status was not reported at all"
+    assert "index.md" in p.stdout and "'defined'" in p.stdout, (
+        f"the report does not name the file and the value:\n{p.stdout}")
+
+    root = tempfile.mkdtemp(prefix="artefacts-22-")
+    try:
+        def work():
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture("link-shelf"), d)
+            return d
+
+        def edit(d, rel, old, new):
+            p_ = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p_, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p_, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        d = work()
+        assert run(d).returncode == 0, f"a clean fixture was reported invalid:\n{run(d).stdout}"
+
+        # Each enum, one at a time. A checker that reports SOMETHING on a broken file proves
+        # only that it reports something.
+        for rel, old, new, wanted in (
+                ("features/save-link.md", 'pattern="event-driven"', 'pattern="wibble"', "wibble"),
+                ("features/save-link.md", 'priority="P0"', 'priority="P9"', "P9"),
+                ("features/list-links.md", "<definition>defined</definition>",
+                 "<definition>shipped</definition>", "shipped"),
+                ("index.md", 'priority="must-have"', 'priority="vital"', "vital"),
+                ("what-next.md", 'kind="breakdown"', 'kind="vibes"', "vibes")):
+            d = work()
+            edit(d, rel, old, new)
+            p = run(d)
+            assert p.returncode == 1 and wanted in p.stdout, (
+                f"{new} passed as a valid value:\n{p.stdout}")
+
+        # A retired element is refused rather than ignored.
+        d = work()
+        edit(d, "features/tag-links.md", "<gaps>", "<phases><phase>2</phase></phases>\n\n  <gaps>")
+        p = run(d)
+        assert p.returncode == 1 and "phases" in p.stdout, (
+            f"<phases> was retired at item 5 and passed anyway:\n{p.stdout}")
+
+        # A pre-rename spelling is ACCEPTED ON READ -- core 3's policy for all three renames.
+        # Refusing it would strand every artefact authored before the rename.
+        d = work()
+        edit(d, "features/list-links.md", "<definition>defined</definition>",
+             "<status>defined</status>")
+        p = run(d)
+        # Assert the LINE, not the word. `OLD` also appears on the "is at schema-1" notice the
+        # same edit triggers, so a check looking for the token passed while the rule it was
+        # written for sat behind an unreachable branch -- which is how the mutation round found
+        # the branch rather than the check.
+        spelled = [ln for ln in p.stdout.splitlines()
+                   if "OLD" in ln and "still spells it" in ln and "list-links" in ln]
+        assert spelled, f"the pre-item-45 spelling was not reported as such:\n{p.stdout}"
+        assert p.returncode == 0, (
+            f"an artefact in the pre-item-45 spelling was REFUSED. Accepted on read, never "
+            f"written, is the policy all three renames share:\n{p.stdout}")
+
+        # It does not decide what another script owns. Duplicate criterion ids are
+        # check-definition.py's, and two owners for one assertion is what checks.md prevents.
+        d = work()
+        edit(d, "features/save-link.md", '<criterion id="2"', '<criterion id="1"')
+        assert run(d).returncode == 0, (
+            "check-artefacts reported a duplicate criterion id, which check-definition.py owns")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # Both ends of the pipeline run it: producer-side is early warning, consumer-side refuses.
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    breakdown = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "schema/scripts/check-artefacts.py docs/prd/{slug}" in prd, (
+        "/prd never RUNS the artefact check on what it just wrote")
+    assert "schema/scripts/check-artefacts.py {input_path_or_prd_dir}" in breakdown, (
+        "/breakdown never RUNS the artefact check on its input, so a malformed document becomes "
+        "forty malformed tasks")
+
+
+@check("every element the schema defines has a reader, or a written reason -- by running it",
+       finding="P4")
+def _():
+    """Item 23, and the plan calls this its closing argument.
+
+    P2 and P4 were both invisible to a suite that reads the files, because **the failure is an
+    absent consumer rather than a wrong string**. An audit of the plan against this rule found
+    nine failures in a document whose own conclusion is the rule.
+
+    The reader is MEASURED, not declared: a registry of 128 rows would be 128 claims. What is
+    declared is the exception, and an element with neither a reader nor a row fails.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(REPO, "schema", "scripts", "check-readers.py")
+    assert os.path.isfile(script), "check-readers.py does not exist"
+    doc = os.path.join(SCHEMA, "readers.md")
+    assert os.path.isfile(doc), "schema/readers.md does not exist"
+
+    def run(repo=None, *extra):
+        return subprocess.run([sys.executable, script] + (["--repo", repo] if repo else [])
+                              + list(extra), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    p = run()
+    assert p.returncode == 0, (
+        f"an element in this repository has no reader and no recorded reason:\n{p.stdout}")
+    m = re.search(r"(\d+) elements defined: (\d+) read by a script, (\d+) by an instruction, "
+                  r"(\d+) unread \((\d+) open\), (\d+) undeclared", p.stdout)
+    assert m, f"the audit prints no summary to assert on:\n{p.stdout}"
+    total, by_script, undeclared = int(m.group(1)), int(m.group(2)), int(m.group(6))
+    assert total > 100, f"only {total} elements found; the extraction has stopped working"
+    assert by_script > total // 2, (
+        f"only {by_script} of {total} elements are read by a SCRIPT. An instruction reader is "
+        f"prose about a mechanism, and prose outlives the mechanism")
+    assert undeclared == 0
+
+    # `open` is a verdict, not a failure -- the parity.md rule, reached again. But --strict
+    # must still be able to insist.
+    opens = [ln for ln in p.stdout.splitlines() if "OPEN" in ln]
+    assert opens, (
+        "no open rows at all. That would be good news; check it is not the parser having "
+        "quietly stopped reading the table")
+    assert run(None, "--strict").returncode == 1, (
+        "--strict does not raise the open rows, so there is no mode that insists on them")
+
+    # --- the assertion itself, on a synthetic repository: an element nobody reads FAILS.
+    root = tempfile.mkdtemp(prefix="readers-23-")
+    try:
+        def build(template, table_rows, reader="", plan=""):
+            shutil.rmtree(root, ignore_errors=True)
+            os.makedirs(os.path.join(root, "schema"))
+            os.makedirs(os.path.join(root, "skills", "demo"))
+            os.makedirs(os.path.join(root, "docs"))
+            os.makedirs(os.path.join(root, "tests"))
+            with open(os.path.join(root, "docs", "plan.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write("# Plan\n\n" + plan + "\n")
+            # A .py under tests/, because that is where the exclusion actually bites: a markdown
+            # file outside skills/commands/agents/schema is not a candidate reader anyway, so a
+            # docs/*.md probe alone leaves the rule untested.
+            with open(os.path.join(root, "tests", "probe.py"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write("# regression probe\nPROBE = %r\n" % plan)
+            with open(os.path.join(root, "schema", "core.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write("# Core\n\n```xml\n" + template + "\n```\n")
+            with open(os.path.join(root, "schema", "readers.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write("# Readers\n\n## The exceptions\n\n| Element | Verdict | Why |\n"
+                        "|---|---|---|\n" + table_rows + "\n\n---\n")
+            with open(os.path.join(root, "skills", "demo", "SKILL.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write("---\nname: demo\n---\n\n" + reader + "\n")
+            return root
+
+        p = run(build("<thing>\n  <read-me/>\n  <nobody-reads-me/>\n</thing>", "",
+                      "This skill reads <read-me/> and <thing>."))
+        assert p.returncode == 1 and "nobody-reads-me" in p.stdout, (
+            f"an element nothing names passed the audit:\n{p.stdout}")
+        assert "read-me" not in p.stdout.replace("nobody-reads-me", ""), (
+            f"an element that IS named was reported as unread:\n{p.stdout}")
+
+        # Declaring it is what makes it pass -- and the reason travels with it.
+        p = run(build("<thing>\n  <read-me/>\n  <nobody-reads-me/>\n</thing>",
+                      "| nobody-reads-me | unread by design | prose for a human |",
+                      "This skill reads <read-me/> and <thing>."))
+        assert p.returncode == 0, f"a declared exception still failed:\n{p.stdout}"
+
+        # An exception list that outlives its elements is a list nobody has read.
+        p = run(build("<thing>\n  <read-me/>\n</thing>",
+                      "| gone-element | unread by design | it left |",
+                      "This skill reads <read-me/> and <thing>."))
+        assert p.returncode == 1 and "gone-element" in p.stdout, (
+            f"readers.md declared an element no schema defines and the audit accepted it:"
+            f"\n{p.stdout}")
+
+        # A verdict outside the three is a verdict nobody agreed on.
+        p = run(build("<thing>\n  <read-me/>\n  <nobody-reads-me/>\n</thing>",
+                      "| nobody-reads-me | probably fine | shrug |",
+                      "This skill reads <read-me/> and <thing>."))
+        assert p.returncode == 1 and "probably fine" in p.stdout, (
+            f"an invented verdict was accepted:\n{p.stdout}")
+
+        # Writing ABOUT an element is not reading it. The plan and this suite name every element
+        # in the schema; counting them would make "somebody documented it" indistinguishable
+        # from "somebody consumes it", which is the distinction the whole audit is made of.
+        p = run(build("<thing>\n  <read-me/>\n  <nobody-reads-me/>\n</thing>", "",
+                      "This skill reads <read-me/> and <thing>.",
+                      plan="Item 99 proposes <nobody-reads-me/> and argues for it at length."))
+        assert p.returncode == 1 and "nobody-reads-me" in p.stdout, (
+            f"a document under docs/ counted as a reader, so writing about an element is now "
+            f"indistinguishable from consuming it:\n{p.stdout}")
+
+        # The defining document is NOT a reader. Otherwise every element reads itself and the
+        # whole audit is a function that returns True.
+        p = run(build("<thing>\n  <only-in-the-schema/>\n</thing>", "", ""))
+        assert p.returncode == 1 and "only-in-the-schema" in p.stdout, (
+            f"an element defined in a schema document counted as read by that document:"
+            f"\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # Every open row carries a reason. A verdict with no `why` is the silence the file forbids.
+    section = open(doc, encoding="utf-8").read().split("## The exceptions", 1)
+    assert len(section) == 2, "readers.md has no exceptions table"
+    for line in section[1].split("\n---\n", 1)[0].splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or cells[0].lower() in ("element", "") or set(line) <= set("|- "):
+            continue
+        assert len(cells[2]) > 30, f"exception {cells[0]} gives no reason: {cells[2]!r}"
+
+
+@check("the definition enum is one set, wherever it is implemented", finding="P29")
+def _():
+    """Item 23: `the status enum in the template matches the one the derivation script
+    implements`.
+
+    Three programs and one document carry this enum. It is the shape of P29's defect one level
+    down: not four things called `status`, but one vocabulary written out four times, drifting a
+    value at a time until a feature is valid in one reader and invalid in the next.
+    """
+    import importlib.util
+
+    def load(rel, name):
+        spec = importlib.util.spec_from_file_location(name, os.path.join(REPO, rel))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    artefacts = load("schema/scripts/check-artefacts.py", "art")
+    status = load("skills/breakdown/scripts/check-status.py", "st")
+
+    implemented = set(status.LADDER) | set(status.OFF_LADDER)
+    assert artefacts.DEFINITION == implemented, (
+        f"check-artefacts accepts {sorted(artefacts.DEFINITION)} and check-status derives over "
+        f"{sorted(implemented)}. A value valid in one reader and invalid in the next is P29 one "
+        f"level down")
+
+    # And the document both of them answer to. Core 3's table is the definition; a script that
+    # has drifted from it is a script obeying a rule nobody wrote.
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    row = [ln for ln in core.splitlines()
+           if ln.startswith("|") and "`<definition>`" in ln]
+    assert row, "core.md's status table has no <definition> row"
+    documented = set(re.findall(r"`([a-z-]+)`", row[0].split("|")[-2]))
+    assert documented, f"the <definition> row names no values: {row[0]}"
+    assert documented <= artefacts.DEFINITION, (
+        f"core.md documents {sorted(documented - artefacts.DEFINITION)}, which no reader "
+        f"accepts")
 
 
 # ------------------------------------------------------------------- behavioural

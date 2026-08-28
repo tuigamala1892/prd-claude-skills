@@ -446,9 +446,9 @@ one.
 PRD carries no place to record that review, say so plainly to the author rather than treating the
 absence as a pass.
 
-**One script this phase should call does not exist yet.** `check-artefacts.py` — every artefact
-matches the shared schema and declares its `schema_version` — is item 22, and `checks.md` carries
-it as a row with no owner rather than omitting it. Do not improvise it here.
+**Schema conformance is checked in Phase 9, not here.** `check-artefacts.py` (item 22) asks
+whether every artefact *is* what the schema says it is, and the only moment that can be true of
+the files on disk is after they have been written. It runs there.
 
 ### Phase 8: Interactive Review
 
@@ -518,6 +518,26 @@ can** — which is why refusing is the default and `--resume` has to be stated:
 
 Never pass `--resume` to get past a refusal you did not expect. A PRD is an hour of someone's
 thinking, and a slug collision should not be the reason it disappears.
+
+#### After writing, check that what you wrote is what the schema describes
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/check-artefacts.py docs/prd/{slug}
+```
+
+**Before claiming the PRD is written.** P10 is what happens without it: the spec said XML, a run
+produced markdown, and nothing noticed for weeks. This is the one check that can only be run
+*after* the write, because it reads the files rather than the intention.
+
+- **Exit 0** — every artefact matches the schema its shape places it in. `OLD` lines may print;
+  they are elements in a pre-rename spelling, accepted on read, and worth mentioning once.
+- **Exit 1** — `INVALID`, naming the file, the element and the value. **Fix it now**, while the
+  conversation is still open. Do not report the PRD as complete over an invalid artefact.
+
+**The version is detected, never declared.** An artefact carries no `schema_version`: the marker
+is its shape (item 41), so a file that has lost an element reads as an *earlier* version rather
+than as a broken current one. The script says which version it landed on, so *"this is at
+schema-3"* is a sentence rather than a silence.
 
 ## Output Formats
 
