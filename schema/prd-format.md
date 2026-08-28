@@ -113,7 +113,7 @@ maintained.
     <status>in-progress|complete</status>       <!-- what /prd --resume looks for -->
     <last-updated>{{YYYY-MM-DD}}</last-updated>
     <next-command>/breakdown</next-command>
-    <toolchain-version>2.0.0</toolchain-version>
+    <toolchain-version>{{plugin version}}</toolchain-version>  <!-- stamped, item 24 -->
   </meta>
 
   <!-- DERIVED. Never hand-maintained. See below. -->
@@ -144,6 +144,13 @@ maintained.
   <session-notes>{{context helpful for resuming}}</session-notes>
 </what-next>
 ```
+
+**`<toolchain-version>` is written once and never updated** (item 24). `build-what-next.py`
+inserts it when it is absent, from the running plugin's `plugin.json`; `list-prds.py` reads it and
+says so before a resume, because a PRD authored against an older schema may want `/migrate` first.
+It is **provenance, not a version tracker** — rewriting it on every derivation would make every
+what-next.md look stale on every plugin release, and a file that is always stale is a check nobody
+runs. `--check` never fails on it, deliberately.
 
 **`<status>` is the same tag `index.md` carries, and that is deliberate** — `list-prds.py` reads
 both and reports `DISAGREE` when they differ, because a PRD findable through one file and not the

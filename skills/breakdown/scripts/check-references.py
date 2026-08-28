@@ -17,6 +17,20 @@ WHAT IS CHECKED
                       (the record's template and conventions: schema/decision-record.md)
   P-NNN citations     resolve to a <principle id=> in architecture.md's <principles> section
   significant features are named by some record's **Drives:**, or the absence is reported
+  unflagged features that LOOK significant are reported as candidates, and never flagged
+
+A FLAG WITH TWO DIRECTIONS, AND A THIRD READING THAT IS NEITHER
+
+Item 35's flag is a declared judgement, so this script reads it both ways round: a flagged feature
+no record drives is STALE, and an unflagged feature matching the published ASR heuristics is a
+CANDIDATE. A candidate is not a defect and never affects the exit code, including under
+--strict -- the heuristics are a screen for a conversation, and a screen that can fail a build is
+a heuristic that has been promoted to a rule behind everyone's back.
+
+Two of the six `because` values are screened, because only two are structural: a quality
+attribute named in the feature's own text, and cross-cutting reach measured as the number of
+other documents that name this feature. `first-of-a-kind`, `risk` and `constraint` are judgements
+with no signal in the file, and guessing them would produce a candidate list nobody reads.
 
 A FLAG THAT REPORTS, NEVER REFUSES (item 35)
 
@@ -90,6 +104,18 @@ DRIVES_FIELD = re.compile(r"^\s*\*\*Drives:\*\*\s*(.+?)\s*$", re.M)
 # Item 35. `criteria=` is optional and not read here -- which criteria carry the
 # significance is for a person reading the record, not for this check.
 SIGNIFICANT = re.compile(r"<architecturally-significant\b([^>]*)>")
+SLUG_EL = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
+
+# The published ASR heuristics, reduced to the two that leave a mark in the file. Matched
+# case-insensitively on whole words -- `secure` must not fire on `security-blanket`, and a
+# substring match on "audit" fires on every "auditory".
+QUALITY_WORDS = re.compile(
+    r"\b(latency|throughput|performance|availability|uptime|scalab\w*|secur\w*|encrypt\w*|"
+    r"authenticat\w*|authoris\w*|authoriz\w*|password\w*|credential\w*|complian\w*|audit|"
+    r"audited|retention|concurren\w*|"
+    r"idempotent|failover|backpressure|rate.limit\w*)\b", re.I)
+# Reach: how many OTHER documents name this feature. Three is where a change stops being local.
+CROSS_CUTTING_AT = 3
 MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 # An id in a filename: `ADR-007-title.md`, `007-title.md`, `adr007.md`.
 FILENAME_ID = re.compile(r"^(?:adr[-_]?)?(\d{1,4})\b", re.I)
@@ -333,15 +359,49 @@ def main():
                 warnings.append(f"{rel}: is architecturally significant ({because.group(1)}) "
                                 f"and no decision record names it in **Drives:**")
 
+    # Item 35's third direction: a feature nobody has flagged that the heuristics say is a
+    # candidate. Reported, never applied -- significance cannot be derived, which is the whole
+    # reason it is a declared flag, so this screens for a conversation and stops there.
+    candidates = []
+    features_dir = os.path.join(prd_dir, "features")
+    if os.path.isdir(features_dir):
+        docs = {os.path.relpath(p, prd_dir): read(p) for p in markdown_files(prd_dir)}
+        for rel in sorted(docs):
+            if not rel.replace(os.sep, "/").startswith("features/"):
+                continue
+            text = docs[rel]
+            if SIGNIFICANT.search(text):
+                continue
+            slug_m = SLUG_EL.search(text)
+            slug = slug_m.group(1) if slug_m else os.path.splitext(os.path.basename(rel))[0]
+            reasons = []
+            hit = QUALITY_WORDS.search(text)
+            if hit:
+                reasons.append(f"quality-attribute (names `{hit.group(1).lower()}`)")
+            # index.md and what-next.md name every feature by construction, so counting them
+            # would hand every feature two free edges and make the threshold meaningless.
+            reach = sum(1 for other, body in docs.items()
+                        if other != rel
+                        and os.path.basename(other) not in ("index.md", "what-next.md")
+                        and re.search(r"\b" + re.escape(slug) + r"\b", body))
+            if reach >= CROSS_CUTTING_AT:
+                reasons.append(f"cross-cutting (named by {reach} other documents)")
+            if reasons:
+                candidates.append(f"{rel}: {', '.join(reasons)} -- and it declares no "
+                                  f"<architecturally-significant>")
+
     if not args.quiet:
         for line in errors:
             print(f"  DANGLING  {line}")
         for line in warnings:
             print(f"  STALE     {line}")
+        for line in candidates:
+            print(f"  CANDIDATE {line}")
 
     where = os.path.relpath(adr_dir, prd_dir) if adr_dir else "not found"
     print(f"{counted} references checked against {where}: "
-          f"{len(errors)} dangling, {len(warnings)} stale")
+          f"{len(errors)} dangling, {len(warnings)} stale, "
+          f"{len(candidates)} significance candidates")
 
     if errors:
         return 1

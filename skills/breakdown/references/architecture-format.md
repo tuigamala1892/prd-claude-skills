@@ -243,6 +243,32 @@ is present here it is authoritative**, because repository layout is a property o
 rather than of a document about it — a PRD's own `<repo-structure>` is the fallback for a project
 with no `architecture.md`. `check-repo-structure.py` reads this file first.
 
+### `<design-track>` — whether the gate stops, and where records live (item 38)
+
+```xml
+<design-track enabled="false" adr-dir="../../architecture/decisions"/>
+```
+
+| Attribute | Required | Description |
+|---|---|---|
+| `enabled` | Yes | `true` or `false`. **`false` is the shipped behaviour**, and an absent element means `false` |
+| `adr-dir` | No | Where decision records live, relative to this file. Passed to `check-references.py` |
+
+**Off by default, and opt-in for a reason.** With `enabled="false"` the gate between `/breakdown`
+and `/execute` prints its report and returns. With it enabled, it requires confirmation before
+`/execute` may run. **The report is the valuable half** — the confirmation only matters if
+somebody is there, and the assertions are worth running either way, which is why the switch
+controls the stop and not the checking.
+
+**`adr-dir` points outside the PRD deliberately.** Decision records outlive the PRD that prompted
+them, which is why a project keeps them in a project-wide directory and why this file cites them
+by pointer rather than absorbing them. It is the same directory `check-references.py` discovers,
+declared rather than guessed.
+
+This element was specified by [`decision-record.md`](../../../schema/decision-record.md) and had
+**no host artefact** until item 38: the reference described a switch with nowhere to write it,
+and the gate that reads it did not exist. Both halves land together.
+
 ### `<banned>` — five kinds, and the kind decides whether it can refuse
 
 Every rule carries a **required `kind`** and a **required `reason`**. One element name was
@@ -390,6 +416,7 @@ ignored rule file is worse than no rule file at all: the operator believes the r
 | `<testing default>` not `tdd` or `none` | **exit 1** |
 | `max-files` or `task-limits default` not a positive integer | **exit 1** |
 | `<scaffold>` with a template but no path | **exit 1** |
+| `<design-track>` with no `enabled`, or one that is not `true`/`false` | **exit 1** |
 | `<principle>` with no `id`, or a duplicate id | **exit 1** |
 
 ## Version History
@@ -397,3 +424,4 @@ ignored rule file is worse than no rule file at all: the operator believes the r
 | Version | Changes |
 |---|---|
 | 1.0 | Initial specification. Plan items 25, 28, 37 |
+| 1.1 | `<design-track>` gains a host artefact, so item 38's gate has a switch to read |

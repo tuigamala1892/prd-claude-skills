@@ -88,4 +88,20 @@ else
         refuse "HEAD is detached in $project_abs, so there is no branch to merge into. Pass --base-branch explicitly"
 fi
 
+# --------------------------------------------------------- no won't-have work (item 20)
+# Defence in depth, as an exit code. A task carrying <moscow>wont-have</moscow> reaching here
+# means item 13's selection gate did not run, or ran and was ignored -- and the whole argument
+# of item 4.13 is that a guard a model can reason past is not a guard. It stops here rather
+# than being built.
+#
+# grep over the task files rather than the manifest: the files are the deliverable, and a
+# manifest that disagrees with them is exactly what build-manifest.py exists to catch.
+wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)
+if [ -n "$wont" ]; then
+    printf 'REFUSED: %s\n' "task(s) descend from a feature nobody intends to build:" >&2
+    printf '  %s\n' $wont >&2
+    printf '%s\n' "A wont-have task reaching /execute means the selection gate at /breakdown did not run, or ran and was ignored. Re-run /breakdown, or delete these files." >&2
+    exit 1
+fi
+
 printf '%s\n' "$base_branch"

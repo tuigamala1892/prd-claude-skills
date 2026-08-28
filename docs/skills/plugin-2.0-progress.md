@@ -1806,7 +1806,1134 @@ The harness reported it as an orphan — *a check failed that no mutant expected
 exactly the ambiguity that warning exists to surface, and the reason one round earlier in this
 build reported 6/13 when the truth was 11/13. Here it is a second check firing rather than a
 MISSED being misattributed, and the spec file says so rather than silencing it.
+
 ---
+
+## Phase 5 — Consumers, and the parity pass.
+
+Plan order: `16` · `17` · `3` · `6` · `7` · `8` · `40` · `58` · `13` · `14` · `15` · `19` · `20` ·
+`30` · `32` · `46` · `47` · `48` · `49` · `50` · `38` · `24` · `10` · `59`, on branch
+`phase-5-consumers-and-parity`.
+
+**Twenty-four items, and the plan calls them "small, once the schema carries the data."** That is
+true of most of them and false of two, which is the reason this section exists before any of them
+have landed: **Phase 5 is the first phase that will not fit in one sitting**, and deciding where it
+breaks is cheaper done once, here, than rediscovered four times.
+
+The measurement, rather than the impression. Phase 5 carries ~560 lines of specification against
+Phase 4's ~595 — comparable volume, spread across 24 items instead of 15. But Phase 4 edited
+`schema/` (~1,200 lines) and shipped in six commits; Phase 5 edits the **consumers** — five
+breakdown skills (~2,000 lines), five execute skills (~2,000), the CRD path (~1,300), and a
+regression suite that is already 4,813 lines and 86 checks. Two items are not small at any reading:
+**40** is eight tests, a contract-grep across 93 edges and a second mode on item 8's agent, and
+**59** needs the toolchain driven headlessly under `bypassPermissions`.
+
+### The split, and why it falls where it does
+
+**This is a sequencing decision, not a schema one, which is why it is recorded here.** The plan
+stays a specification; it already fixes the *constraints* inside this phase — 30 after 16, 59 once
+17 and 30 land, 46 and 47 immediately after 33 and 34. Those constraints admit exactly one
+grouping that keeps each commit a single concern:
+
+| Group | Items | Why these are one commit |
+|---|---|---|
+| **5a — CRD parity** | 46 · 47 · 48 · 49 · 50 | The plan says 46 and 47 land *"immediately after 33 and 34"* — which landed in `4f81d54`. **They are already lagging**, and lagging is precisely how two vocabularies acquire consumers. 48 and 49 are the same reach-across in the other direction; 50 is the check that stops the distance reopening. |
+| **5b — the carry** | 16 · 17 · 30 · 59 · **19** · **20** | The boundary chain, in dependency order. 30 has nothing to check until `<source-feature>` exists; 59 is the first test that crosses the boundary 16, 17 and 30 specify. **19 and 20 were put in 5c and moved here** — both read `<moscow>` on a *task*, which is item 16's, and the plan opens Phase 5 with 16 for that reason. See the 13/14/15 entry. |
+| **5c — the filters** | 13 · 14 · 15 | Three refusals and two flags, all reading tags that now exist. One commit because they are one behaviour: *the toolchain declines work it was told not to do, and says which.* |
+| **5d — the definition bar** | 58 · 3 · 6 · 7 · 40 · 8 | 58 is the table of assertions, 6 is its caller, 3 feeds it, 40 supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the same checker four times — the argument Phase 3 made about `architecture.md`, arriving again. |
+| **5e — the residue** | 10 · 24 · 32 · 38 | Independent of each other and of the above. Last because nothing waits on them. |
+
+**5a and 5c are complete.** Neither matched its own row: 46-48 were a whole schema version with a migration and a new fixture, so 5a took two commits; and 5c turned out to be three items rather than five, because 19 and 20 depend on item 16 and belong in 5b. **The split was right about the seams and wrong twice about the contents**, which is the ledger doing its job rather than failing at it.
+
+**Phase 5 is complete: five groups, seven commits, twenty-four items.** The boundary this row warned about did move, exactly where it said it would. 5d predicted it — *"item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus"* — and read against it, two of its eight tests needed a different mechanical half and one of its two gate conditions turned out to be a schema change. **5e's row was right that the four items are independent and wrong about why they belong together**: three of the four are the same defect, an artefact carrying a stamp or a switch that nothing reads.
+
+**Three groups found a defect on their first real run** — 59 at the boundary, 40 in four of six `defined` fixture features, 38 in a feature carrying an open decision and tasks. That is the phase's most useful output, and none of the three was visible to a static reading of the same files.
+
+The phase's shape, in one line each:
+
+| | What it established |
+|---|---|
+| **46 · 47 · 48** | the CRD path takes the parity changes, as schema-5 with a migration |
+| **49 · 50** | two required fields get a reader, and parity becomes a table with probes |
+| **13 · 14 · 15** | the toolchain declines work it was told not to do, and names what it declined |
+| **16 · 17 · 30 · 19 · 20** | the pipeline stops discarding the document it came from |
+| **59** | the boundary is crossed for the first time, and the crossing found two defects |
+| **58 · 3 · 6 · 7 · 40 · 8** | one assertion, one owner — and `defined` acquires a bar it can fail |
+| **10 · 24 · 32 · 38** | three stamps, a summary and a switch that nothing had ever read |
+
+**Twenty-four items, seven commits, 86 → 109 regression checks, `known 0`**, and five mutation
+rounds across the phase — 17/17, 6/6, 18/18 and one re-run — every one with a green baseline and
+every file restored by hash. **Not pushed to `origin`**, which is now 13 commits behind `main`
+before this phase is merged at all.
+
+**5a and 5c first, in that order.** Both are edits to existing consumers with checkable
+postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
+the two expensive ones — a full sitting each, which is what they need rather than what is left over.
+
+**What this split does not claim.** It does not reorder the phase: every constraint the plan states
+between items is preserved, and the groups run in an order that satisfies all of them. It prices
+nothing (A9 still holds), and 5d's boundary in particular is the one most likely to move, because
+item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus.
+
+> **Read against it, and the prediction held.** Two of item 40's eight tests needed a different
+> mechanical half than the plan implies, one of its two gate conditions turned out to be a schema
+> change, and the boundary between its script and its agent is where both moved. The sentence
+> above is kept rather than corrected: a prediction that was right about *where* the uncertainty
+> lay is the evidence that the split was reasoned rather than guessed.
+
+| Item | Status | Commit |
+|---|---|---|
+| **46 + 47 + 48** — the CRD path takes the parity changes (**schema-5**) | **Landed** 2026-08-27 | `6381ed8` |
+| **49 + 50** — the PRD's scope/confidence readers, and parity as a check | **Landed** 2026-08-27 | `cfc8796` |
+| **13 + 14 + 15** — the filters | **Landed** 2026-08-27 | `134a424` |
+| **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
+| **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
+| **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `7966ed7` |
+| **10 + 24 + 32 + 38** — the residue | **Landed** 2026-08-28 | `af42e48` |
+
+**Suite:** 86 checks at branch point → **89** (46-48) → **91** (49/50) → **92** (13/14/15) → **95** (16/17/30/19/20) → **96** (59) → **103** (58/3/6/7/40/8) → **109** (10/24/32/38). `failed 0`, `known 0` throughout.
+
+---
+
+## 46 + 47 + 48 — the CRD path takes the parity changes, and becomes schema-5
+
+**Commit:** `6381ed8` · **Addresses:** P31, P32 · **Files:** `schema/core.md`,
+`schema/migration.md`, `schema/scripts/migrate.py`, `skills/crd/references/crd-format.md`,
+`commands/crd.md`, `skills/crd/SKILL.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/check-writable.py`, `tests/fixture/prd/SCHEMAS.json`,
+`tests/fixture/prd/schema-4/link-shelf/crd/archive-links.md`, `tests/fixture/prd/schema-5/`,
+`tests/mutants/crd_parity.py`, `tests/test_toolchain.py`
+
+### Why three items are one commit, and one schema version
+
+The plan groups 46 and 47 as *"the same change reaching the CRD path"* and says they should land
+immediately after 33 and 34, which they did not — they lagged by four commits, which is exactly
+the interval in which two vocabularies acquire consumers. 48 joins them because all three rewrite
+the same document and a schema version is the unit a migration can be written against. Splitting
+them would have meant three migrations over one file, or two versions nobody could name.
+
+`SCHEMAS.json` had already predicted this, listing 46, 47 and 48 under a `planned` schema-5 — and
+listing item 11 with them, which had in fact landed in schema-4. That correction is recorded in
+the file rather than deleted: a planned entry being wrong about *when* is the normal case, and the
+correction is the only evidence anyone ever checked.
+
+### What landed
+
+- **46** — `<requirements>` is retired. Its entries are criteria, in one list with one id space.
+  P31's unanswerable question, *which criteria discharge requirement 3?*, is dissolved rather than
+  answered: there is no requirement 3 that is not itself a criterion.
+- **47** — requirement-level MoSCoW becomes `P0|P1|P2`, and MoSCoW moves **up** to
+  `<meta><priority>`. The vocabularies swapped levels rather than one absorbing the other. Both
+  of `/breakdown`'s filters now have something to read on this path; before, `--requirement-level`
+  selected nothing and `--priority` had no field to threshold against.
+- **48** — `<gaps>` reaches the CRD, and with it a mechanical test for `draft` versus `ready`:
+  a CRD marked `ready` must not carry a `<gap kind="specification">`. That is core §6's
+  `<definition>` rule with one word changed, and it runs one way only, so nothing is ever promoted
+  **to** `ready` by it.
+- **48, the other half** — `/crd` gained a pre-write guard and `--resume`.
+
+### The guard was generalised, not duplicated — and that is the repository's most repeated lesson
+
+`/crd` was documented as stateless and wrote `docs/crd/{slug}.md` with no check at all. That is F3,
+which cost an interview on the PRD path before item 9 turned the guard into a program. The CRD path
+had the identical hole and had simply not been caught by it yet.
+
+The obvious implementation was a second script. Instead `check-writable.py` now takes **a PRD
+directory or a single file**, because the problem it solves — *an artefact representing a long
+conversation is about to be replaced* — was never PRD-specific. This ledger has recorded the same
+shape three times now: `keep_awake` written inside one caller with its own docstring describing the
+identical failure it was written for; item 60, a rule added without removing what it contradicted;
+P18's TDD mandate enforced in three places and documented in a fourth. **A fix applied at the site
+of discovery rather than at the level of the problem** is this repository's characteristic defect,
+and this is the first time it was caught before shipping rather than after.
+
+### The `wont-have` requirement has no honest target, and that is an escalation
+
+The plan says only that CRD requirement priorities *"migrate from MoSCoW under item 41"*. Writing
+the map exposed a value the plan had not considered.
+
+`must-have → P0`, `should-have → P1`, `could-have → P2` are one to one. `wont-have` is not:
+**`P0|P1|P2` has no *"not building this"* level, deliberately**, because that judgement belongs to
+the whole item — which on this path is the document, in the MoSCoW that item 47 just put there.
+So sending it to `P2` would make a declined requirement buildable by default, since
+`--requirement-level` defaults to `P2`; and dropping it would delete something a person wrote down.
+Both are decisions about the change rather than about its format.
+
+**It escalates**, using machinery that already existed: exit 2, the file named, nothing written.
+The first draft of core §4 collapsed `must-have` and `should-have` into `P0` and sent `wont-have`
+to `P2` — that was written, read back, and replaced before it reached a test. It is recorded here
+because a lossy map that looks tidy is the easy mistake, and the corpus would have carried it
+silently.
+
+### The first step whose mechanical half MOVES content, and the invariant it broke
+
+R10 is the first rule that creates elements rather than relabelling them, and it walked straight
+into an invariant `apply_steps` had held since item 41:
+
+    if criterion_ids(text) != criterion_ids(before):
+        "criterion ids changed -- count in must equal count out"
+
+Equality was correct for every rule that existed, and wrong as a statement of the property worth
+holding. What matters is that **an id which resolved before the step still resolves after it** —
+`id` exists so that a citation from a commit message or a task file survives. Appending is
+legitimate; renumbering an existing criterion is not. The invariant became a prefix check, which
+is strictly stronger for every rule that adds nothing and is the actual claim.
+
+That is also why the migration renumbers the **requirements** and not the criteria: an existing
+criterion id may already be cited, and a requirement id was only ever local to a list that is
+ceasing to exist. `derived-from="requirement-3"` carries the other half of the history, prefixed
+rather than bare because after the merge a bare `3` is ambiguous across the two former spaces.
+
+### Two of my own checks were wrong, and both in the same direction
+
+The suite went red twice on assertions that were true of every artefact that existed when they
+were written, and false the moment a new shape arrived. Both were **overreach**, and neither was a
+defect in the change:
+
+1. **`every criterion must carry derived-from`.** Core §2 says `derived-from` is *migration only*.
+   Until schema-5 every criterion in a mixed step came from a migration, so the sweep was
+   accidentally correct. The fixture CRD is the first artefact carrying **authored** criteria beside
+   **migrated** ones, and demanding the attribute on all six would have required back-dating a
+   provenance the authored pair does not have.
+2. **`no criterion may carry a pattern`.** Same shape: the authored criteria legitimately have one.
+
+Both are now asserted **per criterion, against the same criterion in the source, and only where
+the step touched it** — a criterion the step left byte-identical is the author's and is not the
+migration's to be judged on. This does not weaken the earlier steps: mutating R4/R5 so they stop
+writing `derived-from` still turns four checks red, which was measured rather than assumed.
+
+The third failure was `the two priority levels stay in two vocabularies`, which swept **every**
+table row in core §4 and reported eight levels once item 47 gave the section a second table. That
+is *prose checks need a region and a shape* arriving again — the region was right and the shape was
+missing. It now takes the first contiguous run of table rows.
+
+### The fixture problem, and the rule that decided it
+
+schema-5 changes CRDs and nothing else, and **there was no structured CRD anywhere in the corpus**.
+`tests/fixture/crd/change-request.md` is stakeholder prose — `/crd`'s *input*, deliberately
+unstructured — so the CRD rows in `migration.md`'s table had never been exercised by a golden
+comparison at all.
+
+The honest place for a first CRD was schema-1, so it would have a history like everything else.
+Item 43's rule 2 forbids it: *a non-current fixture is frozen, and needing something new to
+exercise is a reason to touch the current schema only.* Back-filling it into three frozen versions
+would have broken the rule that makes versioned fixtures affordable, to buy a provenance the file
+does not have. So `link-shelf/crd/archive-links.md` arrives at schema-4 and says so in the
+registry's notes.
+
+It is the same project as the existing prose fixture — archiving links rather than deleting them —
+which was not a coincidence worth avoiding: the two now sit either side of `/crd`, one the input
+and one the output.
+
+### Verification
+
+`python tests/test_toolchain.py` — **86 → 89**, `failed 0`, `known 0`.
+
+Three new checks, all of which run something:
+
+| Check | The mechanism it runs |
+|---|---|
+| a CRD carries one list, not two | migrates a synthetic CRD and asserts the merged id space, not the format document's prose |
+| requirement priority is `P0\|P1\|P2` on both paths | migrates one mappable CRD and one holding a `wont-have`; asserts exit 2 **and that the file is byte-identical afterwards** |
+| `/crd` cannot silently replace a CRD | runs the guard on a file three ways — refuse, `--resume`, absent |
+
+And the behaviour was watched before the checks were trusted:
+
+- **R10, run by hand** on the schema-4 fixture: `<requirements>` gone, ids continuing from 3,
+  `must/should/could` landing as `P0/P1/P2`, no `pattern` assigned, verdict `PARTIAL`.
+- **the escalation, run by hand**: exit 2, the requirement named, `<requirements>` still in the
+  file afterwards.
+- **the guard, run by hand** on a CRD file: refuse / `--resume` / absent.
+
+**Mutation round:** `tests/mutants/crd_parity.py`, seven mutants, **7/7 caught**, every file
+restored byte-for-byte. It took four attempts, and two of the three failures were instrument
+faults rather than results — recorded below, because one of them was a real hole.
+
+### The round found a hollow check, and it is the site-counting rule's fifth confirmation
+
+Round three reported `MISSED /crd stops running the overwrite guard -- NOT CAUGHT`. The mutant
+replaced `/crd`'s guard invocation with the `test -e` prose it was written to retire, and **the
+suite stayed green.**
+
+The check asserted `"check-writable.py" in text`. `/crd` names the script **twice** — once plainly
+and once with `--resume` — so breaking one invocation left the substring true. *If more than one
+site satisfies a check, no single edit can break it*, which this ledger has now recorded five
+times. The check asserts the invocation **with the path it guards**, both forms, and the absence
+of the prose guard beside it; the round then reported 7/7.
+
+**This is the one that would have shipped.** Every other mutant here broke something a reader
+would notice. That one restored a defect the item exists to fix, and the only thing that saw it
+was a mutant.
+
+### Two instrument faults, and both were the same one
+
+Rounds one and two reported `ANCHOR NOT FOUND -- mutant never applied` for that same mutant — the
+harness's guard 2 doing its job, distinguishing *"never ran"* from *"survived"*. Without it the
+round would have read 6/7 twice with a MISSED that meant nothing, and the real survivor in round
+three would have looked like the same benign line.
+
+Both faults were **backslashes eaten by a heredoc**, which is already in this session's memory and
+which I walked into twice more:
+
+1. Writing `commands/crd.md`, `\` before a newline reached Python as a **line continuation**, so
+   the two-line command collapsed into one with a doubled space — and the mutant's two-line anchor
+   could never match a file that no longer had two lines.
+2. Fixing the mutant file, the patch script's own search string was mangled the same way, its
+   `assert` fired, and — because it was a separate command rather than part of the `&&` chain —
+   the round ran anyway against an unchanged anchor.
+
+The fix both times was to stop routing text with backslashes through a shell: `Edit` for the
+mutant file, and **verifying the anchor matched exactly once before launching the round** rather
+than after. A harness that reports on an anchor it never applied is not lying, but it is a result
+that needs reading rather than skimming.
+
+
+---
+
+## 49 + 50 — two required fields get a reader, and the parity ledger becomes a test
+
+**Commit:** `cfc8796` · **Addresses:** P19, P21, P30 · **Files:** `schema/core.md`,
+`schema/parity.md` (new), `skills/breakdown-analyze-prd/SKILL.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/check-scope.py` (new), `tests/mutants/scope_and_parity.py`,
+`tests/test_toolchain.py`
+
+### Why these two are one commit
+
+49 is the last thing the CRD path had that the PRD path lacked, and 50 is the check that stops
+the gap reopening. Landing 49 without 50 would have closed the last measured asymmetry with
+nothing measuring the next one — which is exactly how the twelve in §5 J accumulated.
+
+### What landed
+
+- **49** — `<scope>` and `<confidence>` reach the PRD path and, more to the point, **get a reader
+  on both**. `breakdown-analyze-prd`'s feature pass emits one prediction per feature into
+  `analysis.json`; `check-scope.py` holds it against the task count in `manifest.json`.
+- **50** — [`schema/parity.md`](../../schema/parity.md): sixteen capabilities, each with a
+  verdict, and each claim carrying a `file :: string` probe the suite runs.
+
+### The defect being fixed was not "the PRD path lacks two fields"
+
+It was that **both fields were required on the CRD path and read by nothing at all.** A required
+field nobody reads is worse than an absent one, because it looks like a signal — and this one
+misled the plan itself: items 29 and 31 were each written as if from nothing, when `<confidence>`
+and `<scope>` had been sitting in `crd-format.md` the whole time.
+
+So the shape of the fix is the reverse of what the item title suggests. Giving the PRD path the
+fields was the cheap half. The half that mattered was `check-scope.py`, which is the first thing
+in this toolchain that reads either.
+
+### Three decisions inside the cross-check, and each is about not being ignored
+
+**It exits 0 even when it reports.** A prediction losing an argument with an observation is
+information, not a failure. A check that can block on a model's size estimate is one that gets
+disabled the first time it is wrong, and then it protects nothing.
+
+**It fires on gross disagreement only.** Core §5's bands are counted in **files**; the observation
+is counted in **tasks**; a task creates at most three files. The units do not line up, so the
+comparison is band against band and only *non-adjacent* bands disagree — `small` against `medium`
+is noise and `small` against `large` means one of the two is wrong. **The quiet case is as much
+the subject as the loud one**, and it is mutated like one: a mutant that makes the check fire on
+every adjacent pair is caught, because a cross-check nobody can silence is a cross-check nobody
+reads.
+
+**`confidence` is reported and never compared.** It grades the analysis, not the output, so there
+is nothing to hold it against. It says *where the analyser was guessing*, which is the one thing
+its output cannot otherwise recover.
+
+### Item 49's PRD half is blocked on item 16, and the script says so in a number
+
+The per-feature comparison needs tasks attributed to features, and a task file carries no
+`<source-feature>` until **item 16** — which is in this same phase, in group 5b, and the plan's
+sequencing note does not mention the dependency.
+
+The script does not paper over it. It counts what it could not attribute and prints
+*"4 of 4 task(s) name no source feature, so they were not compared (item 16 adds the
+attribution)"*. **A cross-check that silently compares nothing is indistinguishable from one that
+found no disagreement**, and this repository has shipped that exact mistake before. The
+document-level comparison — the CRD path, where one document means the total *is* the observation
+— works today and is what the check currently exercises.
+
+### Item 50: the ledger had to become an artefact before it could become a test
+
+The plan's fourth bullet asks that *"a capability present on one path and absent on the other is
+listed, with a reason — the ledger above becomes a test rather than a paragraph that goes stale."*
+
+The ledger in question is §5 J's *"Who is ahead where"*, and it lives in the **plan**, which is a
+specification written at a moment in time. A check reading it would assert that the toolchain
+still matches a snapshot, which is the opposite of what is wanted. So the table moved into the
+repository as `schema/parity.md`, and it is core.md's counterpart: one file is what the two paths
+share, the other is the distance between them.
+
+**Every claim carries a probe**, and the probes are what make it a test rather than a document.
+`Uncertainty recorded as gaps | schema/prd-format.md :: <gaps> | crd-format.md :: <gaps> | both`
+fails if either file stops containing the string. A `prd-only` row fails if the CRD side quietly
+grows evidence. An asymmetric row fails if its reason is missing. All three are mutated.
+
+**`open` is a verdict, not a failure.** Three rows carry it — declared dependency edges, a data
+model channel, and the architecturally-significant flag are all PRD-only with nobody having
+decided whether they should be. The suite **lists** them rather than refusing them, because an
+unexamined asymmetry is a fact about this project and the defect the file prevents is one nobody
+has written down.
+
+**Verdicts are about capability, not spelling.** `<scope>` is an element in a CRD and a field in
+`analysis.json` on the PRD path, and the row says `both`. A table keyed on element names would
+have reported a difference that means nothing — and the symmetric difference of the two format
+documents is sixty elements, almost all of which are legitimately one path's own.
+
+### The same mistake twice in one session, one commit after writing it down
+
+The round reported `6/8`, and **both survivors were the site-counting rule** — the defect recorded
+in the previous entry, made again immediately:
+
+- `feature_signals` appears twice in `breakdown-analyze-prd` — in the output block and in a
+  paragraph about the output block. Asserting the bare string was satisfied by the prose while the
+  schema was renamed out from under it.
+- `check-scope.py` appears **three** times in `/breakdown` — once as a command and twice in prose
+  about the command. Deleting the command left two mentions and a green suite.
+
+Both now assert a **region and a shape**: `"feature_signals"` inside a fenced ```json block, and
+the runnable `scripts/check-scope.py {tasks_dir}` rather than the filename. The round then
+reported 8/8.
+
+**This is the rule's sixth and seventh confirmation, and knowing it was not enough.** The previous
+entry states it plainly, and it was written the same afternoon. What actually caught both was a
+mutant — which is the argument for the harness, and it is a stronger argument than the rule.
+
+### Verification
+
+`python tests/test_toolchain.py` — **89 → 91**, `failed 0`, `known 0`. The parity check prints its
+open rows on every run: *(3 open asymmetry/ies: Declared dependency edges; A data model channel;
+Architectural significance flag)*.
+
+Behaviour watched by hand before the checks were written, over all three of `check-scope.py`'s
+shapes: a gross disagreement reported at both levels, an adjacent pair staying quiet, and a
+missing input exiting 1 rather than reporting nothing.
+
+**Mutation round:** `tests/mutants/scope_and_parity.py`, eight mutants, **8/8 caught** after the
+two survivors above were fixed. Every anchor was verified to match exactly once **before** the
+round was launched — the correction to last round's method, where two attempts were wasted on
+anchors that never applied.
+
+---
+
+## 13 + 14 + 15 — `/breakdown` declines work, and names what it declined
+
+**Commit:** `134a424` · **Addresses:** P1 · **Files:** `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/select-features.py` (new), `tests/mutants/filters.py`,
+`tests/test_toolchain.py`
+
+### The group is three items, not five — and that is a correction to this ledger's own split
+
+**Items 19 and 20 moved to 5b.** Both read `<moscow>` on a *task*, which item 16 puts there, and
+item 16 is in 5b. The plan's own Phase 5 ordering opens with 16 for exactly this reason; the
+five-group split published two commits ago claimed *"every constraint the plan states between
+items is preserved"*, and for these two it was not.
+
+Building them here was possible and would have been wrong. Item 20 refuses a task carrying
+`<moscow>wont-have</moscow>`; with no producer for that element the refusal can never fire, which
+is a **guard with no producer** — the exact mirror of the field-with-no-reader defect this plan
+has spent forty items removing, and which item 49 had just finished removing two commits earlier.
+
+### What `/breakdown` did before this
+
+**It filtered nothing.** Every feature named in the index became tasks. A `wont-have` feature
+nobody intends to build, a `superseded` one already absorbed into another, and a `tbd` one
+consisting of a name and a sentence all reached `/execute` as work. That is P1, and the useful
+observation is that it is **three rules wearing one symptom**:
+
+| Rule | Drops | Kind of rule |
+|---|---|---|
+| **13** | `wont-have`, `excluded`, `superseded` | **correctness — no flag, no override** |
+| **14** | anything below `--priority` | the operator's choice |
+| **15** | a `<gap kind="specification">`, or `tbd` without `--include-tbd` | a defect in the PRD, **named** |
+
+Only the middle one is a preference, and most of the check is about that distinction rather than
+about the filtering. A selector that filters correctly but lets item 13 be overridden has turned
+somebody's decision into a suggestion.
+
+### `--include-tbd` reaches the status and never the gap
+
+This is item 15's real content and it is easy to get backwards. `<definition>` is a **summary**;
+`<gaps>` is the **detail**. So:
+
+- a `<gap kind="specification">` refuses the feature **whatever its declared status**, because it
+  is the author saying the specification is incomplete — and `--include-tbd` does not reach it
+- the other four kinds — `dependency`, `decision`, `evidence`, `ownership` — **warn and do not
+  refuse**. They say the feature is specified but not yet *buildable*, which is a scheduling fact
+  rather than a definition defect
+
+A boolean `blocking=` could not have drawn that line, which is why item 29 gave `<gap>` a `kind`.
+The mutant that makes every kind refuse is caught, and it is the one worth having: a selector that
+halts an overnight run on an open question is one that gets switched off.
+
+### Every reason is reported, not the first that matched
+
+The plan does not ask for this; the fixture did. `quokka-telemetry` is `wont-have` **and** carries
+a `specification` gap **and** is `in-progress`. Reporting the first match would make the other
+reasons invisible, so fixing one would appear to change nothing — and an operator would learn that
+the report cannot be acted on.
+
+**The same property is why the checks use synthetic PRDs rather than the fixture.** A feature
+satisfying three rules at once tests none of them: remove any two and the check still passes.
+That is [[count-the-sites-that-satisfy-a-check]] in the fixture rather than in the assertion, which
+Phase 4's last round had already recorded as the extension to that rule. Each probe PRD here gives
+one feature exactly one property.
+
+### The sentence item 15 exists to make sayable goes to stderr
+
+*"5 must-have features are not defined enough to break down"* is, as the plan says, the single most
+useful sentence `/breakdown` could say about a PRD. It is on **stderr**, separately from the
+per-feature listing, precisely so it cannot become line eleven of twenty and read as routine. The
+skill is told to relay it verbatim before anything else.
+
+Two of the ten mutants attack the report rather than the filtering, and they matter as much: a
+selector that drops exactly the right features and says nothing has failed the item. A silently
+omitted must-have is worse than the unfiltered behaviour this replaced.
+
+### Item 14 gave item 47 its reader, one commit later
+
+`--priority` reads `priority=` from the index on the PRD path and `<meta><priority>` on the CRD
+path. The second only exists because item 47 moved MoSCoW up to the document last commit — and the
+plan predicted exactly this: *"it makes `/breakdown`'s `--priority` threshold mean something on the
+CRD path, where today it means nothing."* A `should-have` change request is now declined by
+`--priority must-have`, which is asserted by running it.
+
+**The default is `could-have`, and the default is the load-bearing part.** It preserves today's
+behaviour minus item 13, so the flag adds capability without silently changing what an existing
+invocation builds. Two mutants attack it — a drifted default and an off-by-one threshold — because
+both are silent.
+
+### Verification
+
+`python tests/test_toolchain.py` — **91 → 92**, `failed 0`, `known 0`.
+
+Watched by hand before the check was written, over every path: all three rules in isolation, the
+warn path on a `decision` gap, `--include-tbd` reaching `tbd` but not a specification gap, the
+stderr call-out, multi-reason reporting, exit 1 when nothing is selectable, and the CRD threshold.
+
+**Mutation round:** `tests/mutants/filters.py`, ten mutants, **10/10 caught on the first
+attempt** — the first round in this phase to open at 100%. Two method changes account for it, both
+of them corrections made earlier in the same session: every anchor was verified to match exactly
+once **before** launching, and every assertion about a script names a **runnable invocation or a
+fenced block** rather than a filename that prose also satisfies.
+
+---
+
+## 16 + 17 + 30 + 19 + 20 — the pipeline stops discarding the document
+
+**Commit:** `4bda3ca` · **Addresses:** P1, P15, P20 · **Files:**
+`skills/breakdown/references/task-format-spec.md`, `skills/breakdown-generate-tasks/SKILL.md`,
+`skills/breakdown/SKILL.md`, `skills/breakdown/scripts/build-manifest.py`,
+`skills/breakdown/scripts/check-coverage.py` (new), `skills/breakdown/scripts/check-scope.py`,
+`skills/execute/SKILL.md`, `skills/execute/scripts/write-state.py`,
+`skills/execute/scripts/preflight.sh`, `skills/execute/references/state-schema.md`,
+`tests/fixture/prd/SCHEMAS.json`, `tests/mutants/carry.py`, `tests/test_toolchain.py`
+
+### What actually changed
+
+A task now knows where it came from. Before item 16 it did not — attribution downstream was a
+**string match on the task's `<name>`**, which is why item 21's tier probe had to invent slugs
+that could not occur by coincidence, and why `check-scope.py` shipped with nothing to attribute.
+
+- **16** — `<meta>` gains `<source-feature>`, `<moscow>`, `<satisfies-criteria>` and
+  `<requirement-level>`. `build-manifest.py` carries all four into `manifest.json` (`1.0` → `1.1`).
+- **17** — `<context>` carries the criteria **verbatim with their ids** and the feature's own
+  `<data-model>`, instead of `<prd-excerpt>` prose somebody rewrote. Each `<test covers=>` names
+  the criterion it discharges.
+- **30** — `check-coverage.py`: does the task set match the document.
+- **19** — both tiers reach `execute-state.json` per task, and a derived `tiers` block groups them.
+- **20** — `preflight.sh` refuses a task carrying `<moscow>wont-have</moscow>`, naming the file.
+
+### `<priority>` is untouched, and that is why the others have the names they do
+
+P3. `<priority>` is an integer meaning *merge order within the layer* and has meant that since the
+beginning. Overloading it with MoSCoW would leave every reader ambiguous about which of two
+unrelated orderings it was reading, so the feature's tier arrives as `<moscow>` — a name that was
+free.
+
+**A check asserting only "the tier is somewhere in `<meta>`" would pass on the overload**, so the
+mutant that puts `must-have` inside `<priority>` is in the round, and it is caught.
+
+### Two items were moved here from 5c, and this is why
+
+Items **19 and 20 both read `<moscow>` on a *task***, which nothing wrote until item 16. Building
+item 20 in 5c would have shipped a refusal that can never fire — a **guard with no producer**,
+which is the mirror of the field-with-no-reader defect item 49 had just finished removing. The
+plan opens Phase 5 with item 16 for exactly this reason and the five-group split had missed it.
+
+### A defect I shipped two commits ago, found by wiring the next item to it
+
+`check-scope.py` (item 49, `cfc8796`) read `manifest["tasks"]`. **The manifest key is
+`task_inventory`**, and has been since it existed — `write-state.py` reads it correctly.
+
+The reason it passed: **its test seeded the same invented key.** The fixture agreed with the
+implementation, so the check validated the code against itself and attributed nothing on a real
+manifest. That is the failure mode that reads exactly like a pass, and no amount of mutation of
+`check-scope.py` would have caught it, because the mutants and the fixture shared the mistake.
+
+The fix is not the one-word key change. **The test now builds the manifest by running
+`build-manifest.py`**, so the check is held against the artefact the toolchain actually produces
+rather than against a dict I wrote to match my own code. Reverting the key and watching the
+corrected test fail is what established that it now catches it.
+
+**The general rule, which this ledger has not previously stated:** a fixture hand-written to match
+the reader is not a fixture, it is a restatement of the reader. Where a producer exists, run it.
+
+### Item 30 does not restate the assertion that already has a home
+
+The plan lists five assertions for the coverage check. The fourth — every architecturally
+significant feature named by a decision record's `**Drives:**` — **is not in `check-coverage.py`**,
+because `check-references.py` already runs it. A rule stated in two programs is a rule that gets
+changed in one of them, and the script names where the fifth lives so a reader does not conclude
+it was dropped.
+
+### The shortfall is named, and the mutant that proves it keeps the count right
+
+*"1 should-have feature has no task: tag-links"* is the sentence. A check reporting *"1 feature has
+no task"* passes any test that a check naming the **wrong** feature would also pass — which is
+item 59's third assertion, arriving early as a mutant that leaves the count correct and removes
+only the name.
+
+### Items 16 and 17 are not a schema version, and the registry now says so
+
+`SCHEMAS.json` had them listed under a `planned` schema-6. They are not: **a task is not a
+versioned artefact.** `migrate.py` recognises five roots and a task is none of them, because tasks
+are *regenerable output* — the way to move a task set to a new shape is to re-run `/breakdown`,
+not to migrate it. Versioning them would have meant a fixture and a migration step for files
+nobody hand-edits. `manifest.json`'s own `MANIFEST_SCHEMA_VERSION` went `1.0` → `1.1` instead,
+which is the right granularity.
+
+The prediction is corrected in the file rather than deleted, per the convention item 11's
+correction established.
+
+### Verification
+
+`python tests/test_toolchain.py` — **92 → 95**, `failed 0`, `known 0`.
+
+Watched by hand before the checks were written: `check-coverage.py` over all five outcomes
+(complete → exit 0; a feature with no task, named; a missing criterion; a criterion id that does
+not resolve; a task from a `wont-have` feature); `preflight.sh` refusing and then permitting; and
+`write-state.py` producing the `tiers` block from a real manifest.
+
+**Mutation round:** `tests/mutants/carry.py`, eleven mutants, **11/11 caught on the first
+attempt** — the second consecutive round to open at 100%, on the two method corrections made
+earlier in this phase.
+
+**Item 59 is not in this commit.** It is the runtime test across this boundary, it needs the
+toolchain driven headlessly, and it is the assertion that everything above is *specified* rather
+than *demonstrated*.
+
+---
+
+## 59 — the boundary is crossed, and the first crossing found two defects
+
+**Commit:** `6fb646f` · **Addresses:** A8/R13 · **Files:** `tests/boundary-test.py` (new),
+`tests/test_toolchain.py`
+
+### What the item was for, and it delivered exactly that
+
+*"Items 13–17, 19, 20 and 30–32 all specify behaviour at that boundary and **no run has ever
+crossed it with an input this plan's schema describes**. For a document whose central
+methodological complaint is that static agreement is not evidence, that ratio is the wrong way
+round."*
+
+It has now been crossed, three times, and **the first crossing found two defects that no static
+reading would have shown.** That is the item paying for itself on the day it landed.
+
+### The shape: a grader, and a live mode, split
+
+`probe-p1.py` established this and stated why: *"a grader that has only ever been exercised by
+the expensive path is a grader nobody has checked."* So `--grade` runs offline against any task
+set, and `--run` builds a workspace, runs `/breakdown` live, and grades what it produced.
+
+The regression suite drives `--grade` on every run, **breaking each of the five assertions in
+turn** — a compliant task set passing is the weakest half, and a grader returning 0
+unconditionally would pass that and nothing else.
+
+**Assertion 3's break is the one worth naming.** It mutates `check-coverage.py` so it reports the
+**wrong** feature while keeping the count correct, and asserts the grader is not fooled. A test
+that does not force that cannot distinguish a check that counts from one that attributes.
+
+### The live result
+
+Three runs. The first two failed for reasons in the harness, and both are worth recording because
+one of them is a compliment to the toolchain.
+
+**Run 1 — `acceptEdits` was the wrong permission mode.** `/breakdown` is script-gated at Phases 1,
+2, 2a and 5, and `acceptEdits` permits file edits without permitting a bundled script to run.
+Every validator was denied.
+
+**What the agent under test did then is the finding.** It refused to hand-simulate them, and said
+why: *"These exist as scripts specifically because prose guards get ignored (the skill cites F15
+and P16 on this), so a run that fakes them produces output nobody has actually checked."* The
+skill's own argument for why guards are programs reached the agent reading it, and a run graded on
+simulated gates would have been worse than no run. The script now uses `bypassPermissions` and
+says why in a comment.
+
+**Run 2 — the harness nested the PRD inside the project**, and `preflight.sh` refuses a target
+containing `docs/prd/` (F15's own guard). The grader diagnosed it correctly rather than reporting
+a toolchain defect: *"preflight refused a clean tree, so its refusal below proves nothing."* That
+guard was written into assertion 5 on the assumption it would never fire; it fired on the second
+run, against the harness.
+
+**Run 3 — all five assertion groups ran.** Four clean:
+
+| | Result |
+|---|---|
+| 1 | **19 criterion copies verbatim against the PRD, zero reworded** |
+| 2 | 3 features named by 8 attributed tasks, resolving both ways |
+| 3 | removing `list-links`'s 2 tasks was reported as `list-links` **and nothing else** |
+| 4 | `{'must-have/P0': 5, 'should-have/P0': 3}` |
+| 5 | preflight refused the won't-have task and named it |
+
+**Assertion 1's headline held, and it is the one the plan singled out** as *"the one assertion
+that would have failed for the whole life of the toolchain"*. Nineteen criteria arrived with their
+ids and their text unaltered. P2 is fixed, demonstrated rather than specified.
+
+### Defect one: `<source-feature>` is single-valued, and a real run invented a notation
+
+The generator wrote `<satisfies-criteria>2,3</satisfies-criteria>` — bare, as the spec requires —
+while carrying the criteria as `<criterion id="list-links#2">`. **It invented `feature#id`**, and
+applied it in one of the two places, so the two halves of a task no longer refer to each other.
+
+The cause is a gap in **item 16**, not a defect in the run. A task that legitimately covers
+criteria from more than one feature — an integration task, most obviously — has no way to say
+whose criterion it is carrying, because `<source-feature>` holds one slug. Item 30's coverage
+check scopes cited ids per feature, so the neighbour's criterion is then reported as covered by
+nothing.
+
+**Run 2 hit the same wall and solved it differently**: it *split* the task rather than qualifying
+the ids, and said so — *"`<source-feature>` is single-valued and `check-coverage.py` scopes cited
+criteria per feature, so tag-links 3 would have been reported as covered by no task."* Two runs,
+two independent workarounds, one gap. That is as strong as this kind of evidence gets, and the
+plan never considered the case.
+
+**The grader reports it as a FINDING rather than a failure**, because the criterion *text* is
+unaltered — the thing item 17 exists to protect held. Conflating a qualified id with a reworded
+one would bury the interesting half. **It needs a plan item**; it is not fixed here, because item
+59's job is to measure and a schema change is the plan's decision to make.
+
+### Defect two: a task cited a criterion it did not carry
+
+`L1-003` declares `<source-feature>save-link</source-feature>` and
+`<satisfies-criteria>1</satisfies-criteria>` and carries **no `<criterion>` at all** — while its
+own prose asserts that *"its traceability is nonetheless real"*. It is not: item 17 requires the
+criterion to be carried, and validation rule 0 in `task-format-spec.md` says both directions must
+resolve within one file.
+
+**The live run therefore exits 1, and that is the honest result.** It is recorded here rather than
+worked around; a runtime test whose first crossing is made to pass by adjusting the test is a
+runtime test that has measured nothing.
+
+### What the run also produced, unprompted
+
+The `/breakdown` run reported three defects it found and fixed in its own output — a `conftest.py`
+that seven downstream tasks assumed and one task explicitly forbade; the orphaned criterion above;
+and a `4-integration` layer dropped against the documented rule by a criterion in neither skill.
+It also reported that a `breakdown-generate-tasks` fork made **false claims about a competing
+concurrent task set that did not exist**, and generated all four layers when scoped to one.
+
+None of that is graded here and none of it is this item's to fix. It is recorded because it is the
+first evidence of any kind about how these skills behave under a real run, and because the last
+one is a defect in a skill rather than in an artefact.
+
+### Verification
+
+`python tests/test_toolchain.py` — **95 → 96**, `failed 0`, `known 0`. The new check breaks all
+five assertions and confirms the grader notices each.
+
+**A bug in my own check, worth recording because it produced a false negative.**
+`open(path, "w").write(open(path).read().replace(...))` truncates the file *before* the inner read
+is evaluated, so it wrote an empty task — and the check then reported a missing failure that the
+grader had in fact produced. Read first, then write. It is the same species as the `check-scope.py`
+key defect two commits ago: **the test was wrong in a way that made the subject look wrong.**
+
+**No mutation round.** The check *is* a mutation round — it breaks five things and asserts five
+detections — and wrapping it in `mutate.py` would have mutated the mutator.
+---
+
+---
+
+## 58 + 3 + 6 + 7 + 40 + 8 — the definition bar, and the first run of it found four defects
+
+**Commit:** `7966ed7` · **Addresses:** A7/R12, P26, P16, P23 · **Files:**
+`schema/checks.md` (new), `schema/core.md`, `skills/breakdown/scripts/check-status.py` (new),
+`skills/breakdown/scripts/check-definition.py` (new), `skills/breakdown/scripts/check-rename.py`
+(new), `skills/breakdown/scripts/check-references.py`, `agents/prd-criteria-author.md` (new),
+`commands/prd.md`, `tests/fixture/prd/SCHEMAS.json`, `tests/mutants/definition-bar.py` (new),
+`tests/mutants/significance-screen.py` (new), `tests/test_toolchain.py`
+
+### Why six items are one commit
+
+The group's own row said it: *"58 is the table of assertions, 6 is its caller, 3 feeds it, 40
+supplies the mechanical tests and 8 takes the judgement half. Splitting these means designing the
+same checker four times."* That held. Item 6's eleven-assertion prose list cannot be split from
+the table that gives each assertion an owner, and the owners cannot be written without deciding
+which half of item 40 is mechanical — which is item 8's boundary from the other side.
+
+### What landed
+
+- **58** — [`schema/checks.md`](../../schema/checks.md): twenty-one assertions, one owning script
+  each, every caller named. Modelled on `parity.md` deliberately: **every owner and every caller
+  is checked by running it**, so a row whose script has been deleted or whose caller has stopped
+  invoking it fails rather than reads well.
+- **3** — `check-status.py`. Declared `<definition>` against the ceiling the file's own structure
+  supports, `<gaps>` well-formedness, and gap age.
+- **6** — `/prd`'s Phase 7 becomes a **caller**: four runnable invocations, a table of what each
+  output line means, and the trailing *Consistency Checks* section stops restating them.
+- **7** — `--resume` re-runs those checks across **every** feature before resuming, in
+  Initialization, where the resume decision is actually made.
+- **40** — `check-definition.py`. Five of the eight tests, mechanically; the other three named and
+  routed rather than approximated.
+- **8** — `agents/prd-criteria-author.md`, two modes, `tools: Read Glob Grep` — the proposal-only
+  rule enforced by what the agent *holds* rather than by what it says.
+
+### Departure 1 — item 3's rule was restated in elements, and its byte counts are gone
+
+The measured rule tested for *"a data-model / dependency / relationship marker in the notes"* and
+*">=1000 bytes of notes"*, with `<=2 criteria` scoring `tbd`. Both were proxies for elements that
+did not exist when it was written: at schema-4 the marker became `<data-model>` and the dependency
+became `<depends-on>`.
+
+**Run as specified, against the reference fixture, that rule scores three of four `defined`
+features as `tbd`** — because the fixture's features are small on purpose. A small feature that is
+completely specified is not under-defined, and a proxy kept alongside the thing it stood for is a
+second answer to one question. So the ceiling is now section 4.2's `Required content` column and
+nothing else: 0 criteria → `tbd`; ≥1 criterion → `in-progress`; plus `<user-story>` and no
+specification gap → `defined`. **Zero contradictions on both fixture projects**, which is the same
+baseline Rule B recorded, reached by reading elements instead of counting bytes.
+
+### Departure 2 — the ambiguous band moved rather than disappeared
+
+Item 3's rule was three-valued, and the third value meant *the counters cannot see this one*. The
+element ladder is deterministic and has no ambiguous band — but the question it could not answer
+did not go away, it went to `check-definition.py`, which has eight tests for it. `check-status.py`
+asks whether the label is **contradicted by the file's own structure**; the bar asks whether the
+feature is **actually well defined**. Two questions, two scripts, two exit codes.
+
+**The silent direction is asserted as hard as the loud one.** A feature declared *below* its
+ceiling exits 0 and prints `ESCALATE`; only `--strict` raises it. That is the case the whole
+ceiling design exists for, and the mutation round breaks it in that direction specifically.
+
+### Departure 3 — item 58's table was wrong about two owners, and the corrections are in it
+
+The plan's table named `check-banned.py` (56) and `check-artefacts.py` (22, 43, 44). Neither name
+exists:
+
+| Plan said | Actually |
+|---|---|
+| `check-banned.py` owns `<banned>` and `<task-limits>` | landed at item 56 as **`check-rules.py`**, with `check-architecture.py` owning the `<rules>` parse |
+| `check-artefacts.py` owns schema conformance | **not built.** Item 22 is Phase 6, deliberately last |
+
+The second is carried as a **row with no owner** rather than omitted, and the suite asserts at
+least one such row exists. An assertion this plan has specified and not built is a fact about the
+project; deleting the row would make Phase 6 invisible in the only place that enumerates it.
+
+### Departure 4 — one half of item 40's gate is deferred, and it is a schema change
+
+The gate is *"the mechanical tests pass **and** a review has been recorded"*. The first half is
+`check-definition.py`. **The second half has nowhere to be recorded**: no artefact carries a
+review marker, and adding one is a schema version — a migration step, a fixture, a frozen hash.
+
+`SCHEMAS.json` already predicted this, listing schema-6 as arriving with items 38 and 40. That
+entry is now updated to say what it is *for* rather than that it is a placeholder, and item 38 is
+in the next group. `/prd` says the missing half out loud rather than treating its absence as a
+pass, which is the honest reading of a gate with one working half.
+
+### Departure 5 — two of item 40's tests got a different mechanical half than the plan implies
+
+- **Test 5** (*external dependencies as providers with roles, not brand names*) has no per-feature
+  home on the PRD path — external dependencies live in `index.md`. Its mechanical half is
+  therefore *every `<dependency>` names a `<purpose>`*: a name with no role is exactly a brand
+  name, which is the half a script can settle.
+- **Test 6** (*decision records discharged, not merely cited*) splits. `check-references.py`
+  already resolves every `ADR-NNN` and reports a citation of a superseded record; whether the
+  record's obligations appear as criteria is judgement. So the bar asserts **neither** and names
+  both — a rule stated in two programs is a rule that will be changed in one of them.
+
+### Departure 6 — the ASR screen reads two of six `because` values, and says which four it will not
+
+Item 6 asks for *"architecturally-significant candidates, screened by the published ASR heuristics
+and reported as candidates only, never applied"*. Only two of the six `because` values leave a
+mark in a file a script can read: a **quality attribute** named in the feature's own text, and
+**cross-cutting** reach, measured as the number of other documents that chose to name this
+feature. `first-of-a-kind`, `risk` and `constraint` are judgements with no signal in the file, and
+guessing them produces a candidate list nobody reads.
+
+It lives in `check-references.py` rather than in a new script, because that file already reads
+`<architecturally-significant>` from the other direction — a flagged feature no record drives.
+One element, one reader, now in both directions: flagged-and-undriven is `STALE`, unflagged-and-
+qualifying is `CANDIDATE`.
+
+**A candidate never reaches the exit code, including under `--strict`.** A heuristic that can fail
+a build has been promoted to a rule behind everyone's back, and the mutation round breaks it in
+exactly that direction. Reach also excludes `index.md` and `what-next.md`, which name every
+feature by construction and would otherwise hand each one two free edges; the check asserts the
+number, not merely that a candidate was reported.
+
+### The finding: the bar fires on four of six `defined` features in the reference fixture
+
+First run, no mutation:
+
+| Feature | Fails |
+|---|---|
+| `list-links` | t2 — no `unwanted-behaviour` criterion; t4 — no `<data-model>` |
+| `zebra-signin` · `walrus-export` · `narwhal-theme` | t4 — no `<data-model>` |
+
+`save-link` and `tag-links` pass every mechanical test, so this is a bar with both controls
+present rather than one that reports on everything.
+
+**The fixture is not relabelled and not rewritten, and both refusals have reasons.** Section 4.2's
+own principle is that a wrong status usually signals wrong *content*, so lowering four
+`<definition>` tags to silence the bar is the failure mode the gate is deliberately too weak to
+force. And fixing the content means editing `schema-4`, whose PRD features are byte-identical to
+`schema-5`'s and whose hash is frozen — plus `schema-1` through `schema-3`, since the migration's
+golden comparison would otherwise stop matching. That is a schema-6 change, and it is recorded as
+one in `SCHEMAS.json` rather than left as a surprise for whoever runs the check next.
+
+**This is item 59's shape arriving one commit later**: the first time an assertion is actually run
+against the corpus, it finds something. Four somethings, all of them real, none of them visible to
+a static reading of the same files.
+
+### What item 6's eleven bullets became
+
+| Item 6 said | Owner |
+|---|---|
+| derive status for every feature, report each mismatch with a reason | `check-status.py` |
+| index ↔ `features/` reconcile; orphans, dangling entries, a feature file still carrying `<priority>` | `check-rename.py` |
+| a `superseded` pointer nothing references any more | `check-rename.py`, reported not refused |
+| no reference anywhere to a slug that has no file | `check-rename.py` |
+| criterion `id` uniqueness within a feature | `check-definition.py` |
+| `<user-story>` present, in three parts, with a non-tautological *so that* | `check-status.py` (presence, for the ceiling) · `check-definition.py` (shape and screen) |
+| `excluded` without `<rationale>`; `superseded` without a successor or still indexed | `check-status.py` |
+| EARS pattern coverage; a criterion whose `pattern` is missing | `check-definition.py`, test 2 |
+| unassigned criterion priority, as a count | `check-definition.py` |
+| architecturally-significant candidates, screened and reported as candidates | `check-references.py` |
+| external references resolve | `check-references.py` (item 39, already) |
+| `<gaps>` well-formed, and the status rule | `check-status.py` |
+| gap age, reported rather than judged | `check-status.py` |
+
+Nothing in that list is unimplemented and nothing is implemented twice — which is what item 58 was
+for, and it took writing the table to notice that *"no reference to a slug that has no file"* had
+four claimants and *"user story present"* needed two, for different reasons.
+
+### Verification
+
+`python tests/test_toolchain.py` — **96 → 103**, `failed 0`, `known 0`.
+
+**Two mutation rounds, 23 mutants, 23 caught**, both with a green baseline and every file restored
+by hash:
+
+| Round | Mutants | Result |
+|---|---|---|
+| `tests/mutants/definition-bar.py` | 17 | **17/17 caught** |
+| `tests/mutants/significance-screen.py` | 6 | **6/6 caught** |
+
+**A second file rather than an amended first one.** The first round is a measurement of seventeen
+mutants against the code as it stood; the significance screen and the priority spread were written
+after it, and re-running an edited first round would have replaced that record rather than
+extended it.
+
+**The four mutants worth naming** are the ones a looser check would have survived:
+
+- the ceiling turned back into a *value*, so a feature held **below** what its content supports
+  becomes a defect — the exact failure the first version of item 3's rule had on a real corpus
+- test 7's **inbound** half silenced, which is the half that gets skipped and the half that
+  catches contract gaps
+- reach counting `index.md` and `what-next.md`, which name every feature by construction: the
+  screen still reports candidates, it just reports *everything*. A check asserting only that a
+  candidate appeared would pass it, which is why the check asserts the number
+- a candidate made to fail under `--strict`, promoting a heuristic to a rule
+
+Every script was also watched failing by hand before any check was written: a copy of the fixture
+with one element removed at a time, including the three off-ladder rules (`excluded` with no
+rationale, `superseded` with no successor, `superseded` still indexed) which no fixture exercises
+and which were run against a scratch PRD built for them.
+
+---
+
+## 10 + 24 + 32 + 38 — the residue, and three stamps that finally have readers
+
+**Commit:** `af42e48` · **Addresses:** P5, P22, P25, P28 · **Files:**
+`commands/prd.md`, `schema/checks.md`, `schema/migration.md`, `schema/prd-format.md`,
+`schema/scripts/build-what-next.py`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/references/architecture-format.md`, `skills/breakdown/scripts/build-manifest.py`,
+`skills/breakdown/scripts/check-architecture.py`, `skills/breakdown/scripts/check-gate.py` (new),
+`skills/breakdown/scripts/list-prds.py`, `skills/execute/SKILL.md`,
+`skills/execute/scripts/check-compatibility.py` (new), `tests/mutants/residue.py` (new),
+`tests/test_toolchain.py`
+
+### Why these four are one commit, which the split row got right for the wrong reason
+
+The row said *"independent of each other and of the above; last because nothing waits on them."*
+Independent they are. What the row did not see is that **three of the four are the same defect**:
+an artefact carrying a stamp, a summary or a switch that **nothing reads**. Item 24's two version
+stamps had been written since item 4.5 and never read. Item 32's review view did not exist. Item
+38's `<design-track>` was specified in `decision-record.md` with **no host artefact to write it
+in** and no gate to read it. Grouping them turned out to be right for a reason nobody recorded.
+
+### What landed
+
+- **10** — `/prd` Phase 9 writes `features/{slug}.md` **one file at a time**, and a later edit
+  re-reads only the feature being edited plus its index entry and its `<depends-on>` neighbours
+  — the same three things item 8's agent is given, for the same reason.
+- **24** — `check-compatibility.py` reads the manifest's two stamps at `/execute`;
+  `build-what-next.py` writes `<toolchain-version>` into `what-next.md`; `list-prds.py` reports
+  it before a resume.
+- **32** — `build-manifest.py` renders `tasks-summary.md` from the traversal it already makes:
+  one row per task with its source feature, tier, criteria, objective and files.
+- **38** — `check-gate.py` at the `/breakdown` → `/execute` boundary, and `<design-track>` gets
+  a host artefact at `architecture.md` format version **1.1**.
+
+### Departure 1 — item 24's first bullet was already done, and was worth nothing
+
+The plan says *"`/prd` writes `<toolchain-version>` into `what-next.md`"*. It already did:
+`prd-format.md`'s template carried the element. It carried it **hardcoded as `2.0.0`**, with no
+producer filling it in and no reader looking at it — a literal in a template, which is the exact
+shape of the defect this plan spends most of its items removing, sitting inside the schema that
+removes them.
+
+So the work was not the element. It was the **producer** (`build-what-next.py` stamps it from
+`plugin.json`) and the **reader** (`list-prds.py` reports it before a resume, so a PRD written by
+an older toolchain is a sentence rather than a surprise).
+
+### Departure 2 — the stamp is written once and never updated
+
+The obvious reading of *"stamping"* is *keep it current*. That is wrong here, and the reason is
+the same one that makes `check-status.py` derive a ceiling rather than a value: **a provenance
+stamp that must equal the current version is not provenance, it is a constraint.** Rewriting it on
+every derivation would make every `what-next.md` in every project read as stale on every plugin
+release, and a file that is always stale is a check nobody runs.
+
+So `stamp()` inserts when the element is **absent** and never touches an existing one, and
+`--check` never fails on it. An older stamp is the ordinary case; it is exactly what
+`list-prds.py` reports.
+
+### Departure 3 — the plan predicted this stamp would replace shape detection. It does not
+
+`migration.md` said `--detect` reads the file's *shape* *"until item 24 stamps
+`toolchain_version`"*. Item 24 has now stamped it and detection stays keyed on the shape, for two
+reasons the sentence had not considered: a `2.0.1` toolchain writes schema-4 and schema-5
+artefacts alike, so the stamp cannot say which shape a file is in; and the shape is
+self-correcting where a stamp is not — a hand-edited file has the shape it has, whatever the stamp
+still claims. **The forward reference is corrected in place rather than left to be discovered**,
+which is the whole reason the ledger records departures.
+
+### Departure 4 — `<design-track>` was a switch with nowhere to live
+
+`decision-record.md` specified it — `enabled`, `adr-dir`, off by default, *"with `enabled="false"`
+the gate prints its report and returns"* — and **no artefact had a slot for it**. A reference
+describing a setting no file can hold, read by a gate that did not exist. Both halves land here:
+`architecture.md` gains it under `<rules>` at format version 1.1, and `check-architecture.py`
+parses it.
+
+**An element present with no `enabled` is refused, not defaulted.** An absent element means off,
+which is the shipped behaviour; an element a project wrote and left incomplete is a project that
+meant to say something and did not, and guessing which way would decide whether a gate stops a
+run.
+
+### Departure 5 — item 38's third assertion names an element that no longer exists
+
+The plan says *"no blocking `<needs-clarification>` remains"*. That element was replaced by
+`<gaps>` at item 29, and `kind` is what makes the assertion possible at all: core §6's
+`specification`, `dependency` and `decision` block execution while `ownership` and `evidence`
+warn. A boolean `blocking=` could not have made that distinction, which is item 29's own argument
+arriving at its first real consumer.
+
+**And the gate asks it of a different set than `select-features.py` does.** That script refuses a
+feature carrying a specification gap at *selection* time; the gate asks, after generation, over
+the features that **actually produced tasks** — a different set whenever `--include-tbd` or a
+`--priority` threshold was passed, and a different question from *should we have started*.
+
+### Departure 6 — the gate scopes significance to what was built
+
+`check-references.py`'s assertion is about the PRD: *this feature is flagged and no record drives
+it*. The gate's question is narrower — *may THIS task set proceed* — and a significant feature
+nobody built cannot block a run of the ones that were. So the gate filters that script's output to
+the features its tasks descend from.
+
+**That is the gate's decision, not a re-reading of the owner's**, and the distinction matters:
+the gate never recomputes coverage or significance, it *runs* `check-coverage.py` and
+`check-references.py` and aggregates. A gate with its own opinion about coverage would be a second
+answer to one question, which is the failure item 58's table exists to prevent.
+
+### The finding: the gate's first run found a real one
+
+On the reference fixture, with every feature built, assertion 3 fires:
+
+> `tag-links: carries a <gap kind="decision"> and has tasks. An undecided question built anyway
+> is an invented one`
+
+`tag-links` genuinely does declare an open decision — whether a tag with no remaining links is
+deleted or kept — and the toolchain has been generating tasks for it since the fixture was
+written. **That is the third assertion earning its place on the day it landed**, and it is the
+same shape as item 59's and item 40's first runs: the first time something is actually asked, it
+finds something.
+
+### The manifest goes to 1.2, and the reader's version is declared in the reader
+
+Item 32's two fields (`objective`, `files`) are additive, so `MANIFEST_SCHEMA_VERSION` moves
+`1.1 → 1.2` and a reader written against 1.1 still works. That is the rule item 24's check then
+enforces — and the check **declares its own accepted version rather than importing the
+producer's**.
+
+That is the one design decision in this group most likely to look like duplication and be
+"cleaned up". It is not duplication: importing `MANIFEST_SCHEMA_VERSION` would make producer and
+reader equal by construction, every comparison would pass, and the check would be a function that
+returns `True`. The producer's version and the reader's accepted range are different facts about
+different programs. A regression check asserts the reader does not borrow it.
+
+### A defect in my own work, recorded because the suite is one module
+
+The 5e checks introduced a helper called `_task_tree`. **A helper of that name already existed**,
+600 lines earlier, with a different signature — and Python resolves the name to the last
+definition, so two unrelated checks (items 30 and 20) started failing with
+`ValueError: not enough values to unpack`. Neither had been touched.
+
+The suite is a single module with 109 checks and a flat namespace, and a helper added at the
+bottom silently rebinds one added at the top. **The failure presented as a defect in the subject
+and was a defect in the instrument** — the same species as item 59's truncating `open(...,"w")`
+and the `check-scope.py` invented key. It was caught because the suite runs whole rather than per
+check, which is the argument for keeping it that way.
+
+### Verification
+
+`python tests/test_toolchain.py` — **103 → 109**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/residue.py` — **17 of 18 caught**, then **18 of 18**
+after the survivor was fixed.
+
+### The one that survived, and why it is the most useful result in the group
+
+> *"the gate stops caring what the coverage check returned"* — `if cov_code != 0:` becomes
+> `if False:`.
+
+The check asserted `SHORTFALL` and the feature's name were in the gate's output, and **both still
+were**: the report prints the coverage verdict from its own exit code, independently of whether
+that verdict is counted as a *finding*. So under the mutant the gate printed a shortfall naming
+`tag-links` and then said `nothing to confirm` — with the design track on, a PRD feature carrying
+no task at all would have gone to `/execute` unremarked.
+
+**The check was reading the visible half.** The report is what a person sees; the finding count is
+what does something. The fix asserts the consequence: with the track on and a coverage shortfall as
+the only finding, the gate must exit 1 and say `confirmation required`. Re-run against the same
+mutant, it caught it.
+
+This is *"assert the mechanism, not the prose"* arriving in a new disguise — the assertion was not
+pinned to a *sentence*, it was pinned to a *report*, which is one layer better and still one layer
+short of the behaviour. **A report and the decision it feeds are two different claims, and a check
+that tests the first passes when the second is deleted.**
+
+**One orphan warning, and it is benign.** `every assertion has one owning script` also failed on
+the mutant that removes `check-compatibility.py`'s invocation from `/execute` — correctly, since
+`checks.md` lists that file as its caller and the table is checked by running it. Two checks
+catching one mutant is the table doing its job, not a duplicate.
+
+Every script was watched failing by hand first: every branch of the compatibility rule against a
+built manifest (future major, older major, newer minor, absent, unparseable, provenance
+mismatch); the summary absent, stale and current; the gate with the track off, on, with a coverage
+shortfall and with an undriven significant feature; and `<design-track>` valid, unset and
+non-boolean.
 
 ## What the machine sleeping taught, which was not about sleep
 

@@ -17,6 +17,9 @@ WHAT IT REPORTS
 One line per PRD: slug, feature count, the status each file declares, and how long since it was
 touched. Then the two conditions worth acting on:
 
+  WROTE IT    what-next.md's <toolchain-version> (item 24), when it differs from the plugin
+              running now. Provenance, never a refusal: a PRD written by an older toolchain is
+              the ordinary case, and it is worth SAYING so before an interview resumes over it
   DISAGREE    index.md and what-next.md declare different statuses. Nothing can resume this
               safely, because the answer depends on which file the reader happens to check --
               which is F3 restated as a data defect rather than a code one.
@@ -42,6 +45,9 @@ import time
 
 STATUS = re.compile(r"<status>\s*([a-z-]+)\s*</status>", re.I)
 NAME = re.compile(r"<name>\s*(.+?)\s*</name>", re.S)
+# Item 24's stamp, written by build-what-next.py. Read here because an element with no reader
+# is the defect this plan spends most of its items removing.
+TOOLCHAIN = re.compile(r"<toolchain-version>\s*([^<\s]+)\s*</toolchain-version>", re.I)
 
 
 def read(path):
@@ -55,6 +61,25 @@ def status_of(path):
         return None
     m = STATUS.search(read(path))
     return m.group(1).lower() if m else None
+
+
+def stamp_of(path):
+    """The toolchain version that last wrote this file, or None."""
+    if not os.path.isfile(path):
+        return None
+    m = TOOLCHAIN.search(read(path))
+    return m.group(1) if m else None
+
+
+def plugin_version():
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+    try:
+        import json
+        return json.load(open(os.path.join(root, ".claude-plugin", "plugin.json"),
+                              encoding="utf-8")).get("version")
+    except Exception:
+        return None
 
 
 def survey(root):
@@ -82,6 +107,7 @@ def survey(root):
             "index": status_of(index),
             "what_next": status_of(what_next),
             "age_days": (time.time() - newest) / 86400 if newest else None,
+            "wrote_it": stamp_of(what_next),
         })
     return out
 
@@ -125,6 +151,14 @@ def main():
             age = "-" if prd["age_days"] is None else (
                 "today" if prd["age_days"] < 1 else f"{prd['age_days']:.0f}d ago")
             print(f"{prd['slug']:<24} {prd['features']:>4}  {state:<12} {where:<22} {age}")
+
+    running = plugin_version()
+    for prd in prds:
+        stamp = prd["wrote_it"]
+        if stamp and running and stamp != running:
+            print(f"\n{prd['slug']}: written by toolchain {stamp}; this one is {running}. "
+                  f"Provenance, not a problem -- but a PRD authored against an older schema may "
+                  f"need `/migrate` before it is resumed.")
 
     bad = [p for p in prds if verdict(p) in ("DISAGREE", "NO MARKER")]
     for prd in bad:

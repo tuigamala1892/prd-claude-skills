@@ -134,13 +134,28 @@ Generate XML files following this exact structure:
     <priority>1</priority>
     <estimated-files>2</estimated-files>
     <!-- <cwd>packages/billing</cwd>  only when the source names a component; see below -->
+
+    <source-feature>save-link</source-feature>
+    <moscow>must-have</moscow>
+    <satisfies-criteria>1,4</satisfies-criteria>
+    <requirement-level>P0</requirement-level>
   </meta>
 
   <context>
+    <acceptance-criteria>
+    <!-- The source feature's criteria, VERBATIM, with their original ids. Copy the element. -->
+    <criterion id="4" pattern="event-driven" priority="P0">
+    When a user submits a link, the system shall store it and return the stored record.
+    </criterion>
+    </acceptance-criteria>
+
+    <data-model>
+    <!-- The feature's own <notes><data-model>, carried. Omit when it declares none. -->
+    </data-model>
+
     <prd-excerpt>
-    <!-- Copy RELEVANT PRD sections here -->
-    <!-- Include feature description, acceptance criteria -->
-    <!-- Do NOT copy the entire PRD -->
+    <!-- What is LEFT after the two above: the feature description, and nothing else -->
+    <!-- Do NOT copy the entire PRD, and do NOT restate the criteria here -->
     </prd-excerpt>
 
     <tech-stack>
@@ -305,6 +320,55 @@ Generate XML files following this exact structure:
 </task>
 ```
 
+## Traceability, and the four elements that carry it (items 16 and 17)
+
+**Every task outside Layer 0 must name where it came from.** Until item 16 a task named its
+feature nowhere at all, so attribution downstream was a string match on `<name>` — which is why
+`check-scope.py` could attribute nothing and why item 21's probe had to invent slugs that could
+not occur by coincidence.
+
+| Element | Value | Where it comes from |
+|---|---|---|
+| `<source-feature>` | the feature's slug | the feature file you were given |
+| `<moscow>` | `must-have`, `should-have`, `could-have` | `index.md`'s entry for it. **Never `wont-have`** — those features never reach you (item 13) |
+| `<satisfies-criteria>` | comma-separated criterion ids | the criteria this task actually implements |
+| `<requirement-level>` | `P0`, `P1` or `P2` | **the highest** `priority` among those criteria |
+
+**`<priority>` is not one of them and must not be touched.** It is an integer meaning merge order
+within the layer, and it has meant that since the beginning (**P3**). The tier goes in `<moscow>`
+because that name was free.
+
+**Layer 0 tasks carry none of these**, and that is the only exemption. They create directories,
+config and a test harness — they descend from the tech stack, not from a feature, and inventing a
+`<source-feature>` for them would put a false attribution into item 30's coverage check.
+
+### Carry the criteria; do not rewrite them
+
+**Copy each `<criterion>` element whole, with its `id`, `pattern` and `priority`.** Do not
+summarise, split, merge or improve the grammar. A reworded criterion is one no reviewer can match
+back to the PRD, and core §1's ids exist so a task, a commit and a review can name the same
+requirement and be talking about it.
+
+**Split a criterion across two tasks by citing it from both** — `<satisfies-criteria>` is a list
+and an id may appear in more than one task. What you must not do is paraphrase half of it into
+each.
+
+### Derive the tests from the criteria, and say which
+
+Each `<test>` carries `covers="<criterion id>"`. A test citing no criterion cannot be traced back;
+a criterion no test cites is the coverage gap item 30 reports.
+
+**An `unwanted-behaviour` criterion already states its negative case**, so read the failing test
+off it rather than inventing one. Inventing the failure case is what this skill did before item
+33, and **P19** is the finding that says it cannot be trusted to.
+
+### The data model is copied, never inferred
+
+When the feature declares `<notes><data-model>`, carry it into `<context><data-model>` unchanged.
+When it declares none, **omit the element** — do not infer one to fill the slot. A data model
+half-read and half-invented is worse than either, because nobody can tell which half is the
+author's.
+
 ## Generation Process
 
 For each task in the layer plan:
@@ -428,6 +492,12 @@ Layer 0 (setup) tasks are different - they use shell commands instead of code ge
 
 Before writing each task file, verify:
 
+- [ ] `<source-feature>`, `<moscow>`, `<satisfies-criteria>` and `<requirement-level>` are all
+      present (every layer except Layer 0)
+- [ ] every id in `<satisfies-criteria>` appears in `<context><acceptance-criteria>`, and every
+      criterion there is named by some `<test covers=>`
+- [ ] every carried `<criterion>` is byte-identical to the source, id included
+- [ ] `<requirement-level>` is the **highest** level among the criteria named, not the first
 - [ ] No "TODO", "TBD", "...", or placeholders
 - [ ] All file paths are complete (not "in the models folder")
 - [ ] All class/function names are specified

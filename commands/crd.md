@@ -1,6 +1,6 @@
 ---
 description: Change Request Document workflow for an existing codebase - scope feature additions, modifications, removals and refactors against real code.
-argument-hint: "--project <path> [description] [--list] [--status <slug>]"
+argument-hint: "--project <path> [description] [--list] [--status <slug>] [--resume]"
 ---
 
 # /crd - Change Request Document Workflow
@@ -15,6 +15,7 @@ You are a collaborative partner helping create focused Change Request Documents 
 | Description text | No | Initial description of the change request |
 | `--list` | No | List existing CRDs for the project |
 | `--status <slug>` | No | Check status of a specific CRD |
+| `--resume` | No | Continue an existing CRD instead of refusing to overwrite it |
 
 ## Examples
 
@@ -23,6 +24,7 @@ You are a collaborative partner helping create focused Change Request Documents 
 /crd -p /path/to/my-app "Remove deprecated API endpoints"
 /crd -p /path/to/my-app --list
 /crd -p /path/to/my-app --status dark-mode-toggle
+/crd -p /path/to/my-app --resume
 ```
 
 ## Initialization
@@ -173,22 +175,17 @@ Ask: *"Does this impact analysis look correct? Should we include or exclude any 
 
 ### Phase 5: Requirements Capture
 
-For each requirement, ask the user to specify details.
+**One list, not two.** Until item 46 this phase captured `<requirements>` and then, optionally,
+acceptance criteria for each — two lists that nothing linked. An EARS criterion *is* a
+requirement, so there is now one list with one id space, and capturing it is this phase's whole
+job. Do not ask for requirements and criteria separately; you will get the same content twice
+under two ids.
 
 For `feature-add` and `feature-modify`:
 
-*"What are the specific requirements for this change? Let's list them:"*
+*"What must the system do once this change is in? One sentence each."*
 
-Capture requirements with priorities:
-- must-have (required for completion)
-- should-have (important but not blocking)
-- could-have (nice to have)
-
-For each requirement, optionally capture acceptance criteria:
-
-*"Should we define acceptance criteria for this now, or mark it for later?"*
-
-If now, write **one EARS sentence per criterion** — the six patterns and the rules are in
+Write **one EARS sentence per criterion** — the six patterns and the rules are in
 [`core.md`](../schema/core.md#2-acceptance-criteria):
 
 ```
@@ -204,7 +201,55 @@ feature that has said nothing about its failure modes reads as complete.
 `pattern` is yours to assign here, with the person who just described the behaviour present. It
 is the one attribute a migration is forbidden to guess.
 
+**Two priorities, at two levels, and they are not the same question.**
+
+- **`priority` on each criterion** is `P0`, `P1` or `P2` — *which parts of this change get built*.
+  Ask it per criterion; an unassigned one is `P1` and you should write that in rather than leave
+  it off, because *unassigned* and *deliberately P1* are indistinguishable when the attribute is
+  absent. This was MoSCoW until item 47, and two vocabularies for one concept are why
+  `--requirement-level` used to select nothing on this path.
+- **`<priority>` in `<meta>`** is MoSCoW — *whether this change request is in scope at all*.
+  One per document. Ask it once: *"Against everything else waiting, is this a must, a should or a
+  could?"* It is what `--list` shows as a tier and what `/breakdown --priority` filters on.
+
+**Whatever the interview did not settle becomes a `<gap>`, not an absence.**
+
+*"Anything here we can't pin down yet?"*
+
+A deferred criterion is a `<gap kind="specification">`, an undecided question is
+`kind="decision"`, and something waiting on other work is `kind="dependency"`. Core
+[§6](../schema/core.md#6-gaps--what-a-document-knows-it-is-missing) has all five kinds and says
+which block and which warn.
+
+**This is not a licence to stop asking.** The interview is the best resolution mechanism this
+toolchain has, because a person is answering. A gap is for what it *failed* to resolve. But
+before item 48 the CRD path had nowhere to put an unresolved point at all, so *"we'll define that
+later"* left no trace and reached `/breakdown` as a task with nothing to build.
+
+A `specification` gap bars `<workflow>ready</workflow>`. If one is open, the CRD is `draft`.
+
 ### Phase 6: CRD Generation
+
+**Check what you are about to overwrite, before writing anything.**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py {project_path}/docs/crd/{slug}.md
+```
+
+- **Exit 0** — nothing would be lost. Write.
+- **Exit 1** — `REFUSED`. **Stop.** Show the user what is about to be replaced, then either take
+  a different slug or, once they confirm this is the CRD they meant, re-run with `--resume`.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-writable.py {project_path}/docs/crd/{slug}.md --resume
+```
+
+**This command was documented as stateless and wrote the file with no check at all.** That is F3,
+which cost an interview on the PRD path before it was fixed; this path had the identical hole and
+had simply not been caught by it yet (item 48). The script is the PRD guard generalised to take a
+file — one guard, because the problem was never PRD-specific.
+
+Never pass `--resume` to get past a refusal you did not expect.
 
 Create the CRD document at `{project_path}/docs/crd/{slug}.md`.
 
@@ -225,6 +270,9 @@ Two fields to check before writing, because they are the ones the drift lost:
   value to invent.
 - **`<affected-contracts kind=...>`, not `<affected-apis>`.** The `kind` comes from the registry
   the contract was found in, so an event or a command has somewhere to be reported.
+- **`<meta><priority>` is required and is MoSCoW**; every `<criterion priority=>` is `P0|P1|P2`.
+  A MoSCoW value on a criterion is the pre-item-47 shape and must not be written.
+- **There is no `<requirements>` element.** If Phase 5 produced one, it produced the old shape.
 
 ### Phase 7: Interactive Review
 
@@ -241,7 +289,9 @@ If yes, make revisions interactively.
 After writing the CRD file:
 
 1. Confirm file path
-2. Note if any requirements are TBD
+2. **Name every open `<gap>`, by id and kind** — not "some requirements are TBD". A gap reported
+   vaguely is one nobody goes back to, and `specification` gaps are the reason the document is
+   still `draft`
 3. Explain next steps
 
 *"Your CRD has been saved to `{project_path}/docs/crd/{slug}.md`.*

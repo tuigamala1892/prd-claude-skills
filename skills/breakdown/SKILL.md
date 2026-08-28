@@ -17,19 +17,28 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 - `--output-dir <path>`: Target directory for greenfield projects (overrides default)
 - `--project-path <path>`: Existing project path for brownfield/CRD (overrides PRD value)
 - `--auto-setup`: Automatically execute Layer 0 tasks after generation (greenfield only)
+- `--priority <must-have|should-have|could-have>`: Lowest **feature** tier to build (default
+  `could-have` — all three)
+- `--include-tbd`: Break down features whose `<definition>` is `tbd` anyway
 - `--requirement-level <P0|P1|P2>`: Only build criteria at or above this level (default `P2`)
 
 ### `--requirement-level` — which criteria, not which features
 
 Two filters, two levels, and they compose in one direction only:
 
-| Filter | Selects | Vocabulary |
-|---|---|---|
-| `--priority` (item 14, not yet built) | which **features** are in scope | MoSCoW |
-| `--requirement-level` | which **criteria** within them are built | `P0` · `P1` · `P2` |
+| Filter | Selects | Reads | Vocabulary |
+|---|---|---|---|
+| `--priority` | which **whole items** are in scope | PRD: `priority=` in `index.md` · CRD: `<meta><priority>` | MoSCoW |
+| `--requirement-level` | which **criteria** within them are built | `priority=` on each `<criterion>`, both paths | `P0` · `P1` · `P2` |
 
-**Applied second, always.** `--priority` chooses the features; `--requirement-level` then chooses
-inside them. Running it the other way round would filter criteria out of features that were about
+**Both columns now have something to read on both paths.** Until item 47 a CRD carried MoSCoW at
+the *requirement* level and nothing at the document level, so `--requirement-level` selected
+nothing here and `--priority` had no field to threshold against. The vocabularies swapped levels:
+MoSCoW moved up to `<meta><priority>`, and the criteria took `P0|P1|P2` — one vocabulary per
+level, on both paths.
+
+**Applied second, always.** `--priority` chooses the features or the change request;
+`--requirement-level` then chooses inside them. Running it the other way round would filter criteria out of features that were about
 to be dropped whole, which changes nothing and costs a pass.
 
 **Default `P2` — everything.** No existing invocation changes behaviour, which is the point of
@@ -245,7 +254,43 @@ python {skill_dir}/scripts/check-prd-size.py {prd_dir}
 
 It writes `{tasks_dir}/analysis.index.json`.
 
-**Step 3 — one pass per feature.** For each feature named in the index, invoke
+**Step 2a — decide which features are in scope, before analysing any of them.**
+
+```bash
+python {skill_dir}/scripts/select-features.py {prd_dir} --priority {threshold}
+```
+
+Items 13, 14 and 15. **`/breakdown` used to filter nothing** — every feature named in the index
+became tasks, so a `wont-have` feature nobody intends to build, a `superseded` one already
+absorbed into another, and a `tbd` one consisting of a name and a sentence all reached `/execute`
+as work. That is **P1**, and it is three rules wearing one symptom:
+
+| Rule | What it drops | Kind of rule |
+|---|---|---|
+| **13** | `wont-have`, `<definition>excluded</definition>`, `<definition>superseded</definition>` | **Correctness. No flag, no override** |
+| **14** | anything below `--priority` | the operator's choice |
+| **15** | a `<gap kind="specification">`, or `tbd` without `--include-tbd` | a defect in the PRD, **and it is named** |
+
+- **Exit 0** — a set was selected. Analyse **only those features** in Step 3.
+- **Exit 1** — nothing was selected. **Stop and report the reasons**, all of them. This is not an
+  error to work around; it means the PRD as filtered contains nothing buildable.
+
+**Read stderr before anything else.** *"5 must-have features are not defined enough to break
+down"* is the single most useful sentence this command can say about a PRD, and the script puts
+it on stderr precisely so it does not become line eleven of twenty. **Say it to the operator
+verbatim.** A silently omitted must-have is worse than the unfiltered behaviour this replaced.
+
+**Every reason is listed, not the first one that matched.** A feature is commonly excluded by more
+than one rule — the reference fixture's `quokka-telemetry` is `wont-have` *and* carries a
+specification gap. Reporting one would make fixing it appear to change nothing.
+
+**The gap block beats the status, and that is item 15's real content.** `<definition>` is a
+summary; `<gaps>` is the detail. A `specification` gap refuses the feature whatever its declared
+status — it is the author saying the specification is incomplete. The other four kinds **warn and
+do not refuse**: they say the feature is specified but not yet *buildable*, which is a scheduling
+fact rather than a definition defect. `--include-tbd` reaches the status and **never** the gap.
+
+**Step 3 — one pass per feature.** For each feature **the previous step selected**, invoke
 `breakdown-analyze-prd` again with **that one feature file**, asking for what only that feature
 implies:
 - Data models, API endpoints and frontend components implied by this feature
@@ -281,8 +326,12 @@ for its batch, for the same reason.
 
 **For CRD:**
 Extract directly from CRD structure:
-- Requirements from `<requirements>` section
-- Acceptance criteria from `<acceptance-criteria>` section
+- **Criteria from `<acceptance-criteria>` — one list, which is both the requirements and the
+  tests.** There is no `<requirements>` section; item 46 retired it, because an EARS criterion
+  *is* a requirement. A CRD written before that carries one, and it is **read** as criteria with
+  no `pattern` rather than refused — the same policy the other pre-migration shapes get
+- Document tier from `<meta><priority>` — MoSCoW, what `--priority` thresholds against
+- Open gaps from `<gaps>`, reported with the PRD path's, below
 - Affected files from `<impact-analysis><affected-files>`
 - Affected features from `<impact-analysis><affected-features>`
 - Tech stack from PROJECT.md context
@@ -383,9 +432,10 @@ Layers: 2-backend only (1 task)
 ```
 
 **And cross-check `<scope>` rather than routing on it.** A CRD's `<scope>` is no longer an input
-to this decision — *"impact analysis said `small`, breakdown produced 14 tasks"* is worth
-flagging as a sign that one of the two is wrong, but the derivation above already knows more than
-a band boundary does.
+to this decision — the derivation above already knows more than a band boundary does. The
+cross-check itself is **not yours to perform here**: it needs the task count, which does not
+exist until Phase 5, and it is `check-scope.py` rather than a paragraph asking you to notice
+(item 49, and **P16** for the fifth time).
 
 Save the layer plan to `{tasks_dir}/layer_plan.json`
 
@@ -490,9 +540,96 @@ For each layer in order:
    that as a generation failure, not a formatting nit: every downstream consumer sizes the work
    from this file.
 
-3. Report completion summary:
+3. **Hold the analysis's predictions against what generation actually produced:**
+
+   ```bash
+   python {skill_dir}/scripts/check-scope.py {tasks_dir}
+   ```
+
+   Item 49. `<scope>` and `<confidence>` were required fields on the CRD path with **no
+   consumer anywhere in the toolchain** — which is why items 29 and 31 were written as if from
+   nothing. This is their reader, and it is the same one on both paths: the CRD's declared
+   `<scope>`, and `analyze-prd`'s per-feature prediction, against the task count in the manifest
+   the previous step just built from disk.
+
+   **It exits 0 even when it reports, and that is deliberate.** A prediction losing an argument
+   with an observation is information, not a failure, and a check that can block on a model's
+   size estimate is one that gets disabled the first time it is wrong. Put its output in the
+   summary; do not treat `DISAGREES` as a stop.
+
+   **It fires on gross disagreement only.** Bands are counted in files and the observation in
+   tasks, so the units do not line up — `small` against `medium` is noise, `small` against
+   `large` means one of the two is wrong. Both answers are worth having: an under-analysed
+   change, or a generator that ran away.
+
+   **`confidence` is reported, never compared** — there is nothing to hold it against. It says
+   where the analyser was guessing, which is the one thing its output cannot otherwise recover.
+
+4. **Check the task set against the document it came from:**
+
+   ```bash
+   python {skill_dir}/scripts/check-coverage.py {prd_dir} {tasks_dir}      --priority {threshold} --requirement-level {level}
+   ```
+
+   Item 30. The previous step asked *do the files match the manifest*; this asks the same
+   question one level up — **do the tasks match the PRD**. It is only answerable because item 16
+   put `<source-feature>` and `<satisfies-criteria>` on the task; before that, attribution was a
+   string match on the task's name.
+
+   Four assertions: every in-scope feature has a task, every `<source-feature>` resolves to a
+   feature that exists and was not skipped, every in-scope criterion is named by some task and
+   every id named resolves, and **no task descends from a `wont-have`, `excluded` or
+   `superseded` feature** — item 13's runtime backstop, which fires when the selection gate did
+   not run or ran and was ignored.
+
+   - **Exit 0** — the task set covers the document.
+   - **Exit 1** — a shortfall. **Report it by name.** *"1 should-have feature has no task:
+     tag-links"* is the sentence; a count is not, because a check reporting the wrong four
+     features passes any test that only counts.
+
+   The plan's fifth assertion — every architecturally-significant feature named by a decision
+   record's `**Drives:**` — is **not** in this script. `check-references.py` already runs it, and
+   a rule stated in two programs is a rule that gets changed in one of them.
+
+5. **The gate between here and `/execute`** (item 38):
+
+   ```bash
+   python {skill_dir}/scripts/check-gate.py {prd_dir} {tasks_dir} --project-path {target_dir}      --priority {threshold} --requirement-level {level}
+   ```
+
+   Three assertions, each reported **by name**: every in-scope feature has a task (item 30);
+   every architecturally-significant feature that produced tasks is named by a decision record's
+   `**Drives:**` (items 35, 36); and no feature that produced tasks still carries a `<gap>` that
+   blocks execution — `specification`, `dependency` or `decision` (item 29).
+
+   **It runs the two owning scripts rather than re-deciding what they decide.** Coverage is
+   `check-coverage.py`'s answer and significance is `check-references.py`'s; a gate with its own
+   opinion about coverage would be a second answer to one question. Run it **after** step 2's
+   `--verify`, because coverage is read from the manifest and a stale manifest makes the gate
+   agree with the wrong file.
+
+   **Placed here and nowhere else.** Not inside `/execute`, which is the unattended overnight case
+   P19 refuses to block. `/breakdown` and `/execute` are already separate invocations, so an
+   approval between them costs nothing at 2am.
+
+   - **Exit 0** — nothing to confirm, *or* the design track is off and the findings are a report.
+     **Put them in the summary either way**; the report is the valuable half.
+   - **Exit 1** — `architecture.md` declares `<design-track enabled="true">` and there is
+     something to confirm. **Stop and ask** before telling the user to run `/execute`. Show the
+     findings verbatim; do not summarise them into a count.
+
+   `<design-track>` controls whether the gate *stops*, never whether it *checks*. Absent
+   `architecture.md`, absent element and `enabled="false"` all mean off, which is the shipped
+   behaviour.
+
+6. Report completion summary:
    - Total tasks generated — **the number the script reports**, not the number planned
    - Tasks per layer
+   - **Anything `check-scope.py`, `check-coverage.py` or `check-gate.py` reported**, verbatim —
+     a check whose output is summarised away is a check nobody acts on
+   - **Where the reviewable summary is**: `tasks-summary.md`, beside the manifest, one row per
+     task with the feature it came from, its tier, the criteria it satisfies and the files it
+     writes (item 32). Say it exists; a reviewer who has to open every task will not review
    - Any review failures requiring attention
    - If the count differs from `layer_plan.json`, say so and say why; a plan revised during
      generation is the plan working, not failing

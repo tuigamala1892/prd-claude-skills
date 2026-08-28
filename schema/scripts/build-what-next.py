@@ -43,6 +43,7 @@ EXIT CODES
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -51,6 +52,8 @@ FEATURE_SLUG = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
 DEFINITION = re.compile(r"<definition>\s*([a-z-]+)\s*</definition>")
 GAP = re.compile(r'<gap\b([^>]*)>')
 BLOCK = re.compile(r"( *)<authoring-gaps>.*?</authoring-gaps>", re.S)
+META_CLOSE = re.compile(r"( *)</meta>")
+STAMP = re.compile(r"<toolchain-version>\s*[^<]*</toolchain-version>")
 
 # The order counts appear in <summary>. Fixed rather than sorted, so a diff between two runs
 # shows what changed rather than where a value happened to sort.
@@ -102,6 +105,37 @@ def derive(prd_dir, indent="  "):
     return "\n".join(body)
 
 
+def plugin_version():
+    """The running plugin's version, for item 24's stamp."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))          # scripts/schema/
+    try:
+        return json.load(open(os.path.join(root, ".claude-plugin", "plugin.json"),
+                              encoding="utf-8")).get("version")
+    except Exception:
+        return None
+
+
+def stamp(text):
+    """Insert item 24's <toolchain-version> into <meta> when it is ABSENT. Never update it.
+
+    The stamp records what WROTE this PRD, and rewriting it on every derivation would turn
+    provenance into a version tracker: every plugin release would make every what-next.md look
+    stale, and a file that is always stale is a check nobody runs. An older stamp is the ordinary
+    case and is exactly what `list-prds.py` reports before a resume.
+    """
+    if STAMP.search(text):
+        return text
+    version = plugin_version()
+    if not version:
+        return text
+    m = META_CLOSE.search(text)
+    if not m:
+        return text
+    line = f"{m.group(1)}  <toolchain-version>{version}</toolchain-version>\n"
+    return text[:m.start()] + line + text[m.start():]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("prd_dir")
@@ -128,11 +162,16 @@ def main():
     indent = existing.group(1) if existing else "  "
     wanted = derive(prd_dir, indent)
 
-    if existing and existing.group(0) == wanted:
+    stamped = stamp(text)
+    if existing and existing.group(0) == wanted and stamped == text:
         print(f"authoring-gaps is current: {len(features(prd_dir))} feature(s)")
         return 0
 
     if args.check:
+        # The stamp is never a staleness condition -- see stamp(). Only the derived block is.
+        if existing and existing.group(0) == wanted:
+            print(f"authoring-gaps is current: {len(features(prd_dir))} feature(s)")
+            return 0
         where = "is stale" if existing else "is missing"
         print(f"STALE: what-next.md's <authoring-gaps> {where}. Run without --check to "
               f"rebuild it.", file=sys.stderr)
@@ -152,7 +191,7 @@ def main():
         text = text[:cut] + "\n\n" + wanted + text[cut:]
 
     with open(target, "w", encoding="utf-8", newline="\n") as f:
-        f.write(text)
+        f.write(stamp(text))
     print(f"authoring-gaps rebuilt from {len(features(prd_dir))} feature(s)")
     return 0
 

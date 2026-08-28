@@ -81,6 +81,27 @@ Extract:
 2. Fall back to `manifest.prd.project_path` if exists
 3. Error if neither available
 
+**Then ask whether this toolchain can read this manifest at all** — before the preflight, because
+a manifest whose shape this reader does not know is not a repository problem:
+
+```bash
+python {skill_dir}/scripts/check-compatibility.py {tasks_path}
+```
+
+- **Exit 0** — readable. `WARN` and `NOTE` lines may still print; report them and carry on.
+- **Exit 1** — `REFUSED`, naming both versions. **Stop.** Re-run `/breakdown` with this toolchain,
+  or use the toolchain that produced the manifest. Do not "read it anyway": a major shape change
+  means fields have moved, and reading it regardless produces a plausible wrong answer.
+
+**Two versions, and only one of them decides.** `schema_version` says *how to read* the file and
+is what the refusal is based on; `toolchain_version` says *what produced* it and is reported and
+never decided on. A patch release moves the second and not the first, so a provenance stamp cannot
+answer a compatibility question — which is why the manifest carries both (**P28**).
+
+Both stamps have been written since item 4.5 and **nothing read either of them** until this
+check existed. A stamp nobody reads makes an artefact look checked while the incompatibility it
+exists to catch goes through in silence.
+
 ### Step 3: Preflight
 
 Run the bundled script. It performs **every** precondition and resolves the base branch:
@@ -101,7 +122,13 @@ What it refuses: a tasks path with no `manifest.json` or `layer_plan.json`; a ta
 not exist, is not a git repository, or is a *subdirectory* of one; a target containing
 `docs/prd/` (a documentation tree); a target containing `.claude-plugin/plugin.json` (this
 toolchain); a target inside the tasks directory; a base branch that does not exist; and a
-detached HEAD, since there is then no branch to merge into.
+detached HEAD, since there is then no branch to merge into; **and a task carrying
+`<moscow>wont-have</moscow>`** (item 20).
+
+**That last one is defence in depth, and it names the files.** A won't-have task reaching here
+means item 13's selection gate at `/breakdown` did not run, or ran and was ignored. It is an
+exit code rather than a note for the same reason as everything else in this script — item 4.13's
+principle that a guard a model can reason past is not a guard.
 
 **Why a script and not the checklist that used to be here.** These were prose, and prose is
 weighed rather than obeyed. Pointed at a path containing `docs/prd/` — the exact case the prose
@@ -492,10 +519,15 @@ rather than overriding it.
 
 Output final summary including context update if performed:
 
+**Report the tier that was built, from `execute-state.json`'s `tiers` block** (item 19). Do not
+count it yourself — nothing in that file is maintained by hand, and a summary counted by the
+reporter is one that can disagree with the tasks it counts.
+
 ```
 Execution Complete: {prd_slug}
 
 Total: 44/44 tasks completed
+Built: 9 must-have/P0, 5 should-have/P0, 3 could-have/P1  (4 unattributed: Layer 0)
 Duration: 2h 15m
 
 Context Update:

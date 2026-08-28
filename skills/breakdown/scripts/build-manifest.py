@@ -71,11 +71,70 @@ def task_name(path, fallback):
     return fallback.replace("-", " ").capitalize()
 
 
+# Item 16's four elements, as the manifest spells them. The manifest is what every downstream
+# reader sizes the work from, so an element that stops here is an element the coverage check
+# (item 30) and the cross-check (item 49) can never see.
+TRACEABILITY = ("source-feature", "moscow", "satisfies-criteria", "requirement-level")
+
+
+def traceability(path):
+    """Item 16's elements, read from <meta>. Absent keys are OMITTED, never defaulted.
+
+    A Layer 0 task legitimately carries none of these -- it descends from the tech stack rather
+    than from a feature -- so `absent` and `empty` have to stay distinguishable. Writing
+    `"source_feature": null` for both would make a task nobody attributed look exactly like one
+    that cannot be attributed, and item 30's shortfall report is built on telling them apart.
+    """
+    out = {}
+    try:
+        meta = ET.parse(path).getroot().find("meta")
+    except Exception:
+        return out
+    if meta is None:
+        return out
+    for tag in TRACEABILITY:
+        el = meta.find(tag)
+        text = " ".join((el.text or "").split()) if el is not None else ""
+        if not text:
+            continue
+        key = tag.replace("-", "_")
+        if tag == "satisfies-criteria":
+            ids = [x.strip() for x in text.split(",") if x.strip()]
+            if ids:
+                out[key] = ids
+        else:
+            out[key] = text
+    return out
+
+
+def review_fields(path):
+    """The two things a REVIEWER needs and the manifest has never carried (item 32).
+
+    `<objective>` says what the task is for in a sentence, and `<files-to-create>` says where it
+    lands. Both are already in the file this traversal opens; not reading them is what made the
+    task set reviewable only by opening every task.
+    """
+    out = {}
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return out
+    el = root.find("objective")
+    if el is not None and (el.text or "").strip():
+        out["objective"] = " ".join((el.text or "").split())
+    files = [" ".join((f.text or "").split())
+             for f in root.findall("files-to-create/file")
+             if (f.text or "").strip()]
+    if files:
+        out["files"] = files
+    return out
+
+
 def build_inventory(tasks_path):
     inventory = []
     for layer, task_id, fn, path in task_files(tasks_path):
         slug = TASK_RE.match(fn).group(2)
-        inventory.append({
+        entry = {
             "id": task_id,
             "name": task_name(path, slug),
             "layer": layer,
@@ -83,7 +142,10 @@ def build_inventory(tasks_path):
             # directory is moved or mounted. Absolute or workspace-relative paths were both
             # tried before and neither survives the tasks tree being relocated.
             "file": f"{layer}/{fn}",
-        })
+        }
+        entry.update(traceability(path))
+        entry.update(review_fields(path))
+        inventory.append(entry)
     return inventory
 
 
@@ -102,7 +164,14 @@ def resolve(tasks_path, stored):
 
 # The manifest's own shape. Bump it when a field is added, removed or changes meaning --
 # never for a plugin release, which is what toolchain_version is for.
-MANIFEST_SCHEMA_VERSION = "1.0"
+#
+# 1.1 adds item 16's four traceability fields to each inventory entry. A reader written against
+# 1.0 still works: the fields are additive and absent ones are omitted rather than nulled.
+# 1.2 adds item 32's two review fields, `objective` and `files`, to each inventory entry.
+MANIFEST_SCHEMA_VERSION = "1.2"
+
+# Item 32's rendered view, beside the manifest it is derived from.
+SUMMARY_NAME = "tasks-summary.md"
 
 
 def toolchain_version():
@@ -114,6 +183,48 @@ def toolchain_version():
         return json.load(open(pj, encoding="utf-8")).get("version")
     except Exception:
         return None
+
+
+def render_summary(inventory, by_layer, slug):
+    """One row per task: what it came from, how important, what it does, where it lands.
+
+    Item 32, and it changes no task format. Self-containment is right for the CONSUMER -- a task
+    agent with no context needs the whole story in one file -- and it is what makes the SET
+    unreviewable: every other item in this plan adds fidelity, and the review burden scales with
+    it. This is the cheapest thing that keeps a human able to check the result at all.
+
+    What it deliberately does not do is diff task text. What a reviewer needs to check is whether
+    the criteria a task carries match the feature they came from, and item 17's verbatim ids turn
+    that from a read-through into a set comparison -- which `check-coverage.py` already does
+    mechanically. A summary that tried to do it in prose would be a second, worse answer.
+    """
+    lines = [f"# Task summary — {slug}" if slug else "# Task summary", ""]
+    lines.append(f"**{len(inventory)} tasks** — "
+                 + ", ".join(f"{k} {v}" for k, v in sorted(by_layer.items())))
+    lines.append("")
+    lines.append("Derived from the task files by `build-manifest.py`. Do not edit: it is "
+                 "rewritten whenever the manifest is, and `--verify` fails when it has drifted.")
+    lines.append("")
+    lines.append("| Task | Layer | From | Tier | Criteria | Objective | Files |")
+    lines.append("|---|---|---|---|---|---|---|")
+    for e in inventory:
+        # A Layer 0 task descends from the tech stack rather than from a feature, so `absent`
+        # is a real answer here and is printed as one rather than as an empty cell.
+        origin = e.get("source_feature") or "—"
+        tier = e.get("moscow") or "—"
+        crit = ", ".join(e.get("satisfies_criteria") or []) or "—"
+        obj = e.get("objective") or e.get("name") or ""
+        if len(obj) > 120:
+            obj = obj[:117].rstrip() + "..."
+        files = "<br>".join(f"`{f}`" for f in (e.get("files") or [])) or "—"
+        # A pipe inside a cell would end the column early and silently reshape the table.
+        def cell(s):
+            return str(s).replace("|", "\\|")
+
+        lines.append(f"| `{e['id']}` | {cell(e['layer'])} | {cell(origin)} | {cell(tier)} | "
+                     f"{cell(crit)} | {cell(obj)} | {files} |")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def main():
@@ -174,6 +285,19 @@ def main():
             if tid not in old_ids:
                 problems.append(f"{tid}: task file exists but is absent from the manifest")
 
+        # Item 32's summary is derived, so a stale one is drift like any other. It is checked
+        # here rather than in a script of its own because it comes off this traversal: a second
+        # walker would be a second answer to "what tasks exist".
+        summary_path = os.path.join(tasks_path, SUMMARY_NAME)
+        wanted = render_summary(inventory, by_layer,
+                                (existing.get("prd") or {}).get("slug"))
+        if not os.path.isfile(summary_path):
+            problems.append(f"{SUMMARY_NAME} is absent -- the task set can only be reviewed by "
+                            f"opening every task (item 32)")
+        elif open(summary_path, encoding="utf-8").read() != wanted:
+            problems.append(f"{SUMMARY_NAME} does not match the task files -- it is derived, so "
+                            f"rebuild it rather than editing it")
+
         if problems:
             print(f"manifest.json disagrees with the {len(inventory)} task files on disk:",
                   file=sys.stderr)
@@ -218,8 +342,14 @@ def main():
         json.dump(manifest, f, indent=2)
         f.write("\n")
 
+    # Item 32. Written from the same inventory, in the same pass, so the two cannot disagree.
+    summary_path = os.path.join(tasks_path, SUMMARY_NAME)
+    with open(summary_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(render_summary(inventory, by_layer, prd.get("slug")))
+
     print(f"manifest.json rebuilt: {len(inventory)} task(s) "
-          + ", ".join(f"{k} {v}" for k, v in sorted(by_layer.items())))
+          + ", ".join(f"{k} {v}" for k, v in sorted(by_layer.items()))
+          + f"; {SUMMARY_NAME} rendered")
     return 0
 
 

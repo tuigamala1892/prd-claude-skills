@@ -3929,11 +3929,32 @@ def _():
                     for n in sorted(fn):
                         got = open(os.path.join(dp, n), encoding="utf-8").read()
                         rel = os.path.relpath(os.path.join(dp, n), work)
+                        # Asserted per criterion, against the SAME criterion in the source, and
+                        # only where the step actually touched it. Both halves of this were once
+                        # asserted over every criterion in the file, which held while every
+                        # criterion in a mixed step came from a migration -- schema-5 is where
+                        # that stopped being true. Its fixture CRD carries two AUTHORED criteria,
+                        # which legitimately have a `pattern` and legitimately have no
+                        # `derived-from` (core §2: migration only), beside four migrated from
+                        # <requirement>, which are the opposite. Sweeping the file cannot tell
+                        # them apart; comparing to the source can, and it does not weaken the
+                        # earlier steps -- for schema-2 -> schema-3 the script rewrites every
+                        # criterion, so every one is still checked.
+                        source = open(os.path.join(REPO, "tests", "fixture", "prd", src_version,
+                                                   rel), encoding="utf-8").read()
+                        before = {}
+                        for t in re.findall(r"<criterion\b([^>]*)>", source):
+                            cid = re.search(r'id="([^"]*)"', t)
+                            before[cid.group(1) if cid else None] = t
                         for t in re.findall(r"<criterion\b([^>]*)>", got):
+                            cid = re.search(r'id="([^"]*)"', t)
+                            if before.get(cid.group(1) if cid else None) == t:
+                                continue  # the step did not touch it; it is the author\'s
                             assert 'priority="' in t and "derived-from=" in t, (
-                                f"{rel} has a criterion missing priority or derived-from. The "
-                                f"value is written in rather than defaulted, or a partly "
-                                f"assigned corpus cannot be told from a finished one")
+                                f"{rel} has a criterion this step wrote that is missing priority "
+                                f"or derived-from. The value is written in rather than "
+                                f"defaulted, or a partly assigned corpus cannot be told from a "
+                                f"finished one")
                             assert "pattern=" not in t, (
                                 f"{rel} has a criterion carrying a `pattern` the script "
                                 f"assigned. A pattern derived by the heuristics it exists to "
@@ -4129,9 +4150,19 @@ def _():
     assert len(region) == 2, "core.md has no priority section"
     region = region[1].split("\n## ", 1)[0]
 
-    rows = [r.strip() for r in region.splitlines() if r.strip().startswith("|")]
-    rows = [r for r in rows[2:] if r]
-    assert len(rows) == 2, f"core §4 lists {len(rows)} priority levels; item 34 defines two"
+    # The FIRST table only. §4 grew a second one at item 47 -- the MoSCoW -> P0|P1|P2 map --
+    # and sweeping every row in the section counted eight "levels", which is the shape of check
+    # this repository keeps getting wrong: a region without a shape. Take the first contiguous
+    # run of table rows, which is the one that is about levels.
+    table, seen = [], False
+    for line in region.splitlines():
+        if line.strip().startswith("|"):
+            table.append(line.strip())
+            seen = True
+        elif seen:
+            break
+    rows = [r for r in table[2:] if r]
+    assert len(rows) == 2, f"core §4's first table lists {len(rows)} levels; item 34 defines two"
 
     vocabs = []
     for row in rows:
@@ -4706,6 +4737,2104 @@ def _():
         "decision-record.md's reader table names no reader that exists on disk. A template "
         "whose conventions nothing validates is a suggestion, and the two fields this one is "
         "built around already have a program that reads them")
+
+# ------------------------------------------------- the CRD parity pass (46/47/48, schema-5)
+
+
+def _crd(workflow="ready", requirements=None, meta_priority=None, gaps=""):
+    """A CRD in whatever shape the caller needs, built rather than stored.
+
+    Written as a helper because the three checks below each need a DIFFERENT shape -- one with
+    requirements, one with a `wont-have` among them, one already migrated -- and a fixture per
+    shape is four files to keep in step with a schema that is still moving.
+    """
+    reqs = ""
+    if requirements:
+        rows = "\n".join('    <requirement id="%d" priority="%s">Requirement %d.</requirement>'
+                         % (i, p, i) for i, p in enumerate(requirements, start=1))
+        reqs = "  <requirements>\n%s\n  </requirements>\n" % rows
+    prio = "    <priority>%s</priority>\n" % meta_priority if meta_priority else ""
+    return (
+        "<crd>\n  <meta>\n    <name>Probe</name>\n    <slug>probe</slug>\n"
+        "    <type>feature-modify</type>\n    <created>2026-08-27</created>\n"
+        "    <workflow>%s</workflow>\n%s  </meta>\n"
+        "%s"
+        '  <acceptance-criteria>\n'
+        '    <criterion id="1" pattern="ubiquitous" priority="P0">\n'
+        "    The system shall do the thing it already did.\n"
+        "    </criterion>\n"
+        "  </acceptance-criteria>\n%s</crd>\n" % (workflow, prio, reqs, gaps))
+
+
+@check("a CRD carries one list, not two -- and the migration moves it, by running it",
+       finding="P31")
+def _():
+    """Item 46.
+
+    An EARS criterion IS a requirement, so the CRD's second list had nothing of its own to
+    carry -- it existed because Given/When/Then is a scenario format and a scenario cannot state
+    an obligation. Item 33 removed the cause; this removes the effect.
+
+    Asserted by RUNNING the migration rather than by reading the format document, because "the
+    document says the element is retired" is a property the pre-item-46 document also had: it
+    said so in a paragraph about a future item.
+    """
+    import shutil
+    import tempfile
+
+    # The document SHAPE, not a mention. crd-format.md necessarily still says the word
+    # `<requirements>` -- the retirement note is where it explains itself -- so the claim worth
+    # asserting is that the structure block no longer contains one.
+    fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+               encoding="utf-8").read()
+    blocks = re.findall(r"```xml\n(.*?)```", fmt, re.S)
+    assert blocks, "crd-format.md carries no XML at all"
+    structure = next((b for b in blocks if "<crd>" in b and "..." in b), None)
+    assert structure, "crd-format.md has no document-structure block"
+    assert "<requirements>" not in structure, (
+        "crd-format.md's document structure still contains <requirements>. The element is "
+        "retired; a structure block that lists it is the instruction people actually follow")
+    assert "<gaps>" in structure, "the CRD structure gained no <gaps> (item 48)"
+
+    full = next((b for b in blocks if "<crd>" in b and "<impact-analysis>" in b
+                 and "..." not in b), None)
+    assert full, "crd-format.md has no complete example"
+    assert "<requirement " not in full and "<requirements>" not in full, (
+        "crd-format.md's complete example still authors a <requirements> list")
+
+    # And the interview no longer collects two lists.
+    for path in (os.path.join(COMMANDS, "crd.md"), os.path.join(SKILLS, "crd", "SKILL.md")):
+        text = prose(open(path, encoding="utf-8").read())
+        assert re.search(r"[Oo]ne list, not two", text), (
+            f"{os.path.basename(path)} does not say the interview captures one list. Asking for "
+            f"requirements and then criteria for each gets the same content twice under two ids")
+
+    # Now the mechanism: the migration MOVES the entries, renumbering them so that an id which
+    # resolved before the step still resolves after it.
+    _p, reg = schema_registry()
+    current = reg["current"]
+    root = tempfile.mkdtemp(prefix="crd-46-")
+    try:
+        path = os.path.join(root, "probe.md")
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            _crd(requirements=["must-have", "should-have", "could-have"],
+                 meta_priority="should-have"))
+        p = _run_migrate(path, "--to", current, "--quiet")
+        assert p.returncode == 0, (
+            f"migrating a CRD to {current} exited {p.returncode}: {p.stderr}")
+
+        out = open(path, encoding="utf-8").read()
+        assert "<requirements>" not in out and "<requirement " not in out, (
+            f"the migration left the retired list in place:\n{out}")
+        ids = re.findall(r'<criterion\b[^>]*\bid="([^"]*)"', out)
+        assert ids == ["1", "2", "3", "4"], (
+            f"the merged id space is {ids}; the existing criterion must keep id 1 and the "
+            f"migrated requirements must continue after it")
+        assert 'derived-from="requirement-1"' in out, (
+            "a migrated requirement carries no derived-from, so the citation it used to answer "
+            "resolves to nothing")
+        assert 'derived-from="1"' not in out.replace('derived-from="requirement-1"', ""), (
+            "a migrated requirement carries a BARE derived-from. After the merge a bare id is "
+            "ambiguous between the two former spaces, which is what the prefix exists to stop")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("requirement priority is P0|P1|P2 on both paths, and `wont-have` escalates -- by running it",
+       finding="P31")
+def _():
+    """Item 47.
+
+    The CRD had MoSCoW at the requirement level and P0|P1|P2 on criteria: two vocabularies for
+    one concept, which is what made `--requirement-level` select nothing here. The vocabularies
+    swap levels rather than one absorbing the other -- MoSCoW moves UP to the document.
+
+    The interesting half is the fourth MoSCoW value. `P0|P1|P2` has no `not building this`
+    level, deliberately, so `wont-have` has no honest target: P2 would make a declined
+    requirement buildable by default and dropping it would delete a decision. That is an
+    escalation, and it is asserted by running it -- a mapping table nobody executes is a
+    paragraph.
+    """
+    import shutil
+    import tempfile
+
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    section = core.split("## 4. Priority", 1)[1].split("\n## ", 1)[0]
+    assert "<meta><priority>" in section or "`<priority>` in `<meta>`" in section, (
+        "core §4 never says where a CRD's MoSCoW lives, so the level it moved to is undocumented")
+
+    # The map, as a shape: four MoSCoW values, and exactly one of them with no P-value.
+    rows = [r for r in section.splitlines() if r.strip().startswith("|") and "-have" in r]
+    mapped = {}
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        was = re.findall(r"`(\w+-have)`", cells[0])
+        if len(was) == 1:
+            mapped[was[0]] = set(re.findall(r"`(P[012])`", cells[1] if len(cells) > 1 else ""))
+    assert set(mapped) == {"must-have", "should-have", "could-have", "wont-have"}, (
+        f"core §4's MoSCoW map covers {sorted(mapped)}; all four values need an answer, "
+        f"including the one whose answer is that there is none")
+    assert not mapped["wont-have"], (
+        "core §4 gives `wont-have` a P-level. P0|P1|P2 has no `not building this` value by "
+        "design -- that judgement belongs to the whole item")
+    assert all(len(v) == 1 for k, v in mapped.items() if k != "wont-have"), (
+        "the MoSCoW map is not one to one; collapsing two tiers into one loses a distinction "
+        "someone made")
+
+    _p, reg = schema_registry()
+    current = reg["current"]
+    root = tempfile.mkdtemp(prefix="crd-47-")
+    try:
+        # Mapped one to one, and the values arrive on the criteria rather than being defaulted.
+        ok = os.path.join(root, "ok.md")
+        open(ok, "w", encoding="utf-8", newline="\n").write(
+            _crd(requirements=["must-have", "should-have", "could-have"],
+                 meta_priority="must-have"))
+        p = _run_migrate(ok, "--to", current, "--quiet")
+        assert p.returncode == 0, f"a mappable CRD exited {p.returncode}: {p.stderr}"
+        out = open(ok, encoding="utf-8").read()
+        got = dict(zip(re.findall(r'derived-from="requirement-(\d)"', out),
+                       [m for m in re.findall(r'<criterion\b[^>]*derived-from="requirement-\d"',
+                                              out)]))
+        assert re.search(r'priority="P0"[^>]*derived-from="requirement-1"', out), (
+            f"must-have did not become P0:\n{out}")
+        assert re.search(r'priority="P1"[^>]*derived-from="requirement-2"', out), (
+            f"should-have did not become P1:\n{out}")
+        assert re.search(r'priority="P2"[^>]*derived-from="requirement-3"', out), (
+            f"could-have did not become P2:\n{out}")
+
+        # And the escalation: exit 2, the requirement named, and NOTHING written.
+        bad = os.path.join(root, "bad.md")
+        source = _crd(requirements=["must-have", "wont-have"], meta_priority="could-have")
+        open(bad, "w", encoding="utf-8", newline="\n").write(source)
+        p = _run_migrate(bad, "--to", current, "--quiet")
+        assert p.returncode == 2, (
+            f"a CRD holding a `wont-have` requirement exited {p.returncode}, not 2. Exit 2 is "
+            f"the escalation path and it exists so that nothing is written for these files")
+        assert "wont-have" in p.stderr and "requirement 2" in p.stderr, (
+            f"the escalation does not name the requirement that caused it:\n{p.stderr}")
+        assert open(bad, encoding="utf-8").read() == source, (
+            "the escalated CRD was modified. Nothing is written for a file the migration "
+            "cannot place -- that is the difference between exit 2 and exit 1")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`/crd` cannot silently replace a CRD, and `ready` cannot outrank its gaps -- by running it",
+       finding="P32")
+def _():
+    """Item 48.
+
+    F3 cost an interview on the PRD path: `/prd` wrote over an existing PRD because the guard
+    was a paragraph. `/crd` had the identical hole -- documented as stateless, writing
+    docs/crd/{slug}.md with no check -- and had simply not been caught by it yet.
+
+    The guard is the PRD one generalised to take a FILE rather than a second script, which is
+    this repository's most repeated lesson: `keep_awake` was written inside one caller, item 60
+    was a rule added without removing what it contradicted. A fix belongs at the level of the
+    problem, and this problem was never PRD-specific.
+    """
+    import shutil
+    import tempfile
+
+    guard = os.path.join(SKILLS, "breakdown", "scripts", "check-writable.py")
+
+    # The INVOCATION, with the path it guards -- not the substring `check-writable.py`.
+    #
+    # That weaker form survived a mutation round: /crd names the script twice, once plainly and
+    # once with --resume, so replacing the first invocation with the `test -e` prose it was
+    # written to retire left the substring assertion true and the suite green. Two sites
+    # satisfying one check means no single edit can break it, which is the third time that shape
+    # has cost this repository a hollow pass.
+    for path in (os.path.join(COMMANDS, "crd.md"), os.path.join(SKILLS, "crd", "SKILL.md")):
+        text = open(path, encoding="utf-8").read()
+        name = os.path.basename(path)
+        assert "check-writable.py {project_path}/docs/crd/{slug}.md" in text, (
+            f"{name} never runs the overwrite guard on the file it is about to write, so a slug "
+            f"collision destroys the earlier CRD in silence -- which is F3 exactly")
+        assert "--resume" in text, f"{name} has no way past the guard"
+        # And the prose guard must not come back beside it. A documented check and an executable
+        # one both present is worse than either alone: the model may follow either.
+        assert "test -e" not in text, (
+            f"{name} carries a prose `test -e` guard beside the program. Five guards in this "
+            f"repository became programs because the documented version was ignored")
+
+    crd_md = open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read()
+    assert "check-writable.py {project_path}/docs/crd/{slug}.md --resume" in crd_md, (
+        "/crd names no --resume form of the guard, so a caller who meant to resume has only "
+        "the refusal and no stated way past it")
+
+    root = tempfile.mkdtemp(prefix="crd-48-")
+    try:
+        live = os.path.join(root, "archive-links.md")
+        open(live, "w", encoding="utf-8", newline="\n").write(_crd(meta_priority="should-have"))
+
+        p = subprocess.run([sys.executable, guard, live], capture_output=True, text=True)
+        assert p.returncode == 1, "the guard did not refuse an existing CRD file"
+        assert "REFUSED" in p.stderr and "archive-links.md" in p.stderr, (
+            f"the refusal does not name the document at risk:\n{p.stderr}")
+
+        p = subprocess.run([sys.executable, guard, live, "--resume"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "--resume did not permit writing a CRD back"
+
+        p = subprocess.run([sys.executable, guard, os.path.join(root, "new.md")],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, "the guard refused a slug nobody has used"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # The other half of item 48: <gaps> reaches the CRD, and it gives <workflow> the mechanical
+    # test it lacked. Asserted as the RULE rather than as a sentence, because the rule is what
+    # a check can later become.
+    fmt = prose(open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+                     encoding="utf-8").read())
+    assert re.search(r'ready must not carry a <gap kind="specification">', fmt), (
+        "crd-format.md never states the draft/ready test. Before item 48 the distinction rested "
+        "entirely on the author's say-so, which is what <definition> had before item 29")
+    core = prose(open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read())
+    assert re.search(r"CRD marked ready must not carry a specification gap", core), (
+        "core §6 states the rule for <definition> and not for <workflow>, so the two rows are "
+        "checked by two rules that can drift")
+    crd = prose(open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read())
+    assert "kind=\"specification\"" in crd or 'kind="specification"' in crd, (
+        "/crd never tells the interview to record a deferral as a gap, so 'we'll define that "
+        "later' still leaves nothing behind")
+
+
+# ------------------------------------------- scope, confidence and parity (49/50, schema-5)
+
+
+@check("the analysis predicts size and certainty, and something reads them -- by running it",
+       finding="P19")
+def _():
+    """Item 49.
+
+    `<scope>` and `<confidence>` were REQUIRED fields on the CRD path with no consumer anywhere
+    in the toolchain -- which is why items 29 and 31 were each written as if from nothing. A
+    required field nobody reads is worse than an absent one: it looks like a signal.
+
+    The producer half is asserted on the analyser, and the reader half BY RUNNING IT, over three
+    shapes -- a gross disagreement, an adjacent pair that must stay quiet, and a missing file.
+    A cross-check that reports everything is one nobody reads, so the quiet case is as much the
+    subject here as the loud one.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-scope.py")
+    assert os.path.isfile(script), "check-scope.py does not exist, so item 49's fields have no reader"
+
+    # The RUNNABLE invocation, not the string. /breakdown names check-scope.py three times --
+    # once as a command and twice in prose about it -- so a bare substring is satisfied by the
+    # prose alone and survives the command being deleted. That is the site-counting rule, and
+    # it cost this suite a hollow check one commit ago and another one here.
+    skill_raw = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/check-scope.py {tasks_dir}" in skill_raw, (
+        "/breakdown never RUNS the cross-check on the tasks directory. Naming the script in "
+        "prose is what item 49 replaced, not what it asked for")
+
+    # The producer: the FEATURE pass emits both, and the index pass is told not to. Asserted in
+    # the OUTPUT BLOCK -- the analyser also discusses the key in prose, and prose is not a
+    # schema the caller's merge can read.
+    analyser = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    blocks = re.findall(r"```json\n(.*?)```", analyser, re.S)
+    assert blocks, "breakdown-analyze-prd declares no output shape at all"
+    assert any('"feature_signals"' in b for b in blocks), (
+        "breakdown-analyze-prd's output shape carries no per-feature scope/confidence, so "
+        "check-scope.py reads a key nothing writes -- which is the defect item 49 exists to "
+        "remove, reintroduced from the other end")
+    flat = prose(analyser)
+    assert re.search(r"index pass emits neither", flat), (
+        "the analyser does not say the index pass withholds these. index.md carries a summary "
+        "line per feature, which is not evidence of size")
+
+    root = tempfile.mkdtemp(prefix="scope-49-")
+    try:
+        builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+
+        def run(analysis, count, slug=None):
+            """Write real task files, BUILD the manifest, then compare.
+
+            The manifest is produced by running build-manifest.py rather than hand-written.
+            When this check shipped it seeded a `tasks` key that no manifest has ever had, and
+            check-scope.py read the same invented key -- so the check validated the
+            implementation against itself and attributed nothing on a real manifest. A fixture
+            that agrees with the code it tests is the failure that reads exactly like a pass.
+            """
+            d = os.path.join(root, "t")
+            shutil.rmtree(d, ignore_errors=True)
+            os.makedirs(os.path.join(d, "1-foundation"))
+            for i in range(count):
+                trace = ""
+                if slug:
+                    trace = ("    <source-feature>%s</source-feature>\n"
+                             "    <moscow>must-have</moscow>\n"
+                             "    <satisfies-criteria>1</satisfies-criteria>\n"
+                             "    <requirement-level>P0</requirement-level>\n" % slug)
+                with open(os.path.join(d, "1-foundation", "L1-%03d-probe.xml" % (i + 1)),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Probe %d</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>1</priority>\n"
+                            "%s  </meta>\n</task>\n" % (i + 1, i + 1, trace))
+            with open(os.path.join(d, "analysis.json"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                json.dump(analysis, f)
+            b = subprocess.run([sys.executable, builder, d], capture_output=True, text=True)
+            assert b.returncode == 0, f"build-manifest.py failed: {b.stdout}\n{b.stderr}"
+            return subprocess.run([sys.executable, script, d], capture_output=True, text=True)
+
+        # Gross disagreement, on both paths at once.
+        p = run({"scope": "small", "confidence": "medium",
+                 "feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "low"}]},
+                11, "save-link")
+        assert p.returncode == 0, (
+            f"the cross-check exited {p.returncode}. A prediction losing an argument with an "
+            f"observation is information, not a failure -- one that can block gets disabled")
+        assert p.stdout.count("DISAGREES") == 2, (
+            f"expected a disagreement at the document level AND the feature level:\n{p.stdout}")
+        assert "save-link" in p.stdout and "11" in p.stdout, (
+            f"the report does not name the feature or the count:\n{p.stdout}")
+        assert "low" in p.stdout, (
+            f"confidence is not reported. It grades the analysis and has nothing to be compared "
+            f"against, which is exactly why it has to be SAID:\n{p.stdout}")
+
+        # Adjacent bands stay quiet. Bands are files and the observation is tasks, so the units
+        # do not line up -- a check that fires on that noise is one nobody reads.
+        p = run({"scope": "small", "confidence": "high",
+                 "feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "high"}]},
+                5, "save-link")
+        assert p.returncode == 0 and "DISAGREES" not in p.stdout, (
+            f"small against medium was reported as a disagreement:\n{p.stdout}")
+
+        # Unattributed tasks are COUNTED, never passed over. Item 16 has not landed, so on the
+        # PRD path this is the normal case -- and a cross-check that silently compares nothing
+        # is indistinguishable from one that found nothing wrong.
+        p = run({"feature_signals": [{"feature": "save-link", "scope": "small",
+                                      "confidence": "high"}]}, 4)
+        assert re.search(r"4 of 4 task\(s\) name no source feature", p.stdout), (
+            f"tasks that could not be attributed were not counted:\n{p.stdout}")
+
+        # Item 16's elements survive into the manifest, which is what every downstream reader
+        # sizes the work from. Asserted on the file build-manifest.py wrote, not on the task.
+        inv = json.load(open(os.path.join(root, "t", "manifest.json"),
+                             encoding="utf-8")).get("task_inventory") or []
+        assert inv and all("source_feature" not in e for e in inv), (
+            "the last run had no traceability, so this assertion is checking the wrong tree")
+        p = run({"feature_signals": [{"feature": "save-link", "scope": "large",
+                                      "confidence": "high"}]}, 2, "save-link")
+        inv = json.load(open(os.path.join(root, "t", "manifest.json"),
+                             encoding="utf-8")).get("task_inventory") or []
+        assert inv and all(e.get("source_feature") == "save-link" for e in inv), (
+            f"build-manifest.py dropped <source-feature>; item 30 and item 49 both read it from "
+            f"the manifest and would attribute nothing:\n{inv}")
+        assert all(e.get("moscow") == "must-have" and e.get("requirement_level") == "P0"
+                   and e.get("satisfies_criteria") == ["1"] for e in inv), (
+            f"build-manifest.py dropped one of item 16's other three elements:\n{inv}")
+        assert "DISAGREES" in p.stdout, (
+            f"large against 2 tasks is non-adjacent and should have been reported:\n{p.stdout}")
+
+        # A missing input is a failure, which is a different answer from a quiet comparison.
+        p = subprocess.run([sys.executable, script, os.path.join(root, "absent")],
+                           capture_output=True, text=True)
+        assert p.returncode == 1, (
+            f"a missing analysis.json exited {p.returncode}, not 1. 'Nothing to compare' and "
+            f"'nothing disagreed' must not share an exit code")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("parity between the paths is a table with probes, and the probes resolve", finding="P30")
+def _():
+    """Item 50, and its fourth bullet is the point: the plan's `who is ahead where` ledger
+    becomes a TEST rather than a paragraph that goes stale.
+
+    Five of the asymmetries §5 J resolved existed because nobody had read the two paths side by
+    side. A prose description of the difference is exactly as durable as the week it was written
+    in -- so every claim in the table carries a `file :: string` probe, and every probe is run.
+
+    `open` is a legitimate verdict. The rows nobody has decided about are LISTED, not refused:
+    an unexamined asymmetry is a fact about this project, and the defect this file prevents is
+    one nobody has written down.
+    """
+    path = os.path.join(SCHEMA, "parity.md")
+    assert os.path.isfile(path), (
+        "schema/parity.md does not exist. core.md records what the two paths share; without its "
+        "counterpart the distance between them is measured by nobody")
+    text = open(path, encoding="utf-8").read()
+
+    section = text.split("## The table", 1)
+    assert len(section) == 2, "parity.md has no table section"
+    rows = [r.strip() for r in section[1].splitlines() if r.strip().startswith("|")]
+    rows = [r for r in rows[2:] if r.strip("| ")]
+    assert len(rows) >= 12, (
+        f"parity.md lists {len(rows)} capabilities. §5 J compared twelve and the table should "
+        f"not have shrunk below what has already been read")
+
+    verdicts, opens, probes = set(), [], 0
+    for row in rows:
+        # Split on UNESCAPED pipes. A cell legitimately contains `P0\|P1\|P2` -- markdown's own
+        # escape -- and splitting naively turned a six-cell row into eight.
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", row.strip("|"))]
+        assert len(cells) == 6, f"malformed parity row ({len(cells)} cells): {row[:60]}"
+        capability, prd, crd, verdict, settled, why = cells
+        verdicts.add(verdict)
+        assert verdict in ("both", "prd-only", "crd-only"), (
+            f"{capability}: unknown verdict {verdict!r}")
+
+        # A verdict and its evidence must agree. This is the half that cannot go stale: an `--`
+        # whose counterpart quietly appeared, or a `both` whose evidence was deleted, fails.
+        if verdict == "both":
+            assert prd != "—" and crd != "—", f"{capability}: `both` with a missing side"
+        else:
+            missing, present = (crd, prd) if verdict == "prd-only" else (prd, crd)
+            assert missing == "—", f"{capability}: {verdict} but both sides carry evidence"
+            assert present != "—", f"{capability}: {verdict} and neither side has any"
+            assert settled in ("yes", "**open**", "open"), (
+                f"{capability}: an asymmetry must say whether it was decided or is open")
+            assert len(why) > 20, (
+                f"{capability}: an asymmetric row with no reason. A difference nobody wrote "
+                f"down is the thing this file exists to prevent")
+            if "open" in settled:
+                opens.append(capability)
+
+        for cell in (prd, crd):
+            if cell == "—":
+                continue
+            assert "::" in cell, f"{capability}: evidence {cell!r} is not `file :: string`"
+            rel, needle = [x.strip() for x in cell.split("::", 1)]
+            rel = rel.strip("`")
+            needle = needle.strip("`")
+            full = os.path.join(REPO, rel.replace("/", os.sep))
+            assert os.path.isfile(full), f"{capability}: parity.md cites a missing file {rel}"
+            body = open(full, encoding="utf-8").read()
+            assert needle in body, (
+                f"{capability}: {rel} no longer contains {needle!r}. The capability moved and "
+                f"the table did not -- which is the staleness the probes exist to catch")
+            probes += 1
+
+    assert probes >= 20, f"only {probes} probes resolve; the table is mostly assertion"
+    assert {"both", "prd-only", "crd-only"} & verdicts == verdicts, "unknown verdict slipped in"
+    assert "both" in verdicts, (
+        "no row is `both`, so the table records only differences and cannot show a resolution")
+    assert "crd-only" in verdicts and "prd-only" in verdicts, (
+        "the table leans entirely one way. §5 J's finding was that the CRD path was AHEAD on "
+        "five of six concerns, and a table that cannot express that is measuring the wrong thing")
+
+    # The other three bullets of item 50 are already checks; assert they exist rather than
+    # restating them here, so there is one statement of each rule and not two.
+    suite = open(os.path.join(REPO, "tests", "test_toolchain.py"), encoding="utf-8").read()
+    for name in ("the schema core is one definition that both paths cite",
+                 "three status vocabularies, three distinct names"):
+        assert name in suite, f"item 50 relies on `{name}`, which is not in the suite"
+
+    if opens:
+        print("    (%d open asymmetry/ies: %s)" % (len(opens), "; ".join(opens)))
+
+
+# ------------------------------------------------ the three filters (13/14/15), finding P1
+
+
+def _probe_prd(root, features):
+    """A PRD with exactly the properties one rule needs, and no others.
+
+    ONE RULE PER FEATURE, deliberately. The reference fixture's `quokka-telemetry` is `wont-have`
+    AND carries a specification gap AND is `in-progress` -- three rules satisfied by one feature,
+    so a check that watched it pass could not say which rule fired, and removing any two would
+    still look green. That is the same site-counting defect this repository keeps meeting, in the
+    fixture rather than in the assertion.
+
+    `features` is a list of (slug, tier, definition, [gap kinds]).
+    """
+    os.makedirs(os.path.join(root, "features"), exist_ok=True)
+    entries = "\n".join(
+        '    <feature priority="%s" file="features/%s.md">\n'
+        '      <name>%s</name><summary>Probe.</summary>\n'
+        '    </feature>' % (tier, slug, slug) for slug, tier, _d, _g in features)
+    with open(os.path.join(root, "index.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("<prd>\n  <meta><name>Probe</name><slug>probe</slug>"
+                "<status>complete</status></meta>\n  <features>\n%s\n  </features>\n</prd>\n"
+                % entries)
+    for slug, _tier, definition, gaps in features:
+        block = ""
+        if gaps:
+            rows = "\n".join('    <gap id="%d" kind="%s" raised="2026-08-27">Probe.</gap>'
+                             % (i, k) for i, k in enumerate(gaps, start=1))
+            block = "  <gaps>\n%s\n  </gaps>\n" % rows
+        with open(os.path.join(root, "features", slug + ".md"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write("<feature>\n  <meta><name>%s</name><slug>%s</slug>"
+                    "<definition>%s</definition></meta>\n%s</feature>\n"
+                    % (slug, slug, definition, block))
+    return root
+
+
+@check("/breakdown declines work it was told not to do, and names what it declined -- by running it",
+       finding="P1")
+def _():
+    """Items 13, 14 and 15 -- P1's whole first half.
+
+    `/breakdown` filtered NOTHING. Every feature named in the index became tasks, so a
+    `wont-have` feature, a `superseded` one and a `tbd` one all reached `/execute` as work.
+
+    Three rules wearing one symptom, and they are NOT the same kind of rule, which is most of
+    what is asserted here. Item 14 is a preference and has a flag. Item 13 is correctness and
+    must have no way past it -- a `wont-have` feature is one somebody DECIDED against, and an
+    override would make the decision advisory. Item 15 is a defect in the PRD and is therefore
+    named rather than quietly dropped.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "select-features.py")
+    assert os.path.isfile(script), "select-features.py does not exist, so /breakdown still builds everything"
+
+    # The RUNNABLE invocation, not the filename. Twice now a bare substring has been satisfied by
+    # prose ABOUT a script while the command that ran it was deleted.
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/select-features.py {prd_dir}" in skill, (
+        "/breakdown never RUNS the selector on the PRD directory")
+    for flag in ("--priority", "--include-tbd"):
+        assert flag in skill, f"/breakdown documents no {flag}"
+
+    root = tempfile.mkdtemp(prefix="filters-13-")
+    try:
+        def run(features, *args):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            _probe_prd(d, features)
+            p = subprocess.run([sys.executable, script, d, "--json"] + list(args),
+                               capture_output=True, text=True)
+            return p, json.loads(p.stdout) if p.stdout.strip() else {}
+
+        # ---- item 13: three values, none of them overridable. The flags are passed BECAUSE
+        # the claim is that they make no difference here -- asserting the default alone would
+        # leave "no override" untested, which is the half that is actually a promise.
+        for slug, tier, definition in (("nope", "wont-have", "defined"),
+                                       ("gone", "must-have", "excluded"),
+                                       ("merged", "must-have", "superseded")):
+            for extra in ([], ["--include-tbd"], ["--priority", "could-have", "--include-tbd"]):
+                p, out = run([(slug, tier, definition, []), ("keep", "must-have", "defined", [])],
+                             *extra)
+                assert out["selected"] == ["keep"], (
+                    f"{definition}/{tier} was selected with {extra or 'defaults'}. Item 13 is "
+                    f"correctness, not a preference -- there is meant to be no way past it:\n"
+                    f"{p.stdout}")
+                assert any("item 13" in r for d in out["dropped"] if d["slug"] == slug
+                           for r in d["reasons"]), (
+                    f"{slug} was dropped without citing item 13, so the report cannot tell an "
+                    f"operator which rule to argue with")
+
+        # ---- item 14: the threshold, and its default. The default is the load-bearing part:
+        # it preserves today's behaviour minus item 13, so the flag adds capability without
+        # silently changing what an existing invocation builds.
+        tiers = [("m", "must-have", "defined", []), ("s", "should-have", "defined", []),
+                 ("c", "could-have", "defined", [])]
+        _p, out = run(tiers)
+        assert set(out["selected"]) == {"m", "s", "c"}, (
+            f"the default threshold is not `could-have`; an existing invocation just changed "
+            f"what it builds: {out['selected']}")
+        assert out["threshold"] == "could-have"
+        _p, out = run(tiers, "--priority", "must-have")
+        assert out["selected"] == ["m"], f"--priority must-have selected {out['selected']}"
+        _p, out = run(tiers, "--priority", "should-have")
+        assert set(out["selected"]) == {"m", "s"}, (
+            f"--priority should-have must be must+should, not {out['selected']}")
+
+        # ---- item 15: the gap block beats the status, and only ONE kind refuses.
+        p, out = run([("sketch", "must-have", "tbd", []),
+                      ("holed", "must-have", "defined", ["specification"]),
+                      ("waiting", "must-have", "defined", ["dependency"]),
+                      ("undecided", "must-have", "defined", ["decision"]),
+                      ("unsure", "must-have", "defined", ["evidence"]),
+                      ("whose", "must-have", "defined", ["ownership"])])
+        assert set(out["selected"]) == {"waiting", "undecided", "unsure", "whose"}, (
+            f"the four non-specification gap kinds must WARN, not refuse -- they say the feature "
+            f"is specified but not yet buildable, which is a scheduling fact:\n{p.stdout}")
+        assert set(out["warnings"]) >= {"waiting", "undecided", "unsure", "whose"}, (
+            "a feature carrying an open gap was built with no warning at all")
+
+        # --include-tbd reaches the STATUS and must never reach the gap. A status is a summary;
+        # the gap is the author saying the specification is incomplete.
+        p, out = run([("sketch", "must-have", "tbd", []),
+                      ("holed", "must-have", "defined", ["specification"])], "--include-tbd")
+        assert out["selected"] == ["sketch"], (
+            f"--include-tbd must reach `tbd` and NOT a specification gap:\n{p.stdout}")
+
+        # A `defined` feature carrying a specification gap is still refused. That is the whole
+        # point of "the gap block beats the status" -- asserting it only on a `tbd` feature would
+        # pass on a script that never read the gaps at all.
+        assert any("item 15" in r for d in out["dropped"] if d["slug"] == "holed"
+                   for r in d["reasons"]), "a `defined` feature with a specification gap was not refused by item 15"
+
+        # ---- every reason, not the first that matched. Fixing one of two must visibly change
+        # something, or the report teaches an operator that the fix did nothing.
+        p, out = run([("both", "wont-have", "defined", ["specification"]),
+                      ("keep", "must-have", "defined", [])])
+        reasons = [d["reasons"] for d in out["dropped"] if d["slug"] == "both"][0]
+        assert len(reasons) >= 2 and any("item 13" in r for r in reasons) \
+            and any("item 15" in r for r in reasons), (
+            f"a feature excluded by two rules reported {len(reasons)}:\n{reasons}")
+
+        # ---- the sentence item 15 exists to make sayable, on stderr so it cannot become line
+        # eleven of twenty.
+        p, out = run([("holed", "must-have", "defined", ["specification"]),
+                      ("keep", "must-have", "defined", [])])
+        assert out["undefined_must_haves"] == ["holed"]
+        assert "must-have" in p.stderr and "not defined enough" in p.stderr, (
+            f"an undefined must-have was not called out on stderr:\n{p.stderr}")
+
+        # ---- nothing selectable is an exit code, not an empty success.
+        p, out = run([("nope", "wont-have", "defined", [])])
+        assert p.returncode == 1, (
+            f"a PRD with nothing buildable exited {p.returncode}. 'Built everything asked for' "
+            f"and 'there was nothing to build' must not share an exit code")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # ---- and the CRD path, where item 47 is what gave --priority anything to read.
+    _p, reg = schema_registry()
+    crd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf", "crd",
+                       "archive-links.md")
+    if os.path.isfile(crd):
+        p = subprocess.run([sys.executable, script, crd, "--json", "--priority", "must-have"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert out["selected"] == [] and p.returncode == 1, (
+            f"a should-have change request was not declined by --priority must-have. Before "
+            f"item 47 this flag had no field to read on the CRD path:\n{p.stdout}")
+
+
+# ------------------------------------- the carry across the boundary (16/17/30/19/20), P20
+
+
+def _task_xml(tid, slug=None, crits="1", moscow="must-have", level="P0"):
+    trace = ""
+    if slug:
+        trace = ("    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
+                 "    <satisfies-criteria>%s</satisfies-criteria>\n"
+                 "    <requirement-level>%s</requirement-level>\n" % (slug, moscow, crits, level))
+    return ("<task>\n  <meta>\n    <id>%s</id>\n    <name>Probe %s</name>\n"
+            "    <layer>1-foundation</layer>\n    <priority>1</priority>\n%s  </meta>\n"
+            "</task>\n" % (tid, tid, trace))
+
+
+def _task_tree(root, tasks):
+    """A tasks directory with real files and a manifest BUILT by build-manifest.py."""
+    layer = os.path.join(root, "1-foundation")
+    os.makedirs(layer, exist_ok=True)
+    for i, kwargs in enumerate(tasks, start=1):
+        tid = "L1-%03d" % i
+        with open(os.path.join(layer, "%s-probe.xml" % tid), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write(_task_xml(tid, **kwargs))
+    builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    p = subprocess.run([sys.executable, builder, root], capture_output=True, text=True)
+    assert p.returncode == 0, f"build-manifest.py failed: {p.stdout}\n{p.stderr}"
+    return root
+
+
+@check("a task names the feature and criteria it came from, and `<priority>` is left alone",
+       finding="P15")
+def _():
+    """Items 16 and 17.
+
+    Before these a task named its source feature NOWHERE. Attribution downstream was a string
+    match on `<name>`, which is why item 21's tier probe had to invent slugs that could not occur
+    by coincidence, and why check-scope.py could attribute nothing.
+
+    The `<priority>` half is the part worth guarding. It is an integer meaning merge order within
+    the layer and has meant that since the beginning (P3); overloading it with MoSCoW would leave
+    every reader ambiguous about which of two unrelated orderings it was reading. So the assertion
+    is not only that the tier arrives, but that it arrives UNDER A DIFFERENT NAME.
+    """
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    blocks = re.findall(r"```xml\n(.*?)```", spec, re.S)
+    meta = next((b for b in blocks if "<meta>" in b and "<id>" in b), None)
+    assert meta, "task-format-spec.md has no <meta> example"
+    for tag in ("source-feature", "moscow", "satisfies-criteria", "requirement-level"):
+        assert "<%s>" % tag in meta, f"the task <meta> example carries no <{tag}>"
+
+    # P3: <priority> keeps its meaning. A MoSCoW value inside it is the overload item 16 avoided.
+    prio = re.search(r"<priority>([^<]*)</priority>", meta)
+    assert prio and prio.group(1).strip().isdigit(), (
+        f"<priority> in the task example is {prio.group(1) if prio else 'absent'!r}. It is an "
+        f"integer meaning merge order (P3); the feature's tier belongs in <moscow>")
+
+    flat = prose(spec)
+    assert re.search(r"Layer 0 is exempt", flat), (
+        "the spec does not exempt Layer 0. Its tasks descend from the tech stack rather than "
+        "from a feature, and inventing a <source-feature> for them puts a false attribution "
+        "into item 30's coverage check")
+    assert re.search(r"highest", flat), (
+        "the spec does not say <requirement-level> is the HIGHEST of the criteria named; a task "
+        "is built or not built as a unit")
+
+    # Item 17: the criteria are carried structurally, verbatim, and the tests cite them.
+    ctx = next((b for b in blocks if "<acceptance-criteria>" in b and "<tech-stack>" in b), None)
+    assert ctx, "task <context> does not carry <acceptance-criteria> structurally (item 17)"
+    assert "<data-model>" in ctx, "task <context> does not carry the feature's <data-model>"
+    assert re.search(r"Verbatim means verbatim", flat), (
+        "the spec does not require the criteria verbatim. A reworded criterion is one no "
+        "reviewer can match back to the PRD, which is what core §1's ids are for")
+    assert re.search(r'<test id="2" covers="7">', spec), (
+        "no test in the spec cites the criterion it covers, so item 30 has nothing to check "
+        "within a single file")
+
+    # And the generator is told to produce them -- the runnable half is item 30's check below.
+    gen = prose(open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+                     encoding="utf-8").read())
+    assert re.search(r"Copy each <criterion> element whole", gen), (
+        "breakdown-generate-tasks is not told to copy the criterion element whole")
+    assert re.search(r"data model is copied, never inferred", gen), (
+        "the generator may still infer a data model beside the author's, which is the half-read "
+        "half-invented case item 17 exists to stop")
+
+
+@check("the task set is checked against the document it came from -- by running it",
+       finding="P20")
+def _():
+    """Item 30, and it is only answerable because item 16 landed.
+
+    Four assertions here; the fifth in the plan -- significance against a decision record's
+    **Drives:** -- lives in check-references.py and is NOT restated, because a rule stated in two
+    programs is one that gets changed in one of them.
+
+    THE SHORTFALL IS ASSERTED BY NAME. "1 feature has no task" passes a test that a check naming
+    the WRONG feature would also pass, and item 59's third assertion exists for the same reason.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+    assert os.path.isfile(script), "check-coverage.py does not exist"
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    assert "scripts/check-coverage.py {prd_dir} {tasks_dir}" in skill, (
+        "/breakdown never RUNS the coverage check on the PRD and the tasks directory")
+
+    # The fifth assertion is somewhere else, and this is the statement that it is.
+    refs = open(os.path.join(SKILLS, "breakdown", "scripts", "check-references.py"),
+                encoding="utf-8").read()
+    assert "**Drives:**" in refs, (
+        "check-references.py no longer checks significance against a decision record, so item "
+        "30's fifth assertion is now stated nowhere")
+    doc = open(script, encoding="utf-8").read()
+    assert "check-references.py" in doc, (
+        "check-coverage.py does not name where the fifth assertion lives, so a reader will "
+        "conclude it was dropped")
+
+    _p, reg = schema_registry()
+    prd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf")
+    root = tempfile.mkdtemp(prefix="cov-30-")
+    try:
+        def run(tasks, *args):
+            d = os.path.join(root, "t")
+            shutil.rmtree(d, ignore_errors=True)
+            _task_tree(d, tasks)
+            p = subprocess.run([sys.executable, script, prd, d, "--json"] + list(args),
+                               capture_output=True, text=True)
+            return p, json.loads(p.stdout)
+
+        full = [dict(slug="save-link", crits="1,2,3,4"),
+                dict(slug="list-links", crits="1,2,3"),
+                dict(slug="tag-links", crits="1,2,3,4", moscow="should-have")]
+
+        # Complete coverage is exit 0 -- and asserting this is what stops a check that reports
+        # a shortfall unconditionally from passing everything below.
+        p, out = run(full)
+        assert p.returncode == 0, f"complete coverage was reported as a shortfall:\n{p.stderr}"
+        assert not out["uncovered_features"] and not out["uncovered_criteria"]
+
+        # 1. A feature with no task at all, BY NAME.
+        p, out = run(full[:2])
+        assert p.returncode == 1
+        assert [f["slug"] for f in out["uncovered_features"]] == ["tag-links"], (
+            f"the shortfall does not name the feature. A check that counts correctly and "
+            f"attributes wrongly passes any test that only counts:\n{out}")
+        assert "tag-links" in p.stderr, "the operator-facing report does not name it either"
+
+        # 3. Criteria, both directions.
+        p, out = run([dict(slug="save-link", crits="1,2")] + full[1:])
+        assert {(c["feature"], c["id"]) for c in out["uncovered_criteria"]} == {
+            ("save-link", "3"), ("save-link", "4")}, (
+            f"an uncovered criterion was not named: {out['uncovered_criteria']}")
+        p, out = run([dict(slug="save-link", crits="1,2,3,4,99")] + full[1:])
+        assert [c["id"] for c in out["unknown_criteria"]] == ["99"], (
+            f"a task citing a criterion that does not exist was not reported: {out}")
+
+        # 2. A <source-feature> naming nothing in the document.
+        p, out = run(full + [dict(slug="ghost-feature")])
+        assert [f["slug"] for f in out["unresolved_source_features"]] == ["ghost-feature"]
+
+        # 5. Item 13's runtime backstop, on the fixture that actually has a wont-have feature.
+        staff = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "staff-service")
+        d = os.path.join(root, "s")
+        _task_tree(d, [dict(slug="zebra-signin", crits="1,2,3,4"),
+                       dict(slug="quokka-telemetry", crits="1")])
+        p = subprocess.run([sys.executable, script, staff, d, "--json",
+                            "--priority", "must-have"], capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert [f["slug"] for f in out["forbidden_source_features"]] == ["quokka-telemetry"], (
+            f"a task descending from a wont-have feature was not refused. That is item 13's "
+            f"runtime backstop, and it fires when the selection gate did not run:\n{out}")
+        assert p.returncode == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/execute reports the tier it built and refuses won't-have work -- by running both",
+       finding="P1")
+def _():
+    """Items 19 and 20, which are why they were moved out of group 5c: both read `<moscow>` on a
+    TASK, and nothing put it there until item 16.
+
+    `<requirement-level>` would otherwise have no reader at all -- item 16 writes it, item 30
+    checks criteria against the threshold rather than against the element, and nothing else looks
+    at it. The report is both the cheapest reader and the useful one.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="exec-19-")
+    try:
+        project = os.path.join(root, "proj")
+        os.makedirs(project)
+        for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "init"]):
+            subprocess.run(["git"] + args, cwd=project, capture_output=True, text=True)
+
+        tasks = os.path.join(root, "tasks")
+        _task_tree(tasks, [dict(slug="save-link", moscow="must-have", level="P0"),
+                           dict(slug="tag-links", moscow="should-have", level="P1"),
+                           dict(slug=None)])  # Layer 0 shape: no tier at all
+        with open(os.path.join(tasks, "layer_plan.json"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write('{"layers": []}\n')
+
+        # ---- item 19: the tiers are DERIVED into the state file, not counted by a reporter.
+        writer = os.path.join(SKILLS, "execute", "scripts", "write-state.py")
+        p = subprocess.run([sys.executable, writer, tasks, project, "probe"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, f"write-state.py failed: {p.stdout}\n{p.stderr}"
+        state = json.load(open(os.path.join(tasks, "execute-state.json"), encoding="utf-8"))
+
+        assert state.get("tiers", {}).get("by_tier") == {"must-have/P0": 1,
+                                                         "should-have/P1": 1}, (
+            f"execute-state.json does not group by BOTH tiers. The two-level filter is "
+            f"invisible in the output otherwise:\n{state.get('tiers')}")
+        assert state["tiers"].get("unattributed") == 1, (
+            "a task with no tier was not counted as unattributed. Layer 0 legitimately has "
+            "none, and silently dropping it makes a partial report look complete")
+        rec = state["tasks"]["L1-001"]
+        assert rec.get("moscow") == "must-have" and rec.get("requirement_level") == "P0"
+        assert "moscow" not in state["tasks"]["L1-003"], (
+            "a task with no tier was given a null one; `has no tier` and `tier not recorded` "
+            "must stay distinguishable")
+
+        schema = open(os.path.join(SKILLS, "execute", "references", "state-schema.md"),
+                      encoding="utf-8").read()
+        for field in ('"tiers"', '"moscow"', '"requirement_level"'):
+            assert field in schema, (
+                f"state-schema.md does not document {field}. A live producer/spec mismatch in "
+                f"this exact file is what item 23a was")
+
+        # ---- item 20: preflight refuses, names the file, and still works when it should.
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        p = subprocess.run(["sh", flight, tasks, project], capture_output=True, text=True)
+        assert p.returncode == 0, f"preflight refused a clean tree: {p.stderr}"
+        assert p.stdout.strip(), "preflight stopped printing the resolved base branch"
+
+        bad = os.path.join(tasks, "1-foundation", "L1-004-wont.xml")
+        with open(bad, "w", encoding="utf-8", newline="\n") as f:
+            f.write(_task_xml("L1-004", slug="quokka-telemetry", moscow="wont-have"))
+        p = subprocess.run(["sh", flight, tasks, project], capture_output=True, text=True)
+        assert p.returncode == 1, (
+            "a task carrying <moscow>wont-have</moscow> reached /execute and was not refused. "
+            "That means item 13's gate did not run, and item 20 is the exit code that says so")
+        assert "REFUSED" in p.stderr and "L1-004" in p.stderr, (
+            f"the refusal does not name the offending task file:\n{p.stderr}")
+
+        skill = prose(open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read())
+        assert re.search(r"wont-have", skill), "/execute does not document the item 20 refusal"
+        assert re.search(r"tiers block", skill), (
+            "/execute is not told to report the tier from the state file's derived block, so it "
+            "will count its own and disagree with the tasks it counted")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ------------------------------------- the boundary test's grader (item 59), finding A8/R13
+
+
+@check("the boundary grader detects each of its five failures -- by breaking them", finding="A8")
+def _():
+    """Item 59's grader, exercised without spending a live run.
+
+    `boundary-test.py` splits `--grade` from `--run` for the reason probe-p1.py did: **a grader
+    that has only ever run behind the expensive path is a grader nobody has checked.** So this
+    drives the grader over a task set the check builds itself, then BREAKS each assertion in turn
+    and asserts the grader notices.
+
+    Passing on a compliant task set is the weakest half of this. A grader that returned 0
+    unconditionally would pass that and nothing else here.
+
+    Assertion 3 is the one worth insisting on and it is why the grader exists at all: a coverage
+    check reporting "1 feature has no task" passes any test that a check naming the WRONG feature
+    would also pass. The mutation below keeps the COUNT correct and changes only the name.
+    """
+    import shutil
+    import tempfile
+
+    grader = os.path.join(REPO, "tests", "boundary-test.py")
+    assert os.path.isfile(grader), "tests/boundary-test.py does not exist"
+
+    _p, reg = schema_registry()
+    prd = os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "link-shelf")
+    crit = re.compile(r"<criterion\b([^>]*)>(.*?)</criterion>", re.S)
+
+    root = tempfile.mkdtemp(prefix="boundary-59-")
+    try:
+        project = os.path.join(root, "app")
+        os.makedirs(project)
+        for a in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "init"]):
+            subprocess.run(["git"] + a, cwd=project, capture_output=True, text=True)
+
+        def seed():
+            """A task set that satisfies all five assertions, built from the fixture PRD."""
+            tasks = os.path.join(root, "tasks")
+            shutil.rmtree(tasks, ignore_errors=True)
+            os.makedirs(os.path.join(tasks, "1-foundation"))
+            index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
+            n = 0
+            for tier, rel in re.findall(r'<feature\s+priority="([^"]+)" file="([^"]+)"', index):
+                slug = os.path.splitext(os.path.basename(rel))[0]
+                text = open(os.path.join(prd, rel), encoding="utf-8").read()
+                found = crit.findall(text)
+                n += 1
+                body = "\n".join("    <criterion%s>%s</criterion>" % (a, b) for a, b in found)
+                ids = ",".join(re.search(r'id="([^"]*)"', a).group(1) for a, _ in found)
+                with open(os.path.join(tasks, "1-foundation", "L1-%03d-%s.xml" % (n, slug)),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Build %s</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
+                            "    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
+                            "    <satisfies-criteria>%s</satisfies-criteria>\n"
+                            "    <requirement-level>P0</requirement-level>\n  </meta>\n"
+                            "  <context>\n    <acceptance-criteria>\n%s\n"
+                            "    </acceptance-criteria>\n  </context>\n</task>\n"
+                            % (n, slug, n, slug, tier, ids, body))
+            b = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
+                                                             "build-manifest.py"), tasks],
+                               capture_output=True, text=True)
+            assert b.returncode == 0, f"build-manifest.py failed: {b.stdout}\n{b.stderr}"
+            return tasks
+
+        def grade(tasks):
+            return subprocess.run([sys.executable, grader, "--grade", prd, tasks,
+                                   "--project", project], capture_output=True, text=True)
+
+        def a_task(tasks, needle):
+            for dp, _dn, fn in os.walk(tasks):
+                for n in fn:
+                    if needle in n:
+                        return os.path.join(dp, n)
+            raise AssertionError(f"no task file matching {needle}")
+
+        # A compliant set passes -- the baseline without which every failure below is hollow.
+        tasks = seed()
+        p = grade(tasks)
+        assert p.returncode == 0, f"a compliant task set was graded as failing:\n{p.stdout}\n{p.stderr}"
+        for n in ("1:", "2:", "3:", "4:", "5:"):
+            assert n in p.stdout, f"assertion group {n} did not run at all:\n{p.stdout}"
+
+        # 1. A REWORDED criterion. This is the assertion that would have failed for the whole
+        #    life of the toolchain, and the reason item 17 carries the element rather than prose.
+        tasks = seed()
+        path = a_task(tasks, "save-link")
+        text = open(path, encoding="utf-8").read()
+        i, j = text.index("<criterion"), text.index("</criterion>")
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text[:i] + text[i:j].replace("shall", "should", 1) + text[j:])
+        p = grade(tasks)
+        assert p.returncode == 1 and "REWORDED" in p.stderr, (
+            f"a criterion arriving reworded was not detected:\n{p.stdout}\n{p.stderr}")
+
+        # 2. Both directions: a name that resolves to nothing, and a feature nothing names.
+        tasks = seed()
+        path = a_task(tasks, "tag-links")
+        # Read BEFORE opening for write. `open(path, "w")` truncates, and an inner read
+        # evaluated as the write's argument then returns "" -- which is how this check first
+        # reported a missing failure that the grader had in fact produced.
+        text = open(path, encoding="utf-8").read()
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text.replace("<source-feature>tag-links</source-feature>",
+                         "<source-feature>ghost</source-feature>"))
+        p = grade(tasks)
+        assert p.returncode == 1 and "ghost" in p.stderr and "tag-links is in scope" in p.stderr, (
+            f"<source-feature> was not resolved in both directions:\n{p.stderr}")
+
+        # 4. A task with no tier. Item 19's element has no other reader.
+        tasks = seed()
+        path = a_task(tasks, "save-link")
+        text = open(path, encoding="utf-8").read()
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            text.replace("    <requirement-level>P0</requirement-level>\n", ""))
+        p = grade(tasks)
+        assert p.returncode == 1 and "FAIL 4:" in p.stderr, (
+            f"a task carrying no <requirement-level> was not detected:\n{p.stderr}")
+
+        # 3. THE ONE. Break the coverage check so it names the wrong feature while keeping the
+        #    count right, and assert the grader is not fooled. A test that does not force this
+        #    cannot detect a check that counts correctly and attributes wrongly.
+        cov = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+        original = open(cov, encoding="utf-8").read()
+        try:
+            open(cov, "w", encoding="utf-8", newline="\n").write(original.replace(
+                '"uncovered_features": [{"slug": r["slug"], "tier": r["tier"]} for r in uncovered],',
+                '"uncovered_features": [{"slug": "save-link", "tier": r["tier"]} for r in uncovered],'))
+            p = grade(seed())
+            assert p.returncode == 1 and "attributes wrongly" in p.stderr, (
+                f"the grader accepted a coverage report that named the WRONG feature. That is "
+                f"the failure item 59's third assertion exists to catch:\n{p.stderr}")
+        finally:
+            open(cov, "w", encoding="utf-8", newline="\n").write(original)
+
+        # 5. Preflight stops refusing. Absence is not refusal, which is item 20's whole point.
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        original = open(flight, encoding="utf-8").read()
+        try:
+            open(flight, "w", encoding="utf-8", newline="\n").write(original.replace(
+                'wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)',
+                'wont=""'))
+            p = grade(seed())
+            assert p.returncode == 1 and "FAIL 5:" in p.stderr, (
+                f"the grader did not notice preflight had stopped refusing:\n{p.stderr}")
+        finally:
+            open(flight, "w", encoding="utf-8", newline="\n").write(original)
+
+        # And the live mode exists, is documented, and is not what runs here.
+        doc = open(grader, encoding="utf-8").read()
+        assert "--run" in doc and "claude" in doc, (
+            "boundary-test.py has no live mode, so item 59 is a grader with nothing to grade")
+        assert 'reg["current"]' in doc, (
+            "the live mode names a schema version instead of reading SCHEMAS.json; a runtime "
+            "test pinned to an old fixture tests a corpus three migrations out of date")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ------------------------------------------ the definition bar (58/3/6/7/40/8, group 5d)
+
+
+def _checks_table():
+    """schema/checks.md's table, as (assertion, owner, callers, item) tuples."""
+    path = os.path.join(SCHEMA, "checks.md")
+    assert os.path.isfile(path), (
+        "schema/checks.md does not exist. Item 6 had accumulated eleven assertions and four "
+        "other items claimed the same ground; the table is what gives each one an owner")
+    text = open(path, encoding="utf-8").read()
+    section = text.split("## The table", 1)
+    assert len(section) == 2, "checks.md has no table section"
+    rows = [r.strip() for r in section[1].split("\n---\n", 1)[0].splitlines()
+            if r.strip().startswith("|")]
+    out = []
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        assert len(cells) == 4, f"malformed checks row ({len(cells)} cells): {row[:60]}"
+        out.append(tuple(cells))
+    return path, text, out
+
+
+@check("every assertion has one owning script, and every caller named actually runs it",
+       finding="A7")
+def _():
+    """Item 58.
+
+    `"No reference anywhere to a slug that has no file"` was owned by items 6, 22, 39, 40 and 42
+    at once, and item 6 alone had accumulated eleven assertions in a prose list. The repository's
+    idiom is one script, one job, one exit code, and a table is only worth having if it is run:
+    every owner must exist and every caller named must cite the script it claims to call.
+    """
+    path, text, rows = _checks_table()
+    assert len(rows) >= 15, (
+        f"checks.md lists {len(rows)} assertions. The toolchain has more than that under "
+        f"skills/*/scripts alone, so the table is a stub rather than an inventory")
+
+    on_disk = {}
+    for root, _dirs, files in os.walk(REPO):
+        if ".git" in root:
+            continue
+        for name in files:
+            if name.endswith((".py", ".sh")):
+                on_disk.setdefault(name, os.path.join(root, name))
+
+    owners, unowned = [], 0
+    for assertion, owner, callers, item in rows:
+        if owner == "—":
+            # A specified-but-unbuilt assertion is kept as a row, not deleted: it is what
+            # Phase 6 is. It must still name the item that will build it.
+            assert re.search(r"\d", item), f"unowned row names no item: {assertion[:50]}"
+            unowned += 1
+            continue
+        script = owner.strip("`")
+        owners.append(script)
+        assert script in on_disk, f"checks.md gives `{assertion[:40]}` an owner that does not exist: {script}"
+        named = re.findall(r"`([^`]+)`", callers)
+        assert named, f"{script} is listed with no caller -- a script nobody calls is a file"
+        for caller in named:
+            full = os.path.join(REPO, caller.replace("/", os.sep))
+            assert os.path.isfile(full), f"{script}: caller {caller} does not exist"
+            body = open(full, encoding="utf-8", errors="replace").read()
+            assert script in body, (
+                f"{caller} is listed as calling {script} and never names it. A row without an "
+                f"invocation is a claim, not a caller")
+
+    assert len(set(owners)) == len(owners), (
+        f"two assertions share an owner: {[o for o in owners if owners.count(o) > 1]}. One "
+        f"script, one job -- a script that owns two assertions has two reasons to exit 1")
+    assert unowned, (
+        "every row has an owner, so the table has stopped recording what is NOT built. Item 22 "
+        "is Phase 6 and its row is the evidence anybody ever counted it")
+
+    # The core is where the elements are defined, and a table of assertions over them that does
+    # not cite it is a second vocabulary waiting to happen.
+    assert "core.md" in text, "checks.md never cites the core it makes assertions about"
+
+
+@check("a feature's declared definition is checked against its own content -- by running it",
+       finding="P26")
+def _():
+    """Item 3, and the direction is the whole design.
+
+    The rule derives a CEILING, never a value. Report where declared exceeds what the content
+    supports; stay silent where it sits below, because an author may hold a feature at
+    `in-progress` for reasons the file cannot express. A rule that derives a value calls that a
+    defect -- which is what the first version of this rule did, on a real corpus.
+
+    So the silent direction is asserted as hard as the loud one: a check that reported both would
+    contradict the author, and one that reported neither would be decorative.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-status.py")
+    assert os.path.isfile(script), "check-status.py does not exist, so <definition> has no reader"
+
+    root = tempfile.mkdtemp(prefix="status-3-")
+    try:
+        def work(project="staff-service"):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture(project), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, "--today", "2026-08-30", *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        # --- the baseline. The reference fixture must be clean, or every assertion below is
+        #     measured against noise.
+        d = work()
+        p = run(d)
+        assert p.returncode == 0 and "0 contradictions" in p.stdout, (
+            f"the current fixture already contradicts itself:\n{p.stdout}{p.stderr}")
+
+        # --- LOUD: a label that claims more than the file carries.
+        d = work()
+        edit(d, "features/narwhal-theme.md", "<user-story>", "<user-story-was>")
+        edit(d, "features/narwhal-theme.md", "</user-story>", "</user-story-was>")
+        p = run(d)
+        assert p.returncode == 1 and "narwhal-theme" in p.stdout and "user-story" in p.stdout, (
+            f"a `defined` feature with no user story was not contradicted:\n{p.stdout}")
+
+        # --- LOUD: the one rule core 6 states outright -- `defined` cannot carry a
+        #     specification gap. quokka-telemetry is the fixture feature that carries one.
+        d = work()
+        edit(d, "features/quokka-telemetry.md",
+             "<definition>in-progress</definition>", "<definition>defined</definition>")
+        p = run(d)
+        assert p.returncode == 1 and "quokka-telemetry" in p.stdout, (
+            f"`defined` with a specification gap was accepted:\n{p.stdout}")
+        assert "specification" in p.stdout, (
+            f"the contradiction does not say WHICH gap bars the label:\n{p.stdout}")
+
+        # --- SILENT: content that supports MORE than the author declared. This must not fail
+        #     the run. An author holding something back is the case the ceiling exists for.
+        d = work()
+        edit(d, "features/walrus-export.md",
+             "<definition>defined</definition>", "<definition>tbd</definition>")
+        p = run(d)
+        assert p.returncode == 0, (
+            f"a feature declared BELOW its ceiling failed the check. Deriving a ceiling rather "
+            f"than a value is the entire design of item 3:\n{p.stdout}")
+        assert "ESCALATE" in p.stdout and "walrus-export" in p.stdout, (
+            f"the observation was not reported at all, which is the other failure:\n{p.stdout}")
+        assert run(d, "--strict").returncode == 1, (
+            "--strict does not raise escalations to failures, so there is no way to run the "
+            "check in a mode that insists on them")
+
+        # --- the gap rules, which the ceiling depends on.
+        d = work()
+        edit(d, "features/quokka-telemetry.md", 'kind="dependency" raised="2026-08-27"',
+             'kind="wibble" raised="soon"')
+        p = run(d)
+        assert p.returncode == 1, f"a malformed <gap> was accepted:\n{p.stdout}"
+        assert "wibble" in p.stdout and "soon" in p.stdout, (
+            f"the report names neither the bad kind nor the bad date:\n{p.stdout}")
+
+        # --- age is reported and never judged.
+        d = work()
+        p = run(d)
+        assert "AGE" in p.stdout and "days ago" in p.stdout, (
+            f"gap age is not reported, so an item raised months ago and one raised yesterday "
+            f"read identically:\n{p.stdout}")
+
+        # It reports; it never repairs.
+        d = work()
+        before = open(os.path.join(d, "features", "quokka-telemetry.md"), "rb").read()
+        run(d)
+        assert open(os.path.join(d, "features", "quokka-telemetry.md"), "rb").read() == before, (
+            "check-status.py modified a feature file. A wrong status usually signals wrong "
+            "CONTENT, and silently relabelling hides that")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("each mechanical test of the well-defined bar fires -- by breaking one at a time",
+       finding="P26")
+def _():
+    """Item 40.
+
+    Five of the eight tests are mechanical and each is broken here separately, because a bar that
+    reports something on a broken feature proves only that it reports something. The judgement
+    half is deliberately absent from the script and is asserted on the agent instead.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+    assert os.path.isfile(script), "check-definition.py does not exist, so section 4.2's bar is prose"
+
+    root = tempfile.mkdtemp(prefix="bar-40-")
+    try:
+        def work():
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture("link-shelf"), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        # --- the baseline, and it is NOT clean. save-link and tag-links pass every mechanical
+        #     test; list-links declares `defined` with no failure-path criterion and no data
+        #     model, which is exactly the state P23 measured across a real corpus. The fixture
+        #     predates the bar, SCHEMAS.json records the fix as schema-6 work, and until then
+        #     this is a live positive control rather than a hypothetical one.
+        d = work()
+        p = run(d)
+        assert p.returncode == 1, (
+            "the bar passed a corpus in which a `defined` feature has no unwanted-behaviour "
+            "criterion. If the fixture has been fixed, update this check deliberately")
+        assert "list-links" in p.stdout, f"the bar names no feature:\n{p.stdout}"
+        clean = [l for l in p.stdout.splitlines()
+                 if "BAR" in l and ("save-link" in l or "tag-links" in l)]
+        assert not clean, (
+            f"a feature that passes every mechanical test was reported anyway: {clean}")
+
+        # --- test 2: the failure path. Turn the one unwanted-behaviour criterion into a happy
+        #     path and the feature must stop qualifying.
+        d = work()
+        edit(d, "features/save-link.md", 'pattern="unwanted-behaviour" priority="P0"',
+             'pattern="event-driven" priority="P0"')
+        edit(d, "features/save-link.md", 'pattern="unwanted-behaviour" priority="P1"',
+             'pattern="event-driven" priority="P1"')
+        p = run(d)
+        assert "BAR t2" in p.stdout and "save-link" in p.stdout, (
+            f"a feature whose criteria are entirely happy-path passed test 2:\n{p.stdout}")
+
+        # --- test 2, other half: a criterion with no pattern cannot be counted at all.
+        d = work()
+        edit(d, "features/save-link.md", ' pattern="unwanted-behaviour" priority="P0"',
+             ' priority="P0"')
+        p = run(d)
+        assert "BAR t2" in p.stdout and "pattern" in p.stdout, (
+            f"a criterion with no `pattern` was counted anyway:\n{p.stdout}")
+
+        # --- test 4: the data model.
+        d = work()
+        edit(d, "features/save-link.md", "<data-model>", "<data-model-was>")
+        edit(d, "features/save-link.md", "</data-model>", "</data-model-was>")
+        p = run(d)
+        assert "BAR t4" in p.stdout and "save-link" in p.stdout, (
+            f"a `defined` feature with no data model passed test 4:\n{p.stdout}")
+
+        # --- test 5: a dependency with a name and no role is a brand name.
+        d = work()
+        edit(d, "index.md", "<purpose>HTTP API framework</purpose>", "")
+        p = run(d)
+        assert "BAR t5" in p.stdout and "fastapi" in p.stdout, (
+            f"a dependency with no <purpose> passed test 5:\n{p.stdout}")
+
+        # --- test 7, outbound: an edge to a feature that does not exist.
+        d = work()
+        edit(d, "features/tag-links.md", '<depends-on slug="save-link" kind="data"/>',
+             '<depends-on slug="ghost" kind="data"/>')
+        p = run(d)
+        assert "BAR t7" in p.stdout and "ghost" in p.stdout, (
+            f"a <depends-on> naming nothing passed test 7:\n{p.stdout}")
+
+        # --- test 7, inbound: THE one that gets skipped. A feature makes a claim on another and
+        #     declares no dependency, and the report must name both ends.
+        d = work()
+        edit(d, "features/list-links.md", "No pagination:",
+             "Filtering belongs to tag-links. No pagination:")
+        p = run(d)
+        assert "EDGE" in p.stdout and "list-links" in p.stdout and "tag-links" in p.stdout, (
+            f"an undeclared inbound claim was not reported:\n{p.stdout}")
+        assert run(d, "--strict").returncode == 1, (
+            "--strict does not raise the one-way edges, so there is no mode that insists on them")
+
+        # --- test 8: the tautology screen, and it must not fire on a real story.
+        d = work()
+        edit(d, "features/save-link.md",
+             "I want to store a URL with an optional title, so that I can come\n  back to it "
+             "without keeping a browser tab open.",
+             "I want to store a URL, so that I can store a URL.")
+        p = run(d)
+        assert "BAR t8" in p.stdout and "save-link" in p.stdout, (
+            f"a `so that` clause restating the `I want` clause passed test 8:\n{p.stdout}")
+        assert "BAR t8" not in run(work()).stdout, (
+            f"test 8 fires on the fixture's real user stories, so it is a false positive "
+            f"machine rather than a screen")
+
+        # --- item 34's count: a distribution, reported and not judged. A corpus where
+        #     everything is P0 carries no information, and neither does one where nothing is set;
+        #     no threshold between those is defensible, so the check asserts the COUNT exists and
+        #     tracks the file rather than asserting what it should be.
+        d = work()
+        p = run(d)
+        assert re.search(r"criterion priority: .*P0 \d+", p.stdout), (
+            f"the bar reports no criterion-priority distribution:\n{p.stdout}")
+        assert "P2" not in p.stdout.split("criterion priority:")[1], (
+            f"the fixture has no P2 criterion and the tally claims one:\n{p.stdout}")
+        edit(d, "features/save-link.md", 'priority="P1" derived-from="4"',
+             'priority="P2" derived-from="4"')
+        assert "P2 1" in run(d).stdout.split("criterion priority:")[1], (
+            "the tally does not track the file it is counting")
+
+        # --- the gate reports and the label stays the author's.
+        d = work()
+        before = open(os.path.join(d, "features", "list-links.md"), "rb").read()
+        run(d)
+        assert open(os.path.join(d, "features", "list-links.md"), "rb").read() == before, (
+            "check-definition.py edited a feature. The bar is deliberately weaker than refusing "
+            "the label: a gate that blocks it invites relabelling rather than fixing")
+
+        # --- the judgement half is NOT in the script.
+        body = open(script, encoding="utf-8").read()
+        for named in ("judgement", "review-definition"):
+            assert named in body, (
+                f"check-definition.py does not say where the tests it cannot settle go. A script "
+                f"silently passing over a class of input is worse than one that says so")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the index, the feature directory and every reference reconcile -- by running it",
+       finding="P27")
+def _():
+    """Items 6 and 42.
+
+    `rename-feature.py` proves the operation it just performed. This proves the STATE, at any
+    moment, which is the half that decays: a PRD is edited by hand for weeks after the last
+    rename, and an unindexed file is a residue, real drift, or a legitimately retired feature.
+    Only the third has a marker.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-rename.py")
+    assert os.path.isfile(script), "check-rename.py does not exist"
+
+    root = tempfile.mkdtemp(prefix="rename-6-")
+    try:
+        def work():
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture("link-shelf"), d)
+            return d
+
+        def run(d):
+            return subprocess.run([sys.executable, script, d],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def edit(d, rel, old, new):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            assert old in text, f"fixture no longer contains {old[:40]!r}"
+            open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
+
+        d = work()
+        p = run(d)
+        assert p.returncode == 0, f"the current fixture does not reconcile with itself:\n{p.stdout}"
+
+        # A rename that stopped half way: the index moved and the file did not.
+        d = work()
+        edit(d, "index.md", 'file="features/tag-links.md"', 'file="features/tagging.md"')
+        p = run(d)
+        assert p.returncode == 1 and "tagging.md" in p.stdout and "tag-links.md" in p.stdout, (
+            f"neither the dangling entry nor the orphaned file was named:\n{p.stdout}")
+
+        # The file moved and its own <slug> did not.
+        d = work()
+        edit(d, "features/list-links.md", "<slug>list-links</slug>", "<slug>list-the-links</slug>")
+        p = run(d)
+        assert p.returncode == 1 and "list-the-links" in p.stdout, (
+            f"a feature whose <slug> disagrees with its filename was accepted:\n{p.stdout}")
+
+        # Item 1's residue: a <priority> left behind in a feature file.
+        d = work()
+        edit(d, "features/list-links.md", "<slug>list-links</slug>",
+             "<slug>list-links</slug>\n    <priority>must-have</priority>")
+        p = run(d)
+        assert p.returncode == 1 and "priority" in p.stdout, (
+            f"a feature file still carrying <priority> was accepted:\n{p.stdout}")
+
+        # A reference to a slug with no file -- the postcondition a rename has to satisfy.
+        d = work()
+        edit(d, "features/save-link.md", "<description>",
+             '<depends-on slug="ghost" kind="data"/>\n\n  <description>')
+        p = run(d)
+        assert p.returncode == 1 and "ghost" in p.stdout, (
+            f"a <depends-on> resolving to nothing was accepted:\n{p.stdout}")
+
+        # And the exit condition nobody evaluates: reported, not refused.
+        d = work()
+        with open(os.path.join(d, "features", "old-shelf.md"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write('<feature>\n  <meta><name>Old shelf</name><slug>old-shelf</slug>'
+                    '<definition>superseded</definition></meta>\n'
+                    '  <superseded-by slug="save-link"/>\n</feature>\n')
+        p = run(d)
+        assert p.returncode == 0, (
+            f"an unindexed `superseded` file was treated as a defect. It is removed from the "
+            f"index deliberately:\n{p.stdout}")
+        assert "RETIRED" in p.stdout and "old-shelf" in p.stdout, (
+            f"a superseded pointer nothing references any more went unreported:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/prd calls the checks rather than restating them, and --resume re-runs them all",
+       finding="P16")
+def _():
+    """Items 6, 7 and 58.
+
+    Item 6 is the CALLER, not the container. The assertions live in scripts with exit codes; this
+    asserts the invocations exist where they have to run, and that `--resume` runs them across the
+    whole PRD rather than across what the session touched -- the untouched features are exactly
+    the ones whose labels have gone stale.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    root = "${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/"
+
+    phase7 = prd[prd.find("### Phase 7:"):prd.find("### Phase 8:")]
+    assert phase7.strip(), "prd.md has no Phase 7"
+    for script in ("check-status.py", "check-rename.py", "check-references.py",
+                   "check-definition.py"):
+        # The RUNNABLE invocation, not the name. A command that discusses a script in prose
+        # keeps discussing it after the command line is deleted.
+        assert f"{root}{script} " in phase7, (
+            f"Phase 7 never RUNS {script}; item 6's whole content is that the validation phase "
+            f"is a caller of scripts rather than a list of prose questions")
+
+    init = prd[prd.find("## Initialization"):prd.find("## Workflow Phases")]
+    for script in ("check-status.py", "check-definition.py"):
+        assert f"{root}{script} " in init, (
+            f"--resume does not re-run {script}. Stamping only what this session touched is how "
+            f"a label drifts from its content in the first place (item 7)")
+    assert re.search(r"over \*\*all\*\* of them", init), (
+        "the resume check does not say it runs across every feature, so it reads as a check of "
+        "the ones about to be edited")
+
+    assert "checks.md" in prd, (
+        "/prd never cites the assertion table, so the next assertion added here will be added "
+        "here rather than given an owner")
+
+    # The four prose questions must not also live in the trailing section: one rule, one place.
+    tail = prd[prd.find("## Consistency Checks to Perform"):]
+    assert tail.strip(), "prd.md lost its Consistency Checks section"
+    assert "Phase 7" in tail, (
+        "the trailing consistency section restates checks instead of pointing at the phase that "
+        "runs them, which is the duplication item 6 exists to remove")
+
+
+@check("an unflagged feature that looks significant is a candidate, and never a failure",
+       finding="P17")
+def _():
+    """Items 6 and 35.
+
+    `<architecturally-significant>` is a declared judgement, so item 6 asks for candidates to be
+    *screened and reported, never applied*. Both halves are asserted: the screen must fire on a
+    feature that plainly qualifies, and it must never reach the exit code -- including under
+    --strict, because a heuristic that can fail a build has been promoted to a rule behind
+    everyone's back.
+    """
+    import re as _re
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+
+    root = tempfile.mkdtemp(prefix="asr-35-")
+    try:
+        def work(project):
+            d = os.path.join(root, "p")
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.copytree(current_fixture(project), d)
+            return d
+
+        def run(d, *extra):
+            return subprocess.run([sys.executable, script, d, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        def unflag(d, rel):
+            p = os.path.join(d, rel.replace("/", os.sep))
+            text = open(p, encoding="utf-8").read()
+            stripped = _re.sub(r"\s*<architecturally-significant[^>]*/>", "", text)
+            assert stripped != text, f"{rel} carries no flag to remove"
+            open(p, "w", encoding="utf-8", newline="\n").write(stripped)
+
+        # --- a flagged feature is never a candidate. The flag is the author's answer, and
+        #     re-asking a question somebody has already answered is how a report gets ignored.
+        d = work("staff-service")
+        p = run(d)
+        assert p.returncode == 0, f"the reference check refused a clean fixture:\n{p.stdout}"
+        assert "0 significance candidates" in p.stdout, (
+            f"a feature that already declares the flag was screened anyway:\n{p.stdout}")
+
+        # --- unflag both, and the screen must find the one that plainly qualifies.
+        d = work("staff-service")
+        unflag(d, "features/zebra-signin.md")
+        unflag(d, "features/quokka-telemetry.md")
+        p = run(d)
+        assert "CANDIDATE" in p.stdout and "zebra-signin" in p.stdout, (
+            f"a sign-in feature holding passwords was not screened as a candidate:\n{p.stdout}")
+        assert "quality-attribute" in p.stdout, (
+            f"the candidate does not say WHICH heuristic matched, so there is nothing to argue "
+            f"with:\n{p.stdout}")
+
+        # --- and it never reaches the exit code, in either mode.
+        assert p.returncode == 0, f"a candidate failed the run:\n{p.stdout}"
+        strict = run(d, "--strict")
+        assert strict.returncode == 0, (
+            f"--strict turned a heuristic into a gate. A candidate is a screen for a "
+            f"conversation:\n{strict.stdout}")
+
+        # --- reach counts documents that CHOSE to name the feature. index.md and what-next.md
+        #     name every feature by construction, and counting them would hand every feature two
+        #     free edges. save-link is named by three others; the number is the assertion.
+        d = work("link-shelf")
+        p = run(d)
+        m = _re.search(r"save-link\.md: cross-cutting \(named by (\d+) other documents\)", p.stdout)
+        assert m, f"the fixture's most-depended-on feature was not screened:\n{p.stdout}"
+        assert m.group(1) == "3", (
+            f"reach counted {m.group(1)} documents. index.md and what-next.md name every "
+            f"feature, so including them makes the threshold meaningless")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the criteria challenger proposes, never writes, and carries both of its modes",
+       finding="P23")
+def _():
+    """Item 8.
+
+    A same-persona author would deepen the bias the corpus already has: the best-defined features
+    carry negative cases and abstention behaviour, which is exactly what someone who has just
+    written the happy path does not add. So the agent is adversarial, opt-in per feature, and
+    proposes only -- and `proposes only` is asserted against its TOOLS rather than its prose,
+    because an agent holding Write can write whatever its prose says.
+    """
+    path = os.path.join(AGENTS, "prd-criteria-author.md")
+    assert os.path.isfile(path), "agents/prd-criteria-author.md does not exist"
+    fm, body = parse_frontmatter(path)
+    assert fm.get("name") == "prd-criteria-author", f"declares name {fm.get('name')!r}"
+
+    tools = str(fm.get("tools") or "")
+    for writing in ("Write", "Edit", "NotebookEdit"):
+        assert writing not in tools, (
+            f"the agent is given {writing}. It proposes criteria and the author accepts or "
+            f"rejects each one; an agent that can write closes the loop this item says must "
+            f"stay open")
+
+    flat = prose(body)
+    for mode in ("propose-criteria", "review-definition"):
+        assert mode in body, f"the agent does not carry its {mode} mode"
+    # Its checklist is the six EARS patterns -- that is what turns a vague brief into a
+    # specific question about which pattern is unrepresented.
+    for pattern in ("ubiquitous", "event-driven", "state-driven", "optional-feature",
+                    "unwanted-behaviour", "complex"):
+        assert pattern in body, f"the agent's checklist is missing the {pattern} pattern"
+    assert re.search(r"user-story|user story", flat, re.I), (
+        "the agent does not draft the user story, so 44 of 64 features still name no user")
+    assert "data-model" in body, (
+        "the agent does not propose the data-model note, which `defined` requires")
+
+    # It is dispatched, per feature, from both ends of the workflow.
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    dispatches = re.findall(r'subagent_type:\s*"prd-criteria-author"', prd)
+    assert len(dispatches) >= 2, (
+        f"{len(dispatches)} dispatch(es) of the challenger. It has two modes and two moments -- "
+        f"proposing criteria while the feature is being written, and reviewing a definition "
+        f"before the label is set")
+    assert re.search(r"opt-in, per feature", prose(prd)), (
+        "nothing says the challenger is opt-in per feature. Run unattended across twenty `tbd` "
+        "features it produces plausible criteria nobody agreed to, and a `defined` derived from "
+        "those is true and worthless")
+
+
+# ------------------------------------------------- the residue (10/24/32/38, group 5e)
+
+
+def _versioned_task_tree(root, features, slug="link-shelf"):
+    """A tasks directory with one task per (slug, tier, criteria), plus its manifest."""
+    import json
+    tasks = os.path.join(root, "tasks")
+    os.makedirs(os.path.join(tasks, "2-backend"), exist_ok=True)
+    for i, (feature, tier, crit) in enumerate(features, start=1):
+        with open(os.path.join(tasks, "2-backend", f"L2-{i:03d}-{feature}.xml"),
+                  "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"<task>\n  <meta><id>L2-{i:03d}</id><name>{feature}</name>\n"
+                    f"    <layer>2-backend</layer><priority>1</priority>\n"
+                    f"    <source-feature>{feature}</source-feature><moscow>{tier}</moscow>\n"
+                    f"    <satisfies-criteria>{crit}</satisfies-criteria>\n"
+                    f"    <requirement-level>P0</requirement-level></meta>\n"
+                    f"  <objective>Implement {feature}.</objective>\n"
+                    f"  <files-to-create><file>app/{feature}.py</file></files-to-create>\n"
+                    f"</task>\n")
+    with open(os.path.join(tasks, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"prd": {"slug": slug, "project_path": root}}, f)
+    subprocess.run([sys.executable,
+                    os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                    tasks, "--project-path", root],
+                   capture_output=True, text=True)
+    return tasks
+
+
+@check("the task set is reviewable without opening every task -- by running it", finding="P22")
+def _():
+    """Item 32.
+
+    Every other item in this plan adds fidelity -- more content carried, more faithfully -- and
+    the review burden scales with it. Self-containment stays, because it is right for the
+    CONSUMER; what was missing is a view OVER the set. It comes off a traversal that already
+    exists, so a second walker would be a second answer to "what tasks exist".
+    """
+    import shutil
+    import tempfile
+
+    builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    root = tempfile.mkdtemp(prefix="summary-32-")
+    try:
+        tasks = _versioned_task_tree(root, [("save-link", "must-have", "1,2,3"),
+                                  ("tag-links", "should-have", "1,2")])
+        summary = os.path.join(tasks, "tasks-summary.md")
+        assert os.path.isfile(summary), (
+            "build-manifest.py wrote no tasks-summary.md, so the task set can still only be "
+            "reviewed by opening every task")
+        text = open(summary, encoding="utf-8").read()
+
+        # The four things a reviewer needs per task, none of which the manifest carried before.
+        for wanted in ("save-link", "must-have", "Implement save-link.", "app/save-link.py"):
+            assert wanted in text, f"the summary does not carry {wanted!r}:\n{text}"
+        assert "1, 2, 3" in text, f"the summary does not name the criteria a task satisfies:\n{text}"
+
+        # It is DERIVED, so drift is an exit code rather than a stale file nobody notices.
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0, f"a freshly built summary reads as drifted:\n{p.stdout}{p.stderr}"
+
+        with open(summary, "a", encoding="utf-8", newline="\n") as f:
+            f.write("\nhand-edited\n")
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 1 and "tasks-summary.md" in (p.stdout + p.stderr), (
+            f"a hand-edited summary was accepted, so `derived` is a claim rather than a "
+            f"property:\n{p.stdout}{p.stderr}")
+
+        os.remove(summary)
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 1, "a missing summary was accepted"
+
+        # And it does NOT try to diff task text. That comparison is check-coverage.py's, made
+        # possible by item 17's verbatim criterion ids -- a prose diff would be a second answer.
+        body = open(builder, encoding="utf-8").read()
+        assert "check-coverage.py" in body, (
+            "nothing in the builder says where the criteria comparison actually lives, so the "
+            "next person adds a worse one here")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the manifest's version stamps finally have a reader -- by running it", finding="P28")
+def _():
+    """Item 24.
+
+    Both stamps have been written since item 4.5 and NOTHING read either of them. A stamp nobody
+    reads is provenance theatre: it makes an artefact look checked while the incompatibility it
+    exists to catch goes through in silence.
+
+    The two are asserted separately, because conflating them is the defect P28 named:
+    `schema_version` decides and `toolchain_version` is reported.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "check-compatibility.py")
+    assert os.path.isfile(script), "check-compatibility.py does not exist"
+
+    # The reader's accepted version is DECLARED here, not imported from the producer. Importing
+    # it would make producer and reader equal by construction and the check a function that
+    # returns True.
+    body = open(script, encoding="utf-8").read()
+    code = body.split('"""', 2)[-1]          # past the docstring, which argues about the import
+    borrowed = [ln for ln in code.splitlines()
+                if "MANIFEST_SCHEMA_VERSION" in ln
+                or ("build-manifest" in ln and ("import" in ln or "spec_from_file" in ln))]
+    assert not borrowed, (
+        "the reader takes its accepted version from the producer, so the two can never disagree "
+        f"and the compatibility check can never fire: {borrowed}")
+    assert re.search(r"^READER_SCHEMA\s*=", code, re.M), (
+        "the reader declares no accepted version of its own, so there is nothing for a manifest "
+        "to be compared against")
+
+    root = tempfile.mkdtemp(prefix="compat-24-")
+    try:
+        tasks = _versioned_task_tree(root, [("save-link", "must-have", "1")])
+
+        def with_version(schema, toolchain="0.0.1"):
+            path = os.path.join(tasks, "manifest.json")
+            m = json.load(open(path, encoding="utf-8"))
+            if schema is None:
+                m.pop("schema_version", None)
+            else:
+                m["schema_version"] = schema
+            m["toolchain_version"] = toolchain
+            json.dump(m, open(path, "w", encoding="utf-8"), indent=2)
+            return subprocess.run([sys.executable, script, tasks],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        # What build-manifest.py just wrote must be readable, or the pair is broken on arrival.
+        p = subprocess.run([sys.executable, script, tasks],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0 and "0 refusals" in p.stdout, (
+            f"the reader refuses the manifest the producer just wrote:\n{p.stdout}{p.stderr}")
+
+        # A major it has never seen: REFUSE. Reading it anyway produces a plausible wrong answer.
+        p = with_version("99.0")
+        assert p.returncode == 1 and "REFUSED" in p.stdout, (
+            f"a manifest from a future major was accepted:\n{p.stdout}")
+
+        # A newer minor: additive, so it RUNS -- and says what it is ignoring.
+        p = with_version("1.99")
+        assert p.returncode == 0, (
+            f"an additive minor was refused. Minors being additive is what let item 16 add four "
+            f"fields without breaking a reader written against 1.0:\n{p.stdout}")
+        assert "WARN" in p.stdout, f"a newer minor passed in silence:\n{p.stdout}"
+
+        # Absent: warn, never refuse. It is a manifest from before the stamp existed.
+        p = with_version(None)
+        assert p.returncode == 0 and "WARN" in p.stdout, (
+            f"a manifest with no schema_version was refused rather than reported:\n{p.stdout}")
+
+        # PROVENANCE is reported and never decided on. A patch release moves toolchain_version
+        # and not schema_version, so refusing on it would make every release a migration.
+        p = with_version("1.2", toolchain="0.0.1")
+        assert p.returncode == 0, (
+            f"a manifest from a different toolchain was refused on PROVENANCE. That is the "
+            f"conflation P28 exists to prevent:\n{p.stdout}")
+        assert "NOTE" in p.stdout and "0.0.1" in p.stdout, (
+            f"the producing toolchain is not reported at all:\n{p.stdout}")
+
+        # And /execute must actually run it.
+        skill = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+        assert "scripts/check-compatibility.py {tasks_path}" in skill, (
+            "/execute never RUNS the compatibility check; naming a script in prose is what "
+            "item 9 replaced, not what item 24 asked for")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("what-next.md records what wrote it, once, and something reads it", finding="P28")
+def _():
+    """Item 24's other half.
+
+    The stamp is inserted when ABSENT and never updated. Rewriting it on every derivation would
+    turn provenance into a version tracker: every plugin release would make every what-next.md
+    look stale, and a file that is always stale is a check nobody runs.
+    """
+    import shutil
+    import tempfile
+
+    builder = os.path.join(REPO, "schema", "scripts", "build-what-next.py")
+    lister = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+
+    root = tempfile.mkdtemp(prefix="stamp-24-")
+    try:
+        prd = os.path.join(root, "docs", "prd", "link-shelf")
+        os.makedirs(os.path.dirname(prd), exist_ok=True)
+        shutil.copytree(current_fixture("link-shelf"), prd)
+        wn = os.path.join(prd, "what-next.md")
+
+        assert "<toolchain-version>" not in open(wn, encoding="utf-8").read(), (
+            "the fixture already carries a stamp, so this check cannot see one being written")
+
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        stamped = open(wn, encoding="utf-8").read()
+        m = re.search(r"<toolchain-version>\s*([^<\s]+)\s*</toolchain-version>", stamped)
+        assert m, f"build-what-next.py wrote no <toolchain-version>:\n{stamped[:400]}"
+        plugin = json.load(open(os.path.join(REPO, ".claude-plugin", "plugin.json"),
+                                encoding="utf-8"))["version"]
+        assert m.group(1) == plugin, (
+            f"stamped {m.group(1)}, plugin declares {plugin}. A provenance stamp that does not "
+            f"match what produced it is worse than none")
+        assert stamped.index("<toolchain-version>") < stamped.index("</meta>"), (
+            "the stamp landed outside <meta>, where no reader looks for it")
+
+        # Written once. An older stamp is the ORDINARY case and must survive a rebuild.
+        open(wn, "w", encoding="utf-8", newline="\n").write(
+            stamped.replace(f"<toolchain-version>{plugin}<", "<toolchain-version>0.0.1<"))
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        assert "<toolchain-version>0.0.1</toolchain-version>" in open(wn, encoding="utf-8").read(), (
+            "the builder overwrote an older stamp. That turns provenance into a version tracker "
+            "and makes every PRD look stale on every release")
+
+        p = subprocess.run([sys.executable, builder, prd, "--check"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0, (
+            f"--check fails on an older stamp, so every plugin release would make every PRD "
+            f"read as stale:\n{p.stdout}{p.stderr}")
+
+        # And it has a READER. An element with no reader is the defect this plan removes.
+        p = subprocess.run([sys.executable, lister, os.path.join(root, "docs", "prd")],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert "0.0.1" in p.stdout and plugin in p.stdout, (
+            f"list-prds.py does not report the toolchain that wrote the PRD:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the gate asserts three things by name, and the switch decides only whether it stops",
+       finding="P25")
+def _():
+    """Item 38.
+
+    Placed at the /breakdown -> /execute boundary and nowhere else: not inside /execute, which is
+    the unattended overnight case P19 refuses to block. The switch controls the STOP, never the
+    CHECK -- the report is the valuable half, and the assertions are worth running either way.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py")
+    assert os.path.isfile(script), "check-gate.py does not exist, so item 38's gate is prose"
+
+    root = tempfile.mkdtemp(prefix="gate-38-")
+    try:
+        prd = os.path.join(root, "prd")
+        shutil.copytree(current_fixture("link-shelf"), prd)
+
+        def track(enabled):
+            with open(os.path.join(root, "architecture.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write('# Architecture: Gate\n\n## Machine-Readable Section\n'
+                        '<architecture version="1.1">\n  <rules>\n'
+                        f'    <design-track enabled="{enabled}"/>\n'
+                        '  </rules>\n</architecture>\n')
+
+        def gate(tasks, *extra):
+            return subprocess.run([sys.executable, script, prd, tasks,
+                                   "--project-path", root, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        # tag-links carries a `decision` gap in the fixture, so building it is assertion 3's
+        # live case: an undecided question built anyway is an invented one.
+        full = _versioned_task_tree(root, [("save-link", "must-have", "1,2,3,4"),
+                                 ("list-links", "must-have", "1,2,3"),
+                                 ("tag-links", "should-have", "1,2,3,4")])
+
+        track("false")
+        p = gate(full)
+        assert p.returncode == 0, (
+            f"the gate refused with the design track OFF. Off means report and return -- a gate "
+            f"that stops an unattended run is the thing P19 refuses:\n{p.stdout}")
+        assert "tag-links" in p.stdout and "decision" in p.stdout, (
+            f"assertion 3 did not name the blocked feature:\n{p.stdout}")
+
+        # Same tree, same findings, switch on: it stops. The findings did not change; the
+        # consequence did, which is the whole content of <design-track>.
+        track("true")
+        p_on = gate(full)
+        assert p_on.returncode == 1, (
+            f"the design track is ON and the gate did not stop:\n{p_on.stdout}")
+        assert "tag-links" in p_on.stdout, "the findings changed with the switch, and must not"
+
+        # Assertion 1: a feature with no task, named -- not counted.
+        os.remove(os.path.join(full, "2-backend", "L2-003-tag-links.xml"))
+        subprocess.run([sys.executable,
+                        os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                        full, "--project-path", root], capture_output=True, text=True)
+        track("false")
+        p = gate(full)
+        assert "SHORTFALL" in p.stdout and "tag-links" in p.stdout, (
+            f"a feature with no task was not reported by name:\n{p.stdout}")
+
+        # And the shortfall must reach the CONSEQUENCE, not only the report. Removing the
+        # tag-links task also removes assertion 3's finding -- it is no longer a built feature --
+        # so coverage is the only finding left, and with the track on it must stop the run.
+        # A mutant that printed this report and counted no finding survived a check asserting
+        # the word SHORTFALL: the report is the visible half and the exit code is the half that
+        # does anything.
+        track("true")
+        p = gate(full)
+        assert p.returncode == 1, (
+            f"a coverage shortfall was reported and then not counted, so the gate reads as "
+            f"`nothing to confirm` with a feature missing every task:\n{p.stdout}")
+        assert "confirmation required" in p.stdout, (
+            f"the gate stopped without saying that is what it did:\n{p.stdout}")
+
+        # Assertion 2: a significant feature nothing drives, scoped to what was BUILT.
+        prd2 = os.path.join(root, "prd2")
+        shutil.copytree(current_fixture("staff-service"), prd2)
+        tasks2 = _versioned_task_tree(os.path.join(root, "s"), [("zebra-signin", "must-have", "1,2")],
+                            slug="staff-service")
+        p = subprocess.run([sys.executable, script, prd2, tasks2, "--priority", "must-have"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert "zebra-signin" in p.stdout, (
+            f"a built, architecturally-significant feature that no record drives went "
+            f"unreported:\n{p.stdout}")
+        assert "quokka-telemetry" not in p.stdout, (
+            f"the gate reported a significant feature nobody built. Its question is whether THIS "
+            f"task set may proceed:\n{p.stdout}")
+
+        # It runs the owners rather than re-deciding what they decide.
+        body = open(script, encoding="utf-8").read()
+        for owner in ("check-coverage.py", "check-references.py"):
+            assert owner in body, f"the gate does not run {owner}; it has its own opinion instead"
+
+        # /breakdown must actually run it, as a command rather than as a paragraph about one.
+        skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+        assert "scripts/check-gate.py {prd_dir} {tasks_dir}" in skill, (
+            "/breakdown never RUNS the gate, so item 38 is a script nothing invokes")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`<design-track>` has a host artefact, and an unset switch is refused", finding="P25")
+def _():
+    """Item 38's other half.
+
+    `decision-record.md` described the switch and no artefact had anywhere to write it: a
+    reference describing a setting with no home, and a gate that did not exist to read it. An
+    element present with no `enabled` is refused rather than defaulted -- a project that meant to
+    say something and did not is not the same as one that never opted in.
+    """
+    import shutil
+    import tempfile
+
+    fmt = open(os.path.join(SKILLS, "breakdown", "references", "architecture-format.md"),
+               encoding="utf-8").read()
+    assert "<design-track" in fmt, (
+        "architecture.md's format spec has no <design-track>, so the switch decision-record.md "
+        "describes still has nowhere to live")
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-architecture.py")
+    root = tempfile.mkdtemp(prefix="track-38-")
+    try:
+        def arch(rule):
+            with open(os.path.join(root, "architecture.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write('# Architecture: T\n\n## Machine-Readable Section\n'
+                        f'<architecture version="1.1">\n  <rules>\n    {rule}\n'
+                        '  </rules>\n</architecture>\n')
+            return subprocess.run([sys.executable, script, root, "--json"],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        p = arch('<design-track enabled="true" adr-dir="../decisions"/>')
+        assert p.returncode == 0, f"a valid design-track was refused:\n{p.stdout}{p.stderr}"
+        parsed = json.loads(p.stdout)["design_track"]
+        assert parsed["enabled"] is True and parsed["adr_dir"] == "../decisions", (
+            f"the switch did not parse: {parsed}")
+
+        p = arch('<design-track enabled="false"/>')
+        assert json.loads(p.stdout)["design_track"]["enabled"] is False
+
+        p = arch('<design-track adr-dir="../decisions"/>')
+        assert p.returncode == 1 and "design-track" in p.stderr, (
+            f"an element with no `enabled` was defaulted rather than refused. A switch nobody "
+            f"set is not a switch set to off:\n{p.stdout}{p.stderr}")
+
+        p = arch('<design-track enabled="yes"/>')
+        assert p.returncode == 1, f"`yes` was accepted as a boolean:\n{p.stdout}{p.stderr}"
+
+        # Absent element and absent file both mean off -- the shipped behaviour, not a fallback.
+        p = arch('<testing default="tdd"/>')
+        assert json.loads(p.stdout)["design_track"]["enabled"] is False, (
+            "an architecture.md that never mentions the design track does not read as off")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`/prd` writes features one at a time, and edits re-read only what it is editing",
+       finding="P5")
+def _():
+    """Item 10.
+
+    P5 at the authoring end: `/prd` drafting sixty-four features in one context is the same
+    problem `/breakdown` had reading them in one gulp, in the direction nobody was watching.
+    Item 18 fixed the reading side and left the writing side alone.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    output = prd[prd.find("### Phase 9: Output"):prd.find("## Output Formats")]
+    assert output.strip(), "prd.md has no Phase 9"
+    flat = prose(output)
+
+    assert re.search(r"one file at a time", flat), (
+        "Phase 9 does not say to write feature files one at a time, so the whole set is drafted "
+        "into one context -- which is P5, at the authoring end")
+    assert re.search(r"P5", output), (
+        "the rule is stated without the finding it comes from, so the next rewrite drops it as "
+        "a style preference")
+    assert re.search(r"re-read only the feature being edited", flat), (
+        "nothing bounds what a later EDIT loads, which is where the blob comes back")
+
+    # The derived block is not hand-written either, and the command must run its producer.
+    assert "schema/scripts/build-what-next.py {prd_dir}" in prd, (
+        "/prd never runs build-what-next.py, so <authoring-gaps> goes back to being "
+        "hand-maintained -- which the corpus shows never happens")
+
 
 # ------------------------------------------------------------------- behavioural
 

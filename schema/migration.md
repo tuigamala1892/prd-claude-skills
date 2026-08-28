@@ -190,6 +190,68 @@ postcondition names the story and its precondition does not care how many are mi
 
 ---
 
+## schema-4 → schema-5: the CRD path takes the parity changes
+
+Items 46, 47 and 48. `<requirements>` is retired into the criteria list, requirement-level MoSCoW
+becomes `P0|P1|P2`, `<meta>` gains a document-level MoSCoW, and `<gaps>` arrives. **Mixed**, and
+this is the first step whose mechanical half can *move* content rather than only relabel it — a
+`<requirement>` becomes a `<criterion>`, which is a transformation, while the EARS sentence it
+ought to be is not.
+
+**This step touches CRDs only.** PRD features, `PROJECT.md` and `what-next.md` are unchanged and
+are named as unchanged rather than left to fall through — *"no rule matched"* and *"no rule was
+needed"* are different answers and only the first is an escalation.
+
+### The mechanical half — `migrate.py`'s
+
+**It is R10, not R7.** R7 and R8 are item 4's conventions — `excluded` needs a `<rationale>`,
+`superseded` needs a pointer — which are rules about an artefact rather than steps in a version,
+and R9 is `what-next.md`'s half of schema-4. The identifiers are a flat space across this guide
+and its executor, so a number is never reused.
+
+| # | Precondition | Transformation | Postcondition |
+|---|---|---|---|
+| R10 | a CRD with a `<requirements>` element | each `<requirement>` becomes a `<criterion>` appended to `<acceptance-criteria>`, renumbered to continue after the highest existing criterion id, carrying `derived-from="requirement-N"` and its MoSCoW mapped to `P0\|P1\|P2`; `<requirements>` is removed | no `<requirements>`; every migrated criterion has a `priority` and a `derived-from`; **no `pattern`** |
+
+**The ids merge, so they have to be renumbered, and that is the only lossy-looking part of the
+step.** Requirement 1 and criterion 1 were two different things in two id spaces, and after item
+46 there is one space. Renumbering the *requirements* rather than the criteria is deliberate:
+existing criterion ids may already be cited from a commit message or a task file, and the whole
+purpose of `id` is that such a citation still resolves. `derived-from="requirement-3"` is what
+keeps the other half of the history readable — and it is prefixed rather than bare because after
+this step a bare `3` would be ambiguous between the two former spaces.
+
+**The MoSCoW map is one to one, and the fourth value has no target.**
+
+| Was | Becomes |
+|---|---|
+| `must-have` | `P0` |
+| `should-have` | `P1` |
+| `could-have` | `P2` |
+| `wont-have` | **the file is not placed; the migration stops and names it** |
+
+`P0|P1|P2` has no *"not building this"* value by design — that judgement belongs to the whole
+item, which on this path is the document. `P2` would make a declined requirement buildable, since
+`--requirement-level` defaults to `P2`; dropping it would delete something a person wrote. Both
+are decisions about the change rather than about its format, so this is an escalation. It uses
+machinery that already exists: `--check` refuses the tree and the file is named, exactly as an
+unplaceable artefact is.
+
+### The judgement half — never the script's
+
+| Judgement | Why a machine must not |
+|---|---|
+| the EARS sentence and `pattern` for a migrated requirement | the same rule as R4 and R5, arriving through a different door. A requirement body is prose someone wrote to be read, not a sentence with a trigger and a response waiting to be extracted, and a `pattern` inferred by the heuristics it exists to replace is circular |
+| `<meta><priority>` | the document's MoSCoW is **new content**. Nothing in the file implies it, and the obvious derivation — take the highest requirement priority — conflates the two levels item 47 just separated |
+| `<gaps>` | there is nothing to transform. A CRD written before item 48 recorded its deferrals nowhere, so the absence of a gap is not evidence there were none. This is the one place the migration can only leave a hole and say so |
+| demoting `<workflow>` from `ready` to `draft` | a consequence of the judgement above. Once a `specification` gap is written in, `ready` becomes a contradiction — but the gap has to be written by someone who knows what was deferred |
+
+**A CRD whose `<workflow>` is `complete` or `abandoned` is migrated but not re-reviewed**, per the
+rule already stated below. Its requirements still become criteria — that is a formatting change —
+but nobody is asked to supply the EARS sentences, the gaps or the document tier for a change that
+already happened. The `derived-from` attributes stay in place permanently on those files, because
+sign-off is a thing that happens to work in flight.
+
 ---
 
 ## The conventions, and what they make checkable
@@ -234,16 +296,17 @@ concession.
 Seven items in §5 J change artefacts that are already written. A migration scoped to PRDs would
 leave every existing CRD and `PROJECT.md` behind.
 
-| Artefact | Transformation | Item |
-|---|---|---|
-| `docs/crd/{slug}.md` | `<meta><status>` → `<workflow>` | 45 |
-| | `<requirements>` retired; each becomes an EARS criterion in the single list | 46, 33 |
-| | requirement `priority` MoSCoW → `P0\|P1\|P2` on the criterion | 47 |
-| | `<meta>` gains a document-level MoSCoW `<priority>` | 47 |
-| | deferred criteria become `<gap kind="specification">` | 48 |
-| | `<affected-apis>` → `<affected-contracts kind="api">` | 57 |
-| `PROJECT.md` | `<feature status=>` → `built=` | 45 |
-| | registries stay at root; **none is added or removed by migration** | 25 |
+| Artefact | Transformation | Item | Version |
+|---|---|---|---|
+| `docs/crd/{slug}.md` | `<meta><status>` → `<workflow>` | 45 | schema-2 |
+| | Given/When/Then criteria become EARS | 33 | schema-3 |
+| | `<requirements>` retired; each becomes a criterion in the single list | 46 | **schema-5** |
+| | requirement `priority` MoSCoW → `P0\|P1\|P2` on the criterion | 47 | **schema-5** |
+| | `<meta>` gains a document-level MoSCoW `<priority>` | 47 | **schema-5** |
+| | deferred criteria become `<gap kind="specification">` | 48 | **schema-5** |
+| | `<affected-apis>` → `<affected-contracts kind="api">` | 57 | *accepted on read; not a step* |
+| `PROJECT.md` | `<feature status=>` → `built=` | 45 | schema-2 |
+| | registries stay at root; **none is added or removed by migration** | 25 | — |
 
 **Two CRD-specific rules.**
 
@@ -293,7 +356,14 @@ regression suite calls. A `PARTIAL` tree fails it, deliberately.
 
 **`--detect` reports where each file already is**, and escalates rather than guessing when the
 answer is not one of the known versions. It is how an artefact selects the right migration rather
-than the newest one, until item 24 stamps `toolchain_version`.
+than the newest one.
+
+**Item 24's stamp does not replace this, and the earlier version of this paragraph said it would.**
+`<toolchain-version>` records what *produced* a file; the migration needs to know what *shape* the
+file is in, and those are different questions — a 2.0.1 toolchain writes schema-4 and schema-5
+artefacts alike. The shape is also self-correcting where a stamp is not: a hand-edited file has the
+shape it has, whatever the stamp still claims. So detection stays keyed on the shape, and the stamp
+is what `list-prds.py` reports before a resume.
 
 **Re-running is safe and is expected.** A file already in the target schema is reported `ALREADY`
 and left untouched, which is the same answer whether it was migrated a second ago or a release
