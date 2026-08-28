@@ -3153,7 +3153,7 @@ be measured by running it.
 
 | Item | Status | Commit |
 |---|---|---|
-| **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `PENDING2` |
+| **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | *Not started* | — |
 | **63** — a task file is not editable by the run it judges | *Not started* | — |
 | **65** — a task may name every feature it descends from | *Not started* | — |
@@ -3164,7 +3164,7 @@ be measured by running it.
 
 ## The third live crossing — the first clean one, and five findings
 
-**Commit:** `PENDING` · **Addresses:** P39–P43 · **Files:**
+**Commit:** `1aee6ad` · **Addresses:** P39–P43 · **Files:**
 `docs/skills/plugin-2.0-plan.md`, `skills/breakdown-plan-layers/SKILL.md`,
 `skills/breakdown/references/task-format-spec.md`, `tests/mutants/live-run.py` (new),
 `tests/test_toolchain.py`
