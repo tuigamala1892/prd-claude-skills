@@ -3155,7 +3155,7 @@ be measured by running it.
 |---|---|---|
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
-| **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `PENDING63` |
+| **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
 | **65** — a task may name every feature it descends from | *Not started* | — |
 
 **Suite:** 112 checks at branch point → **119**. `failed 0`, `known 0`.
@@ -3381,7 +3381,7 @@ two mutants or it has one check and a decoy; and the eleventh edits neither docu
 
 ## 63 — a task file is not editable by the run it judges
 
-**Commit:** `PENDING63` · **Addresses:** P41 · **Files:**
+**Commit:** `f16b982` · **Addresses:** P41 · **Files:**
 `skills/execute/scripts/task-integrity.py` (new), `skills/execute/SKILL.md`,
 `skills/execute-layer/SKILL.md`, `skills/execute-batch/SKILL.md`,
 `skills/execute-verify/SKILL.md`, `agents/task-implementer.md`,
