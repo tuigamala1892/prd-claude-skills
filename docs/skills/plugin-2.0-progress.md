@@ -1845,7 +1845,9 @@ grouping that keeps each commit a single concern:
 
 **5a and 5c are complete.** Neither matched its own row: 46-48 were a whole schema version with a migration and a new fixture, so 5a took two commits; and 5c turned out to be three items rather than five, because 19 and 20 depend on item 16 and belong in 5b. **The split was right about the seams and wrong twice about the contents**, which is the ledger doing its job rather than failing at it.
 
-**5a, 5c, 5b and 5d are complete, and the boundary this row warned about did move.** 5d predicted it: *"item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus."* Read against it, two of its eight tests needed a different mechanical half, one of its two gate conditions turned out to be a schema change, and its first run found four defects in the reference fixture. **5e is next**, and nothing waits on it, which is why it is last.
+**Phase 5 is complete: five groups, seven commits, twenty-four items.** The boundary this row warned about did move, exactly where it said it would. 5d predicted it — *"item 40 is adapted from a policy written elsewhere and has not yet been read against this corpus"* — and read against it, two of its eight tests needed a different mechanical half and one of its two gate conditions turned out to be a schema change. **5e's row was right that the four items are independent and wrong about why they belong together**: three of the four are the same defect, an artefact carrying a stamp or a switch that nothing reads.
+
+**Three groups found a defect on their first real run** — 59 at the boundary, 40 in four of six `defined` fixture features, 38 in a feature carrying an open decision and tasks. That is the phase's most useful output, and none of the three was visible to a static reading of the same files.
 
 **5a and 5c first, in that order.** Both are edits to existing consumers with checkable
 postconditions and no new design; 5a is overdue by the plan's own ordering. That leaves 5b and 5d —
@@ -1864,9 +1866,9 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
 | **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `7966ed7` |
-| **10 + 24 + 32 + 38** — the residue | *Next* | — |
+| **10 + 24 + 32 + 38** — the residue | **Landed** 2026-08-28 | `PENDING` |
 
-**Suite at branch point:** 86 checks, `failed 0`, `known 0`.
+**Suite:** 86 checks at branch point → **89** (46-48) → **91** (49/50) → **92** (13/14/15) → **95** (16/17/30/19/20) → **96** (59) → **103** (58/3/6/7/40/8) → **109** (10/24/32/38). `failed 0`, `known 0` throughout.
 
 ---
 
@@ -2724,6 +2726,191 @@ Every script was also watched failing by hand before any check was written: a co
 with one element removed at a time, including the three off-ladder rules (`excluded` with no
 rationale, `superseded` with no successor, `superseded` still indexed) which no fixture exercises
 and which were run against a scratch PRD built for them.
+
+---
+
+## 10 + 24 + 32 + 38 — the residue, and three stamps that finally have readers
+
+**Commit:** `PENDING` · **Addresses:** P5, P22, P25, P28 · **Files:**
+`commands/prd.md`, `schema/checks.md`, `schema/migration.md`, `schema/prd-format.md`,
+`schema/scripts/build-what-next.py`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/references/architecture-format.md`, `skills/breakdown/scripts/build-manifest.py`,
+`skills/breakdown/scripts/check-architecture.py`, `skills/breakdown/scripts/check-gate.py` (new),
+`skills/breakdown/scripts/list-prds.py`, `skills/execute/SKILL.md`,
+`skills/execute/scripts/check-compatibility.py` (new), `tests/mutants/residue.py` (new),
+`tests/test_toolchain.py`
+
+### Why these four are one commit, which the split row got right for the wrong reason
+
+The row said *"independent of each other and of the above; last because nothing waits on them."*
+Independent they are. What the row did not see is that **three of the four are the same defect**:
+an artefact carrying a stamp, a summary or a switch that **nothing reads**. Item 24's two version
+stamps had been written since item 4.5 and never read. Item 32's review view did not exist. Item
+38's `<design-track>` was specified in `decision-record.md` with **no host artefact to write it
+in** and no gate to read it. Grouping them turned out to be right for a reason nobody recorded.
+
+### What landed
+
+- **10** — `/prd` Phase 9 writes `features/{slug}.md` **one file at a time**, and a later edit
+  re-reads only the feature being edited plus its index entry and its `<depends-on>` neighbours
+  — the same three things item 8's agent is given, for the same reason.
+- **24** — `check-compatibility.py` reads the manifest's two stamps at `/execute`;
+  `build-what-next.py` writes `<toolchain-version>` into `what-next.md`; `list-prds.py` reports
+  it before a resume.
+- **32** — `build-manifest.py` renders `tasks-summary.md` from the traversal it already makes:
+  one row per task with its source feature, tier, criteria, objective and files.
+- **38** — `check-gate.py` at the `/breakdown` → `/execute` boundary, and `<design-track>` gets
+  a host artefact at `architecture.md` format version **1.1**.
+
+### Departure 1 — item 24's first bullet was already done, and was worth nothing
+
+The plan says *"`/prd` writes `<toolchain-version>` into `what-next.md`"*. It already did:
+`prd-format.md`'s template carried the element. It carried it **hardcoded as `2.0.0`**, with no
+producer filling it in and no reader looking at it — a literal in a template, which is the exact
+shape of the defect this plan spends most of its items removing, sitting inside the schema that
+removes them.
+
+So the work was not the element. It was the **producer** (`build-what-next.py` stamps it from
+`plugin.json`) and the **reader** (`list-prds.py` reports it before a resume, so a PRD written by
+an older toolchain is a sentence rather than a surprise).
+
+### Departure 2 — the stamp is written once and never updated
+
+The obvious reading of *"stamping"* is *keep it current*. That is wrong here, and the reason is
+the same one that makes `check-status.py` derive a ceiling rather than a value: **a provenance
+stamp that must equal the current version is not provenance, it is a constraint.** Rewriting it on
+every derivation would make every `what-next.md` in every project read as stale on every plugin
+release, and a file that is always stale is a check nobody runs.
+
+So `stamp()` inserts when the element is **absent** and never touches an existing one, and
+`--check` never fails on it. An older stamp is the ordinary case; it is exactly what
+`list-prds.py` reports.
+
+### Departure 3 — the plan predicted this stamp would replace shape detection. It does not
+
+`migration.md` said `--detect` reads the file's *shape* *"until item 24 stamps
+`toolchain_version`"*. Item 24 has now stamped it and detection stays keyed on the shape, for two
+reasons the sentence had not considered: a `2.0.1` toolchain writes schema-4 and schema-5
+artefacts alike, so the stamp cannot say which shape a file is in; and the shape is
+self-correcting where a stamp is not — a hand-edited file has the shape it has, whatever the stamp
+still claims. **The forward reference is corrected in place rather than left to be discovered**,
+which is the whole reason the ledger records departures.
+
+### Departure 4 — `<design-track>` was a switch with nowhere to live
+
+`decision-record.md` specified it — `enabled`, `adr-dir`, off by default, *"with `enabled="false"`
+the gate prints its report and returns"* — and **no artefact had a slot for it**. A reference
+describing a setting no file can hold, read by a gate that did not exist. Both halves land here:
+`architecture.md` gains it under `<rules>` at format version 1.1, and `check-architecture.py`
+parses it.
+
+**An element present with no `enabled` is refused, not defaulted.** An absent element means off,
+which is the shipped behaviour; an element a project wrote and left incomplete is a project that
+meant to say something and did not, and guessing which way would decide whether a gate stops a
+run.
+
+### Departure 5 — item 38's third assertion names an element that no longer exists
+
+The plan says *"no blocking `<needs-clarification>` remains"*. That element was replaced by
+`<gaps>` at item 29, and `kind` is what makes the assertion possible at all: core §6's
+`specification`, `dependency` and `decision` block execution while `ownership` and `evidence`
+warn. A boolean `blocking=` could not have made that distinction, which is item 29's own argument
+arriving at its first real consumer.
+
+**And the gate asks it of a different set than `select-features.py` does.** That script refuses a
+feature carrying a specification gap at *selection* time; the gate asks, after generation, over
+the features that **actually produced tasks** — a different set whenever `--include-tbd` or a
+`--priority` threshold was passed, and a different question from *should we have started*.
+
+### Departure 6 — the gate scopes significance to what was built
+
+`check-references.py`'s assertion is about the PRD: *this feature is flagged and no record drives
+it*. The gate's question is narrower — *may THIS task set proceed* — and a significant feature
+nobody built cannot block a run of the ones that were. So the gate filters that script's output to
+the features its tasks descend from.
+
+**That is the gate's decision, not a re-reading of the owner's**, and the distinction matters:
+the gate never recomputes coverage or significance, it *runs* `check-coverage.py` and
+`check-references.py` and aggregates. A gate with its own opinion about coverage would be a second
+answer to one question, which is the failure item 58's table exists to prevent.
+
+### The finding: the gate's first run found a real one
+
+On the reference fixture, with every feature built, assertion 3 fires:
+
+> `tag-links: carries a <gap kind="decision"> and has tasks. An undecided question built anyway
+> is an invented one`
+
+`tag-links` genuinely does declare an open decision — whether a tag with no remaining links is
+deleted or kept — and the toolchain has been generating tasks for it since the fixture was
+written. **That is the third assertion earning its place on the day it landed**, and it is the
+same shape as item 59's and item 40's first runs: the first time something is actually asked, it
+finds something.
+
+### The manifest goes to 1.2, and the reader's version is declared in the reader
+
+Item 32's two fields (`objective`, `files`) are additive, so `MANIFEST_SCHEMA_VERSION` moves
+`1.1 → 1.2` and a reader written against 1.1 still works. That is the rule item 24's check then
+enforces — and the check **declares its own accepted version rather than importing the
+producer's**.
+
+That is the one design decision in this group most likely to look like duplication and be
+"cleaned up". It is not duplication: importing `MANIFEST_SCHEMA_VERSION` would make producer and
+reader equal by construction, every comparison would pass, and the check would be a function that
+returns `True`. The producer's version and the reader's accepted range are different facts about
+different programs. A regression check asserts the reader does not borrow it.
+
+### A defect in my own work, recorded because the suite is one module
+
+The 5e checks introduced a helper called `_task_tree`. **A helper of that name already existed**,
+600 lines earlier, with a different signature — and Python resolves the name to the last
+definition, so two unrelated checks (items 30 and 20) started failing with
+`ValueError: not enough values to unpack`. Neither had been touched.
+
+The suite is a single module with 109 checks and a flat namespace, and a helper added at the
+bottom silently rebinds one added at the top. **The failure presented as a defect in the subject
+and was a defect in the instrument** — the same species as item 59's truncating `open(...,"w")`
+and the `check-scope.py` invented key. It was caught because the suite runs whole rather than per
+check, which is the argument for keeping it that way.
+
+### Verification
+
+`python tests/test_toolchain.py` — **103 → 109**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/residue.py` — **17 of 18 caught**, then **18 of 18**
+after the survivor was fixed.
+
+### The one that survived, and why it is the most useful result in the group
+
+> *"the gate stops caring what the coverage check returned"* — `if cov_code != 0:` becomes
+> `if False:`.
+
+The check asserted `SHORTFALL` and the feature's name were in the gate's output, and **both still
+were**: the report prints the coverage verdict from its own exit code, independently of whether
+that verdict is counted as a *finding*. So under the mutant the gate printed a shortfall naming
+`tag-links` and then said `nothing to confirm` — with the design track on, a PRD feature carrying
+no task at all would have gone to `/execute` unremarked.
+
+**The check was reading the visible half.** The report is what a person sees; the finding count is
+what does something. The fix asserts the consequence: with the track on and a coverage shortfall as
+the only finding, the gate must exit 1 and say `confirmation required`. Re-run against the same
+mutant, it caught it.
+
+This is *"assert the mechanism, not the prose"* arriving in a new disguise — the assertion was not
+pinned to a *sentence*, it was pinned to a *report*, which is one layer better and still one layer
+short of the behaviour. **A report and the decision it feeds are two different claims, and a check
+that tests the first passes when the second is deleted.**
+
+**One orphan warning, and it is benign.** `every assertion has one owning script` also failed on
+the mutant that removes `check-compatibility.py`'s invocation from `/execute` — correctly, since
+`checks.md` lists that file as its caller and the table is checked by running it. Two checks
+catching one mutant is the table doing its job, not a duplicate.
+
+Every script was watched failing by hand first: every branch of the compatibility rule against a
+built manifest (future major, older major, newer minor, absent, unparseable, provenance
+mismatch); the summary absent, stale and current; the gate with the track off, on, with a coverage
+shortfall and with an undriven significant feature; and `<design-track>` valid, unset and
+non-boolean.
 
 ## What the machine sleeping taught, which was not about sleep
 

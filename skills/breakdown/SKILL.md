@@ -591,11 +591,45 @@ For each layer in order:
    record's `**Drives:**` — is **not** in this script. `check-references.py` already runs it, and
    a rule stated in two programs is a rule that gets changed in one of them.
 
-5. Report completion summary:
+5. **The gate between here and `/execute`** (item 38):
+
+   ```bash
+   python {skill_dir}/scripts/check-gate.py {prd_dir} {tasks_dir} --project-path {target_dir}      --priority {threshold} --requirement-level {level}
+   ```
+
+   Three assertions, each reported **by name**: every in-scope feature has a task (item 30);
+   every architecturally-significant feature that produced tasks is named by a decision record's
+   `**Drives:**` (items 35, 36); and no feature that produced tasks still carries a `<gap>` that
+   blocks execution — `specification`, `dependency` or `decision` (item 29).
+
+   **It runs the two owning scripts rather than re-deciding what they decide.** Coverage is
+   `check-coverage.py`'s answer and significance is `check-references.py`'s; a gate with its own
+   opinion about coverage would be a second answer to one question. Run it **after** step 2's
+   `--verify`, because coverage is read from the manifest and a stale manifest makes the gate
+   agree with the wrong file.
+
+   **Placed here and nowhere else.** Not inside `/execute`, which is the unattended overnight case
+   P19 refuses to block. `/breakdown` and `/execute` are already separate invocations, so an
+   approval between them costs nothing at 2am.
+
+   - **Exit 0** — nothing to confirm, *or* the design track is off and the findings are a report.
+     **Put them in the summary either way**; the report is the valuable half.
+   - **Exit 1** — `architecture.md` declares `<design-track enabled="true">` and there is
+     something to confirm. **Stop and ask** before telling the user to run `/execute`. Show the
+     findings verbatim; do not summarise them into a count.
+
+   `<design-track>` controls whether the gate *stops*, never whether it *checks*. Absent
+   `architecture.md`, absent element and `enabled="false"` all mean off, which is the shipped
+   behaviour.
+
+6. Report completion summary:
    - Total tasks generated — **the number the script reports**, not the number planned
    - Tasks per layer
-   - **Anything `check-scope.py` or `check-coverage.py` reported**, verbatim — a check whose
-     output is summarised away is a check nobody acts on
+   - **Anything `check-scope.py`, `check-coverage.py` or `check-gate.py` reported**, verbatim —
+     a check whose output is summarised away is a check nobody acts on
+   - **Where the reviewable summary is**: `tasks-summary.md`, beside the manifest, one row per
+     task with the feature it came from, its tier, the criteria it satisfies and the files it
+     writes (item 32). Say it exists; a reviewer who has to open every task will not review
    - Any review failures requiring attention
    - If the count differs from `layer_plan.json`, say so and say why; a plan revised during
      generation is the plan working, not failing

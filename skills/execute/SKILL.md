@@ -81,6 +81,27 @@ Extract:
 2. Fall back to `manifest.prd.project_path` if exists
 3. Error if neither available
 
+**Then ask whether this toolchain can read this manifest at all** — before the preflight, because
+a manifest whose shape this reader does not know is not a repository problem:
+
+```bash
+python {skill_dir}/scripts/check-compatibility.py {tasks_path}
+```
+
+- **Exit 0** — readable. `WARN` and `NOTE` lines may still print; report them and carry on.
+- **Exit 1** — `REFUSED`, naming both versions. **Stop.** Re-run `/breakdown` with this toolchain,
+  or use the toolchain that produced the manifest. Do not "read it anyway": a major shape change
+  means fields have moved, and reading it regardless produces a plausible wrong answer.
+
+**Two versions, and only one of them decides.** `schema_version` says *how to read* the file and
+is what the refusal is based on; `toolchain_version` says *what produced* it and is reported and
+never decided on. A patch release moves the second and not the first, so a provenance stamp cannot
+answer a compatibility question — which is why the manifest carries both (**P28**).
+
+Both stamps have been written since item 4.5 and **nothing read either of them** until this
+check existed. A stamp nobody reads makes an artefact look checked while the incompatibility it
+exists to catch goes through in silence.
+
 ### Step 3: Preflight
 
 Run the bundled script. It performs **every** precondition and resolves the base branch:

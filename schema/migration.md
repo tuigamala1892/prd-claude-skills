@@ -356,7 +356,14 @@ regression suite calls. A `PARTIAL` tree fails it, deliberately.
 
 **`--detect` reports where each file already is**, and escalates rather than guessing when the
 answer is not one of the known versions. It is how an artefact selects the right migration rather
-than the newest one, until item 24 stamps `toolchain_version`.
+than the newest one.
+
+**Item 24's stamp does not replace this, and the earlier version of this paragraph said it would.**
+`<toolchain-version>` records what *produced* a file; the migration needs to know what *shape* the
+file is in, and those are different questions — a 2.0.1 toolchain writes schema-4 and schema-5
+artefacts alike. The shape is also self-correcting where a stamp is not: a hand-edited file has the
+shape it has, whatever the stamp still claims. So detection stays keyed on the shape, and the stamp
+is what `list-prds.py` reports before a resume.
 
 **Re-running is safe and is expected.** A file already in the target schema is reported `ALREADY`
 and left untouched, which is the same answer whether it was migrated a second ago or a release

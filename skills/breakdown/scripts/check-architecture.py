@@ -289,6 +289,21 @@ def check_scaffold(el, errors):
     return {"template": template or None, "path": path or None}
 
 
+def check_design_track(el, errors):
+    """Item 38's switch. `enabled` is required and boolean -- absent is not the same as false.
+
+    An absent ELEMENT means false, which is the shipped behaviour. An element present with no
+    `enabled` is a project that meant to say something and did not, and guessing which way it
+    meant would decide whether a gate stops a run.
+    """
+    raw = (el.get("enabled") or "").strip().lower()
+    if raw not in ("true", "false"):
+        errors.append(f"<design-track>: enabled={el.get('enabled')!r} is not `true` or `false`. "
+                      f"It decides whether the gate between /breakdown and /execute stops, and "
+                      f"a switch nobody set is not a switch set to off.")
+    return {"enabled": raw == "true", "adr_dir": (el.get("adr-dir") or "").strip() or None}
+
+
 def check_principles(block, errors):
     out, seen = [], set()
     for i, el in enumerate(block.findall("principle")):
@@ -347,7 +362,8 @@ def main():
     errors, notes = [], []
     parsed = {"present": True, "path": path, "version": root.get("version"),
               "layer_blocks": [], "banned": [], "testing": None, "task_limits": None,
-              "scaffold": None, "repo_structure": None, "principles": [], "registries": []}
+              "scaffold": None, "repo_structure": None, "principles": [], "registries": [],
+              "design_track": {"enabled": False, "adr_dir": None}}
 
     rules_el = root.find("rules")
     if rules_el is not None:
@@ -372,6 +388,10 @@ def main():
         repo = rules_el.find("repo-structure")
         if repo is not None:
             parsed["repo_structure"] = (repo.text or "").strip() or None
+
+        track = rules_el.find("design-track")
+        if track is not None:
+            parsed["design_track"] = check_design_track(track, errors)
     else:
         notes.append("no <rules> -- this file declares registries and/or principles only")
 
@@ -417,6 +437,8 @@ def main():
         counts.append(f"task-limits {parsed['task_limits']['default']}")
     if parsed["scaffold"]:
         counts.append(f"scaffold {parsed['scaffold']['template']}")
+    if parsed["design_track"]["enabled"]:
+        counts.append("design-track on")
     if parsed["repo_structure"]:
         counts.append(f"repo-structure {parsed['repo_structure']}")
     if parsed["principles"]:

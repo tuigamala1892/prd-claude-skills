@@ -6413,6 +6413,429 @@ def _():
         "those is true and worthless")
 
 
+# ------------------------------------------------- the residue (10/24/32/38, group 5e)
+
+
+def _versioned_task_tree(root, features, slug="link-shelf"):
+    """A tasks directory with one task per (slug, tier, criteria), plus its manifest."""
+    import json
+    tasks = os.path.join(root, "tasks")
+    os.makedirs(os.path.join(tasks, "2-backend"), exist_ok=True)
+    for i, (feature, tier, crit) in enumerate(features, start=1):
+        with open(os.path.join(tasks, "2-backend", f"L2-{i:03d}-{feature}.xml"),
+                  "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"<task>\n  <meta><id>L2-{i:03d}</id><name>{feature}</name>\n"
+                    f"    <layer>2-backend</layer><priority>1</priority>\n"
+                    f"    <source-feature>{feature}</source-feature><moscow>{tier}</moscow>\n"
+                    f"    <satisfies-criteria>{crit}</satisfies-criteria>\n"
+                    f"    <requirement-level>P0</requirement-level></meta>\n"
+                    f"  <objective>Implement {feature}.</objective>\n"
+                    f"  <files-to-create><file>app/{feature}.py</file></files-to-create>\n"
+                    f"</task>\n")
+    with open(os.path.join(tasks, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"prd": {"slug": slug, "project_path": root}}, f)
+    subprocess.run([sys.executable,
+                    os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                    tasks, "--project-path", root],
+                   capture_output=True, text=True)
+    return tasks
+
+
+@check("the task set is reviewable without opening every task -- by running it", finding="P22")
+def _():
+    """Item 32.
+
+    Every other item in this plan adds fidelity -- more content carried, more faithfully -- and
+    the review burden scales with it. Self-containment stays, because it is right for the
+    CONSUMER; what was missing is a view OVER the set. It comes off a traversal that already
+    exists, so a second walker would be a second answer to "what tasks exist".
+    """
+    import shutil
+    import tempfile
+
+    builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    root = tempfile.mkdtemp(prefix="summary-32-")
+    try:
+        tasks = _versioned_task_tree(root, [("save-link", "must-have", "1,2,3"),
+                                  ("tag-links", "should-have", "1,2")])
+        summary = os.path.join(tasks, "tasks-summary.md")
+        assert os.path.isfile(summary), (
+            "build-manifest.py wrote no tasks-summary.md, so the task set can still only be "
+            "reviewed by opening every task")
+        text = open(summary, encoding="utf-8").read()
+
+        # The four things a reviewer needs per task, none of which the manifest carried before.
+        for wanted in ("save-link", "must-have", "Implement save-link.", "app/save-link.py"):
+            assert wanted in text, f"the summary does not carry {wanted!r}:\n{text}"
+        assert "1, 2, 3" in text, f"the summary does not name the criteria a task satisfies:\n{text}"
+
+        # It is DERIVED, so drift is an exit code rather than a stale file nobody notices.
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0, f"a freshly built summary reads as drifted:\n{p.stdout}{p.stderr}"
+
+        with open(summary, "a", encoding="utf-8", newline="\n") as f:
+            f.write("\nhand-edited\n")
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 1 and "tasks-summary.md" in (p.stdout + p.stderr), (
+            f"a hand-edited summary was accepted, so `derived` is a claim rather than a "
+            f"property:\n{p.stdout}{p.stderr}")
+
+        os.remove(summary)
+        p = subprocess.run([sys.executable, builder, tasks, "--verify"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 1, "a missing summary was accepted"
+
+        # And it does NOT try to diff task text. That comparison is check-coverage.py's, made
+        # possible by item 17's verbatim criterion ids -- a prose diff would be a second answer.
+        body = open(builder, encoding="utf-8").read()
+        assert "check-coverage.py" in body, (
+            "nothing in the builder says where the criteria comparison actually lives, so the "
+            "next person adds a worse one here")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the manifest's version stamps finally have a reader -- by running it", finding="P28")
+def _():
+    """Item 24.
+
+    Both stamps have been written since item 4.5 and NOTHING read either of them. A stamp nobody
+    reads is provenance theatre: it makes an artefact look checked while the incompatibility it
+    exists to catch goes through in silence.
+
+    The two are asserted separately, because conflating them is the defect P28 named:
+    `schema_version` decides and `toolchain_version` is reported.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "check-compatibility.py")
+    assert os.path.isfile(script), "check-compatibility.py does not exist"
+
+    # The reader's accepted version is DECLARED here, not imported from the producer. Importing
+    # it would make producer and reader equal by construction and the check a function that
+    # returns True.
+    body = open(script, encoding="utf-8").read()
+    code = body.split('"""', 2)[-1]          # past the docstring, which argues about the import
+    borrowed = [ln for ln in code.splitlines()
+                if "MANIFEST_SCHEMA_VERSION" in ln
+                or ("build-manifest" in ln and ("import" in ln or "spec_from_file" in ln))]
+    assert not borrowed, (
+        "the reader takes its accepted version from the producer, so the two can never disagree "
+        f"and the compatibility check can never fire: {borrowed}")
+    assert re.search(r"^READER_SCHEMA\s*=", code, re.M), (
+        "the reader declares no accepted version of its own, so there is nothing for a manifest "
+        "to be compared against")
+
+    root = tempfile.mkdtemp(prefix="compat-24-")
+    try:
+        tasks = _versioned_task_tree(root, [("save-link", "must-have", "1")])
+
+        def with_version(schema, toolchain="0.0.1"):
+            path = os.path.join(tasks, "manifest.json")
+            m = json.load(open(path, encoding="utf-8"))
+            if schema is None:
+                m.pop("schema_version", None)
+            else:
+                m["schema_version"] = schema
+            m["toolchain_version"] = toolchain
+            json.dump(m, open(path, "w", encoding="utf-8"), indent=2)
+            return subprocess.run([sys.executable, script, tasks],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        # What build-manifest.py just wrote must be readable, or the pair is broken on arrival.
+        p = subprocess.run([sys.executable, script, tasks],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0 and "0 refusals" in p.stdout, (
+            f"the reader refuses the manifest the producer just wrote:\n{p.stdout}{p.stderr}")
+
+        # A major it has never seen: REFUSE. Reading it anyway produces a plausible wrong answer.
+        p = with_version("99.0")
+        assert p.returncode == 1 and "REFUSED" in p.stdout, (
+            f"a manifest from a future major was accepted:\n{p.stdout}")
+
+        # A newer minor: additive, so it RUNS -- and says what it is ignoring.
+        p = with_version("1.99")
+        assert p.returncode == 0, (
+            f"an additive minor was refused. Minors being additive is what let item 16 add four "
+            f"fields without breaking a reader written against 1.0:\n{p.stdout}")
+        assert "WARN" in p.stdout, f"a newer minor passed in silence:\n{p.stdout}"
+
+        # Absent: warn, never refuse. It is a manifest from before the stamp existed.
+        p = with_version(None)
+        assert p.returncode == 0 and "WARN" in p.stdout, (
+            f"a manifest with no schema_version was refused rather than reported:\n{p.stdout}")
+
+        # PROVENANCE is reported and never decided on. A patch release moves toolchain_version
+        # and not schema_version, so refusing on it would make every release a migration.
+        p = with_version("1.2", toolchain="0.0.1")
+        assert p.returncode == 0, (
+            f"a manifest from a different toolchain was refused on PROVENANCE. That is the "
+            f"conflation P28 exists to prevent:\n{p.stdout}")
+        assert "NOTE" in p.stdout and "0.0.1" in p.stdout, (
+            f"the producing toolchain is not reported at all:\n{p.stdout}")
+
+        # And /execute must actually run it.
+        skill = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+        assert "scripts/check-compatibility.py {tasks_path}" in skill, (
+            "/execute never RUNS the compatibility check; naming a script in prose is what "
+            "item 9 replaced, not what item 24 asked for")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("what-next.md records what wrote it, once, and something reads it", finding="P28")
+def _():
+    """Item 24's other half.
+
+    The stamp is inserted when ABSENT and never updated. Rewriting it on every derivation would
+    turn provenance into a version tracker: every plugin release would make every what-next.md
+    look stale, and a file that is always stale is a check nobody runs.
+    """
+    import shutil
+    import tempfile
+
+    builder = os.path.join(REPO, "schema", "scripts", "build-what-next.py")
+    lister = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+
+    root = tempfile.mkdtemp(prefix="stamp-24-")
+    try:
+        prd = os.path.join(root, "docs", "prd", "link-shelf")
+        os.makedirs(os.path.dirname(prd), exist_ok=True)
+        shutil.copytree(current_fixture("link-shelf"), prd)
+        wn = os.path.join(prd, "what-next.md")
+
+        assert "<toolchain-version>" not in open(wn, encoding="utf-8").read(), (
+            "the fixture already carries a stamp, so this check cannot see one being written")
+
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        stamped = open(wn, encoding="utf-8").read()
+        m = re.search(r"<toolchain-version>\s*([^<\s]+)\s*</toolchain-version>", stamped)
+        assert m, f"build-what-next.py wrote no <toolchain-version>:\n{stamped[:400]}"
+        plugin = json.load(open(os.path.join(REPO, ".claude-plugin", "plugin.json"),
+                                encoding="utf-8"))["version"]
+        assert m.group(1) == plugin, (
+            f"stamped {m.group(1)}, plugin declares {plugin}. A provenance stamp that does not "
+            f"match what produced it is worse than none")
+        assert stamped.index("<toolchain-version>") < stamped.index("</meta>"), (
+            "the stamp landed outside <meta>, where no reader looks for it")
+
+        # Written once. An older stamp is the ORDINARY case and must survive a rebuild.
+        open(wn, "w", encoding="utf-8", newline="\n").write(
+            stamped.replace(f"<toolchain-version>{plugin}<", "<toolchain-version>0.0.1<"))
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        assert "<toolchain-version>0.0.1</toolchain-version>" in open(wn, encoding="utf-8").read(), (
+            "the builder overwrote an older stamp. That turns provenance into a version tracker "
+            "and makes every PRD look stale on every release")
+
+        p = subprocess.run([sys.executable, builder, prd, "--check"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0, (
+            f"--check fails on an older stamp, so every plugin release would make every PRD "
+            f"read as stale:\n{p.stdout}{p.stderr}")
+
+        # And it has a READER. An element with no reader is the defect this plan removes.
+        p = subprocess.run([sys.executable, lister, os.path.join(root, "docs", "prd")],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert "0.0.1" in p.stdout and plugin in p.stdout, (
+            f"list-prds.py does not report the toolchain that wrote the PRD:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the gate asserts three things by name, and the switch decides only whether it stops",
+       finding="P25")
+def _():
+    """Item 38.
+
+    Placed at the /breakdown -> /execute boundary and nowhere else: not inside /execute, which is
+    the unattended overnight case P19 refuses to block. The switch controls the STOP, never the
+    CHECK -- the report is the valuable half, and the assertions are worth running either way.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py")
+    assert os.path.isfile(script), "check-gate.py does not exist, so item 38's gate is prose"
+
+    root = tempfile.mkdtemp(prefix="gate-38-")
+    try:
+        prd = os.path.join(root, "prd")
+        shutil.copytree(current_fixture("link-shelf"), prd)
+
+        def track(enabled):
+            with open(os.path.join(root, "architecture.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write('# Architecture: Gate\n\n## Machine-Readable Section\n'
+                        '<architecture version="1.1">\n  <rules>\n'
+                        f'    <design-track enabled="{enabled}"/>\n'
+                        '  </rules>\n</architecture>\n')
+
+        def gate(tasks, *extra):
+            return subprocess.run([sys.executable, script, prd, tasks,
+                                   "--project-path", root, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        # tag-links carries a `decision` gap in the fixture, so building it is assertion 3's
+        # live case: an undecided question built anyway is an invented one.
+        full = _versioned_task_tree(root, [("save-link", "must-have", "1,2,3,4"),
+                                 ("list-links", "must-have", "1,2,3"),
+                                 ("tag-links", "should-have", "1,2,3,4")])
+
+        track("false")
+        p = gate(full)
+        assert p.returncode == 0, (
+            f"the gate refused with the design track OFF. Off means report and return -- a gate "
+            f"that stops an unattended run is the thing P19 refuses:\n{p.stdout}")
+        assert "tag-links" in p.stdout and "decision" in p.stdout, (
+            f"assertion 3 did not name the blocked feature:\n{p.stdout}")
+
+        # Same tree, same findings, switch on: it stops. The findings did not change; the
+        # consequence did, which is the whole content of <design-track>.
+        track("true")
+        p_on = gate(full)
+        assert p_on.returncode == 1, (
+            f"the design track is ON and the gate did not stop:\n{p_on.stdout}")
+        assert "tag-links" in p_on.stdout, "the findings changed with the switch, and must not"
+
+        # Assertion 1: a feature with no task, named -- not counted.
+        os.remove(os.path.join(full, "2-backend", "L2-003-tag-links.xml"))
+        subprocess.run([sys.executable,
+                        os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                        full, "--project-path", root], capture_output=True, text=True)
+        track("false")
+        p = gate(full)
+        assert "SHORTFALL" in p.stdout and "tag-links" in p.stdout, (
+            f"a feature with no task was not reported by name:\n{p.stdout}")
+
+        # And the shortfall must reach the CONSEQUENCE, not only the report. Removing the
+        # tag-links task also removes assertion 3's finding -- it is no longer a built feature --
+        # so coverage is the only finding left, and with the track on it must stop the run.
+        # A mutant that printed this report and counted no finding survived a check asserting
+        # the word SHORTFALL: the report is the visible half and the exit code is the half that
+        # does anything.
+        track("true")
+        p = gate(full)
+        assert p.returncode == 1, (
+            f"a coverage shortfall was reported and then not counted, so the gate reads as "
+            f"`nothing to confirm` with a feature missing every task:\n{p.stdout}")
+        assert "confirmation required" in p.stdout, (
+            f"the gate stopped without saying that is what it did:\n{p.stdout}")
+
+        # Assertion 2: a significant feature nothing drives, scoped to what was BUILT.
+        prd2 = os.path.join(root, "prd2")
+        shutil.copytree(current_fixture("staff-service"), prd2)
+        tasks2 = _versioned_task_tree(os.path.join(root, "s"), [("zebra-signin", "must-have", "1,2")],
+                            slug="staff-service")
+        p = subprocess.run([sys.executable, script, prd2, tasks2, "--priority", "must-have"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert "zebra-signin" in p.stdout, (
+            f"a built, architecturally-significant feature that no record drives went "
+            f"unreported:\n{p.stdout}")
+        assert "quokka-telemetry" not in p.stdout, (
+            f"the gate reported a significant feature nobody built. Its question is whether THIS "
+            f"task set may proceed:\n{p.stdout}")
+
+        # It runs the owners rather than re-deciding what they decide.
+        body = open(script, encoding="utf-8").read()
+        for owner in ("check-coverage.py", "check-references.py"):
+            assert owner in body, f"the gate does not run {owner}; it has its own opinion instead"
+
+        # /breakdown must actually run it, as a command rather than as a paragraph about one.
+        skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+        assert "scripts/check-gate.py {prd_dir} {tasks_dir}" in skill, (
+            "/breakdown never RUNS the gate, so item 38 is a script nothing invokes")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`<design-track>` has a host artefact, and an unset switch is refused", finding="P25")
+def _():
+    """Item 38's other half.
+
+    `decision-record.md` described the switch and no artefact had anywhere to write it: a
+    reference describing a setting with no home, and a gate that did not exist to read it. An
+    element present with no `enabled` is refused rather than defaulted -- a project that meant to
+    say something and did not is not the same as one that never opted in.
+    """
+    import shutil
+    import tempfile
+
+    fmt = open(os.path.join(SKILLS, "breakdown", "references", "architecture-format.md"),
+               encoding="utf-8").read()
+    assert "<design-track" in fmt, (
+        "architecture.md's format spec has no <design-track>, so the switch decision-record.md "
+        "describes still has nowhere to live")
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-architecture.py")
+    root = tempfile.mkdtemp(prefix="track-38-")
+    try:
+        def arch(rule):
+            with open(os.path.join(root, "architecture.md"), "w", encoding="utf-8",
+                      newline="\n") as f:
+                f.write('# Architecture: T\n\n## Machine-Readable Section\n'
+                        f'<architecture version="1.1">\n  <rules>\n    {rule}\n'
+                        '  </rules>\n</architecture>\n')
+            return subprocess.run([sys.executable, script, root, "--json"],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        p = arch('<design-track enabled="true" adr-dir="../decisions"/>')
+        assert p.returncode == 0, f"a valid design-track was refused:\n{p.stdout}{p.stderr}"
+        parsed = json.loads(p.stdout)["design_track"]
+        assert parsed["enabled"] is True and parsed["adr_dir"] == "../decisions", (
+            f"the switch did not parse: {parsed}")
+
+        p = arch('<design-track enabled="false"/>')
+        assert json.loads(p.stdout)["design_track"]["enabled"] is False
+
+        p = arch('<design-track adr-dir="../decisions"/>')
+        assert p.returncode == 1 and "design-track" in p.stderr, (
+            f"an element with no `enabled` was defaulted rather than refused. A switch nobody "
+            f"set is not a switch set to off:\n{p.stdout}{p.stderr}")
+
+        p = arch('<design-track enabled="yes"/>')
+        assert p.returncode == 1, f"`yes` was accepted as a boolean:\n{p.stdout}{p.stderr}"
+
+        # Absent element and absent file both mean off -- the shipped behaviour, not a fallback.
+        p = arch('<testing default="tdd"/>')
+        assert json.loads(p.stdout)["design_track"]["enabled"] is False, (
+            "an architecture.md that never mentions the design track does not read as off")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("`/prd` writes features one at a time, and edits re-read only what it is editing",
+       finding="P5")
+def _():
+    """Item 10.
+
+    P5 at the authoring end: `/prd` drafting sixty-four features in one context is the same
+    problem `/breakdown` had reading them in one gulp, in the direction nobody was watching.
+    Item 18 fixed the reading side and left the writing side alone.
+    """
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    output = prd[prd.find("### Phase 9: Output"):prd.find("## Output Formats")]
+    assert output.strip(), "prd.md has no Phase 9"
+    flat = prose(output)
+
+    assert re.search(r"one file at a time", flat), (
+        "Phase 9 does not say to write feature files one at a time, so the whole set is drafted "
+        "into one context -- which is P5, at the authoring end")
+    assert re.search(r"P5", output), (
+        "the rule is stated without the finding it comes from, so the next rewrite drops it as "
+        "a style preference")
+    assert re.search(r"re-read only the feature being edited", flat), (
+        "nothing bounds what a later EDIT loads, which is where the blob comes back")
+
+    # The derived block is not hand-written either, and the command must run its producer.
+    assert "schema/scripts/build-what-next.py {prd_dir}" in prd, (
+        "/prd never runs build-what-next.py, so <authoring-gaps> goes back to being "
+        "hand-maintained -- which the corpus shows never happens")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

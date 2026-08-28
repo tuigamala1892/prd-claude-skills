@@ -52,15 +52,17 @@ down. Those rows are what Phase 6 is.
 | The predicted change size has a reader | `check-scope.py` | `skills/breakdown/SKILL.md` | 49 |
 | `<rules>` parses; `<layers>` acyclic and reachable | `check-architecture.py` | `skills/breakdown/SKILL.md` · `commands/prd.md` | 28, 31 |
 | `<banned>` and `<task-limits>` are enforced against real files | `check-rules.py` | `skills/breakdown-review-tasks/SKILL.md` · `skills/execute-verify/SKILL.md` | 56 |
-| The manifest matches the files on disk | `build-manifest.py` | `skills/breakdown/SKILL.md` | 60 |
+| The manifest matches the files on disk, and the review summary is current | `build-manifest.py` | `skills/breakdown/SKILL.md` | 60, 32 |
 | Every in-scope feature and criterion has a task, named where it does not | `check-coverage.py` | `skills/breakdown/SKILL.md` | 30 |
 | `ADR-NNN` / `OQ-NNN` / principle citations resolve; significance read in both directions | `check-references.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` · `schema/decision-record.md` | 39, 35 |
+| Coverage, significance and blocking gaps, before `/execute` may run | `check-gate.py` | `skills/breakdown/SKILL.md` | 38 |
+| This toolchain can read this manifest, or refuses to guess | `check-compatibility.py` | `skills/execute/SKILL.md` | 24 |
 | Declared `<definition>` ≤ the ceiling its content supports; `<gaps>` well-formed, and aged | `check-status.py` | `commands/prd.md` | 3 |
 | Index ↔ `features/` reconcile; no reference to a slug that has no file | `check-rename.py` | `commands/prd.md` | 6, 42 |
 | The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/prd.md` | 40, 34 |
 | A rename finishes across every reference, or rolls back | `rename-feature.py` | `commands/prd.md` | 42 |
 | An artefact moves exactly one schema version forward, or escalates | `migrate.py` | `skills/migrate/SKILL.md` · `agents/schema-migrator.md` · `schema/migration.md` | 41 |
-| `what-next.md` is derived from the PRD, never hand-maintained | `build-what-next.py` | `schema/prd-format.md` | 11, 12 |
+| `what-next.md` is derived from the PRD, never hand-maintained, and stamped once | `build-what-next.py` | `schema/prd-format.md` | 11, 12, 24 |
 | Every artefact matches the shared schema, and declares its `schema_version` | — | — | 22 |
 
 ---

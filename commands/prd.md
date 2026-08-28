@@ -471,6 +471,29 @@ docs/prd/[project-slug]/
     [feature-slug].md (one per feature with detailed specs)
 ```
 
+#### One feature per write, never as one blob (item 10)
+
+**Write `features/{slug}.md` one file at a time, and do not assemble the set in a single message
+before writing any of it.** Sixty-four features drafted into one context is P5 arriving at the
+authoring end: the same problem `/breakdown` has when it reads a PRD in one gulp, in the direction
+nobody was watching. The symptoms are the ones P5 produced downstream — later features written
+shorter than earlier ones, a data model invented twice under two names, and a criterion carried
+from the wrong neighbour.
+
+Three rules follow, and they cost nothing:
+
+- **Write it, then move on.** Do not hold drafted features in context waiting for the set to be
+  complete. The file on disk is the record.
+- **When editing later, re-read only the feature being edited**, plus its index entry and the
+  neighbours its `<depends-on>` names — the same three things the
+  [`prd-criteria-author`](../agents/prd-criteria-author.md) agent is given, for the same reason.
+- **`index.md` last.** It is derived from what was actually written, and writing it first turns
+  the interview's intentions into a list the feature files then have to match.
+
+`what-next.md`'s `<authoring-gaps>` is not written by hand at all — run
+`${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir}` once the feature files exist
+and it derives the block, and stamps `<toolchain-version>` while it is there.
+
 **Check before writing, every time. This is a script and its exit code is binding:**
 
 ```bash
