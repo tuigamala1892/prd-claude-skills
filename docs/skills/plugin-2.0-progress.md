@@ -1866,7 +1866,7 @@ item 40 is adapted from a policy written elsewhere and has not yet been read aga
 | **16 + 17 + 30 + 19 + 20** — the carry, and the two reporters that need it | **Landed** 2026-08-27 | `4bda3ca` |
 | **59** — the runtime test across the boundary | **Landed** 2026-08-27 | `6fb646f` |
 | **58 + 3 + 6 + 7 + 40 + 8** — the definition bar | **Landed** 2026-08-27 | `7966ed7` |
-| **10 + 24 + 32 + 38** — the residue | **Landed** 2026-08-28 | `PENDING` |
+| **10 + 24 + 32 + 38** — the residue | **Landed** 2026-08-28 | `af42e48` |
 
 **Suite:** 86 checks at branch point → **89** (46-48) → **91** (49/50) → **92** (13/14/15) → **95** (16/17/30/19/20) → **96** (59) → **103** (58/3/6/7/40/8) → **109** (10/24/32/38). `failed 0`, `known 0` throughout.
 
@@ -2731,7 +2731,7 @@ and which were run against a scratch PRD built for them.
 
 ## 10 + 24 + 32 + 38 — the residue, and three stamps that finally have readers
 
-**Commit:** `PENDING` · **Addresses:** P5, P22, P25, P28 · **Files:**
+**Commit:** `af42e48` · **Addresses:** P5, P22, P25, P28 · **Files:**
 `commands/prd.md`, `schema/checks.md`, `schema/migration.md`, `schema/prd-format.md`,
 `schema/scripts/build-what-next.py`, `skills/breakdown/SKILL.md`,
 `skills/breakdown/references/architecture-format.md`, `skills/breakdown/scripts/build-manifest.py`,
