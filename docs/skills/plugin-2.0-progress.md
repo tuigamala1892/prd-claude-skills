@@ -3154,11 +3154,11 @@ be measured by running it.
 | Item | Status | Commit |
 |---|---|---|
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
-| **64** — the generator is told where its commands run | *Not started* | — |
+| **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `PENDING64` |
 | **63** — a task file is not editable by the run it judges | *Not started* | — |
 | **65** — a task may name every feature it descends from | *Not started* | — |
 
-**Suite:** 112 checks at branch point → **114**. `failed 0`, `known 0`.
+**Suite:** 112 checks at branch point → **116**. `failed 0`, `known 0`.
 
 ---
 
@@ -3296,6 +3296,88 @@ a bad sentence passes on a file that has lost the good sentence too.
 the index staged before the round — which is the reason `git add -A` before a round is a rule here
 rather than a habit, and the reason `mutate.py` verifies restoration by hash rather than assuming
 it. The round was re-run in the background with room to finish.
+
+## 64 — the generator is told where its commands run, and told to stop guessing
+
+**Commit:** `PENDING64` · **Addresses:** P42 · **Files:**
+`skills/breakdown-generate-tasks/SKILL.md`,
+`skills/breakdown/references/review-criteria.md`,
+`tests/mutants/generator-context.py` (new), `tests/test_toolchain.py`
+
+### What landed
+
+Two halves, as the plan specified, in the two files that own them.
+
+**The brief.** `breakdown-generate-tasks` now states where a `<verification>` step runs, as five
+facts in a block: `cwd` is the worktree root, `.git` is a **file**, the branch is
+`worktree-{task-id}` and never the base branch, the tree is a fresh checkout of the base branch,
+and the other tasks of this layer are not visible. The generator was writing environment-shaped
+assertions with none of this in front of it, which is the whole of P42 — `Path('.git').is_dir()`
+is not a careless line, it is a correct claim about a checkout and a wrong one about a worktree.
+
+**The preference**, which the plan called the durable half and is. *Assert the artefact, not the
+environment*: a three-row table pairing a claim about the task's own output against the
+environment claim it replaces, and the rule that generalises it — a step you cannot phrase as a
+claim about a file this task creates, a command it makes runnable, or a behaviour one of its
+criteria names, is a step you should not write.
+
+**The review question.** `review-criteria.md` §6 gains both as **critical** criteria, not
+warnings, because a step that cannot pass is exactly what P41's run edited a task file to get
+past. *Common Issues* gains an `Environment-Shaped Verification Steps` block re-aiming five
+patterns at what the task actually produced.
+
+### The check measures the claim rather than quoting it
+
+This is the part worth keeping. The first check parses the five facts out of the brief and then
+**builds a worktree with the toolchain's own `create-worktree.sh` and asks git whether they are
+still true**: `.git` is a file and not a directory, the branch is `worktree-L1-001` and not
+`trunk`, a sibling's committed file is absent, an untracked `node_modules` in the primary tree did
+not come along.
+
+So the brief can fail in two directions and the message says which: *the brief no longer says
+this*, or *the brief now states something false*. Phase 1's lesson was that a check pinned to
+prose breaks when the prose improves. A brief full of environment facts has the opposite failure —
+prose that stays put while the thing it describes moves — and only a measurement catches that one.
+
+### The eleventh mutant found a duplication, and it is not item 64's to fix
+
+That mutant renames the branch in `create-worktree.sh`, and the named check fired: the brief now
+describes a toolchain that has moved. **A second check fired with it**, reported as an orphan by
+the harness, and it is a true positive rather than harness noise — `merge-task.sh:53` recomputes
+`branch="worktree-${task_id}"` for itself, so the prefix is stated independently in two scripts
+and documented in a third place by the brief. Renaming it breaks the merge before the brief ever
+gets a chance to be wrong.
+
+Left as it is, deliberately, and recorded here instead: the fix is a shared source for the name,
+which is a change to `/execute`'s scripts and has nothing to do with telling the generator where
+its commands run. The mutants file says the orphan is expected, so the next round does not read it
+as a rename.
+
+### Two of my own errors
+
+**The prefer/over table did not parse, and the check said so on its first run.** One `over` cell
+is a shell pipeline, `git log --oneline \| wc -l`, and the escaped pipe split that row into four
+cells; the check counted two rows of guidance where there were three, and failed. That is a check
+doing its job on the first document it ever read. It now splits on unescaped pipes only.
+
+**The first two `review-criteria.md` mutants were one-line cuts and would have survived.** Cutting
+the first line of a multi-line checkbox bullet leaves the indented remainder in place — still
+saying *worktree* and *.git* — and the check reads the bullet, not the line. Both now delete the
+whole bullet. This is item 61's `or across locations` failure in different clothes: a mutant must
+remove the thing the check reads, not the thing a reader's eye lands on.
+
+### Verification
+
+`python tests/test_toolchain.py` — **114 → 116**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/generator-context.py` — **11 of 11 caught**, baseline green,
+every file restored by hash.
+
+Eleven mutants for two checks, because both guard prose and one of them guards prose that can be
+made false without being edited. Four break the facts (the section renamed, `.git` back to a
+directory, the branch fact deleted, siblings declared visible); six break the preference at both
+ends — where the step is written and where it is judged, since a rule stated in two places needs
+two mutants or it has one check and a decoy; and the eleventh edits neither document.
 
 ## What the machine sleeping taught, which was not about sleep
 

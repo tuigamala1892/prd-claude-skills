@@ -398,6 +398,47 @@ that the parent is where the test runner lives, and a wrong `<cwd>` fails verifi
 that looks like broken code. No declared component means no `<cwd>`, which means the worktree
 root — the behaviour every task had before the element existed.
 
+## Where your verification commands will run
+
+**Every `<verification>` step you write runs inside a git worktree of the target repository, and
+until now nothing told you so.** The concrete failure was a step asserting
+`pathlib.Path('.git').is_dir()`: false in a worktree, where `.git` is a *file*, so a correct
+implementation failed verification for a reason with nothing to do with the task. That is **P42**,
+and the class is every environment-shaped assertion invented here rather than measured.
+
+The execution context, stated once. `execute-batch` creates the worktree before the implementing
+agent exists, and every step runs there:
+
+```text
+cwd       the worktree root -- {worktree-dir}/{task-id} -- or <meta><cwd>, when the task declares one
+.git      a FILE, the gitlink pointing back at the primary repository; never a directory
+branch    `worktree-{task-id}`, created with -b by create-worktree.sh; never the base branch
+tree      the base branch's content, freshly checked out: no build output, no installed
+          dependencies, no untracked leftovers -- unless a step of this task creates them
+siblings  the other tasks of this layer run at the same time in worktrees of their own and are
+          NOT visible here; only layers already merged into the base branch are
+```
+
+`test -d .git`, `git branch --show-current` compared against `main`, `ls node_modules`, and any
+path reaching into another task's output are each **false for a task that is otherwise perfect**.
+
+### Assert the artefact, not the environment
+
+**This is the durable half.** The five facts above can go out of date; the preference below cannot,
+because it is about what a verification step is *for*. A step exists to decide whether this task
+did its job, and every claim about the surrounding machinery is a claim you did not measure.
+
+| Prefer | Over | Why |
+|---|---|---|
+| `python -c "import link_shelf"` | `test -d .git` | the first is a claim about this task's own output; the second is a claim about somebody else's execution model |
+| `pytest tests/test_store.py -v` | `git log --oneline \| wc -l` | the tests are the criteria; the commit count is whatever the implementer's TDD cycle happened to produce |
+| `test -f src/store.py` | `test "$(git branch --show-current)" = main` | the file is what the task promised; the branch name is decided three skills away and is never `main` here |
+
+**A step you cannot phrase as a claim about a file this task creates, a command this task makes
+runnable, or a behaviour one of its criteria names, is a step you should not write.** Where the
+task genuinely needs an environment property -- a service on a port, a migration already applied
+-- name in the same step what provides it, so a reviewer can tell a real dependency from a guess.
+
 ## Layer 0 Task Format
 
 Layer 0 (setup) tasks are different - they use shell commands instead of code generation:
@@ -504,6 +545,9 @@ Before writing each task file, verify:
 - [ ] All fields have types specified
 - [ ] Test cases have concrete values
 - [ ] Verification commands are runnable
+- [ ] Every verification step holds **inside the worktree**: none asserts `.git` is a
+      directory, none names a branch, none reads output from another task in this layer
+- [ ] Each step asserts this task's own artefact wherever one would do
 - [ ] Interface contracts have imports
 
 ## Output

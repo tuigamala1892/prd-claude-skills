@@ -63,6 +63,15 @@ Failure on ANY critical criterion means the task must be regenerated.
 - [ ] Expected outcome specified for each step
 - [ ] Commands use correct syntax for the tech stack
 - [ ] Steps are in executable order
+- [ ] **Every step holds inside a git worktree.** That is where `/execute` runs them: cwd is the
+      worktree root, `.git` is a *file* rather than a directory, the branch is
+      `worktree-{task-id}` and never the base branch, and the other tasks of this layer are not
+      merged in. A step asserting any of those otherwise fails a task that is correct — which is
+      **P42**, found by a live run on `Path('.git').is_dir()`.
+- [ ] **Each step asserts the task's own artefact where one would do.** `import link_shelf` is a
+      claim about this task's output; `test -d .git` is a claim about somebody else's execution
+      model. Flag the second wherever the first is available, and where the task genuinely
+      depends on an environment property, the step must name what provides it.
 
 ### 7. File Scope
 
@@ -170,6 +179,23 @@ necessary (without specifics)
 "Handle errors appropriately"           → Specify which errors, how
 "Follow best practices"                 → Specify exact pattern/approach
 ```
+
+### Environment-Shaped Verification Steps
+
+Each of these fails inside a worktree, or passes for a reason unrelated to the task. The
+right-hand column is the same check re-aimed at what the task actually produced.
+
+```
+"test -d .git"                          → test -f the file this task creates
+"git branch --show-current = main"      → run the task's own test command
+"git log --oneline | wc -l" ≥ N         → assert the behaviour the commits were for
+"ls node_modules" / "ls .venv"          → run the command those install, or install it in a step
+"test -f ../L1-002/out.json"            → depend on an earlier LAYER, never a sibling task
+```
+
+**The general form is the review question, not the list.** The list is what one live run
+produced; the class is every assertion about the machinery around the task rather than about the
+task.
 
 ### Missing Context Patterns
 

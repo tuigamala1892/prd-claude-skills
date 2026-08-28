@@ -7234,6 +7234,185 @@ def _():
         "the layer constraint never mentions 0-setup, which three fields below call out by name")
 
 
+@check("the generator is told where its verification commands will run", finding="P42")
+def _():
+    """Item 64, first half.
+
+    A live run wrote `pathlib.Path('.git').is_dir()` as a verification step. Inside a worktree
+    `.git` is a FILE, so the step is false for the execution model the plugin itself uses -- and
+    nothing in `breakdown-generate-tasks` said where its commands would run. Every
+    environment-shaped assertion it invents was a guess.
+
+    Two halves, and the second is what makes this more than a prose check: the stated facts are
+    PARSED out of the brief, then MEASURED against a worktree built here by the toolchain's own
+    `create-worktree.sh`. The brief must say it, and git must still do it -- a brief that drifts
+    out of agreement with reality fails exactly as loudly as a brief that says nothing.
+    """
+    import shutil
+    import stat
+    import tempfile
+
+    skill = os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md")
+    text = open(skill, encoding="utf-8").read()
+
+    parts = text.split("## Where your verification commands will run", 1)
+    assert len(parts) == 2, (
+        "breakdown-generate-tasks no longer states the execution context of its verification "
+        "steps, so every environment-shaped assertion it writes is a guess again (P42)")
+    region = parts[1].split("\n## ", 1)[0]
+
+    block = re.search(r"```text\n(.*?)```", region, re.S)
+    assert block, ("the execution context is no longer stated as a block anything can parse; "
+                   "this check reads the facts rather than looking for words about them")
+    facts, key = {}, None
+    for line in block.group(1).splitlines():
+        m = re.match(r"^(\S+)\s\s+(\S.*)$", line)
+        if m:
+            key, facts[key] = m.group(1), m.group(2)
+        elif key and line.strip():
+            facts[key] += " " + line.strip()
+
+    for k in ("cwd", ".git", "branch", "tree", "siblings"):
+        assert k in facts, (
+            f"the execution context no longer states `{k}`. It states {sorted(facts)} -- and a "
+            f"fact the generator is not given is one it invents")
+
+    assert re.search(r"\bfile\b", facts[".git"], re.I) and \
+        re.search(r"never a directory|not a directory", facts[".git"], re.I), (
+        f"the brief no longer says `.git` is a file and not a directory: {facts['.git']!r}. "
+        f"That single sentence is the whole of P42's concrete instance")
+    assert "worktree-" in facts["branch"] and \
+        re.search(r"never the base branch", facts["branch"], re.I), (
+        f"the brief no longer says which branch a step runs on: {facts['branch']!r}")
+    assert re.search(r"fresh|untracked|no build output", facts["tree"], re.I), (
+        f"the brief no longer says the tree is a fresh checkout: {facts['tree']!r}")
+    assert re.search(r"not visible|NOT visible|not present|never visible", facts["siblings"]), (
+        f"the brief no longer says a sibling task's output is absent: {facts['siblings']!r}")
+
+    if not (shutil.which("git") and shutil.which("sh")):
+        return                      # nothing to measure with; the parsed half still applied
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    create = os.path.join(SKILLS, "execute-batch", "scripts", "create-worktree.sh")
+    root = tempfile.mkdtemp(prefix="exec-context-check-")
+    try:
+        app, wt = os.path.join(root, "app"), os.path.join(root, "wt")
+        os.makedirs(app)
+
+        def g(*args, cwd=app):
+            return subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                                  text=True, timeout=60)
+
+        # `trunk`, never `main` -- F1 is that assumption, and `branch` is a fact under test here.
+        for args in (["init", "-q", "-b", "trunk", "."],
+                     ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            g(*args)
+        open(os.path.join(app, "README.md"), "w").write("base")
+        g("add", "-A")
+        g("commit", "-qm", "init")
+        # An untracked leftover in the primary tree, for the `tree` fact.
+        os.makedirs(os.path.join(app, "node_modules"))
+        open(os.path.join(app, "node_modules", "left.txt"), "w").write("over")
+
+        for tid in ("L1-001", "L1-002"):
+            p = subprocess.run(["sh", create, app, tid, wt, "trunk"],
+                               capture_output=True, text=True, timeout=60)
+            assert p.returncode == 0, f"create-worktree.sh failed for {tid}: {p.stderr[-300:]}"
+        d1, d2 = os.path.join(wt, "L1-001"), os.path.join(wt, "L1-002")
+
+        gitlink = os.path.join(d1, ".git")
+        assert os.path.isfile(gitlink) and not os.path.isdir(gitlink), (
+            "git no longer represents a worktree's .git as a gitlink FILE. The brief in "
+            "breakdown-generate-tasks now states something false, which is worse than stating "
+            "nothing -- correct it there before relaxing this")
+
+        cur = g("branch", "--show-current", cwd=d1).stdout.strip()
+        assert cur == "worktree-L1-001" and cur != "trunk", (
+            f"a task's worktree is on branch {cur!r}, not `worktree-L1-001`; the brief's `branch` "
+            f"fact is now wrong and a step comparing against the base branch would pass")
+
+        open(os.path.join(d2, "sibling.txt"), "w").write("mine")
+        g("add", "-A", cwd=d2)
+        g("commit", "-qm", "sibling work", cwd=d2)
+        assert not os.path.exists(os.path.join(d1, "sibling.txt")), (
+            "a sibling task's committed output is visible from another task's worktree; the "
+            "brief's `siblings` fact is wrong and cross-task verification steps would work")
+
+        assert not os.path.exists(os.path.join(d1, "node_modules")), (
+            "an untracked directory from the primary tree appeared in the worktree; the brief's "
+            "`tree` fact is wrong and `ls node_modules` would pass in the check but not the run")
+    finally:
+        rmtree(root)
+
+
+@check("an environment-shaped verification step is a review question", finding="P42")
+def _():
+    """Item 64, second half -- the durable one.
+
+    The measured facts can go out of date. *Prefer a claim about the artefact over a claim about
+    the environment* cannot, because it is about what a verification step is for. It has to hold
+    in both places: the generator's brief, where the step is written, and `review-criteria.md`,
+    where it is judged -- and in the CRITICAL section there, because a step that cannot pass is
+    exactly what P41's run edited a task to get past.
+    """
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    parts = gen.split("### Assert the artefact, not the environment", 1)
+    assert len(parts) == 2, (
+        "the generator no longer prefers artefact assertions to environment assertions; the "
+        "five facts alone are a list that goes stale, which is the half item 64 called durable")
+    # Unescaped pipes only: one `over` cell is a pipeline, `git log --oneline \| wc -l`.
+    rows = [[c.strip() for c in re.split(r"(?<!\\)\|", ln.strip().strip("|"))]
+            for ln in parts[1].split("\n## ", 1)[0].splitlines()
+            if ln.strip().startswith("|") and not re.match(r"^\|[\s|:-]+\|$", ln.strip())]
+    rows = [r for r in rows if len(r) == 3 and r[0].lower() != "prefer"]
+    assert len(rows) >= 3, f"the prefer/over table has {len(rows)} row(s) of guidance, not 3+"
+    for prefer, over, why in rows:
+        assert "`" in prefer and "`" in over and why, (
+            f"a prefer/over row names no runnable pair or gives no reason: {[prefer, over, why]}")
+    assert any(".git" in over for _p, over, _w in rows), (
+        "the table no longer contains the assertion a live run actually wrote (`.git`), so the "
+        "one worked example P42 produced has been generalised away")
+
+    rc = open(os.path.join(SKILLS, "breakdown", "references", "review-criteria.md"),
+              encoding="utf-8").read()
+    critical = rc.split("## Critical Criteria", 1)
+    assert len(critical) == 2, "review-criteria.md has no Critical Criteria section"
+    critical = critical[1].split("## Warning Criteria", 1)[0]
+    assert "### 6. Verification Steps" in critical, (
+        "verification steps are no longer reviewed as a CRITICAL criterion; a step that cannot "
+        "pass is what P41's run rewrote a task file to get past")
+    sec6 = critical.split("### 6. Verification Steps", 1)[1].split("\n### ", 1)[0]
+    bullets = [prose(b) for b in re.split(r"\n- \[ \] ", sec6)[1:]]
+
+    assert any(re.search(r"worktree", b) and re.search(r"\.git", b) for b in bullets), (
+        "no critical criterion asks whether a step holds inside a worktree, which is where "
+        "/execute runs every one of them (P42)")
+    assert any(re.search(r"artefact|artifact", b) and re.search(r"environment|execution model", b)
+               for b in bullets), (
+        "no critical criterion prefers an assertion about the task's own output to one about "
+        "the environment, so the reviewer can only catch the examples, never the class")
+
+    table = rc.split("### Environment-Shaped Verification Steps", 1)
+    assert len(table) == 2, "review-criteria.md lists no environment-shaped patterns to flag"
+    fence = re.search(r"```\n(.*?)```", table[1], re.S)
+    assert fence, "the environment-shaped patterns are no longer in a block that can be read"
+    pairs = [ln.split("→") for ln in fence.group(1).splitlines() if "→" in ln]
+    assert len(pairs) >= 4, f"only {len(pairs)} pattern(s) are given a re-aimed replacement"
+    for bad, good in pairs:
+        assert bad.strip() and good.strip(), f"a pattern row has an empty half: {bad!r} {good!r}"
+    assert any(".git" in bad for bad, _g in pairs), (
+        "the one pattern a live run actually produced is no longer listed")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
