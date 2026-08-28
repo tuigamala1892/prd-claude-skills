@@ -2935,6 +2935,179 @@ mismatch); the summary absent, stale and current; the gate with the track off, o
 shortfall and with an undriven significant feature; and `<design-track>` valid, unset and
 non-boolean.
 
+---
+
+## Phase 6 — Hold it in place.
+
+Plan order: `22` · `23`, on branch `phase-6-hold-it-in-place`.
+
+**Last, deliberately**, and the plan's reason held: *"a schema check written against a schema still
+moving is a check that gets edited rather than obeyed."* The schema stopped moving at Phase 4 and
+its consumers caught up in Phase 5; this is the phase that makes both checkable rather than
+observed.
+
+| Item | Status | Commit |
+|---|---|---|
+| **22 + 23** — the artefact check, and the reader audit | **Landed** 2026-08-28 | `PENDING` |
+
+**Suite:** 109 checks at branch point → **112**. `failed 0`, `known 0`.
+
+---
+
+## 22 + 23 — one shape check, one reader audit, and the audit found three
+
+**Commit:** `PENDING` · **Addresses:** P10, P4, P2 · **Files:** `schema/readers.md` (new),
+`schema/scripts/check-artefacts.py` (new), `schema/scripts/check-readers.py` (new),
+`schema/checks.md`, `schema/core.md`, `commands/prd.md`, `skills/breakdown/SKILL.md`,
+`tests/mutants/hold-it-in-place.py` (new), `tests/test_toolchain.py`
+
+### Why two items are one commit
+
+They are the two halves of one sentence. Item 22 asks *is this artefact the shape the schema
+says*; item 23 asks *does anything read the elements that shape is made of*. Writing the first
+without the second produces a validator that enforces a schema nobody consumes — which is P2
+exactly, rebuilt with more rigour.
+
+### What landed
+
+- **22** — `check-artefacts.py`. Element and enum conformance for all five artefact kinds, run at
+  the end of `/prd`, at the **start** of `/breakdown`, and over every fixture version in the
+  suite.
+- **23** — `check-readers.py` and [`readers.md`](../../schema/readers.md). Every element any
+  schema document defines must be named by some script, skill, command or agent, or appear in
+  `readers.md` with a verdict and a reason. Plus item 23's named smaller checks: each fixture
+  validated against **its own** schema, and the `<definition>` enum asserted identical across the
+  document and the two programs that implement it.
+
+### Departure 1 — item 22 asked artefacts to declare a `schema_version`. They must not
+
+The item says *"validating … against the declared schema"*, and `checks.md` carried that wording
+as an ownerless row for the whole of Phase 5. It was written before item 41, which settled the
+question in the other direction and gave the reason: **the marker is the shape.** A stamp drifts
+from a hand-edited file; a shape cannot. Item 24 then confirmed it from the other end — a `2.0.1`
+toolchain writes schema-4 and schema-5 artefacts alike, so a provenance stamp cannot answer a
+shape question.
+
+So `check-artefacts.py` **imports `migrate.py`'s detector** rather than reading a stamp or
+deriving a second answer. Two answers to *"which schema is this file in"* is precisely the defect
+this script exists to catch, and building it into the catcher would have been the plan's own
+central finding arriving one more time.
+
+The consequence is worth stating because it is not obvious: **an artefact that has lost an element
+reads as an EARLIER version, not as a broken current one**, and is then judged by that version's
+laxer rules. That is correct and it is also a blind spot, so the script reports the version it
+landed on — *"is at schema-3; this toolchain writes schema-5"* — which turns a silence into a
+sentence.
+
+### Departure 2 — item 23's registry is an exception list, and the reader is measured
+
+The obvious build is one row per element naming its reader. On this corpus that is **128 rows**,
+hand-maintained, and every row a *claim* — which is the failure the rule exists to catch, rebuilt
+as a maintenance chore. A declared reader is an assertion; a found one is a measurement.
+
+So the script looks, in two tiers — a `.py`/`.sh` that names the element, or a skill, command or
+agent that does — and `readers.md` records only what the search cannot explain. **13 of 128**, and
+the file is 13 rows rather than 128.
+
+**The defining document is not a reader**, which is the one line that makes the whole thing work:
+count `prd-format.md` as a reader of `<user-story>` and every element reads itself, the audit
+reports a clean 128 of 128, and it is a function that returns `True`. The mutation round breaks
+exactly that.
+
+### Departure 3 — the reverse direction is a report, and the numbers are why
+
+Item 23 asks for the same test in reverse: every element a component *reads* must have a named
+producer. Run naively it produces **32 candidates, of which 29 are usage-string placeholders** —
+`check-coverage.py <prd-dir> <tasks-dir>` reads as two undefined elements, because an element name
+and a CLI argument are the same token.
+
+Three stated filters take it to **six**: drop docstrings, skip shell scripts, and treat a name the
+file declares as an argument as an argument. What survives is three real signals —
+`<affected-apis>`, `<phases>` and `<tbd-items>`, all **retired spellings a migration must still
+recognise**, correctly read and correctly undefined — and three placeholders in comments.
+
+It stays a **report**, because a filter tuned against one corpus is a heuristic rather than a rule,
+and a heuristic that can fail a build has been promoted behind everyone's back. That is
+`check-references.py`'s significance argument arriving independently at a second script, which is
+some evidence it is the right shape.
+
+### The findings, and there are two kinds
+
+**One artefact is invalid, at every schema version.** `staff-service` declares
+`<status>defined</status>` at document level in both `index.md` and `what-next.md` — outside core
+§3's enum for that tag, which is `in-progress|complete`. Both files agree, so F3's `DISAGREE`
+check passes; nothing had ever validated the *value*. It matters more than it looks:
+`/prd --resume` finds incomplete PRDs by that tag, so a PRD saying `defined` is one nothing can
+classify.
+
+It is **reported and not fixed**, for the same reason item 40's four features were: the fixtures
+are frozen and identical across five versions, so the fix reaches all of them and the migration's
+golden comparison. `SCHEMAS.json` records it as schema-6 content work beside the other four.
+
+**Three CRD elements have a producer and no consumer at all**, and one of them is `Required`:
+
+| Element | |
+|---|---|
+| `project-ref` | **Required** in every CRD. Names the `PROJECT.md` the change is against — which `/breakdown` resolves by convention instead |
+| `prd-ref` | The only structured link from a CRD back to the PRD that produced the feature |
+| `feature-ref` | Carries an `id` into `PROJECT.md`, and nothing resolves it |
+
+**This is P2's shape on the CRD path, found by the check written to find it.** P2 was
+`<acceptance-criteria>` required and unread for the life of the toolchain; §5 J's parity pass
+compared *capabilities* and never asked whether either side had a reader, so it could not have
+seen this. All three are recorded `open` — a legitimate verdict, listed rather than refused,
+exactly as `parity.md` does it.
+
+### A check of my own that had to be relaxed, recorded because that is the ledger's job
+
+Item 58's suite check asserted that `checks.md` always carries at least one **ownerless row**, on
+the argument that an assertion specified and not built must be recorded rather than omitted. Item
+22 was the last such row, and landing it made the assertion false: the suite went red for the
+correct reason.
+
+The rule was right and its encoding was wrong. What must hold is that an ownerless row **names the
+item that will build it** — not that one must exist. Asserting the count made *finishing the plan*
+a failure, which is a check that punishes the outcome it was written to encourage.
+
+### Verification
+
+`python tests/test_toolchain.py` — **109 → 112**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/hold-it-in-place.py` — **12 of 14 caught**, then **14 of
+14** after both survivors were fixed. Both survivors were worth the round on their own.
+
+**Survivor 1 was a defect in the script, not only in the check.** The mutant made the pre-rename
+`<status>` spelling a *refusal* instead of a warning, and nothing changed — because the warning
+was behind `at_least(version, "schema-2")` and **that branch can never run**. `<status>` is the
+shape schema-2's rename keys on, so any file spelling it that way detects as schema-1, and the
+gate excluded exactly the files the rule was written for. The fix gates on what *this toolchain*
+writes rather than on the artefact's own version, which is the right semantic anyway: *you are
+running a toolchain where this is called `<definition>`; this file says `<status>`.*
+
+The check had passed on `"OLD" in stdout` — satisfied by the *other* warning the same edit
+triggers, `is at schema-1`. **A token that appears in two different messages is not an assertion
+about either**, which is Phase 3's whole lesson arriving in a new place. It now asserts the line.
+
+**Survivor 2 was an unobservable guard.** `check-readers.py` excludes `docs/` and `tests/` from
+the reader search, and removing the exclusion changed nothing: a markdown file outside
+`skills`/`commands`/`agents`/`schema` is not a candidate reader anyway, so the guard only bites on
+a `.py` under those directories — and the synthetic repository the check builds had no such file.
+It has one now. The guard matters: **this suite names every element in the schema**, and counting
+it would make *"somebody documented it"* indistinguishable from *"somebody consumes it"*, which is
+the distinction the whole audit is made of.
+
+**One orphan warning, benign and familiar.** `every assertion has one owning script` also failed
+on the two mutants that remove a caller's invocation, because `checks.md` lists those files as
+callers and the table is checked by running it. Two checks catching one mutant is the table doing
+its job.
+
+Both scripts were watched failing by hand first. `check-artefacts.py` against a mutated copy of
+the reference fixture, one enum at a time, plus a retired element and a pre-rename spelling;
+`check-readers.py` against a synthetic four-file repository where the answer is known by
+construction — an element nobody names, an element declared away, a declaration for an element
+that no longer exists, an invented verdict, and an element defined in a schema document and named
+nowhere else.
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

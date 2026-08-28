@@ -104,7 +104,30 @@ Execute these phases in order:
 
 1. Read the input file at the provided path
 2. Detect format by checking root element (`<prd>` or `<crd>`)
-3. Verify valid XML structure
+3. **Verify the document is the shape the schema describes, by script (item 22):**
+
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/check-artefacts.py {input_path_or_prd_dir}
+   ```
+
+   Pass the PRD *directory* on the PRD path — `index.md`, `what-next.md` and every feature file
+   are one artefact set and a defect in any of them is a defect in the input. Pass the file on
+   the CRD path.
+
+   - **Exit 0** — proceed. `OLD` lines are pre-rename spellings, accepted on read; report them.
+   - **Exit 1** — `INVALID`, naming the file, the element and the value. **Stop and report it
+     verbatim.** Generate nothing.
+
+   **This is the consumer side of the same check `/prd` runs, and it is the one that must
+   refuse.** Producer-side validation is early warning at the moment the author is present;
+   consumer-side is what stops a malformed document becoming forty malformed tasks. P10 is the
+   general case: the spec said XML, the run produced markdown, and nothing noticed for weeks.
+
+   The version is **detected from the shape**, never declared, so an artefact that has lost an
+   element reads as an earlier version and is judged by that version's rules. When it reports
+   `is at schema-N; this toolchain writes schema-M`, say so — the input predates the current
+   schema and `/migrate` is what moves it.
+
 4. Extract the slug from `<meta><slug>` tag
 5. **Resolve both output paths, before creating anything:**
 
