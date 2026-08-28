@@ -792,6 +792,62 @@ requirements measurably affects the architecture and merits separate treatment. 
 design step cannot be afforded: it would run across all 64 features rather than the handful that
 warrant it. Item 35 is what makes item 38 affordable.
 
+### 3.4 From the live crossings
+
+**Everything above was found by reading. These five were found by running**, across three live
+crossings of the `/breakdown` → `/execute` boundary (item 59) on 2026-08-27 and 2026-08-28. None
+of them was visible to the 112 regression checks, and the reason is uniform: four are internal
+contradictions in prose or missing guards, and the fifth is a schema gap that only a task spanning
+two features can expose.
+
+**P39 — `plan-layers` forbade the derivation it performs.**
+Its *Do NOT* list ended with *"Skip layers (every project needs all 4 layers)"* while its own
+opening section says *"First, decide which layers exist at all. A tier with no work in it is not a
+tier."* Item 31 derived the layer set from content and left the instruction forbidding the
+derivation standing eight sections below. The third live run followed the derivation, dropped
+`3-frontend` correctly, and **reported the contradiction as a defect in its own instructions.**
+This is the repository's most repeated shape — a fix applied at the site of discovery rather than
+at the level of the problem — arriving in the one place that had documented it.
+
+**P40 — `task-format-spec.md` required a layer its own constraints could not express.**
+`id` was pinned to `L[1-4]-[0-9]{3}` and `layer` to an enum of four names, neither admitting
+`0-setup` — while three fields ten lines below read *"Required except in Layer 0"*. Every Layer 0
+task the toolchain has ever generated was invalid under its own schema. Item 28 makes the enum
+wrong for a second reason: a project declaring its own `<layers>` graph, instantiated per service,
+cannot be described by four fixed names.
+
+**P41 — `/execute` may rewrite the acceptance criteria it is being judged against.**
+The third live run met a Layer 0 task whose `<verification>` block was unsatisfiable — one step
+forbade a substring another requirement mandated. Its diagnosis was correct and its fix was
+reasonable, and **it edited the task file and carried on.** Nothing in the toolchain forbids that,
+nothing records it, and the ledger records commits rather than task edits. `execute-verify` is
+"independent" of the *implementing agent* and not of the orchestrator that can edit what it
+verifies against. A `14/14` obtained this way is weaker evidence than it looks, and it is item
+59's own rule turned on the toolchain: *a runtime test whose crossing is made to pass by adjusting
+the test has measured nothing.*
+
+**P42 — the generator does not know the execution model.**
+The same task asserted `pathlib.Path('.git').is_dir()`. Inside a git worktree `.git` is a *file*,
+so the assertion is false for the execution model the plugin itself uses. It was invented by
+`breakdown-generate-tasks` rather than shipped in `layer0-templates.md`: nothing tells the
+generator where its verification commands will run. Every environment-shaped assertion it writes
+is a guess.
+
+**P43 — `<source-feature>` is single-valued, and an integration task spans features.**
+Item 16 gives a task one `<source-feature>`. A task that legitimately covers criteria from more
+than one feature has no way to say whose criterion it carries, and **three live runs produced three
+different workarounds**: the first invented `feature#id` and applied it in one of the two places,
+so the halves of a task stopped referring to each other; the second split the task and said why;
+the third narrowed the attribution and said nothing. The third is the worst of the three because
+it is silent — `L4-002` walked `save-link`, `tag-links` and `list-links` criterion 2, and declared
+`tag-links` alone.
+
+**Nothing catches it**, because item 30's coverage check passes: the unattributed criteria are
+covered by other tasks. The cost is that every downstream consumer — the coverage report, the
+scope cross-check, `tasks-summary.md`, the gate — believes the task belongs to one feature, so
+removing that feature from scope would silently take the only end-to-end assertion of the other
+two with it.
+
 ---
 
 ## 4. Three design decisions that resolve most of the above
@@ -2803,6 +2859,103 @@ with the consumer work. It is also evidence for item 23's rule in a place the ru
 every element having a reader does not help when the reader looks for a value the producer stopped
 emitting.*
 
+### K. What the live run found
+
+**Five items from three live crossings, and the section exists because they are a different kind
+of item.** Everything above was specified by reading the corpus; these were specified after
+watching the toolchain run. Two were one-line contradictions and are already fixed; three are
+outstanding, and one of those needs a schema change.
+
+**61. `plan-layers`' instructions stop contradicting its derivation.**
+*Addresses P39. Landed with this section — no schema change.*
+
+The *Do NOT* list forbade skipping layers while the section above it required deciding which
+layers exist. The line is replaced by the two rules that are actually true: **emit no layer with
+no work in it**, and **never drop one silently** — name what was dropped and why, because the
+caller reports that list to an operator who expected four tasks and got one.
+
+**The general form is worth stating once.** Item 31 changed a behaviour and updated the section
+that describes it; the instruction that forbade the new behaviour was eight sections away and
+survived. A check that asserts a *mechanism* cannot see that, because the mechanism was right —
+what was wrong was a second instruction about it. **`/breakdown` reads both.**
+
+**62. The task schema admits every layer the layer graph can produce.**
+*Addresses P40. Landed with this section — no schema change to any artefact.*
+
+`id` becomes `L[0-9]+-[0-9]{3}` and `layer` becomes `{id}-{name}` drawn from the derived set, with
+the five shipped names given as defaults rather than as an enum. Two independent reasons force
+this and either would be sufficient: Layer 0 has always existed and was never expressible, and
+item 28 lets a project declare its own graph — instantiated per service, with ids scoped to their
+block — which no fixed list of four names can describe.
+
+**63. A task's `<verification>` block is not editable by the run it judges.**
+*Addresses P41. The highest-value item in this section, and the cheapest.*
+
+The rule is one sentence: **an implementer and an orchestrator may not modify a task file.** What
+to do instead is the interesting half, and the live run had the answer right in every respect
+except where it wrote it down — it *diagnosed* an unsatisfiable verification step correctly and
+should have **stopped and reported it**, exactly as `migrate.py`'s `ESCALATE` does.
+
+Three parts, in order of value:
+
+- **A guard, not a paragraph** (P16). `/execute` hashes each task file before dispatch and
+  re-checks after; a changed task is a stop with the diff. Prose here is the guard a model can
+  reason past, and this run reasoned past a guard that did not exist.
+- **An escalation path**, so the correct behaviour has somewhere to go: an unsatisfiable
+  verification step is a `/breakdown` defect, and the run should end naming the task and the
+  contradiction rather than repairing it. That is what makes the guard bearable — a rule that
+  leaves the operator stuck is a rule that gets removed.
+- **The record.** The ledger records commits; a task edit leaves no trace at all. Whatever the
+  policy, the edit must be visible afterwards, or the next `14/14` is unauditable in the same way.
+
+**This is the one item in the plan that a passing run argues for.** The run reported what it did,
+in detail, unprompted — the failure is not that the agent was dishonest but that honesty was the
+only thing standing between a rewritten acceptance criterion and a green result.
+
+**64. The generator is told where its verification commands will run.**
+*Addresses P42. Depends on nothing.*
+
+`breakdown-generate-tasks` writes `<verification>` steps that execute **inside a git worktree**,
+and nothing tells it so. The concrete instance was `Path('.git').is_dir()`, false in a worktree
+where `.git` is a gitlink file; the class is every environment-shaped assertion the generator
+invents.
+
+Two halves, and the second is the durable one:
+
+- State the execution context in the generator's brief: a worktree of the target repository, cwd
+  at the worktree root, `.git` a **file**, and the branch not the base branch.
+- **Prefer assertions about the artefact over assertions about the environment.** `import
+  link_shelf` is a claim about the task's own output; `Path('.git').is_dir()` is a claim about
+  somebody else's execution model. `review-criteria.md` is where that becomes a review question.
+
+**65. A task may name every feature it descends from.**
+*Addresses P43. The only item here that changes an artefact, and the only one that needs a schema
+version.*
+
+`<source-feature>` becomes repeatable, and `<satisfies-criteria>` is qualified by the feature it
+belongs to. The shape is item 16's and the change is to its cardinality, not to its meaning:
+
+```xml
+<source-feature slug="tag-links" moscow="should-have" satisfies-criteria="1,3"/>
+<source-feature slug="save-link" moscow="must-have"   satisfies-criteria="1"/>
+```
+
+**Three runs invented three workarounds, which is as strong as this kind of evidence gets** — and
+the plan never considered the case, because a document read feature by feature does not produce an
+integration task. The corpus could not have shown it; only a run could.
+
+**What it costs, stated plainly.** `<moscow>` and `<requirement-level>` are per-feature today and
+become per-edge, so `/execute`'s tier filter (item 19) and preflight's refusal (item 20) must take
+the *highest* tier across edges rather than the only one. `check-coverage.py` scopes cited ids per
+feature already and gets simpler. The manifest gains a list where it had a string, so
+`MANIFEST_SCHEMA_VERSION` moves — additively, which is what item 24's reader was built to
+tolerate.
+
+**Do not fix this by relaxing the consumer.** The tempting cheap version is to let
+`check-coverage.py` accept a criterion cited by a task from another feature. That makes the report
+pass and leaves the task set exactly as unattributable as it is now, which is P2's mistake with
+the arrow reversed: a consumer weakened to match an under-specified producer.
+
 ---
 
 ## 6. Summary
@@ -2951,6 +3104,20 @@ where the commits fall is a claim about a context window and does not.
 
 Last, deliberately. A schema check written against a schema still moving is a check that gets
 edited rather than obeyed.
+
+### Phase 7 — What the run found.
+
+`61` · `62` · `64` · `63` · `65`
+
+**Not planned; measured.** Phases 1–6 were specified by reading the corpus and Phase 7 was
+specified by watching the toolchain run, which is why it is last in the document and first in
+usefulness: none of its five items was visible to 112 regression checks.
+
+**61 and 62 land immediately** — both are one-line contradictions in shipped instructions, and a
+document that requires a layer its own schema forbids should not survive the commit that noticed
+it. **64 next**, because it is a brief and costs nothing. **63 before 65**: a guard on task files
+is cheap and its absence makes every later result harder to trust, while 65 is a schema version
+and wants the guard already in place before task files start changing shape.
 
 ---
 

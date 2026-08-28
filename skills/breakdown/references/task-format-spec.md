@@ -65,8 +65,18 @@ Task identification and classification.
 ```
 
 **Constraints:**
-- `id`: Must match pattern `L[1-4]-[0-9]{3}`
-- `layer`: One of: `1-foundation`, `2-backend`, `3-frontend`, `4-integration`
+- `id`: Must match pattern `L[0-9]+-[0-9]{3}`
+- `layer`: `{id}-{name}`, from the layer set `plan-layers` derived — `0-setup`, `1-foundation`,
+  `2-backend`, `3-frontend` and `4-integration` are the shipped defaults, not the enum
+
+**Neither is a fixed list any more, and the old ones contradicted this file.** `id` was
+`L[1-4]-[0-9]{3}` and `layer` was an enum of four, while the three fields below say *"Required
+except in Layer 0"* — so this document required a layer its own constraints could not express, and
+a live run generating `L0-001` in `0-setup` was writing tasks its own schema rejected (P40).
+
+The deeper reason is item 28: `architecture.md`'s `<layers>` lets a project declare its own graph,
+and a microservices project instantiates it per service with ids scoped to their block. An enum of
+four names could not survive that, and pinning one here would have made the layer file advisory.
 - `priority`: Integer 1-99
 - `estimated-files`: Integer, 1 to the task's effective limit — `<task-limits>` from
   `architecture.md`, defaulting to 3

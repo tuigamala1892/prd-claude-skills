@@ -374,7 +374,11 @@ If template exists:
 
 - Create tasks that are too large (>3 files)
 - Create vague tasks ("Set up backend")
-- Skip layers (every project needs all 4 layers)
+- **Emit a layer with no work in it** — see *First, decide which layers exist at all* above
+- Drop a layer **silently**. Name what you dropped and why; the caller reports that list, because
+  someone who expected four tasks and got one has to be told the reason
+- Assume a fixed number of layers. The set is derived from the document and from
+  `architecture.md`'s `<layers>`, and a project may declare its own (item 28)
 - Create circular dependencies
 
 Return the complete layer plan JSON.

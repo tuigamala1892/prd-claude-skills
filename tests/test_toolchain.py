@@ -7139,6 +7139,101 @@ def _():
         f"accepts")
 
 
+# --------------------------------------------- what the live run found (61/62)
+
+
+@check("the layer set is derived, and nothing instructs otherwise", finding="P39")
+def _():
+    """Items 31 and 61.
+
+    Item 31 derived the layer set from content and updated the section that describes it. The
+    *Do NOT* list eight sections below still said `every project needs all 4 layers`, and a live
+    run followed the derivation and reported the contradiction in its own instructions.
+
+    A check on the MECHANISM could not see this: the mechanism was right. What was wrong was a
+    second instruction about it, in the same file, which the model reads with equal weight.
+    """
+    rel = os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md")
+    text = open(rel, encoding="utf-8").read()
+    flat = prose(text)
+
+    # The derivation must still be instructed -- asserting only the absence of the contradiction
+    # would pass on a file that had lost both halves.
+    assert re.search(r"decide which layers exist at all", flat), (
+        "plan-layers no longer tells the model to decide which layers exist, so item 31's "
+        "derivation has no instruction behind it")
+    assert re.search(r"A tier with no work in it is not a tier", flat), (
+        "the rule that makes the derivation actionable is gone")
+
+    # And nothing may require a fixed number of layers. Match the CLAIM rather than one
+    # phrasing: any sentence pairing `every project` with a count of layers.
+    #
+    # This fires on a QUOTATION of the rescinded instruction too, and that is deliberate rather
+    # than a false positive -- it caught exactly that on the commit that removed the line. A
+    # skill is instructions to a model, which reads a quoted rule with the same weight as a
+    # stated one; the history belongs in the plan and the ledger, where P39 and item 61 hold it.
+    bad = [ln.strip() for ln in text.splitlines()
+           if re.search(r"every project.*\b(all )?\d+ layers|needs all \d+ layers", ln, re.I)]
+    assert not bad, (
+        "an instruction requires a fixed number of layers, contradicting the derivation in the "
+        "same file:\n    " + "\n    ".join(bad))
+
+    # A dropped layer is named, never silent -- the half an operator needs. Asserted at BOTH
+    # sites and scoped to each, because the first version of this was an `or` across the two:
+    # deleting the rule from the derivation paragraph left the Do-NOT bullet matching, and the
+    # mutant walked through. That is the `or across locations` failure this suite has a name for.
+    region = flat.split("First, decide which layers exist at all", 1)
+    assert len(region) == 2, "plan-layers no longer has its derivation paragraph"
+    assert re.search(r"name the ones you dropped and why", region[1][:400]), (
+        "the derivation paragraph no longer requires a dropped layer to be named, so a run that "
+        "produces one task instead of four explains nothing to the operator")
+
+    donot = flat.split("## Do NOT", 1)
+    assert len(donot) == 2, "plan-layers has no Do NOT list"
+    assert re.search(r"Drop a layer silently", donot[1]), (
+        "the Do NOT list no longer forbids dropping a layer silently; the derivation paragraph "
+        "asks for the reason and nothing forbids omitting it")
+
+
+@check("the task schema admits every layer the layer graph can produce", finding="P40")
+def _():
+    """Items 28 and 62.
+
+    `id` was `L[1-4]-[0-9]{3}` and `layer` an enum of four, while three fields ten lines below
+    read `Required except in Layer 0`. Every Layer 0 task the toolchain has generated was invalid
+    under its own schema, and item 28's per-project layer graph makes a fixed enum wrong for a
+    second, independent reason.
+
+    Asserted by RUNNING the documented pattern against the ids the toolchain actually writes.
+    """
+    spec = os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md")
+    text = open(spec, encoding="utf-8").read()
+
+    m = re.search(r"`id`:\s*Must match pattern\s*`([^`]+)`", text)
+    assert m, "task-format-spec.md documents no id pattern at all"
+    pattern = m.group(1)
+
+    # The ids this toolchain generates, including the ones its own Layer 0 templates use.
+    for tid in ("L0-001", "L1-001", "L2-014", "L4-002", "L10-003"):
+        assert re.fullmatch(pattern, tid), (
+            f"the documented id pattern {pattern!r} rejects {tid}, which the toolchain writes. "
+            f"A spec that forbids its own output is the defect P40 named")
+    for bad in ("L1-1", "X1-001", "L1-0001"):
+        assert not re.fullmatch(pattern, bad), (
+            f"the documented id pattern {pattern!r} accepts {bad}, so it constrains nothing")
+
+    # And `layer` is no longer a closed list of four. The five shipped names may be named as
+    # DEFAULTS; what must not survive is an enum that item 28's per-project graph contradicts.
+    row = [ln for ln in text.splitlines() if ln.strip().startswith("- `layer`")]
+    assert row, "task-format-spec.md documents no `layer` constraint"
+    assert not re.search(r"One of:", row[0]), (
+        f"`layer` is still a closed enum: {row[0].strip()}. Item 28 lets a project declare its "
+        f"own <layers> graph, instantiated per service with ids scoped to their block, and no "
+        f"fixed list of four names can describe that")
+    assert "0-setup" in row[0] or "0-setup" in text.split("- `layer`")[1][:400], (
+        "the layer constraint never mentions 0-setup, which three fields below call out by name")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

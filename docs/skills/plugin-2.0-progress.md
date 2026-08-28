@@ -2957,6 +2957,13 @@ observed.
 split of item 23's first bullet), 62 commits over four days, and **39 → 112 regression checks**
 with `known 0` throughout.
 
+> **That sentence was true for about an hour, and it is kept rather than corrected.** Running the
+> toolchain end to end the same afternoon produced five findings and five new items, and Phase 7
+> is what came of them. The claim was not wrong about the *plan*; it was wrong about what
+> completing the plan proves. **`the plan is implemented` and `the toolchain works` are different
+> claims, and only the second one can be measured by running it** — which nothing had done against
+> the current schema until after this line was written.
+
 | Phase | Items | What it established |
 |---|---|---|
 | **1** | 8 | Fix what is broken today. No schema change |
@@ -3131,6 +3138,164 @@ the reference fixture, one enum at a time, plus a retired element and a pre-rena
 construction — an element nobody names, an element declared away, a declaration for an element
 that no longer exists, an invented verdict, and an element defined in a schema document and named
 nowhere else.
+
+---
+
+## Phase 7 — What the run found.
+
+Plan order: `61` · `62` · `64` · `63` · `65`, on branch `phase-7-what-the-run-found`.
+
+**Not planned; measured.** Phases 1–6 were specified by reading the corpus. This phase was
+specified by watching the toolchain run, on 2026-08-28, immediately after the plan was declared
+complete and merged — which is the only reason it exists, because the question *"is the plan fully
+implemented"* has a different answer from *"does the toolchain work"* and only the second one can
+be measured by running it.
+
+| Item | Status | Commit |
+|---|---|---|
+| **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `PENDING2` |
+| **64** — the generator is told where its commands run | *Not started* | — |
+| **63** — a task file is not editable by the run it judges | *Not started* | — |
+| **65** — a task may name every feature it descends from | *Not started* | — |
+
+**Suite:** 112 checks at branch point → **114**. `failed 0`, `known 0`.
+
+---
+
+## The third live crossing — the first clean one, and five findings
+
+**Commit:** `PENDING` · **Addresses:** P39–P43 · **Files:**
+`docs/skills/plugin-2.0-plan.md`, `skills/breakdown-plan-layers/SKILL.md`,
+`skills/breakdown/references/task-format-spec.md`, `tests/mutants/live-run.py` (new),
+`tests/test_toolchain.py`
+
+### What was run, and why it was worth running
+
+`/breakdown` and `/execute`, end to end, on the **schema-5** fixture, headless under
+`bypassPermissions`, with item 59's grader on the output. The previous crossing was run against
+schema-2 and exited 1. The plan had since been declared complete and merged, and the honest answer
+to *"is it finished"* was: **the plan is implemented and the toolchain is not demonstrated.** This
+is the demonstration.
+
+### The result
+
+```
+ok  1: 21 criterion copies checked against the PRD, verbatim
+ok  2: 3 feature(s) named by 10 attributed task(s)
+ok  3: removing `list-links`'s 1 task(s) was reported as `list-links` and nothing else
+ok  4: reported as {'must-have/P0': 5, 'should-have/P0': 5}
+ok  5: preflight refused the won't-have task and named it
+
+5 assertion group(s) held, 0 failure(s)
+```
+
+Then `/execute`, verified **independently rather than from the run's own summary**:
+
+| Checked by | Result |
+|---|---|
+| `ledger-status.sh`, derived from git rather than from a state file | `verified 14 / 14`, `missing: []` |
+| `pytest`, run by hand afterwards | **61 passed** |
+| `git status`, `git worktree list` | clean; no worktrees left behind |
+| `check-project-md.py` and `check-artefacts.py` on the generated `PROJECT.md` | valid, 0 invalid |
+
+**Neither of the second crossing's two defects recurred.** No task invented a `feature#id`
+notation, and no task cited a criterion it did not carry — both checked mechanically over the
+generated set rather than read.
+
+### And five findings, none of which 112 checks could see
+
+Two are shipped-instruction contradictions, one is a missing guard, one is a missing brief, and
+one is a schema gap. **The reason the suite missed all five is uniform and worth stating:** four
+are contradictions *between* correct statements, and a check that asserts a mechanism cannot see a
+second instruction about that mechanism. The fifth needs a task spanning two features to expose it,
+which a corpus read feature-by-feature never produces.
+
+| | Finding | Item |
+|---|---|---|
+| **P39** | `plan-layers` forbade the derivation it performs | 61, **landed** |
+| **P40** | `task-format-spec.md` required a layer its own constraints could not express | 62, **landed** |
+| **P41** | `/execute` may rewrite the acceptance criteria it is judged against | 63 |
+| **P42** | the generator does not know the execution model | 64 |
+| **P43** | `<source-feature>` is single-valued, and an integration task spans features | 65 |
+
+### P41 is the one that qualifies the 14/14
+
+The run met a Layer 0 task whose `<verification>` block was **unsatisfiable**: one step asserted a
+substring absent that another requirement mandated present. Its diagnosis was right, its fix was
+reasonable, and it **edited the task file and continued.** Nothing forbids that, nothing records
+it, and the git ledger records commits rather than task edits.
+
+`execute-verify` is documented as *"independent from the implementing agent"*. It is — and that is
+the wrong independence: the orchestrator above it can rewrite what it verifies against. So the
+`14/14` is a weaker result than it reads as, by item 59's own standard: *a runtime test whose
+crossing is made to pass by adjusting the test has measured nothing.*
+
+**The run reported what it had done, in detail, unprompted.** That is the finding stated precisely:
+the failure is not that the agent was dishonest, it is that **honesty was the only thing standing
+between a rewritten acceptance criterion and a green result.** Item 63 replaces it with a hash.
+
+### P43, and why three runs is the strongest evidence available
+
+`<source-feature>` holds one slug. Three live runs met a task covering more than one feature and
+produced three different workarounds:
+
+| Run | What it did | Why it is wrong |
+|---|---|---|
+| 1 | invented `feature#id`, applied to the criteria and not to `<satisfies-criteria>` | the halves of a task stopped referring to each other |
+| 2 | split the task, and said why | correct, and it changes the task set to suit the schema |
+| 3 | narrowed the attribution to one feature, silently | **worst of the three, because nothing says so** |
+
+Run 3's `L4-002` walks `save-link`, `tag-links` and `list-links` criterion 2, and declares
+`tag-links` alone. **No check catches it**: item 30's coverage passes because those criteria are
+covered by other tasks. What is lost is that the coverage report, the scope cross-check,
+`tasks-summary.md` and the gate all believe the task belongs to one feature — so dropping that
+feature from scope would silently take the only end-to-end assertion of the other two with it.
+
+The plan never considered this case, and could not have: **a document read feature by feature does
+not produce an integration task.**
+
+### A defect in my own fix, caught by the check written for it
+
+Item 61's first attempt removed the contradicting instruction and **quoted it in the replacement**,
+as a historical note explaining what had been rescinded. The new check failed immediately —
+correctly. A skill is instructions to a model, and a model reads a quoted rule with the same weight
+as a stated one; *"this used to say every project needs all 4 layers"* is the forbidden sentence,
+present in the file, with a preamble.
+
+The history belongs in the plan and in this ledger, which is where P39 and item 61 now hold it. The
+check keeps its strictness deliberately and says so in a comment, because the next person to add a
+historical note will hit it too.
+
+### Verification
+
+`python tests/test_toolchain.py` — **112 → 114**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/live-run.py` — **6 of 7 caught**, then **8 of 8** with the
+survivor's sibling added.
+
+**The survivor was an `or` across two locations**, which is a failure this suite already has a name
+for and which I wrote anyway. The rule *a dropped layer must be named* is stated twice — once in
+the derivation paragraph, once in the `Do NOT` list — and the check accepted either:
+
+```python
+re.search(r"name (the ones|what) you dropped|never drop one silently|drop a layer", flat)
+```
+
+Deleting it from the derivation paragraph left the `Do NOT` bullet matching, and the mutant walked
+through. It is now asserted at **both** sites, each scoped to its own region, and the round gained
+a second mutant that breaks the other end — because a rule stated in two places needs two checks
+or it has one and a decoy.
+
+**Both new checks guard prose, which is the weakest thing to guard** — and is precisely why these
+two defects survived 112 checks. So each rule is broken twice in the round: once by restoring the
+old wording, once by removing the half that makes the check non-vacuous. A check that only forbids
+a bad sentence passes on a file that has lost the good sentence too.
+
+**The first attempt at this round was killed by a ten-minute timeout mid-mutant**, leaving
+`task-format-spec.md` mutated in the working tree. It was restored with `git checkout-index` from
+the index staged before the round — which is the reason `git add -A` before a round is a rule here
+rather than a habit, and the reason `mutate.py` verifies restoration by hash rather than assuming
+it. The round was re-run in the background with room to finish.
 
 ## What the machine sleeping taught, which was not about sleep
 
