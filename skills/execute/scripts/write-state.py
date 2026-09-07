@@ -175,7 +175,10 @@ def main():
         # Item 19. Both tiers, carried from the manifest, which got them from item 16's
         # elements on the task. Omitted when absent -- a Layer 0 task legitimately has none,
         # and writing null would make "no tier" and "tier not recorded" the same thing.
-        for key in ("moscow", "requirement_level", "source_feature"):
+        # `source_features` is item 65's list and `source_feature` the singular key the manifest
+        # still writes for a single-feature task. Carrying both is what lets a reader of this
+        # file see that L4-002 walks three features rather than the one it named first.
+        for key in ("moscow", "requirement_level", "source_feature", "source_features"):
             if entry.get(key):
                 rec[key] = entry[key]
         if tid in done:

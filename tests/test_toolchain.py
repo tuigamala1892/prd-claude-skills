@@ -5458,8 +5458,14 @@ def _():
     blocks = re.findall(r"```xml\n(.*?)```", spec, re.S)
     meta = next((b for b in blocks if "<meta>" in b and "<id>" in b), None)
     assert meta, "task-format-spec.md has no <meta> example"
-    for tag in ("source-feature", "moscow", "satisfies-criteria", "requirement-level"):
-        assert "<%s>" % tag in meta, f"the task <meta> example carries no <{tag}>"
+    # Item 65 moved these onto the element as attributes, one `<source-feature>` per feature the
+    # task descends from. The four names still have to be there, and this reads them off the
+    # example rather than looking for four opening tags that no longer exist.
+    edge = re.search(r"<source-feature\b([^>]*)/>", meta)
+    assert edge, "the task <meta> example carries no <source-feature .../>"
+    for attr in ("slug", "moscow", "satisfies-criteria", "requirement-level"):
+        assert re.search(r'\b%s="[^"]+"' % attr, edge.group(1)), (
+            f"the task <meta> example's <source-feature> carries no `{attr}`: {edge.group(0)}")
 
     # P3: <priority> keeps its meaning. A MoSCoW value inside it is the overload item 16 avoided.
     prio = re.search(r"<priority>([^<]*)</priority>", meta)
@@ -5711,6 +5717,7 @@ def _():
             os.makedirs(os.path.join(tasks, "1-foundation"))
             index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
             n = 0
+            per_feature = []
             for tier, rel in re.findall(r'<feature\s+priority="([^"]+)" file="([^"]+)"', index):
                 slug = os.path.splitext(os.path.basename(rel))[0]
                 text = open(os.path.join(prd, rel), encoding="utf-8").read()
@@ -5722,12 +5729,33 @@ def _():
                           "w", encoding="utf-8", newline="\n") as f:
                     f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Build %s</name>\n"
                             "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
-                            "    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
-                            "    <satisfies-criteria>%s</satisfies-criteria>\n"
-                            "    <requirement-level>P0</requirement-level>\n  </meta>\n"
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n  </meta>\n'
                             "  <context>\n    <acceptance-criteria>\n%s\n"
                             "    </acceptance-criteria>\n  </context>\n</task>\n"
                             % (n, slug, n, slug, tier, ids, body))
+                per_feature.append((slug, tier, ids, body))
+
+            # One task descending from TWO features, which is what item 65 exists for and what
+            # three live runs each worked around differently (P43). The criteria are grouped by
+            # feature because ids repeat across them: `1` names a different requirement in each.
+            if len(per_feature) >= 2:
+                (s1, t1, i1, b1), (s2, t2, i2, b2) = per_feature[0], per_feature[1]
+                n += 1
+                with open(os.path.join(tasks, "1-foundation", "L1-%03d-integration.xml" % n),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n"
+                            "    <name>Wire %s and %s together</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n'
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n  </meta>\n'
+                            "  <context>\n    <acceptance-criteria>\n"
+                            '    <from-feature slug="%s">\n%s\n    </from-feature>\n'
+                            '    <from-feature slug="%s">\n%s\n    </from-feature>\n'
+                            "    </acceptance-criteria>\n  </context>\n</task>\n"
+                            % (n, s1, s2, n, s1, t1, i1, s2, t2, i2, s1, b1, s2, b2))
             b = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
                                                              "build-manifest.py"), tasks],
                                capture_output=True, text=True)
@@ -5771,9 +5799,17 @@ def _():
         # evaluated as the write's argument then returns "" -- which is how this check first
         # reported a missing failure that the grader had in fact produced.
         text = open(path, encoding="utf-8").read()
-        open(path, "w", encoding="utf-8", newline="\n").write(
-            text.replace("<source-feature>tag-links</source-feature>",
-                         "<source-feature>ghost</source-feature>"))
+        # The slug, wherever the schema keeps it. Item 65 moved it from the element's text into a
+        # `slug` attribute and the literal that used to be here silently stopped matching -- so
+        # the mutation mutated nothing and the assertion below failed for the one reason that
+        # says nothing about the grader. The substitution count is asserted for exactly that.
+        mutated, subs = re.subn(r'(?<=slug=")tag-links(?=")'
+                                r'|(?<=<source-feature>)tag-links(?=</source-feature>)',
+                                "ghost", text)
+        assert subs == 1, (
+            f"the ghost-slug mutation matched {subs} sites, not 1. It no longer breaks the "
+            f"attribution it exists to break")
+        open(path, "w", encoding="utf-8", newline="\n").write(mutated)
         p = grade(tasks)
         assert p.returncode == 1 and "ghost" in p.stderr and "tag-links is in scope" in p.stderr, (
             f"<source-feature> was not resolved in both directions:\n{p.stderr}")
@@ -5782,11 +5818,14 @@ def _():
         tasks = seed()
         path = a_task(tasks, "save-link")
         text = open(path, encoding="utf-8").read()
-        open(path, "w", encoding="utf-8", newline="\n").write(
-            text.replace("    <requirement-level>P0</requirement-level>\n", ""))
+        # Attribute or element, whichever this schema version keeps the level in.
+        mutated, subs = re.subn(r'\s*requirement-level="P0"'
+                                r'|[ \t]*<requirement-level>P0</requirement-level>\n', "", text)
+        assert subs >= 1, "the requirement-level mutation matched nothing to remove"
+        open(path, "w", encoding="utf-8", newline="\n").write(mutated)
         p = grade(tasks)
         assert p.returncode == 1 and "FAIL 4:" in p.stderr, (
-            f"a task carrying no <requirement-level> was not detected:\n{p.stderr}")
+            f"a task carrying no requirement-level was not detected:\n{p.stderr}")
 
         # 3. THE ONE. Break the coverage check so it names the wrong feature while keeping the
         #    count right, and assert the grader is not fooled. A test that does not force this
@@ -5808,9 +5847,17 @@ def _():
         flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
         original = open(flight, encoding="utf-8").read()
         try:
-            open(flight, "w", encoding="utf-8", newline="\n").write(original.replace(
-                'wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)',
-                'wont=""'))
+            # Match the assignment, not the exact grep. Item 65 rewrote this line to accept the
+            # per-edge `moscow="wont-have"` attribute, and the literal below silently stopped
+            # applying -- so the mutation mutated nothing and this assertion failed for the one
+            # reason that says nothing about the grader. The substitution count is asserted for
+            # exactly that: a mutation that does not apply must fail loudly, not quietly pass.
+            mutated, n = re.subn(r"(?m)^wont=\$\(.*\)$", 'wont=""', original)
+            assert n == 1, (
+                f"the preflight mutation matched {n} sites, not 1. It no longer breaks the "
+                f"refusal it is meant to break, and the assertion below would be measuring "
+                f"nothing")
+            open(flight, "w", encoding="utf-8", newline="\n").write(mutated)
             p = grade(seed())
             assert p.returncode == 1 and "FAIL 5:" in p.stderr, (
                 f"the grader did not notice preflight had stopped refusing:\n{p.stderr}")
@@ -7692,6 +7739,349 @@ def _():
     assert row, "execute-layer does not carry `task_defect` through to the orchestrator"
     assert re.search(r"breakdown", row[0]), (
         f"the layer does not say whose defect a `task_defect` is: {row[0].strip()}")
+
+
+def _edge_xml(edges):
+    return "".join(
+        '    <source-feature slug="%s" moscow="%s" satisfies-criteria="%s" '
+        'requirement-level="%s"/>\n' % e for e in edges)
+
+
+def _multi_task_xml(tid, edges, groups=None):
+    """A task in item 65's shape: one <source-feature> per feature, criteria grouped by feature."""
+    ctx = ""
+    if groups:
+        body = ""
+        for slug, crits in groups:
+            inner = "".join(
+                '      <criterion id="%s" pattern="event-driven" priority="P0">\n'
+                '      %s criterion %s.\n      </criterion>\n' % (c, slug, c) for c in crits)
+            body += '    <from-feature slug="%s">\n%s    </from-feature>\n' % (slug, inner)
+        ctx = "  <context>\n    <acceptance-criteria>\n%s    </acceptance-criteria>\n" \
+              "  </context>\n" % body
+    return ("<task>\n  <meta>\n    <id>%s</id>\n    <name>Probe %s</name>\n"
+            "    <layer>4-integration</layer>\n    <priority>1</priority>\n%s  </meta>\n%s"
+            "</task>\n" % (tid, tid, _edge_xml(edges), ctx))
+
+
+@check("a task names every feature it descends from, and the manifest carries all of them",
+       finding="P43")
+def _():
+    """Item 65, the producer half -- asserted by RUNNING build-manifest.py.
+
+    `<source-feature>` held one slug, so a task covering several had to lie about which. Three
+    live runs met the case and invented three workarounds; the worst narrowed the attribution to
+    one feature silently, and nothing caught it because item 30's coverage passes when the other
+    criteria are covered by other tasks. What was lost is that every consumer then believes the
+    task belongs to one feature.
+
+    The compatibility rule is asserted here too, and it is the interesting half: the singular
+    `source_feature` key is written ONLY for a single-feature task. A 1.2 reader then sees a
+    multi-feature task as unattributed rather than attributed to whichever edge came first --
+    P43's silent misattribution reintroduced by the shim meant to preserve it.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="item65-manifest-")
+    try:
+        layer = os.path.join(root, "4-integration")
+        os.makedirs(layer)
+        # The integration task run 3 met: three features, one task, criterion ids that collide.
+        open(os.path.join(layer, "L4-002-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-002",
+                 # WEAKEST FIRST, deliberately. With the strongest edge first, "the strongest of
+                 # the edges" and "the first edge" give the same answer, and the assertion below
+                 # holds for a manifest that simply takes whichever came first -- a mutant that
+                 # did exactly that walked through this check.
+                 [("list-links", "could-have", "2", "P2"),
+                  ("save-link", "must-have", "1", "P0"),
+                  ("tag-links", "should-have", "1,3", "P1")],
+                 [("list-links", ["2"]), ("save-link", ["1"]), ("tag-links", ["1", "3"])]))
+        # And one task in the shape every task file written before item 65 carries.
+        open(os.path.join(layer, "L4-003-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_task_xml("L4-003", slug="save-link", crits="4",
+                                           moscow="should-have", level="P1"))
+
+        builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+        p = subprocess.run([sys.executable, builder, root], capture_output=True, text=True)
+        assert p.returncode == 0, f"build-manifest.py failed: {p.stdout}\n{p.stderr}"
+        man = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+        inv = {e["id"]: e for e in man["task_inventory"]}
+
+        assert man["schema_version"] >= "1.3", (
+            f"the manifest shape changed and its version did not: {man['schema_version']}. "
+            f"check-compatibility.py is the reader that decides whether a manifest can be read "
+            f"at all, and it decides on this field")
+
+        multi = inv["L4-002"]
+        edges = multi.get("source_features")
+        assert edges and [e["slug"] for e in edges] == ["list-links", "save-link", "tag-links"], (
+            f"the manifest carries {edges!r} for a task that names three features. A task walking "
+            f"three and recorded as one is P43, and every consumer downstream believes it")
+        by_slug = {e["slug"]: e for e in edges}
+        assert by_slug["tag-links"]["satisfies_criteria"] == ["1", "3"], (
+            f"criteria are not scoped to their own feature: {by_slug['tag-links']}. Ids repeat "
+            f"across features, so an unscoped list cites criterion 1 of whichever it likes")
+        assert by_slug["save-link"]["satisfies_criteria"] == ["1"], by_slug["save-link"]
+
+        assert "source_feature" not in multi, (
+            "the manifest names ONE source_feature for a task that descends from three. A 1.2 "
+            "reader must see this task as unattributed rather than attributed to the first edge "
+            "-- writing the singular key here reintroduces P43 inside the compatibility shim")
+        assert multi.get("moscow") == "must-have" and multi.get("requirement_level") == "P0", (
+            f"the effective tier is {multi.get('moscow')}/{multi.get('requirement_level')}, not "
+            f"the strongest of the three edges. A task is built or not built as a unit, so a "
+            f"filter must see the strongest obligation it carries")
+
+        old = inv["L4-003"]
+        assert old.get("source_feature") == "save-link" and old.get("satisfies_criteria") == ["4"], (
+            f"a task in the pre-item-65 shape no longer reads: {old}. The old shape is accepted "
+            f"on read and never written -- a reader that refuses it strands every task set "
+            f"generated before today")
+        assert [e["slug"] for e in old["source_features"]] == ["save-link"], old["source_features"]
+
+        summary = open(os.path.join(root, "tasks-summary.md"), encoding="utf-8").read()
+        row = [ln for ln in summary.splitlines() if ln.startswith("| `L4-002`")]
+        assert row and all(s in row[0] for s in ("save-link", "tag-links", "list-links")), (
+            f"tasks-summary.md shows {row[0] if row else 'no row'} -- a reviewer reading one slug "
+            f"for a task that walks three is exactly the reader item 32 built this view for")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("coverage and scope attribute a task to every feature it names -- by running them",
+       finding="P43")
+def _():
+    """Item 65, the consumer half.
+
+    The tempting cheap fix for P43 was to let `check-coverage.py` accept a criterion cited by a
+    task from another feature. That makes the report pass and leaves the task set exactly as
+    unattributable as it was -- P2's mistake with the arrow reversed, a consumer weakened to
+    match an under-specified producer. So the producer carries the edges and these two read them.
+
+    Both directions are asserted: the honest multi-feature task covers all three features, and
+    the narrowed one -- run 3's silent workaround -- is reported as a shortfall naming the two
+    features it dropped.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="item65-coverage-")
+    try:
+        prd = os.path.join(root, "prd")
+        feat = os.path.join(prd, "features")
+        os.makedirs(feat)
+        slugs = [("save-link", "must-have"), ("tag-links", "should-have"),
+                 ("list-links", "should-have")]
+        # An index entry has a body -- `select-features.py` reads the name out of it, and a
+        # self-closing tag matches its pattern not at all, which reads as "names no features".
+        entries = "".join(
+            '  <feature priority="%s" file="features/%s.md">\n    <name>%s</name>\n'
+            '  </feature>\n' % (tier, slug, slug)
+            for slug, tier in slugs)
+        open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd>\n<meta><slug>probe</slug></meta>\n<features>\n%s</features>\n</prd>\n" % entries)
+        for slug, _tier in slugs:
+            open(os.path.join(feat, slug + ".md"), "w", encoding="utf-8", newline="\n").write(
+                '<feature>\n<meta><slug>%s</slug><definition>defined</definition></meta>\n'
+                '<acceptance-criteria>\n'
+                '<criterion id="1" pattern="event-driven" priority="P0">%s one.</criterion>\n'
+                '<criterion id="2" pattern="event-driven" priority="P0">%s two.</criterion>\n'
+                '</acceptance-criteria>\n</feature>\n' % (slug, slug, slug))
+
+        def build(tasks_dir, edges):
+            layer = os.path.join(tasks_dir, "4-integration")
+            os.makedirs(layer, exist_ok=True)
+            open(os.path.join(layer, "L4-001-probe.xml"), "w", encoding="utf-8",
+                 newline="\n").write(_multi_task_xml("L4-001", edges))
+            p = subprocess.run([sys.executable,
+                                os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                                tasks_dir], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout + p.stderr
+            return tasks_dir
+
+        cov = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+        every = [(s, t, "1,2", "P0") for s, t in slugs]
+
+        honest = build(os.path.join(root, "honest"), every)
+        p = subprocess.run([sys.executable, cov, prd, honest, "--json"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert out["uncovered_features"] == [] and out["uncovered_criteria"] == [], (
+            f"one task naming three features did not cover them: {p.stdout}\n{p.stderr}")
+        assert out["attributed_tasks"] == 1, out["attributed_tasks"]
+
+        # Run 3's workaround: the same task, narrowed to the feature it resembles most.
+        narrow = build(os.path.join(root, "narrow"), [("tag-links", "should-have", "1,2", "P0")])
+        p = subprocess.run([sys.executable, cov, prd, narrow, "--json"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert sorted(f["slug"] for f in out["uncovered_features"]) == ["list-links", "save-link"], (
+            f"narrowing a three-feature task to one was not reported: {p.stdout}. This is the "
+            f"whole of P43 -- the narrowing is silent unless attribution decides coverage")
+        # And the criteria are scoped to the feature that declared them. The tempting cheap fix
+        # for P43 was to let a criterion cited by ANY task count for every feature with that id;
+        # every feature here has ids 1 and 2, so that version reports full criterion coverage
+        # for a task that touches one of the three. The plan names this explicitly: a consumer
+        # weakened to match an under-specified producer is P2's mistake with the arrow reversed.
+        assert {(c["feature"], c["id"]) for c in out["uncovered_criteria"]} >= {
+            ("save-link", "1"), ("save-link", "2"),
+            ("list-links", "1"), ("list-links", "2")}, (
+            f"criterion ids are pooled across features, so citing `tag-links` 1 and 2 covered "
+            f"every feature's 1 and 2: {out['uncovered_criteria']}")
+
+        # And the cross-check counts the task under every feature, not just the first.
+        # The cross-check compares a per-feature prediction against the tasks attributed to that
+        # feature. `list-links` is predicted `large` and is reachable ONLY through the multi-edge
+        # task, so the disagreement below can be reported only if the task counted under it --
+        # before item 65 that task belonged to whichever feature it named, and `list-links` had
+        # no tasks to compare against at all.
+        open(os.path.join(honest, "analysis.json"), "w", encoding="utf-8", newline="\n").write(
+            json.dumps({"scope": "small", "confidence": "high", "feature_signals": [
+                {"feature": "list-links", "scope": "large", "confidence": "high"}]}))
+        p = subprocess.run([sys.executable,
+                            os.path.join(SKILLS, "breakdown", "scripts", "check-scope.py"),
+                            honest], capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        out = p.stdout + p.stderr
+        assert re.search(r"list-links was analysed as large", out), (
+            f"check-scope.py did not compare `list-links`, which the only task in the set names "
+            f"as its third feature. A task counted under one of the three leaves the other two "
+            f"with nothing to compare, and the cross-check reports nothing while looking "
+            f"identical to agreement:\n{out}")
+        assert "name no source feature" not in out, (
+            f"the one task in this set is reported as unattributed:\n{out}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the wont-have refusal and the gate read the per-edge shape -- by running them",
+       finding="P43")
+def _():
+    """Item 65's two raw-text readers, which parse task files without an XML parser.
+
+    Both were written against `<moscow>wont-have</moscow>` and `<source-feature>slug</...>` as
+    literal strings. A guard that silently stops matching is worse than one that was never
+    written: item 20's refusal is defence in depth, and defence in depth that no longer fires
+    reports a clean preflight on the exact task set it exists to stop.
+    """
+    import importlib.util
+    import shutil
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "check_gate", os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"))
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+
+    root = tempfile.mkdtemp(prefix="item65-guards-")
+    try:
+        layer = os.path.join(root, "tasks", "4-integration")
+        os.makedirs(layer)
+        open(os.path.join(layer, "L4-001-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-001", [("save-link", "must-have", "1", "P0"),
+                            ("tag-links", "should-have", "1", "P1")]))
+        open(os.path.join(layer, "L4-002-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_task_xml("L4-002", slug="list-links"))
+
+        built = gate.built_features(os.path.join(root, "tasks"))
+        assert built == {"save-link", "tag-links", "list-links"}, (
+            f"the gate sees {sorted(built)} of three features. It scopes the significance "
+            f"assertion to what was BUILT, so a slug it cannot parse is a feature whose stale "
+            f"decision record stops being reported")
+
+        if not (shutil.which("git") and shutil.which("sh")):
+            return
+        app = os.path.join(root, "app")
+        os.makedirs(app)
+        for args in (["init", "-q", "-b", "trunk", "."],
+                     ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            subprocess.run(["git", "-C", app, *args], capture_output=True, text=True)
+        open(os.path.join(app, "README.md"), "w").write("x")
+        subprocess.run(["git", "-C", app, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", app, "commit", "-qm", "init"], capture_output=True)
+        tasks = os.path.join(root, "tasks")
+        for name, body in (("manifest.json", '{"tasks": []}'), ("layer_plan.json", '{"layers": []}')):
+            open(os.path.join(tasks, name), "w", encoding="utf-8", newline="\n").write(body)
+
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        clean = subprocess.run(["sh", flight, tasks, app], capture_output=True, text=True,
+                               timeout=120)
+        assert clean.returncode == 0, (
+            f"preflight refused a clean tree, so the refusal below would prove nothing: "
+            f"{clean.stderr}")
+
+        # A wont-have edge on a task whose OTHER edge is must-have. The effective tier is
+        # must-have, so a refusal reading the effective tier would let this through -- and the
+        # refusal is about whether the task should exist, not how important it is.
+        open(os.path.join(layer, "L4-003-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-003", [("save-link", "must-have", "1", "P0"),
+                            ("rejected", "wont-have", "1", "P0")]))
+        p = subprocess.run(["sh", flight, tasks, app], capture_output=True, text=True, timeout=120)
+        assert p.returncode == 1 and "L4-003" in p.stderr, (
+            f"preflight did not refuse a task carrying moscow=\"wont-have\" as an edge "
+            f"(exit {p.returncode}):\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the schema, the generator and the reviewer all say a task may name several features",
+       finding="P43")
+def _():
+    """Item 65's instruction half -- and it is three files because the shape has three owners.
+
+    The generator writes the element, the spec defines it, and `review-criteria.md` is what
+    fails a task that narrows. A rule stated in one of the three is a rule two of them contradict.
+    """
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    rev = open(os.path.join(SKILLS, "breakdown", "references", "review-criteria.md"),
+               encoding="utf-8").read()
+
+    # The spec's example is parsed, not read: several edges, each with its own criteria.
+    edges = re.findall(r"<source-feature\b([^>]*)/>", spec)
+    multi = [e for e in edges if 'slug="tag-links"' in e]
+    assert len(edges) >= 3 and multi, (
+        "the spec never shows a task descending from more than one feature, so the shape it "
+        "defines has no worked example of the case it exists for")
+    assert all(re.search(r'satisfies-criteria="[^"]+"', e) for e in edges), (
+        f"an example edge carries no criteria of its own: {edges}. Per-feature ids are the "
+        f"point -- `1` means a different requirement in each feature")
+
+    # The old shape is read and never written -- item 45's rule, and the reason a corpus survives.
+    #
+    # BOTH halves, in ONE paragraph, inside the section that owns the claim. The first version of
+    # this was an alternation over the whole file, and it matched the second sentence of the very
+    # paragraph a mutant had gutted: `still accepted by every reader` survived while the promise
+    # it belonged to did not. Two halves matched separately are two claims, not one rule.
+    region = spec.split("#### A task names every feature it descends from", 1)
+    assert len(region) == 2, "the spec has no section for item 65's shape"
+    paras = [prose(p) for p in region[1].split("\n### ", 1)[0].split("\n\n")]
+    assert any(re.search(r"accepted|read", p, re.I) and re.search(r"never written|not written", p,
+                                                                 re.I) for p in paras), (
+        "the spec does not promise, in one place, that the pre-item-65 shape is still read and "
+        "no longer written. A reader that refuses it strands every task set generated before "
+        "today; a generator that keeps writing it strands the readers of the new one")
+
+    # The grouping rule, in the two files that must agree about it.
+    for name, text in (("task-format-spec.md", spec), ("breakdown-generate-tasks", gen),
+                       ("review-criteria.md", rev)):
+        assert "from-feature" in text, (
+            f"{name} does not mention <from-feature>, so criterion ids from two features are "
+            f"carried into one task with nothing saying which is which")
+    assert re.search(r"more than one .{0,40}source-feature", prose(rev), re.I), (
+        "review-criteria.md does not scope the grouping requirement to multi-feature tasks, so "
+        "it either demands a wrapper on every task or asks for nothing")
+    assert re.search(r"never narrow|not narrow|every feature (the task|it) (actually )?covers",
+                     prose(gen), re.I), (
+        "the generator is not told to name every feature the task covers. Narrowing to the "
+        "closest one is what run 3 did, and it is silent")
 
 
 # ------------------------------------------------------------------- behavioural

@@ -71,7 +71,12 @@ _spec.loader.exec_module(_sel)
 # Core 6. Three kinds stop an overnight run; two are worth saying and not worth stopping for.
 BLOCKING_GAPS = {"specification", "dependency", "decision"}
 
-SOURCE_FEATURE = re.compile(r"<source-feature>\s*([a-z0-9-]+)\s*</source-feature>")
+# Both shapes, because item 65 made the element repeatable and attributed: the attribute form is
+# what /breakdown writes now, and the element form is what every task file written before it
+# carries. A gate that reads one of the two scopes itself to half the task set without saying so.
+SOURCE_FEATURE = re.compile(
+    r'<source-feature\b[^>]*\bslug="([a-z0-9-]+)"'
+    r'|<source-feature>\s*([a-z0-9-]+)\s*</source-feature>')
 
 
 def run(script, *args):
@@ -114,7 +119,8 @@ def built_features(tasks_dir):
             if not name.lower().endswith(".xml"):
                 continue
             with open(os.path.join(dirpath, name), encoding="utf-8", errors="replace") as f:
-                slugs.update(SOURCE_FEATURE.findall(f.read()))
+                # Two capture groups, one per shape; exactly one is set per match.
+                slugs.update(a or b for a, b in SOURCE_FEATURE.findall(f.read()))
     return slugs
 
 

@@ -85,6 +85,18 @@ def load(path, what):
         return None
 
 
+import importlib.util  # noqa: E402
+
+# One answer to `what does this task descend from`, loaded from the file that writes it. Item 65
+# made attribution a list, and a cross-check that reads only the singular key counts an
+# integration task once, under whichever feature it happened to name first.
+_bm_spec = importlib.util.spec_from_file_location(
+    "build_manifest", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "build-manifest.py"))
+build_manifest = importlib.util.module_from_spec(_bm_spec)
+_bm_spec.loader.exec_module(build_manifest)
+
+
 def task_counts(manifest):
     """Tasks per source feature, and how many could not be attributed.
 
@@ -102,11 +114,15 @@ def task_counts(manifest):
     """
     per_feature, unattributed = {}, 0
     for task in manifest.get("task_inventory") or []:
-        slug = task.get("source_feature")
-        if slug:
-            per_feature[slug] = per_feature.get(slug, 0) + 1
-        else:
+        # A task counts once under EVERY feature it descends from (item 65). One task walking
+        # three features and counted under one is what made run 3's `L4-002` look like a
+        # `tag-links` task, so dropping `save-link` from scope would have silently taken the
+        # only end-to-end assertion of it with them.
+        edges = build_manifest.edges_of(task)
+        if not edges:
             unattributed += 1
+        for edge in edges:
+            per_feature[edge["slug"]] = per_feature.get(edge["slug"], 0) + 1
     return per_feature, unattributed
 
 

@@ -26,6 +26,19 @@ Failure on ANY critical criterion means the task must be regenerated.
     somebody **declared** the gap, not whether the task admits to one.
 - [ ] No "see above", "as mentioned", or references to other parts of the document
 
+### 1b. Attribution (item 65)
+
+- [ ] **A `<source-feature>` for every feature the task covers**, not just the closest one. Each
+      carries `slug`, `moscow`, `satisfies-criteria` and `requirement-level` for *that* feature.
+      A task walking three features and declaring one is P43, and nothing downstream can tell it
+      from a task that genuinely covers one.
+- [ ] **More than one `<source-feature>` means the carried criteria are grouped.** Every
+      `<criterion>` sits inside a `<from-feature slug=>` matching one of them, and every `<test>`
+      carries `from-feature`. Criterion ids repeat across features, so an ungrouped `1` names two
+      requirements at once.
+- [ ] Every id in a `satisfies-criteria` appears among **that feature's** carried criteria — not
+      merely somewhere in the task
+
 ### 2. Self-Containment
 
 - [ ] All necessary context is inline (not "see PRD" or "check docs")

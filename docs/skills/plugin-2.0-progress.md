@@ -3156,10 +3156,10 @@ be measured by running it.
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
-| **65** — a task may name every feature it descends from | *Not started* | — |
+| **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `PENDING65` |
 | **66** — `/execute` takes its layer set from the plan (P44) | *Not started* | — |
 
-**Suite:** 112 checks at branch point → **119**. `failed 0`, `known 0`.
+**Suite:** 112 checks at branch point → **123**. `failed 0`, `known 0`.
 
 ---
 
@@ -3484,6 +3484,106 @@ task stops counting. Five break the wiring, including the one that is not a dele
 re-**records** instead of verifying, which is the plausible wrong version of this whole feature —
 it blesses the edit and reports success. Six break the escalation path, at each of the four files
 that carry it.
+
+## 65 — a task may name every feature it descends from
+
+**Commit:** `PENDING65` · **Addresses:** P43 · **Files:**
+`skills/breakdown/references/task-format-spec.md`, `skills/breakdown-generate-tasks/SKILL.md`,
+`skills/breakdown/references/review-criteria.md`, `skills/breakdown/SKILL.md`,
+`skills/breakdown/scripts/build-manifest.py`, `check-coverage.py`, `check-scope.py`,
+`check-gate.py`, `skills/execute/scripts/preflight.sh`, `write-state.py`,
+`skills/execute/references/state-schema.md`, `tests/boundary-test.py`,
+`tests/mutants/multi-feature.py` (new), `tests/test_toolchain.py`
+
+### What landed
+
+`<source-feature>` repeats, and each one carries its own tier, criteria and level:
+
+```xml
+<source-feature slug="save-link"  moscow="must-have"   satisfies-criteria="1"   requirement-level="P0"/>
+<source-feature slug="tag-links"  moscow="should-have" satisfies-criteria="1,3" requirement-level="P1"/>
+```
+
+The old single-valued shape — the element with sibling `<moscow>`, `<satisfies-criteria>` and
+`<requirement-level>` — is **read by every reader and written by none**, item 45's rule, for the
+same reason: a corpus of task files does not migrate itself, and a reader that refuses the old
+shape strands every task set generated before today. The siblings still fill in an attribute the
+new form omits, which is what makes a half-migrated task readable rather than an error.
+
+Ten consumers moved with it: the manifest (1.2 → **1.3**), `tasks-summary.md`, the coverage check,
+the scope cross-check, the gate's slug scan, preflight's refusal, `write-state.py`,
+`state-schema.md`, the generator's brief and `review-criteria.md`. And item 59's grader, which is
+where the finding came from.
+
+### Three decisions the plan did not make for me
+
+**1. `<from-feature>` — the criteria are grouped too, not just the citations.** The plan says
+`<satisfies-criteria>` is qualified by the feature it belongs to. The criteria a task *carries*
+have exactly the same ambiguity — `save-link` criterion 1 and `tag-links` criterion 1 are two
+requirements with one name — and P43's first live run is the proof that qualifying one half is
+worse than qualifying neither: it invented `feature#id` for the carried criteria, left
+`<satisfies-criteria>` bare, and the two halves of a task stopped referring to each other.
+
+So the criteria are wrapped, per feature, and only when the task names more than one. **A wrapper
+rather than an attribute or a `feature#id` spelling, because item 17 requires the `<criterion>`
+copied byte-for-byte** — every other option edits the copy.
+
+**2. The compatibility key is omitted, never guessed.** `source_feature` — singular — is written
+only when there is exactly one edge. A 1.2 reader then sees a multi-feature task as
+**unattributed** rather than attributed to whichever edge came first. Writing the first slug would
+have been the friendlier shim and it would have reintroduced run 3's silent narrowing *inside the
+compatibility layer*, which is the one place nobody would look for it.
+
+**3. Filters take the strongest edge; the wont-have refusal takes any.** `moscow` and
+`requirement_level` become the strongest across the edges, because a task is built or not built as
+a unit. Preflight's refusal (item 20) is the exception and is deliberate: a task carrying
+`moscow="wont-have"` on any edge is refused even when another edge is `must-have`. The strongest
+rule answers *how important is this task*; the refusal answers *should this task exist at all*,
+and reading the effective tier there would let the exact case through that the refusal exists for.
+
+### What the plan warned about, and the mutant that proves we did not do it
+
+> **Do not fix this by relaxing the consumer.** The tempting cheap version is to let
+> `check-coverage.py` accept a criterion cited by a task from another feature.
+
+Every feature in the check's fixture declares criteria `1` and `2`, so a pooled reading reports
+full criterion coverage for a task that touches one feature of three. That is a mutant in the
+round — `got = set().union(*cited.values())` — and it is caught.
+
+### The item 23 audit caught the new element before the suite did
+
+`<from-feature>` landed in the spec with nothing reading it, and `check-readers.py` said so on the
+next run: *NO READER — give it a reader, or record it in `readers.md` with a verdict*. Its reader
+is `review-criteria.md`, which is the file that fails a task whose criteria are not grouped — a
+real reader rather than a registration. **This is item 23 doing exactly the job it was built for**,
+on an element that was four minutes old.
+
+### Three of my own defects, one of them a repeat
+
+**`attributed_tasks` counted edges.** One task naming three features reported *"3 of 1 task(s)
+attributed"* — a summary line that disagrees with the set it summarises, which is run 6's state
+file in miniature. Caught by the new check on its first run, and now counted over distinct ids.
+
+**Two suite mutations were pinned to literals this item moved**, and both silently stopped
+applying: preflight's `wont=$(grep -rl "<moscow>wont-have</moscow>" ...)` line, and the grader
+self-test's `<source-feature>tag-links</source-feature>` and `<requirement-level>P0</...>`. A
+mutation that matches nothing *passes the check it was supposed to break*, so each one turned into
+a failing assertion that says nothing about the thing under test. All three now match by regex and
+**assert the substitution count**, which is the general rule this repository can state after three
+instances: **a mutation that does not apply must fail loudly, not quietly measure nothing.**
+
+### Verification
+
+`python tests/test_toolchain.py` — **119 → 123**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/multi-feature.py` — **17 of 17 caught**, after 14 of 16 on the first pass.
+
+Seventeen mutants for four checks. Six break the producer — only the first edge read, the singular
+key written for a multi-edge task, the effective tier taken from the first rather than the
+strongest, the old shape refused, the version left behind, the summary showing one slug of three.
+Three break the consumers, including the relaxed-consumer version the plan forbids. Two break the
+raw-text guards back to the retired shape. Five break the instructions, at each of the three files
+that have to agree about them.
 
 ## What the machine sleeping taught, which was not about sleep
 
