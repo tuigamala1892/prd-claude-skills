@@ -3688,7 +3688,7 @@ plan's** — the same arrangement as Phase 5's five commit groups.
 
 | Group | Status | Commit |
 |---|---|---|
-| **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `PENDING8A` |
+| **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `3c61ed9` |
 | **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | *Not started* | — |
 
 **Suite:** 125 checks at branch point → **127**. `failed 0`, `known 0`.
@@ -3697,7 +3697,7 @@ plan's** — the same arrangement as Phase 5's five commit groups.
 
 ## 8a — the review the gate always required, and the four features it had been failing
 
-**Commit:** `PENDING8A` · **Addresses:** P26 (item 40's deferred half), P10 (item 22's finding) ·
+**Commit:** `3c61ed9` · **Addresses:** P26 (item 40's deferred half), P10 (item 22's finding) ·
 **Files:** `schema/core.md`, `schema/migration.md`, `schema/scripts/migrate.py`,
 `skills/breakdown/scripts/check-definition.py`, `tests/fixture/prd/SCHEMAS.json`,
 `tests/fixture/prd/schema-6/**` (new), `tests/mutants/review-gate.py` (new),
