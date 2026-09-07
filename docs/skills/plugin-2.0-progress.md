@@ -3928,7 +3928,7 @@ find a defect in it.
 
 | Item | Status | Commit |
 |---|---|---|
-| **67** — a snapshot that replaces another says what changed between them | **Landed** 2026-09-07 | `PENDING67` |
+| **67** — a snapshot that replaces another says what changed between them | **Landed** 2026-09-07 | `91b90ef` |
 
 **Suite:** 128 checks at branch point → **129**. `failed 0`, `known 0`.
 
@@ -4001,7 +4001,7 @@ artefact that could have shown it.
 
 ## 67 — the re-record says what it replaced
 
-**Commit:** `PENDING67` · **Addresses:** P45 · **Files:**
+**Commit:** `91b90ef` · **Addresses:** P45 · **Files:**
 `skills/execute/scripts/task-integrity.py`, `skills/execute/SKILL.md`,
 `docs/skills/plugin-2.0-plan.md`, `tests/mutants/record-replaces.py` (new),
 `tests/test_toolchain.py`
