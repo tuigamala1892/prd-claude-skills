@@ -3920,6 +3920,138 @@ in any run.
 
 ---
 
+## Phase 9 — The guard at the right boundary.
+
+One group, `67`, on branch `phase-9-the-guard-at-the-right-boundary`. **Specified by the fourth
+live crossing**, which is the first run item 63's guard was ever active for — and the first to
+find a defect in it.
+
+| Item | Status | Commit |
+|---|---|---|
+| **67** — a snapshot that replaces another says what changed between them | **Landed** 2026-09-07 | `91b90ef` |
+
+**Suite:** 128 checks at branch point → **129**. `failed 0`, `known 0`.
+
+---
+
+## The fourth crossing — the first against schema-6, and the first with the guard live
+
+**Run:** 2026-09-07, `/breakdown` then `/execute`, headless under `bypassPermissions`, on the
+schema-6 fixture. **Workspace:** `boundary-run-p02rsano`, deleted after this entry was written.
+
+### What held
+
+```
+ok  1: 19 criterion copy/copies checked against the PRD, verbatim
+ok  2: 3 feature(s) named by 7 attributed task(s)
+ok  3: removing `list-links`'s 4 task(s) was reported as ['list-links'] and nothing else
+ok  4: reported as {'must-have/P0': 5, 'should-have/P0': 2}
+ok  5: preflight refused the won't-have task and named it
+```
+
+Then `/execute`, verified **independently rather than from the run's own summary**:
+
+| Checked by | Result |
+|---|---|
+| `ledger-status.sh`, derived from git | `verified 10 / 10`, `missing: []` |
+| `pytest`, run by hand afterwards | **44 passed** |
+| `git status`, `git worktree list` | clean; no worktrees left behind |
+| `check-project-md.py` | valid — 5 features, 3 registries, 1 open gap |
+| `resolve-layers.py` | `0-setup · 1-foundation · 2-backend · 4-integration` |
+
+**Four items were exercised doing what they were built for**, which is the first time any of them
+has been seen working outside its own check:
+
+| Item | What the run did |
+|---|---|
+| **61** | derived four layers and dropped `3-frontend`, the behaviour a contradicting instruction used to forbid |
+| **64** | wrote 24 verification steps and **not one** asserts the environment — the single `git` command present checks the `.gitignore` the task itself wrote |
+| **65** | `L4-002` names three features with per-edge criteria and groups its carried criteria under `<from-feature>` — the case three earlier runs each worked around differently |
+| **66** | executed exactly the layers `layer_plan.json` declared |
+
+### And one finding, in the guard itself
+
+**The run stopped on `L4-001`, the task file was edited, and the run resumed.** Item 63's
+`record` runs on every invocation, so the resume snapshotted the *edited* file as its baseline.
+`verify` has said `UNCHANGED 10 task file(s)` ever since, and `task-edits.jsonl` was never
+written.
+
+The timeline is not inferred; it is in the artefacts:
+
+| | |
+|---|---|
+| ledger | `L0-001` … `L2-003` merged **18:37 → 19:07** |
+| snapshot | `recorded_at` **19:18:46** — after those merges, before the rest |
+| ledger | `L4-001` merged **19:23**, `L4-002` **19:27** |
+| snapshot copy of `L4-001` | byte-identical to the live file, i.e. post-edit |
+| `task-edits.jsonl` | absent |
+
+**That behaviour was deliberate, and the assumption inside it was the defect.** Item 63's own
+note reads *"a `--resume` re-records too, so an operator who fixed a task between runs is not
+fighting the previous run's snapshot"* — which is true of an operator and false of an agent that
+stops, edits and resumes as one continuous act. **The guard protected a dispatch, and a run is
+not a dispatch.**
+
+**The second half is worse.** `record` deleted the previous snapshot before taking the new one,
+so the file as originally dispatched was not merely unreported — it was unrecoverable. Item 63's
+third requirement was that the edit be visible afterwards, and the resume path erased the only
+artefact that could have shown it.
+
+---
+
+## 67 — the re-record says what it replaced
+
+**Commit:** `91b90ef` · **Addresses:** P45 · **Files:**
+`skills/execute/scripts/task-integrity.py`, `skills/execute/SKILL.md`,
+`docs/skills/plugin-2.0-plan.md`, `tests/mutants/record-replaces.py` (new),
+`tests/test_toolchain.py`
+
+**The rule does not change: an operator may fix a task between runs.** Forbidding that would
+leave an unsatisfiable task with nowhere to go, which is the failure item 63's escalation path
+exists to prevent. What changes is that the fix stops being invisible.
+
+`record` now compares before it replaces. Every task file differing from the existing snapshot is
+appended to `task-edits.jsonl` as `edited-between-runs`, with both hashes and a diff, and printed
+— then the new snapshot is taken and the run carries on. `/execute` is told to report those lines
+at the top of the run, because a resume that begins by naming what changed is a resume whose
+operator knows what they are resuming into.
+
+**`kind` is the whole of the difference between the two edits**, and that is deliberate. Nothing
+on disk distinguishes *the operator* from *the run*, and a guard that tried would be guessing at
+intent. Both leave the same trace; one of them is legitimate; the record says which is which and
+lets a reader decide.
+
+### Departure — what this deliberately does not do
+
+It does not catch a run that stops itself, edits, and resumes **within one invocation**. That is
+indistinguishable on disk from an operator doing the same thing between two, and item 63's
+`verify` already covers the case that matters: any edit made while a dispatch is in flight is a
+stop. What 67 removes is the silence, not the possibility.
+
+### A defect in my own fix, caught by the check written for it
+
+The diff file was named with a timestamp at second resolution. Two edits to one task inside the
+same second produced one filename, and the second overwrote the first — **P45's erasure, one
+directory down**, in the fix for P45. The check asserted two diff files for two edits and failed
+on the first run.
+
+Diffs are now named by the hash of the content they record, which also makes re-recording the
+same edit idempotent rather than duplicated.
+
+### Verification
+
+`python tests/test_toolchain.py` — **128 → 129**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/record-replaces.py` — **9 of 9 caught**, one expected
+orphan (item 63's check reads the same script).
+
+The round breaks the *moment* rather than the comparison, because the comparison was never wrong:
+the re-record stops comparing, compares and records nothing, records without a diff, records both
+kinds under one name, drops the count from stdout, turns a legitimate between-runs edit into a
+stop, undoes item 63's mid-dispatch stop, and names the diff by the clock again.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

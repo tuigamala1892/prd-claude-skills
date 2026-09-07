@@ -872,6 +872,34 @@ derived on the CRD path; item 31 fixed the producer on both. Neither P33 nor ite
 `/execute`, because the plan was reading `/breakdown` at the time — which is exactly how a
 consumer is left reciting a list the producer has stopped writing.
 
+### 3.6 From the fourth crossing
+
+**The first crossing after Phase 8, and the first that item 63's guard was live for.** It ran
+clean — five grader assertions held, `10/10` tasks verified from git, 44 tests passing by hand,
+no worktrees left, `PROJECT.md` valid — and items 61, 64, 65 and 66 were all exercised doing what
+they were built for. The one finding is in the guard.
+
+**P45 — the task-file guard protects a dispatch, and a run is not a dispatch.**
+`/execute` stopped on `L4-001`, **the task file was edited**, and the run resumed. Item 63's
+`record` runs on every invocation including a resume, so the resume snapshotted the *edited* file
+as its new baseline and `verify` has said `UNCHANGED 10 task file(s)` ever since.
+`task-edits.jsonl` was never written.
+
+That behaviour was deliberate — *"a `--resume` re-records too, so an operator who fixed a task
+between runs is not fighting the previous run's snapshot"* — and the assumption inside it is the
+defect: **the distinction between *the operator* and *the run* collapses when the same agent is
+both.** Stop, edit, resume is one continuous act by one participant, and it is the path an
+unsatisfiable task makes most likely.
+
+**The second half is worse than the first.** `record` deletes the previous snapshot before taking
+the new one, so the file as originally dispatched is not merely unreported — it is
+unrecoverable. Item 63's third requirement was *"whatever the policy, the edit must be visible
+afterwards, or the next `14/14` is unauditable in the same way"*, and the resume path erases the
+only artefact that could have shown it.
+
+**This is P41 one level up**, and the shape is worth naming: a guard that measures the right thing
+at the wrong boundary reports honestly and proves nothing.
+
 ---
 
 ## 4. Three design decisions that resolve most of the above
@@ -3011,6 +3039,38 @@ test: the failure here is not that a layer is missed, it is that missing every l
 exactly like a project with nothing to do. `ledger-status.sh` already knows the expected total —
 `verified 0 / 18` is available at the point the report is written, and item 4.9's rule that a
 shortfall is named applies unchanged.
+
+---
+
+## M. What the fourth crossing found
+
+**One item, and the section exists for the same reason K and L do:** it was found a different way
+again — by the first live run in which item 63's guard was active. K's five came from crossings
+against a toolchain that had no such guard; this one came from watching the guard work correctly
+and stop nothing.
+
+**67. A snapshot that replaces another says what changed between them.**
+*Addresses P45. Depends on item 63 and on nothing else.*
+
+The rule stays as it is: **an operator may fix a task between runs.** Forbidding that would leave
+an unsatisfiable task with no way forward, which is the failure item 63's escalation path exists
+to prevent. What must change is that the fix stops being invisible.
+
+- **`record` compares before it replaces.** When a snapshot already exists, every task file that
+  differs from it is appended to `task-edits.jsonl` as an edit between runs, with both hashes and
+  a diff, *before* the new snapshot is taken. The same record, the same file, the same shape as a
+  mid-dispatch edit — the two differ in `kind` and in nothing else.
+- **Report it at the top of the run.** A resume that begins by naming the task files that changed
+  since the last one is a resume whose operator knows what they are resuming into. Silence there
+  is what made the fourth crossing's `10/10` weaker than it reads.
+- **Never block on it.** An edit between runs is legitimate; an edit nobody can see is not. This
+  is the same distinction item 63 drew for the label `defined` and item 40 drew before it.
+
+**What this does not do** is make the guard cover the case where a run stops itself, edits, and
+resumes *within one invocation*. Nothing on disk can tell that apart from an operator doing the
+same thing between two invocations, and a guard that tried would be guessing at intent. What it
+does instead is make both of them leave the same trace, which is the honest version of the same
+protection.
 
 ---
 

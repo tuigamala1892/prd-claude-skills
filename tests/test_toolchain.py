@@ -8580,6 +8580,113 @@ def _():
             f"`{tag}` is still recorded as a producer with no consumer, and it now has one")
 
 
+@check("a snapshot that replaces another says what changed between them -- by running it",
+       finding="P45")
+def _():
+    """Item 67, and the defect a live run found in item 63's own guard.
+
+    `record` runs on every invocation, including a resume -- deliberately, because an operator
+    may fix a task between runs and forbidding that leaves an unsatisfiable task with nowhere to
+    go. The assumption inside that was the defect: *the operator* and *the run* are the same
+    participant when one agent stops, edits and resumes. The fourth crossing did exactly that,
+    the resume snapshotted the edited file, and `verify` said UNCHANGED for the rest of the run.
+
+    The rule is unchanged and the silence is not: a re-record compares first, records every
+    difference with both hashes and a diff, and carries on. What must never happen again is a
+    snapshot replacing another with nothing recording what it replaced.
+    """
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "task-integrity.py")
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    root = tempfile.mkdtemp(prefix="item67-")
+    try:
+        tasks, app = os.path.join(root, "tasks"), os.path.join(root, "app")
+        os.makedirs(os.path.join(tasks, "0-setup"))
+        os.makedirs(app)
+        task = os.path.join(tasks, "0-setup", "L0-001-x.xml")
+
+        def write(step):
+            open(task, "w", encoding="utf-8", newline="\n").write(
+                "<task><meta><id>L0-001</id></meta><verification><step>%s</step>"
+                "</verification></task>\n" % step)
+
+        def run(mode):
+            p = subprocess.run([sys.executable, script, mode, tasks, app, "demo"],
+                               capture_output=True, text=True, timeout=120)
+            return p.returncode, (p.stdout or ""), (p.stderr or "")
+
+        write("Run: pytest")
+        rc, out, _err = run("record")
+        assert rc == 0 and "RECORDED" in out, out
+
+        # The between-runs edit: the exact move the fourth crossing made.
+        write("Run: pytest -k not_the_broken_one")
+        rc, out, err = run("record")
+        assert rc == 0, (
+            f"a re-record after an edit between runs exited {rc}. Fixing a task between runs is "
+            f"the supported path -- item 63's escalation exists so an unsatisfiable task has "
+            f"one -- and blocking it here would take that away")
+        assert "CHANGED SINCE LAST RUN" in err and "L0-001" in err, (
+            f"the re-record replaced a snapshot without saying what it replaced:\n{err}")
+        assert "not_the_broken_one" in err and err.count("---") >= 1, (
+            f"the report names the file and shows no diff. A summary of an edit to an acceptance "
+            f"criterion is not the evidence:\n{err}")
+        assert "changed since the last run" in out, (
+            f"the RECORDED line does not carry the count, so a caller reading stdout sees a "
+            f"clean record: {out}")
+
+        edits = os.path.join(app, ".execute", "demo", "task-edits.jsonl")
+        assert os.path.isfile(edits), "nothing recorded the edit between runs"
+        entry = json.loads(open(edits, encoding="utf-8").read().splitlines()[0])
+        assert entry["kind"] == "edited-between-runs", (
+            f"the record does not distinguish an edit between runs from one during a dispatch: "
+            f"{entry}. They are the same act and only one of them is legitimate, so the KIND is "
+            f"the whole of the difference")
+        assert entry["sha_before"] != entry["sha_after"], entry
+        assert os.path.isfile(os.path.join(app, ".execute", "demo", entry["diff"])), (
+            f"the record points at a diff that was never written: {entry['diff']}")
+
+        # The new snapshot is the edited file -- the resume must not fight the fix it recorded.
+        rc, out, _err = run("verify")
+        assert rc == 0 and "UNCHANGED" in out, (
+            f"after recording the edit, the new snapshot does not match the task files: {out}")
+
+        # And a mid-dispatch edit is still a stop, distinguished only by `kind`.
+        write("Run: true")
+        rc, _out, err = run("verify")
+        assert rc == 1 and "EDITED" in err, f"a mid-dispatch edit stopped being a stop: {err}"
+        kinds = [json.loads(l)["kind"] for l in open(edits, encoding="utf-8").read().splitlines()]
+        assert kinds == ["edited-between-runs", "modified"], (
+            f"the two kinds of edit are not told apart in the record: {kinds}")
+
+        # Two diffs, two files: a second edit must not overwrite the record of the first.
+        diffs = os.listdir(os.path.join(app, ".execute", "demo", "task-edits"))
+        assert len(diffs) == 2, (
+            f"{len(diffs)} diff file(s) for two edits to the same task. A record that overwrites "
+            f"itself is the erasure P45 was about, one directory down: {diffs}")
+    finally:
+        rmtree(root)
+
+    # And /execute is told to report it, since a resume that says nothing is how P45 stayed
+    # invisible through a whole run.
+    ex = prose(open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read())
+    assert re.search(r"re-record says what it replaced|changed since the last run", ex, re.I), (
+        "/execute does not mention that a re-record reports what it replaced, so the lines land "
+        "in a file nobody was told to read")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
