@@ -3676,6 +3676,250 @@ as success, `--layer` accepting anything, and each of the two `NOTE:` lines sile
 the wiring and the prose, including the quoted-history trap and the pair that removes the true
 half of the Critical Rule as well as the false one.
 
+## Phase 8 — The residue.
+
+Group order: `8a` schema-6 · `8b` the three `open` reader rows, on branch `phase-8-the-residue`.
+
+**Not plan items, and that is the point of the phase.** Both were written down rather than
+carried: `SCHEMAS.json` recorded the schema-6 content work through four phases, and `readers.md`
+has carried three `open` rows since item 23's audit. Neither is a new finding; both are things the
+plan finished by *naming* and left for somebody to do. **The grouping is this ledger's, not the
+plan's** — the same arrangement as Phase 5's five commit groups.
+
+| Group | Status | Commit |
+|---|---|---|
+| **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `3c61ed9` |
+| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | **Landed** 2026-09-07 | `147d38e` |
+
+**Suite:** 125 checks at branch point → **128**. `failed 0`, `known 0`. **Both groups landed; the phase is complete.**
+
+---
+
+## 8a — the review the gate always required, and the four features it had been failing
+
+**Commit:** `3c61ed9` · **Addresses:** P26 (item 40's deferred half), P10 (item 22's finding) ·
+**Files:** `schema/core.md`, `schema/migration.md`, `schema/scripts/migrate.py`,
+`skills/breakdown/scripts/check-definition.py`, `tests/fixture/prd/SCHEMAS.json`,
+`tests/fixture/prd/schema-6/**` (new), `tests/mutants/review-gate.py` (new),
+`tests/test_toolchain.py`
+
+### The content work could not be content alone, and that is the finding
+
+The item was recorded as *"schema-6 content work"* — five fixture files whose content predates the
+bars now applied to them. It is not content work, for two mechanical reasons found on opening it:
+
+- **A version with no shape delta is not a schema version.** The registry's rule 2 defines a
+  frozen fixture as one that changes only when *the migration's expected output* changes.
+- **Applying the fixes to `schema-5` in place breaks the step before it.** That comparison strips
+  `acceptance-criteria`, `gaps` and `priority`; a `<data-model>` appearing in schema-5 would have
+  to be added to *those* judgement elements — weakening an existing check to accommodate new
+  content, which is P2's mistake with the arrow reversed.
+
+So the content rides with the shape change `SCHEMAS.json` predicted all along: item 40's second
+gate half, which had been deferred since Phase 5 with *"the second half has nowhere to be
+recorded, and adding one is a schema version"*.
+
+### `<review by= at= sha=>`, and why the hash is the whole element
+
+The bar is *the mechanical tests pass **and** a review has been recorded*. Four phases had only
+the first half, so a feature labelled `defined` and one labelled `defined` **after somebody read
+it** were the same file.
+
+```xml
+<review by="lee" at="2026-09-07" sha="15538c7661d0"/>
+```
+
+**Without `sha` this element records nothing.** It would say a review happened once and let the
+file be rewritten underneath it — a ledger recording adjectives, which is the defect
+`record-task.sh` was written to avoid one artefact along. With it there are three states, and the
+middle one exists only because the hash does:
+
+| | |
+|---|---|
+| **reviewed** | `sha` matches the file with the `<review>` element removed |
+| **stale** | it differs — reviewed, then edited |
+| **not reviewed** | absent |
+
+**The hash excludes the element it lives in**, or writing a review would change the file the
+review describes and every review would be stale on arrival. That is the first mutant in the
+round, because it is the version somebody writes first and it looks entirely reasonable.
+
+**Any edit invalidates it, a reflow included.** Deliberate: the alternative is a canonicaliser
+deciding which edits are cosmetic, and that judgement is what the reviewer was there to supply.
+It was exercised without being planned — adding `<considerations>` to three features mid-build
+invalidated their reviews, and they had to be re-recorded.
+
+**Reported, never refused; `--strict` is the exit code.** §4.2's principle is that a wrong label
+signals wrong content, so a gate that blocks the label invites relabelling rather than fixing.
+
+### R13 is the first migration rule with no mechanical half at all
+
+| Rule | What it does |
+|---|---|
+| **R11**, **R12** | a document `<status>` outside `in-progress\|complete` becomes `in-progress` — the **weaker** claim, because a machine resolving toward `complete` asserts an interview finished that nobody finished |
+| **R13** | a `defined` feature must carry a `<review>`. There is nothing in the file to derive one from, so the transform is the identity and every such feature reports `PARTIAL` |
+
+**The rejected alternative was a placeholder review** written by the migration so the shape would
+be present. It is in the round as a mutant: the schema would be satisfied, the gate would pass,
+and nobody would have read anything.
+
+R11/R12 also needed adding to `applied_adds_values` — the per-rule exemption from the rename
+invariant, which R10 already needed for the same reason: mapping one value onto another is not a
+rename. The invariant caught it on the first run and refused to write the files, which is the
+exemption list working as intended rather than an obstacle.
+
+### Three checks used the fixture's defects as their positive control
+
+Fixing the corpus broke them, and each said so by name — one of them in so many words: *"If the
+fixture has been fixed, update this check deliberately."*
+
+| Check | Had asserted | Now |
+|---|---|---|
+| the well-defined bar | the fixture FAILS t2/t4 | the fixture passes, and every test is broken here instead |
+| artefact conformance | the fixture carries an invalid document status | the current version is clean; the check injects one |
+| coverage | criterion ids listed by hand | derived from the fixture, so a new criterion cannot orphan it |
+
+**A control that depends on a defect staying unfixed is a control that argues against fixing it.**
+Three of them had accumulated, all pointing at the same five files, and the item that fixed those
+files is the item that had to rewrite them.
+
+### Two of my own, caught by guards that already existed
+
+**A `<notes>` holding only a `<data-model>` is a schema-3 shape.** Item 27 split notes into
+`<data-model>` and `<considerations>`, and R6 reads the second as the marker that the split
+happened — so three features silently regressed a version until `check-artefacts.py` reported
+them as `OLD`. They now carry the consideration that belongs with each data model.
+
+**My new check hardcoded `schema-5` and `schema-6`**, and the suite's own *nothing hardcodes a
+schema fixture version* check rejected it. Both ends are now derived from the registry, which is
+what makes the check exercise the newest step rather than the step it was written against.
+
+### What the fixture is now
+
+**12 artefacts, `0 invalid, 0 written in an older spelling`** — the first time the current corpus
+has been clean on both counts. schema-5 reported 2 invalid and 8 files in an older spelling, and
+those numbers were the reason this item existed.
+
+### Verification
+
+`python tests/test_toolchain.py` — **125 → 127**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/review-gate.py` — **10 of 10 caught**, no survivors.
+
+Five mutants break the hash rule, because the hash is the difference between a record and a claim:
+it covers the review element (stale on arrival), it is never compared, staleness is reported and
+then passed by `--strict`, absence stops being reported, the recorder signs the review itself.
+Four break the migration, including the placeholder review and the status resolving toward
+`complete`. The tenth breaks the fixture back to failing the bar it is the reference for.
+
+**Two orphan checks fired**, both expected: the fixture mutant and the migrate mutants also trip
+the golden comparison and the bar's own check, which read the same files.
+
+---
+
+## 8b — three references nothing followed, and the two defects found by following them
+
+**Commit:** `147d38e` · **Addresses:** P24 (item 39's rule, on the path that never had it),
+P2 (a producer with no consumer) · **Files:**
+`skills/breakdown/scripts/check-references.py`, `skills/breakdown/scripts/check-gate.py`,
+`skills/crd/references/crd-format.md`, `schema/readers.md`,
+`tests/mutants/crd-refs.py` (new), `tests/test_toolchain.py`
+
+### One reader for three elements, because it is one rule
+
+`readers.md` carried three `open` rows from item 23's audit: `<project-ref>` — **`Required` in
+every CRD and read by nothing** — with `<prd-ref>` and `<feature-ref>`. A producer with no
+consumer three times over, one of them required, which is P2's shape on the CRD path.
+
+They resolve in `check-references.py`, the script that already resolved the PRD path's citations.
+**The same program rather than a second one, because it is the same rule**: a reference that names
+something must resolve to it, or be reported by name. That is item 39, arriving where it had never
+been applied.
+
+| Element | What follows it now |
+|---|---|
+| `<project-ref>` | resolves to a file, and is **compared** against the project the run is for |
+| `<prd-ref>` | resolves, when present |
+| `<feature-ref id=>` | resolves against `PROJECT.md`'s `<feature id=>` |
+
+**`<project-ref>` is compared, never used to resolve.** Letting a document choose which
+`PROJECT.md` a run reads would hand a file authority over where the run points; comparing catches
+the case that matters — a CRD describing a change to one project, executed against another.
+Without `--project-path` the check says it could not make that comparison rather than reporting a
+check it did not make.
+
+### The gate had been skipping it by construction
+
+`check-references.py` took a PRD *directory*, so `check-gate.py` short-circuited it for a CRD:
+`(0, "") if os.path.isfile(args.document)`. **That is why three elements could sit unread through
+two audits** — the one caller that would have followed them could not call the script at all. The
+gate now runs it for a CRD and carries what it says.
+
+### Two defects found by making the check run rather than read
+
+Both were invisible to the first version of the check, which asserted that the word `dangling`
+appeared in the gate's source. A mutant dropped the findings loop and left the word — the fifth
+presence-assertion in this build to fail the same way — and forcing the check to *run* the gate
+found two real things behind it:
+
+- **The gate counted the dangling reference and printed it nowhere.** `gate: 2 finding(s)` with
+  every visible section reading `OK`. It now has a fourth section, on the CRD path only.
+- **`--json` was not JSON.** It printed the object and then the human summary line, so
+  `--json | jq` failed on trailing data. **Nothing had ever parsed that output until this check
+  did**, which is how a flag stays wrong for months. `--json` now emits the object and nothing
+  else; the exit code carries the same decision the line described.
+
+And the second fix was not enough either: asserting the *printed* line still passed while the
+finding was dropped, because the print does not read `findings`. The check asserts both halves of
+the contract — the human report names the reference, the machine report counts it.
+
+### A fourth control that depended on the state it was measuring
+
+`every element the schema defines has a reader` asserted that some `open` rows existed, using
+their presence as evidence its parser worked. Closing the last three broke it. It now asserts the
+`open` **verdict is still defined** and that the table parses: the vocabulary has to survive a
+corpus with no instances of it, or the next producer with no consumer arrives to a verdict nothing
+exercises.
+
+**That is four such controls in one phase** — three in 8a against the fixture's defects, one here
+against the exception list. They accumulate for a reason worth naming: a control written *while*
+a defect is live is free, and the cost lands on whoever fixes the defect.
+
+### Verification
+
+`python tests/test_toolchain.py` — **127 → 128**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/crd-refs.py` — **9 of 9 caught**, after 8 of 9 twice.
+
+Six mutants break the resolver in each direction it could quietly stop resolving; two break the
+wiring, separately, because *the gate calls it* and *the gate does something with what it says*
+are different claims and the second one survived twice; the ninth restores an `open` row, which
+would put this file back into disagreement with the reader it now has.
+
+**The round was killed by the ten-minute timeout mid-mutant**, leaving the tree mutated. Restored
+with `git checkout-index` from the index staged before it — which is why `git add -A` before a
+round is a rule here — and re-run in the background, where a round that takes longer than a
+foreground call allows belongs.
+
+---
+
+## Phase 8 is complete
+
+`8a` · `8b`, both landed. **125 checks at branch point → 128.**
+
+**Neither group was a plan item, and both were things the plan finished by naming.**
+`SCHEMAS.json` carried the schema-6 content work through four phases and `readers.md` carried
+three `open` rows through two audits; each was recorded rather than done, and each turned out to
+be larger than its record — the content work was a schema version, and the three unread elements
+were unread because their one caller could not call the script.
+
+**What the phase actually removed** is two places where the toolchain described itself
+inaccurately: a `defined` label that nobody had to have read, and a `Required` element that
+nothing resolved. Both had been true for months, both were written down, and neither was visible
+in any run.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

@@ -30,7 +30,7 @@
     "run rather than merely stored."
   ],
 
-  "current": "schema-5",
+  "current": "schema-6",
 
   "versions": {
     "schema-1": {
@@ -72,13 +72,23 @@
       "notes": "quokka-telemetry is where the specification-gap bar first fires: it carries a <gap kind=\"specification\"> and is therefore in-progress rather than defined. Item 43 recorded that rule as sound in principle and unexercised in fact; this is the fixture exercising it. link-shelf/crd/archive-links.md is the first structured CRD in the corpus and arrives HERE rather than at schema-1: until item 46 the CRD path had nothing this plan had changed, and back-filling it into three frozen versions to give it a history it did not have would have broken rule 2 to buy nothing."
     },
     "schema-5": {
-      "status": "current",
+      "status": "accepted",
       "description": "Items 46, 47 and 48: the CRD path takes the parity changes. <requirements> is retired and each entry becomes a criterion in the single list, renumbered and carrying derived-from=\"requirement-N\"; requirement-level MoSCoW becomes P0|P1|P2 one to one; <meta> gains a document-level MoSCoW <priority>; and <gaps> arrives. PRD features, PROJECT.md and what-next.md are unchanged and are named as unchanged.",
       "projects": ["link-shelf", "staff-service"],
-      "frozen": false,
+      "frozen": true,
+      "frozen_sha256": "ead52d55970ec566babd530444d90266da80259a967f3ca621124009c0adf47d",
       "migration_from_previous": "mixed",
       "judgement_elements": ["acceptance-criteria", "gaps", "priority"],
       "notes": "The first step whose mechanical half MOVES content rather than relabelling it, which is why the criterion-id invariant had to be widened from equality to a prefix -- an existing id must still resolve, but appending is now legitimate. The judgement surface is wide because three of the four changes have no mechanical half at all: the EARS sentence and `pattern` for a migrated requirement, the document tier, and the gaps. A `wont-have` requirement is an ESCALATION rather than a mapping -- P0|P1|P2 has no `not building this` level by design -- and that path is exercised separately from the golden comparison."
+    },
+    "schema-6": {
+      "status": "current",
+      "description": "Item 40's gate gets its second half. <review by= at= sha=> in a feature's <meta> records that somebody read it, and `sha` -- the first 12 hex of sha256 over the file WITHOUT the review element -- is what separates `reviewed` from `reviewed, then edited`. The element is optional in the schema and required by the BAR: a tbd or in-progress feature has nothing to review yet. The document-level <status> in index.md and what-next.md is also constrained to its own enum, which nothing had ever validated.",
+      "projects": ["link-shelf", "staff-service"],
+      "frozen": false,
+      "migration_from_previous": "mixed",
+      "judgement_elements": ["review", "notes", "data-model", "acceptance-criteria"],
+      "notes": "The first step whose feature half is ENTIRELY a person's: nothing can invent a review, so R13 has no mechanical half at all and every `defined` feature it meets reports PARTIAL. That is the honest shape of item 40's gate -- the tests are a script's and the reading is not. The mechanical half is R11 and R12, mapping a document status outside `in-progress|complete` to `in-progress`: the weaker claim, chosen because a machine resolving toward `complete` would assert an interview finished that nobody finished. The content the bar had been failing since Phase 5 lands here too -- a data model for four features, an unwanted-behaviour criterion for list-links, and the two document statuses -- because fixing content rather than lowering four <definition> labels is what section 4.2 requires, and a frozen fixture changes only when the migration's expected output does."
     }
   },
 
@@ -88,7 +98,8 @@
       "outcome": "NOT a schema version, and the prediction that they would be is corrected here rather than deleted.",
       "why": "Items 16 and 17 change the TASK format, and a task is not a versioned artefact. migrate.py recognises five roots -- feature, crd, prd, what-next, project-context -- and a task is none of them, because tasks are regenerable output rather than authored documents: the way to move a task set to a new shape is to re-run /breakdown, not to migrate it. Versioning them would have meant a fixture and a migration step for files nobody ever hand-edits. manifest.json carries its own MANIFEST_SCHEMA_VERSION, which went 1.0 -> 1.1 for item 16's fields, and that is the correct granularity."
     },
-    "schema-6": {
+    "_schema-6": {
+      "outcome": "LANDED as schema-6 above. The entry is kept rather than deleted, in the same spirit as `_items_16_17`: it predicted both the version and its content, and a prediction that came true is the only evidence the prediction was ever checked.",
       "arrives_with": ["item 38", "item 40"],
       "description": "No longer a placeholder: item 40 landed and named exactly one thing it needs from this version. The bar's gate is 'the mechanical tests pass AND a review has been recorded', check-definition.py is the whole of the first half, and no artefact carries anywhere to record the second. Item 38's gate belongs in the same version because it is the other consumer of a recorded judgement.",
       "unblocks": [],

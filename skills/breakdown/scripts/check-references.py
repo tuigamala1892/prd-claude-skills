@@ -7,6 +7,23 @@ features they drive. Measured against the sample corpus: 19 distinct decision re
 mentions, 22 distinct questions over 44, none of them validated. A feature whose scope was
 settled by a record that no longer exists is broken down without it, and nothing says so.
 
+AND THE SAME RULE ON THE CRD PATH, WHICH NEVER HAD IT
+
+A CRD carries three references of its own and, until this, **nothing followed any of them**:
+`<project-ref>` names the `PROJECT.md` the change is against and was `Required` in every CRD;
+`<prd-ref>` is the only structured link from a change back to the PRD that produced the feature;
+and each `<feature-ref id=>` names a feature in `PROJECT.md`. All three were `open` rows in
+`readers.md` -- a producer with no consumer, three times, which is P2's shape on the CRD path.
+
+`check-references.py <crd-file> --project-path <path>` resolves them. It is the same program
+rather than a second one, because the rule is the same rule: a reference that names something
+must resolve to it, or be reported by name.
+
+**`<project-ref>` is CHECKED against the project the run resolved, never used to resolve it.**
+Letting a document choose which `PROJECT.md` a run reads would hand a file authority over where
+the run points; comparing them instead catches the case that matters -- a CRD describing a
+change to one project being executed against another.
+
 WHAT IS CHECKED
 
   ADR-NNN citations   resolve to a record in the decision directory
@@ -252,9 +269,79 @@ def index_principles(path):
     return out
 
 
+PROJECT_REF = re.compile(r"<project-ref>\s*(.*?)\s*</project-ref>", re.S)
+PRD_REF = re.compile(r"<prd-ref>\s*(.*?)\s*</prd-ref>", re.S)
+FEATURE_REF = re.compile(r'<feature-ref\b[^>]*\bid="([^"]+)"')
+PROJECT_FEATURE = re.compile(r'<feature\b[^>]*\bid="([^"]+)"')
+
+
+def check_crd(crd_path, project_path):
+    """Resolve a CRD's own references. Returns (errors, warnings, counted)."""
+    errors, warnings, counted = [], [], 0
+    text = read(crd_path)
+    rel = os.path.basename(crd_path)
+    here = os.path.dirname(os.path.abspath(crd_path))
+
+    def resolve(target):
+        """A ref is relative to the project when one was given, else to the CRD."""
+        if os.path.isabs(target):
+            return target
+        for base in ([project_path] if project_path else []) + [here]:
+            candidate = os.path.normpath(os.path.join(base, target))
+            if os.path.exists(candidate):
+                return candidate
+        return os.path.normpath(os.path.join(project_path or here, target))
+
+    project_md = None
+    m = PROJECT_REF.search(text)
+    if not m:
+        errors.append(f"{rel}: no <project-ref>. It is required, and a change with no named "
+                      f"target is one nothing can place")
+    else:
+        counted += 1
+        project_md = resolve(m.group(1))
+        if not os.path.isfile(project_md):
+            errors.append(f"{rel}: <project-ref>{m.group(1)}</project-ref> does not exist")
+        elif project_path:
+            # The comparison that makes the element worth having: a CRD naming a different
+            # PROJECT.md from the one the run is using is a change about another codebase.
+            expected = os.path.normpath(os.path.join(project_path, "PROJECT.md"))
+            if os.path.normcase(os.path.abspath(project_md)) != os.path.normcase(
+                    os.path.abspath(expected)):
+                errors.append(f"{rel}: <project-ref> names {m.group(1)}, and this run is "
+                              f"against {expected}. One of the two is about another project")
+
+    m = PRD_REF.search(text)
+    if m and m.group(1):
+        counted += 1
+        prd = resolve(m.group(1))
+        if not os.path.exists(prd):
+            errors.append(f"{rel}: <prd-ref>{m.group(1)}</prd-ref> does not exist -- the only "
+                          f"structured link from this change back to the PRD that produced it")
+
+    refs = FEATURE_REF.findall(text)
+    known = None
+    if project_md and os.path.isfile(project_md):
+        known = set(PROJECT_FEATURE.findall(read(project_md)))
+    for fid in refs:
+        counted += 1
+        if known is None:
+            errors.append(f"{rel}: <feature-ref id=\"{fid}\"> and no PROJECT.md was resolved, "
+                          f"so nothing can say whether that feature exists")
+        elif fid not in known:
+            errors.append(f"{rel}: <feature-ref id=\"{fid}\"> resolves to no <feature id=> in "
+                          f"{os.path.basename(project_md)}")
+    if not refs:
+        warnings.append(f"{rel}: <related-features> names no feature. `which features does this "
+                        f"change touch` is then answered by prose")
+    return errors, warnings, counted
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True, description=__doc__.splitlines()[0])
-    ap.add_argument("prd_dir")
+    ap.add_argument("prd_dir", metavar="prd-dir|crd-file")
+    ap.add_argument("--project-path", help="the project a CRD is against; enables the "
+                                           "<project-ref> comparison")
     ap.add_argument("--adr-dir")
     ap.add_argument("--questions")
     ap.add_argument("--architecture")
@@ -263,8 +350,26 @@ def main():
     args = ap.parse_args()
 
     prd_dir = os.path.abspath(args.prd_dir)
+
+    # A CRD is one file, so it takes the CRD branch. Its references are different references and
+    # the same rule.
+    if os.path.isfile(prd_dir):
+        project_path = os.path.abspath(args.project_path) if args.project_path else None
+        errors, warnings, counted = check_crd(prd_dir, project_path)
+        if not args.quiet:
+            for line in errors:
+                print(f"  DANGLING  {line}", file=sys.stderr)
+            for line in warnings:
+                print(f"  NOTE      {line}")
+            print(f"{counted} reference(s) checked in {os.path.basename(prd_dir)}: "
+                  f"{len(errors)} dangling, {len(warnings)} note(s)")
+        if not args.project_path:
+            print("  NOTE      no --project-path, so <project-ref> was resolved and not "
+                  "compared against the project this run is for")
+        return 1 if errors else 0
+
     if not os.path.isdir(prd_dir):
-        print(f"REFUSED: no such PRD directory: {prd_dir}", file=sys.stderr)
+        print(f"REFUSED: no such PRD directory or CRD file: {prd_dir}", file=sys.stderr)
         return 2
 
     adr_dir = os.path.abspath(args.adr_dir) if args.adr_dir else discover_adr_dir(prd_dir)

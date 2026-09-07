@@ -48,7 +48,7 @@ import os
 import re
 import sys
 
-VERSIONS = ["schema-1", "schema-2", "schema-3", "schema-4", "schema-5"]
+VERSIONS = ["schema-1", "schema-2", "schema-3", "schema-4", "schema-5", "schema-6"]
 
 # ---------------------------------------------------------------- artefact kinds
 
@@ -419,6 +419,39 @@ RULES = [
                and not _criteria_lacking(t, "pattern")
                and _meta_has(t, "priority")),
 
+    # R11 and R12 are schema-6's mechanical half: a DOCUMENT status outside its own enum.
+    # core section 3 gives `<status>` in index.md and what-next.md the values `in-progress` and
+    # `complete`; nothing had ever validated the value, and the fixture carried `defined` in both
+    # files at once -- so F3's DISAGREE check passed while /prd --resume, which finds unfinished
+    # PRDs by this tag, could classify neither.
+    #
+    # The mapping is to `in-progress`, the WEAKER claim, and that is the whole judgement here: a
+    # machine resolving toward `complete` would assert that an interview finished which nobody
+    # finished. Resolving toward protection is the same rule the layer-graph spike settled.
+    ("R11", "schema-6", "prd",
+     lambda t: _bad_doc_status(t),
+     lambda t: _fix_doc_status(t),
+     lambda t: not _bad_doc_status(t)),
+
+    ("R12", "schema-6", "what-next",
+     lambda t: _bad_doc_status(t),
+     lambda t: _fix_doc_status(t),
+     lambda t: not _bad_doc_status(t)),
+
+    # R13 has NO mechanical half, and it is the first rule of which that is true. Item 40's gate
+    # is `the mechanical tests pass AND a review has been recorded`; a review is a person having
+    # read the feature, and there is nothing in the file to derive one from. So the transform is
+    # the identity, every `defined` feature reports PARTIAL, and `--check` refuses the tree until
+    # somebody runs `check-definition.py --record-review`.
+    #
+    # The alternative was a transform that writes a placeholder review with no reviewer. That is
+    # a record of nothing, and this repository's own rule is that a ledger records SHAs rather
+    # than adjectives -- an unsigned review is the adjective.
+    ("R13", "schema-6", "feature",
+     lambda t: _is_defined(t) and "<review" not in t,
+     lambda t: t,
+     lambda t: not _is_defined(t) or "<review" in t),
+
     ("R6", "schema-4", "feature",
      lambda t: _meta_has(t, "priority") or ("<notes>" in t and "<considerations>" not in t)
                or "<user-story>" not in t,
@@ -427,6 +460,23 @@ RULES = [
                and ("<notes>" not in t or "<considerations>" in t)
                and "<user-story>" in t),
 ]
+
+DOC_STATUS = re.compile(r"<status>\s*([^<]*?)\s*</status>")
+DOC_STATUS_VALUES = ("in-progress", "complete")
+
+
+def _bad_doc_status(text):
+    m = DOC_STATUS.search(text)
+    return bool(m) and m.group(1) not in DOC_STATUS_VALUES
+
+
+def _fix_doc_status(text):
+    return DOC_STATUS.sub("<status>in-progress</status>", text, count=1)
+
+
+def _is_defined(text):
+    return bool(re.search(r"<definition>\s*defined\s*</definition>", text))
+
 
 # Rules whose transform cannot reach their own postcondition, and what the mechanical half DOES
 # reach. Named rather than inferred: "the transform did not finish" and "the transform is broken"
@@ -438,11 +488,16 @@ PARTIAL_OF = {
                     and ("<notes>" not in t or "<considerations>" in t),
     "R9": lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S)),
     "R10": lambda t: "<requirements>" not in t and not _criteria_lacking(t, "priority"),
+    # R13's mechanical half is EMPTY, so it is complete the moment the rule is reached. Stated as
+    # a constant rather than left out: "there was nothing mechanical to do" and "the mechanical
+    # part failed" are different answers, and only the second is a defect.
+    "R13": lambda t: True,
 }
 
 # Artefacts a step does not change. Named rather than defaulted: "no rule matched" and "no rule
 # was needed" are different answers, and only the first is an escalation.
 UNCHANGED = {
+    "schema-6": {"project-context", "crd"},
     "schema-2": {"prd", "what-next"},
     "schema-3": {"prd", "what-next", "project-context"},
     "schema-4": {"prd", "project-context", "crd"},
@@ -679,11 +734,16 @@ def applied_adds_values(applied):
     """True when a step legitimately introduces new attribute values.
 
     R4/R5 add `priority` and `derived-from`; R6 removes a duplicated <priority> and re-nests
-    note prose; R10 maps MoSCoW onto P0|P1|P2, which replaces one value with another by design. So the rename invariant -- values identical before and after -- does not hold
-    for them and must not be asserted. Stated per rule rather than switched off globally,
+    note prose; R10 maps MoSCoW onto P0|P1|P2, which replaces one value with another by design;
+    R11/R12 map a document `<status>` outside its own enum onto `in-progress`, which is the same
+    act one artefact along. So the rename invariant -- values identical before and after -- does
+    not hold for them and must not be asserted. Stated per rule rather than switched off globally,
     because the invariant is the only thing standing between a rename and an edit for R1-R3.
+
+    R13 is deliberately NOT here: it changes nothing at all, so the invariant holds for it and
+    exempting it would hide a transform that had started doing something.
     """
-    return any(rid in ("R4", "R5", "R6", "R9", "R10") for rid in applied)
+    return any(rid in ("R4", "R5", "R6", "R9", "R10", "R11", "R12") for rid in applied)
 
 
 if __name__ == "__main__":

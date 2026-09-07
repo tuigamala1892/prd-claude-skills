@@ -84,10 +84,28 @@ right name from the wrong file got a plausible answer rather than an error. A CR
 
 | Element | Required | Description |
 |---------|----------|-------------|
-| `project-ref` | Yes | Path to PROJECT.md |
-| `prd-ref` | No | Path to PRD if project was created with /prd |
+| `project-ref` | Yes | Path to PROJECT.md. **Resolved and compared** — see below |
+| `prd-ref` | No | Path to PRD if project was created with /prd. Resolved when present |
 | `related-features` | Yes | List of features affected by this change |
-| `feature-ref` | - | Reference to feature in PROJECT.md with relationship note |
+| `feature-ref` | - | Reference to feature in PROJECT.md with relationship note. `id` is resolved against `PROJECT.md`'s `<feature id=>` |
+
+**All three are resolved by `check-references.py`, and until group 8b none of them was.** They
+were a producer with no consumer three times over — one of them `Required` — which is P2's shape
+on this path. The rule is item 39's, arriving where it had never been applied: *a reference that
+names something must resolve to it, or be reported by name.*
+
+```bash
+python skills/breakdown/scripts/check-references.py docs/crd/<slug>.md --project-path <path>
+```
+
+**`<project-ref>` is compared against the project the run resolved, never used to resolve it.**
+Letting a document choose which `PROJECT.md` a run reads would hand a file authority over where
+the run points. Comparing them catches the case that matters: a CRD describing a change to one
+project, executed against another. Without `--project-path` the check says it could not make the
+comparison rather than reporting a check it did not make.
+
+`/breakdown`'s gate runs this for every CRD. It used to skip it entirely — the script only took a
+PRD directory — so a change request's references were followed by nothing at all.
 
 ### Change Request Section
 
