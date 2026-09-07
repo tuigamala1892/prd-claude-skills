@@ -3161,7 +3161,7 @@ where the commits fall is a claim about a context window and does not.
 Last, deliberately. A schema check written against a schema still moving is a check that gets
 edited rather than obeyed.
 
-### Phase 7 — What the run found, and what building it found.
+### Phase 7 — What the run found.
 
 `61` · `62` · `64` · `63` · `65` · `66`
 

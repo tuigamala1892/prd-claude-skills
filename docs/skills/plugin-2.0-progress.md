@@ -3412,7 +3412,9 @@ place to fix it. A rule that leaves the operator stuck is a rule that gets remov
 to the diff, beside `ledger.jsonl` and under the same self-ignoring `.gitignore` — so a run's
 edits share a fate with the commits it produced.
 
-### Where the record must NOT go, and the check that holds it there
+### Departure 1 — the record goes beside the ledger, not in it
+
+*The plan said the edit "must be visible afterwards" and left the place open. This is the place, and the reason the obvious one is wrong.*
 
 **Not in `ledger.jsonl`.** It is the obvious place — one record of what a run did — and it is
 wrong: `ledger-status.sh` reads every line there as a task with a commit, and an entry without one
@@ -3424,7 +3426,9 @@ The check asserts this by **running `ledger-status.sh` before and after an edit 
 comparing the JSON**, and the round includes the mutant that writes to `ledger.jsonl` instead. It
 is caught.
 
-### Two decisions worth writing down
+### Departure 2 — the edited task is held back, and nothing restores the file
+
+*The plan said a changed task is "a stop with the diff" and did not say what happens to the batch around it.*
 
 **The edited task is held back; its siblings still merge.** `should_stop` used to mean *merge
 what verified anyway*, and that rule stays for the tasks whose files were untouched — they were
@@ -3515,7 +3519,7 @@ the scope cross-check, the gate's slug scan, preflight's refusal, `write-state.p
 `state-schema.md`, the generator's brief and `review-criteria.md`. And item 59's grader, which is
 where the finding came from.
 
-### Three decisions the plan did not make for me
+### Deviations from the plan — three decisions it left open
 
 **1. `<from-feature>` — the criteria are grouped too, not just the citations.** The plan says
 `<satisfies-criteria>` is qualified by the feature it belongs to. The criteria a task *carries*
@@ -3591,7 +3595,7 @@ that have to agree about them.
 `skills/execute/scripts/resolve-layers.py` (new), `skills/execute/SKILL.md`,
 `tests/mutants/layer-set.py` (new), `tests/test_toolchain.py`
 
-### What landed, and why it is a script
+### Departure — a script, not the instruction the plan specified
 
 The plan asked for three things: iterate `layer_plan.json`, delete *"Never skip layers: Execute in
 order (0→1→2→3→4)"*, and refuse a `--layer` the plan does not declare. All three landed — but the
