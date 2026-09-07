@@ -3157,7 +3157,7 @@ be measured by running it.
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
 | **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `a9964ea` |
-| **66** — `/execute` takes its layer set from the plan (P44) | **Landed** 2026-08-28 | `PENDING66` |
+| **66** — `/execute` takes its layer set from the plan (P44) | **Landed** 2026-08-28 | `6949f57` |
 
 **Suite:** 112 checks at branch point → **125**. `failed 0`, `known 0`. **All six items landed; the phase is complete.**
 
@@ -3587,7 +3587,7 @@ that have to agree about them.
 
 ## 66 — /execute takes its layer set from the plan, not from a list in its own prose
 
-**Commit:** `PENDING66` · **Addresses:** P44 · **Files:**
+**Commit:** `6949f57` · **Addresses:** P44 · **Files:**
 `skills/execute/scripts/resolve-layers.py` (new), `skills/execute/SKILL.md`,
 `tests/mutants/layer-set.py` (new), `tests/test_toolchain.py`
 
