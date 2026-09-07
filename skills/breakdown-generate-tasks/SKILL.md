@@ -135,15 +135,16 @@ Generate XML files following this exact structure:
     <estimated-files>2</estimated-files>
     <!-- <cwd>packages/billing</cwd>  only when the source names a component; see below -->
 
-    <source-feature>save-link</source-feature>
-    <moscow>must-have</moscow>
-    <satisfies-criteria>1,4</satisfies-criteria>
-    <requirement-level>P0</requirement-level>
+    <!-- One per feature this task descends from. Repeatable -- see Traceability below. -->
+    <source-feature slug="save-link" moscow="must-have"
+                    satisfies-criteria="1,4" requirement-level="P0"/>
   </meta>
 
   <context>
     <acceptance-criteria>
     <!-- The source feature's criteria, VERBATIM, with their original ids. Copy the element. -->
+    <!-- Wrap each feature's criteria in <from-feature slug=> when the task has more than -->
+    <!-- one <source-feature>; omit the wrapper when it has one. Ids repeat across features. -->
     <criterion id="4" pattern="event-driven" priority="P0">
     When a user submits a link, the system shall store it and return the stored record.
     </criterion>
@@ -322,17 +323,34 @@ Generate XML files following this exact structure:
 
 ## Traceability, and the four elements that carry it (items 16 and 17)
 
-**Every task outside Layer 0 must name where it came from.** Until item 16 a task named its
-feature nowhere at all, so attribution downstream was a string match on `<name>` — which is why
-`check-scope.py` could attribute nothing and why item 21's probe had to invent slugs that could
-not occur by coincidence.
+**Every task outside Layer 0 must name where it came from — and every feature it came from.**
+Until item 16 a task named its feature nowhere at all, so attribution downstream was a string
+match on `<name>`; until item 65 it could name only one, and a task covering two had to lie.
 
-| Element | Value | Where it comes from |
+One `<source-feature>` per feature, each carrying that feature's own values:
+
+| Attribute | Value | Where it comes from |
 |---|---|---|
-| `<source-feature>` | the feature's slug | the feature file you were given |
-| `<moscow>` | `must-have`, `should-have`, `could-have` | `index.md`'s entry for it. **Never `wont-have`** — those features never reach you (item 13) |
-| `<satisfies-criteria>` | comma-separated criterion ids | the criteria this task actually implements |
-| `<requirement-level>` | `P0`, `P1` or `P2` | **the highest** `priority` among those criteria |
+| `slug` | the feature's slug | the feature file you were given |
+| `moscow` | `must-have`, `should-have`, `could-have` | `index.md`'s entry for **that** feature. **Never `wont-have`** — those features never reach you (item 13) |
+| `satisfies-criteria` | comma-separated criterion ids | the criteria of **that** feature this task implements |
+| `requirement-level` | `P0`, `P1` or `P2` | **the highest** `priority` among **that feature's** cited criteria |
+
+```xml
+<source-feature slug="save-link"  moscow="must-have"   satisfies-criteria="1"   requirement-level="P0"/>
+<source-feature slug="tag-links"  moscow="should-have" satisfies-criteria="1,3" requirement-level="P1"/>
+```
+
+**Name every feature the task actually covers, and never narrow to the closest one.** An
+integration task that exercises three features belongs to three features. Three live runs met this
+case and produced three different workarounds — an invented `feature#id` notation, a task split to
+suit the schema, and a silent narrowing to one feature (**P43**). The last is the worst, because
+nothing downstream can tell it from a task that genuinely covers one: the coverage report, the
+scope cross-check, `tasks-summary.md` and the gate all believe it, so dropping that feature from
+scope silently takes the only end-to-end assertion of the others with it.
+
+**Do not split a task to avoid naming two features.** Splitting is a decision about the work;
+this element is a description of it. If the work is one task, say so and name both.
 
 **`<priority>` is not one of them and must not be touched.** It is an integer meaning merge order
 within the layer, and it has meant that since the beginning (**P3**). The tier goes in `<moscow>`
@@ -341,6 +359,30 @@ because that name was free.
 **Layer 0 tasks carry none of these**, and that is the only exemption. They create directories,
 config and a test harness — they descend from the tech stack, not from a feature, and inventing a
 `<source-feature>` for them would put a false attribution into item 30's coverage check.
+
+### Group the criteria by feature when there is more than one
+
+Criterion ids are **per feature**: `save-link` criterion 1 and `tag-links` criterion 1 are two
+different requirements with the same name. A task descending from more than one feature therefore
+wraps each feature's carried criteria:
+
+```xml
+<acceptance-criteria>
+  <from-feature slug="save-link">
+    <criterion id="1" pattern="event-driven" priority="P0">...</criterion>
+  </from-feature>
+  <from-feature slug="tag-links">
+    <criterion id="1" pattern="state-driven" priority="P1">...</criterion>
+  </from-feature>
+</acceptance-criteria>
+```
+
+- **Required when the task names more than one `<source-feature>`**, omitted when it names one.
+- `<test covers=>` takes a matching `from-feature` attribute under the same rule:
+  `<test id="2" covers="1" from-feature="tag-links">`.
+- **The `<criterion>` element inside is still copied byte-for-byte.** That is why the
+  qualification is a wrapper rather than a `feature#id` spelling inside the id — a run invented
+  that, and it edits the copy item 17 requires to be verbatim.
 
 ### Carry the criteria; do not rewrite them
 
@@ -397,6 +439,47 @@ resolved `<repo-structure>` (item 53) and passed it down:
 that the parent is where the test runner lives, and a wrong `<cwd>` fails verification in a way
 that looks like broken code. No declared component means no `<cwd>`, which means the worktree
 root — the behaviour every task had before the element existed.
+
+## Where your verification commands will run
+
+**Every `<verification>` step you write runs inside a git worktree of the target repository, and
+until now nothing told you so.** The concrete failure was a step asserting
+`pathlib.Path('.git').is_dir()`: false in a worktree, where `.git` is a *file*, so a correct
+implementation failed verification for a reason with nothing to do with the task. That is **P42**,
+and the class is every environment-shaped assertion invented here rather than measured.
+
+The execution context, stated once. `execute-batch` creates the worktree before the implementing
+agent exists, and every step runs there:
+
+```text
+cwd       the worktree root -- {worktree-dir}/{task-id} -- or <meta><cwd>, when the task declares one
+.git      a FILE, the gitlink pointing back at the primary repository; never a directory
+branch    `worktree-{task-id}`, created with -b by create-worktree.sh; never the base branch
+tree      the base branch's content, freshly checked out: no build output, no installed
+          dependencies, no untracked leftovers -- unless a step of this task creates them
+siblings  the other tasks of this layer run at the same time in worktrees of their own and are
+          NOT visible here; only layers already merged into the base branch are
+```
+
+`test -d .git`, `git branch --show-current` compared against `main`, `ls node_modules`, and any
+path reaching into another task's output are each **false for a task that is otherwise perfect**.
+
+### Assert the artefact, not the environment
+
+**This is the durable half.** The five facts above can go out of date; the preference below cannot,
+because it is about what a verification step is *for*. A step exists to decide whether this task
+did its job, and every claim about the surrounding machinery is a claim you did not measure.
+
+| Prefer | Over | Why |
+|---|---|---|
+| `python -c "import link_shelf"` | `test -d .git` | the first is a claim about this task's own output; the second is a claim about somebody else's execution model |
+| `pytest tests/test_store.py -v` | `git log --oneline \| wc -l` | the tests are the criteria; the commit count is whatever the implementer's TDD cycle happened to produce |
+| `test -f src/store.py` | `test "$(git branch --show-current)" = main` | the file is what the task promised; the branch name is decided three skills away and is never `main` here |
+
+**A step you cannot phrase as a claim about a file this task creates, a command this task makes
+runnable, or a behaviour one of its criteria names, is a step you should not write.** Where the
+task genuinely needs an environment property -- a service on a port, a migration already applied
+-- name in the same step what provides it, so a reviewer can tell a real dependency from a guess.
 
 ## Layer 0 Task Format
 
@@ -492,10 +575,12 @@ Layer 0 (setup) tasks are different - they use shell commands instead of code ge
 
 Before writing each task file, verify:
 
-- [ ] `<source-feature>`, `<moscow>`, `<satisfies-criteria>` and `<requirement-level>` are all
-      present (every layer except Layer 0)
-- [ ] every id in `<satisfies-criteria>` appears in `<context><acceptance-criteria>`, and every
-      criterion there is named by some `<test covers=>`
+- [ ] a `<source-feature>` for **every** feature this task covers, each carrying `slug`,
+      `moscow`, `satisfies-criteria` and `requirement-level` (every layer except Layer 0)
+- [ ] every id in a `satisfies-criteria` appears among **that feature's** carried criteria, and
+      every criterion carried is named by some `<test covers=>`
+- [ ] more than one `<source-feature>` ⇒ every criterion is inside a `<from-feature slug=>` and
+      every `<test>` carries `from-feature`
 - [ ] every carried `<criterion>` is byte-identical to the source, id included
 - [ ] `<requirement-level>` is the **highest** level among the criteria named, not the first
 - [ ] No "TODO", "TBD", "...", or placeholders
@@ -504,6 +589,9 @@ Before writing each task file, verify:
 - [ ] All fields have types specified
 - [ ] Test cases have concrete values
 - [ ] Verification commands are runnable
+- [ ] Every verification step holds **inside the worktree**: none asserts `.git` is a
+      directory, none names a branch, none reads output from another task in this layer
+- [ ] Each step asserts this task's own artefact wherever one would do
 - [ ] Interface contracts have imports
 
 ## Output

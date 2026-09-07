@@ -128,6 +128,11 @@ Work only there. Do not create a worktree, do not run `git worktree add`, and ne
 `cd` to {project_path} or above it.
 
 Task specification: {task_file_path}
+The task file is READ-ONLY. Do not edit it, for any reason. If it cannot be
+satisfied as written -- a verification step that contradicts a requirement, or
+asserts something no requirement produces -- stop and report status "blocked"
+with the blocker object your instructions describe. /execute hashes it before
+and after you run.
 Attempt: {attempt} of 5
 
 Read these first — they define the workflow and the commit format you must follow:
@@ -269,6 +274,31 @@ response to it — which is five guaranteed failures burning the allowance the r
 That is the F15 shape exactly: a correct instruction, weighed and reasoned past. The script
 exists so the decision is an exit code rather than a judgement.
 
+### Step 7b: A `blocked` Result Is Not a Failure and Never a Retry
+
+An agent returns `status: "blocked"` when the task cannot be satisfied by any implementation —
+a verification step contradicting a requirement, or asserting something no requirement produces.
+**Do not run the classifier on it, do not queue a retry, and do not increment the attempt.**
+Retrying cannot fix a defect in the task, and five attempts against an unsatisfiable task is five
+guaranteed failures followed by an `abandoned` report naming the wrong culprit.
+
+In this order:
+
+1. **Dispatch nothing further** in this batch.
+2. **Merge whatever already verified** — those tasks have commits and their task files were not
+   the defective one. Stopping is not a reason to lose progress.
+3. Return `should_stop: true`, `stop_reason_kind: "task_defect"`, the agent's `blocker` object
+   verbatim as `stop_reason`, and `defect_task`.
+
+**Report the blocker verbatim, both quoted halves.** The operator's next action is to fix the task
+in `/breakdown`, and *"L0-003 was blocked"* does not tell them what to fix. This is the path that
+exists so that reporting a contradiction is cheaper than editing the task around it (**P41**) — a
+rule that leaves the operator stuck is a rule that gets removed.
+
+**And it is the agent's claim, not your verdict.** If the step merely failed, the agent should
+have said `failed`; do not re-classify a failure as a defect to end a difficult batch, and do not
+re-classify a defect as a failure to keep the run going.
+
 ### Step 8: Collect Results
 
 Combine each agent's RESULT JSON with its verification verdict:
@@ -379,6 +409,26 @@ If any task is abandoned:
   "stop_reason": "Task L1-002 abandoned after 5 attempts"
 }
 ```
+
+If an agent reported `blocked` (Step 7b):
+```json
+{
+  "batch_number": 1,
+  "layer": "0-setup",
+  "tasks_total": 3,
+  "verified": ["L0-001"],
+  "failed": [],
+  "abandoned": [],
+  "defect_task": "L0-003",
+  "merge_queue_ready": 1,
+  "should_stop": true,
+  "stop_reason_kind": "task_defect",
+  "stop_reason": "L0-003: step `Verify: README.md does not contain \"TODO\"` contradicts requirement 4, \"the README must carry a TODO section listing deferred work\""
+}
+```
+
+`defect_task` is not in `failed` and not in `abandoned`: it has spent no attempt, and it failed
+nothing. It is outstanding, and it stays outstanding until the task is fixed.
 
 If Step 7 classified a failure as `limit`:
 ```json

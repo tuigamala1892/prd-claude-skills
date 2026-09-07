@@ -77,6 +77,64 @@ def criteria_in(text):
     return out
 
 
+def criteria_by_feature(text):
+    """A task's carried criteria, grouped by the feature each came from (item 65).
+
+    `<acceptance-criteria>` may wrap its criteria in `<from-feature slug="...">` blocks, and must
+    when the task descends from more than one feature: criterion ids are per feature, so `1` from
+    `save-link` and `1` from `tag-links` are different requirements with the same name. Criteria
+    outside any wrapper are returned under None -- unambiguous for a single-feature task, and a
+    failure for a task that spans several.
+    """
+    m = re.search(r"<acceptance-criteria>(.*?)</acceptance-criteria>", text, re.S)
+    if not m:
+        return {}
+    body = m.group(1)
+    groups, rest = {}, body
+    for slug, inner in re.findall(r'<from-feature\s+slug="([^"]+)"\s*>(.*?)</from-feature>',
+                                  body, re.S):
+        groups[slug] = criteria_in(inner)
+        rest = rest.replace(inner, "")
+    loose = criteria_in(rest)
+    if loose:
+        groups[None] = loose
+    return groups
+
+
+def edges_in(text):
+    """Every feature a task descends from, in either shape (item 65).
+
+    New: `<source-feature slug="save-link" moscow="must-have" satisfies-criteria="1,4"
+    requirement-level="P0"/>`, repeatable. Old: one `<source-feature>slug</source-feature>` with
+    sibling `<moscow>`, `<satisfies-criteria>` and `<requirement-level>` elements, which still
+    fill in an attribute the new form omits.
+
+    P43 is why this repeats: three live runs met a task covering more than one feature and
+    invented three different workarounds, the worst of them silent.
+    """
+    m = re.search(r"<meta>(.*?)</meta>", text, re.S)
+    if not m:
+        return []
+    meta = m.group(1)
+    sib = {tag: meta_of(text, tag)
+           for tag in ("moscow", "satisfies-criteria", "requirement-level")}
+    edges = []
+    for attrs, body in re.findall(r"<source-feature\b([^>]*?)(?:/>|>(.*?)</source-feature>)",
+                                  meta, re.S):
+        def attr(name):
+            a = re.search(r'\b%s="([^"]*)"' % name, attrs)
+            return norm(a.group(1)) if a else None
+        slug = attr("slug") or norm(body)
+        if not slug:
+            continue
+        cites = attr("satisfies-criteria") or sib.get("satisfies-criteria") or ""
+        edges.append({"slug": slug,
+                      "moscow": attr("moscow") or sib.get("moscow"),
+                      "level": attr("requirement-level") or sib.get("requirement-level"),
+                      "cites": [x.strip() for x in cites.split(",") if x.strip()]})
+    return edges
+
+
 def task_files(tasks_dir):
     for dirpath, dirnames, filenames in os.walk(tasks_dir):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
@@ -117,20 +175,20 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
     tasks = []
     for path in task_files(tasks_dir):
         text = open(path, encoding="utf-8").read()
+        edges = edges_in(text)
         tasks.append({
             "path": path,
             "id": meta_of(text, "id") or os.path.basename(path),
-            "source": meta_of(text, "source-feature"),
-            "moscow": meta_of(text, "moscow"),
-            "level": meta_of(text, "requirement-level"),
-            "cites": [x for x in (meta_of(text, "satisfies-criteria") or "").split(",") if x],
+            "edges": edges,
+            "slugs": [e["slug"] for e in edges],
+            "groups": criteria_by_feature(text),
             "criteria": criteria_in(text),
         })
     if not tasks:
         print(f"nothing to grade: no task files under {tasks_dir}", file=sys.stderr)
         return 2
 
-    attributed = [t for t in tasks if t["source"]]
+    attributed = [t for t in tasks if t["edges"]]
     if not attributed:
         print(f"nothing to grade: none of {len(tasks)} task(s) carries a <source-feature>. "
               f"Item 16 did not reach this run, so assertions 1-4 have no subject",
@@ -140,47 +198,61 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
     # ---- 1. Criteria arrive verbatim, with their ids. P2's fix, and the assertion that would
     #         have failed for the whole life of the toolchain.
     for t in attributed:
-        source = features.get(t["source"])
-        if not source:
-            continue  # assertion 2's problem, not this one
-        for cid, body in t["criteria"].items():
-            want = source["criteria"].get(cid)
-            if want is None:
-                # A QUALIFIED id -- `feature#3` -- is a different finding from a wrong one, and
-                # conflating them buries the interesting half. The first live run produced 37 of
-                # these: the generator invented `feature#id` for the criteria it CARRIES, while
-                # <satisfies-criteria> stayed bare as the spec requires, so the two halves of one
-                # task no longer refer to each other. The cause is a gap in item 16 rather than a
-                # defect in the run -- <source-feature> is single-valued, so a task carrying a
-                # neighbouring feature's criterion has no way to say whose it is.
-                if "#" in cid:
-                    qualified.append(f"{t['id']}: {cid}")
-                    continue
-                failures.append(f"1: {t['id']} carries a criterion {cid} that "
-                                f"{t['source']} does not have")
-            elif want != body:
-                failures.append(
-                    f"1: {t['id']} REWORDED {t['source']} criterion {cid}.\n"
-                    f"      PRD:  {want}\n"
-                    f"      task: {body}")
-        for cid in t["cites"]:
-            if cid not in t["criteria"] and not any(
-                    c.endswith("#" + cid) for c in t["criteria"]):
-                failures.append(f"1: {t['id']} cites criterion {cid} in "
-                                f"<satisfies-criteria> but does not carry it in <context>")
+        # Which carried criteria belong to which feature. A single-feature task may leave them
+        # ungrouped -- there is nothing to confuse them with -- and a task spanning features must
+        # group them, because ids repeat across features and `1` alone names two requirements.
+        loose = t["groups"].get(None) or (t["criteria"] if not t["groups"] else {})
+        if len(t["edges"]) > 1 and loose:
+            failures.append(
+                f"1: {t['id']} descends from {len(t['edges'])} features and carries "
+                f"{len(loose)} criterion/criteria outside any <from-feature>. Ids repeat across "
+                f"features, so an ungrouped id names two requirements at once")
+
+        for edge in t["edges"]:
+            source = features.get(edge["slug"])
+            if not source:
+                continue  # assertion 2's problem, not this one
+            carried = t["groups"].get(edge["slug"])
+            if carried is None:
+                carried = loose if len(t["edges"]) == 1 else {}
+            for cid, body in carried.items():
+                want = source["criteria"].get(cid)
+                if want is None:
+                    # `feature#3` is a notation no schema defines, and the first live run
+                    # invented it for 37 criteria because <source-feature> was single-valued and
+                    # a task carrying a neighbour's criterion had no way to say whose it was.
+                    # Item 65 gave it one, so this is now a FAILURE rather than a finding: the
+                    # gap it worked around is closed, and <from-feature> is the supported answer.
+                    if "#" in cid:
+                        qualified.append(f"{t['id']}: {cid}")
+                        continue
+                    failures.append(f"1: {t['id']} carries a criterion {cid} that "
+                                    f"{edge['slug']} does not have")
+                elif want != body:
+                    failures.append(
+                        f"1: {t['id']} REWORDED {edge['slug']} criterion {cid}.\n"
+                        f"      PRD:  {want}\n"
+                        f"      task: {body}")
+            for cid in edge["cites"]:
+                if cid not in carried and not any(c.endswith("#" + cid) for c in carried):
+                    failures.append(
+                        f"1: {t['id']} cites {edge['slug']} criterion {cid} in "
+                        f"<source-feature satisfies-criteria=> but does not carry it in "
+                        f"<context>")
     notes.append(f"1: {sum(len(t['criteria']) for t in attributed)} criterion copy/copies "
                  f"checked against the PRD, verbatim")
     if qualified:
-        notes.append(f"1: FINDING -- {len(qualified)} carried criterion id(s) are QUALIFIED "
-                     f"(`feature#id`), a notation the schema does not define. <source-feature> "
-                     f"is single-valued, so a task carrying a neighbour's criterion cannot say "
-                     f"whose it is, and a real run invented one. Needs a plan item; not graded "
-                     f"as a failure because the criterion TEXT is unaltered")
+        failures.append(f"1: {len(qualified)} carried criterion id(s) are QUALIFIED "
+                        f"(`feature#id`), a notation the schema does not define: "
+                        f"{', '.join(qualified[:5])}. Item 65 made <source-feature> repeatable "
+                        f"and gave <acceptance-criteria> its <from-feature> grouping, so a task "
+                        f"carrying a neighbour's criterion can now say whose it is. This used to "
+                        f"be a finding because the schema could not express it; it can")
 
     # ---- 2. <source-feature> resolves BOTH ways.
-    named = {t["source"] for t in attributed}
+    named = {slug for t in attributed for slug in t["slugs"]}
     for slug in sorted(named - set(features)):
-        failures.append(f"2: a task names <source-feature>{slug}</source-feature>, which the "
+        failures.append(f"2: a task names <source-feature slug=\"{slug}\">, which the "
                         f"PRD does not contain")
     buildable = {s for s, f in features.items() if f["tier"] != "wont-have"}
     for slug in sorted(buildable - named):
@@ -189,6 +261,17 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
 
     # ---- 3. The coverage report names a REAL shortfall, by slug.
     victim = sorted(named & buildable)[0] if (named & buildable) else None
+    # Removing one feature's tasks can uncover ANOTHER feature, when a task walks both -- which
+    # is the ordinary case since item 65 and was unrepresentable before it. So the expectation is
+    # computed rather than assumed to be `[victim]`: what should be reported is every feature
+    # whose last task went with it.
+    survivors = {}
+    for t in attributed:
+        if victim in t["slugs"]:
+            continue
+        for slug in t["slugs"]:
+            survivors[slug] = survivors.get(slug, 0) + 1
+    expected_uncovered = sorted(s for s in (named & buildable) if not survivors.get(s))
     if victim is None:
         failures.append("3: no in-scope feature has tasks, so the shortfall probe cannot run")
     else:
@@ -198,7 +281,8 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
             shutil.copytree(tasks_dir, work)
             removed = 0
             for path in list(task_files(work)):
-                if meta_of(open(path, encoding="utf-8").read(), "source-feature") == victim:
+                if victim in [e["slug"] for e in
+                              edges_in(open(path, encoding="utf-8").read())]:
                     os.remove(path)
                     removed += 1
             p = run([sys.executable, os.path.join(SCRIPTS, "build-manifest.py"), work])
@@ -212,25 +296,29 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
                 except ValueError:
                     out = {}
                 got = sorted(f["slug"] for f in out.get("uncovered_features") or [])
-                if got != [victim]:
+                if got != expected_uncovered:
                     failures.append(
-                        f"3: removed {removed} task(s) for `{victim}` and the coverage report "
-                        f"named {got or 'nothing'}. A check that counts correctly and "
-                        f"attributes wrongly passes any test that only counts")
+                        f"3: removed {removed} task(s) naming `{victim}` and the coverage report "
+                        f"named {got or 'nothing'}, not {expected_uncovered}. A check that counts "
+                        f"correctly and attributes wrongly passes any test that only counts")
                 elif p.returncode != 1:
                     failures.append(f"3: a real shortfall exited {p.returncode}, not 1")
                 else:
                     notes.append(f"3: removing `{victim}`'s {removed} task(s) was reported as "
-                                 f"`{victim}` and nothing else")
+                                 f"{expected_uncovered} and nothing else")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
     # ---- 4. Both tiers reported. Not "a tier exists on the task" -- item 19 is about the
     #         OUTPUT, and <requirement-level> has no other reader at all.
-    missing_tier = [t["id"] for t in attributed if not t["moscow"] or not t["level"]]
+    # Per EDGE since item 65: both tiers belong to the edge, because a task that is must-have
+    # for one feature and could-have for another has two answers and the manifest takes the
+    # strongest. A task whose second edge carries neither would report a tier it did not earn.
+    missing_tier = sorted({f"{t['id']}/{e['slug']}" for t in attributed for e in t["edges"]
+                           if not e["moscow"] or not e["level"]})
     if missing_tier:
-        failures.append(f"4: {len(missing_tier)} attributed task(s) carry no <moscow> or "
-                        f"<requirement-level>: {', '.join(sorted(missing_tier)[:5])}")
+        failures.append(f"4: {len(missing_tier)} attributed edge(s) carry no moscow or "
+                        f"requirement-level: {', '.join(missing_tier[:5])}")
     if project:
         state_path = os.path.join(tasks_dir, "execute-state.json")
         if not os.path.isfile(state_path):
@@ -270,14 +358,19 @@ def grade(prd_dir, tasks_dir, project=None, quiet=False):
                 os.makedirs(layer, exist_ok=True)
                 with open(os.path.join(layer, "L1-999-wont.xml"), "w", encoding="utf-8",
                           newline="\n") as f:
+                    # The per-edge shape item 65 writes. The element form is still refused
+                    # -- preflight matches both -- but what /breakdown produces now is this, and
+                    # a probe that only exercises the retired shape stops proving anything the
+                    # day the last old task file is regenerated.
                     f.write("<task>\n  <meta>\n    <id>L1-999</id>\n    <name>W</name>\n"
                             "    <layer>1-foundation</layer>\n    <priority>1</priority>\n"
-                            "    <source-feature>rejected</source-feature>\n"
-                            "    <moscow>wont-have</moscow>\n  </meta>\n</task>\n")
+                            '    <source-feature slug="rejected" moscow="wont-have" '
+                            'satisfies-criteria="1" requirement-level="P0"/>\n'
+                            "  </meta>\n</task>\n")
                 p = run(["sh", flight, work, project])
                 if p.returncode == 0:
-                    failures.append("5: a task carrying <moscow>wont-have</moscow> passed "
-                                    "preflight. Item 20 is defence in depth and it did not fire")
+                    failures.append('5: a task carrying moscow="wont-have" passed preflight. '
+                                    "Item 20 is defence in depth and it did not fire")
                 elif "L1-999" not in p.stderr:
                     failures.append(f"5: preflight refused without naming the task:\n"
                                     f"{p.stderr}")

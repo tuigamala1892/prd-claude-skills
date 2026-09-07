@@ -63,6 +63,16 @@ _spec = importlib.util.spec_from_file_location(
 select_features = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(select_features)
 
+# And for the same reason: the manifest's own reader knows what a task descends from, in both
+# of the shapes a manifest can have (item 65). Re-deriving it here would give the toolchain two
+# answers to that question too.
+_bm_spec = importlib.util.spec_from_file_location(
+    "build_manifest", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "build-manifest.py"))
+build_manifest = importlib.util.module_from_spec(_bm_spec)
+_bm_spec.loader.exec_module(build_manifest)
+edges_of = build_manifest.edges_of
+
 LEVELS = ["P0", "P1", "P2"]
 CRITERION = re.compile(r"<criterion\b([^>]*)>", re.S)
 
@@ -135,22 +145,26 @@ def main():
 
     covered, cited, bad_source, forbidden = {}, {}, [], []
     for task in inventory:
-        slug = task.get("source_feature")
-        if not slug:
-            continue  # Layer 0 legitimately has none; assertion 1 is what catches a real gap
-        covered.setdefault(slug, []).append(task["id"])
-        cited.setdefault(slug, set()).update(task.get("satisfies_criteria") or [])
+        # Item 65: a task may descend from several features, and each edge carries its own
+        # criterion ids. Reading only the singular key -- which is what this did, and what the
+        # manifest still writes for a single-feature task -- attributes an integration task to
+        # one feature and scopes its criteria there too, which is P43 exactly.
+        for edge in edges_of(task):
+            slug = edge["slug"]
+            covered.setdefault(slug, []).append(task["id"])
+            cited.setdefault(slug, set()).update(edge.get("satisfies_criteria") or [])
 
-        if slug in skipped:
-            why = skipped[slug]["reasons"]
-            # Item 13's runtime backstop. A task descending from a feature nobody intends to
-            # build means the selection gate did not run, or ran and was ignored.
-            if any("item 13" in r for r in why):
-                forbidden.append((task["id"], slug, why[0]))
-            else:
-                bad_source.append((task["id"], slug, why[0]))
-        elif slug not in in_scope:
-            bad_source.append((task["id"], slug, "names a feature the document does not contain"))
+            if slug in skipped:
+                why = skipped[slug]["reasons"]
+                # Item 13's runtime backstop. A task descending from a feature nobody intends to
+                # build means the selection gate did not run, or ran and was ignored.
+                if any("item 13" in r for r in why):
+                    forbidden.append((task["id"], slug, why[0]))
+                else:
+                    bad_source.append((task["id"], slug, why[0]))
+            elif slug not in in_scope:
+                bad_source.append((task["id"], slug,
+                                   "names a feature the document does not contain"))
 
     # ---- 1. an in-scope feature with no task at all, reported BY NAME and by tier.
     uncovered = [r for slug, r in sorted(in_scope.items()) if slug not in covered]
@@ -169,6 +183,11 @@ def main():
         for cid in sorted(got - known, key=lambda x: (len(x), x)):
             unknown_criteria.append((slug, cid))
 
+    # DISTINCT tasks, not edges. Since item 65 a task may be attributed to three features, and
+    # counting the attributions reports "3 of 1 task(s) attributed" -- a summary line that
+    # disagrees with the set it summarises, which is the shape run 6's state file had.
+    attributed_ids = {tid for ids in covered.values() for tid in ids}
+
     problems = bool(uncovered or bad_source or forbidden or missing_criteria or unknown_criteria)
 
     if args.json:
@@ -178,11 +197,11 @@ def main():
             "forbidden_source_features": [{"task": t, "slug": s} for t, s, _ in forbidden],
             "uncovered_criteria": [{"feature": s, "id": c} for s, c in missing_criteria],
             "unknown_criteria": [{"feature": s, "id": c} for s, c in unknown_criteria],
-            "attributed_tasks": sum(len(v) for v in covered.values()),
+            "attributed_tasks": len(attributed_ids),
             "total_tasks": len(inventory),
         }, indent=2))
     elif not args.quiet:
-        print(f"{sum(len(v) for v in covered.values())} of {len(inventory)} task(s) attributed; "
+        print(f"{len(attributed_ids)} of {len(inventory)} task(s) attributed; "
               f"{len(in_scope)} feature(s) in scope "
               f"[--priority {args.priority}, --requirement-level {args.requirement_level}]")
         if not problems:

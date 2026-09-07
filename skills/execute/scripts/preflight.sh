@@ -96,7 +96,13 @@ fi
 #
 # grep over the task files rather than the manifest: the files are the deliverable, and a
 # manifest that disagrees with them is exactly what build-manifest.py exists to catch.
-wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)
+#
+# Both shapes since item 65 -- the per-edge attribute `moscow="wont-have"` and the element form
+# that preceded it. And the refusal fires on ANY edge rather than on the task's effective tier:
+# the effective tier is the strongest one, so a task carrying must-have AND wont-have would rank
+# as must-have and walk straight past the check that exists to catch it. Nothing should ever
+# produce that edge, which is precisely why finding one is worth stopping for.
+wont=$(grep -rlE '<moscow>wont-have</moscow>|moscow="wont-have"' "$tasks_abs" 2>/dev/null | sort)
 if [ -n "$wont" ]; then
     printf 'REFUSED: %s\n' "task(s) descend from a feature nobody intends to build:" >&2
     printf '  %s\n' $wont >&2

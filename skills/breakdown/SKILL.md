@@ -600,7 +600,8 @@ For each layer in order:
    string match on the task's name.
 
    Four assertions: every in-scope feature has a task, every `<source-feature>` resolves to a
-   feature that exists and was not skipped, every in-scope criterion is named by some task and
+   feature that exists and was not skipped — **each one of them, since item 65 made the element
+   repeatable and a task may descend from several** — every in-scope criterion is named by some task and
    every id named resolves, and **no task descends from a `wont-have`, `excluded` or
    `superseded` feature** — item 13's runtime backstop, which fires when the selection gate did
    not run or ran and was ignored.

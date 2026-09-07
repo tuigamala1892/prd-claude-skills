@@ -57,25 +57,81 @@ Task identification and classification.
   <estimated-files>2</estimated-files> <!-- Number of files to create/modify -->
   <cwd>packages/billing</cwd>         <!-- Optional; where commands run. See below -->
 
-  <source-feature>save-link</source-feature>          <!-- item 16: which feature, by slug -->
-  <moscow>must-have</moscow>                          <!-- item 16: that feature's tier -->
-  <satisfies-criteria>1,4,7</satisfies-criteria>      <!-- item 16: criterion ids, core §1 -->
-  <requirement-level>P0</requirement-level>           <!-- item 16: highest among those -->
+  <!-- item 65: one per feature this task descends from. Repeatable. -->
+  <source-feature slug="save-link" moscow="must-have"
+                  satisfies-criteria="1,4,7" requirement-level="P0"/>
 </meta>
 ```
 
 **Constraints:**
-- `id`: Must match pattern `L[1-4]-[0-9]{3}`
-- `layer`: One of: `1-foundation`, `2-backend`, `3-frontend`, `4-integration`
+- `id`: Must match pattern `L[0-9]+-[0-9]{3}`
+- `layer`: `{id}-{name}`, from the layer set `plan-layers` derived — `0-setup`, `1-foundation`,
+  `2-backend`, `3-frontend` and `4-integration` are the shipped defaults, not the enum
+
+**Neither is a fixed list any more, and the old ones contradicted this file.** `id` was
+`L[1-4]-[0-9]{3}` and `layer` was an enum of four, while the three fields below say *"Required
+except in Layer 0"* — so this document required a layer its own constraints could not express, and
+a live run generating `L0-001` in `0-setup` was writing tasks its own schema rejected (P40).
+
+The deeper reason is item 28: `architecture.md`'s `<layers>` lets a project declare its own graph,
+and a microservices project instantiates it per service with ids scoped to their block. An enum of
+four names could not survive that, and pinning one here would have made the layer file advisory.
 - `priority`: Integer 1-99
 - `estimated-files`: Integer, 1 to the task's effective limit — `<task-limits>` from
   `architecture.md`, defaulting to 3
 - `cwd`: Optional. **Relative to the worktree root**, and must stay inside it
-- `source-feature`: Required except in Layer 0. A feature slug, or a CRD slug on that path
-- `moscow`: Required with `source-feature`. `must-have`, `should-have` or `could-have` — never
-  `wont-have`, which `/execute` refuses (item 20)
-- `satisfies-criteria`: Required except in Layer 0. Comma-separated criterion ids, no spaces
-- `requirement-level`: Required with `satisfies-criteria`. `P0`, `P1` or `P2`
+- `source-feature`: **Repeatable.** Required except in Layer 0, at least once. Attributes:
+  - `slug` — a feature slug, or a CRD slug on that path
+  - `moscow` — `must-have`, `should-have` or `could-have` for **this** feature; never
+    `wont-have`, which `/execute` refuses (item 20)
+  - `satisfies-criteria` — comma-separated criterion ids **of this feature**, no spaces
+  - `requirement-level` — `P0`, `P1` or `P2`: the highest among the ids named here
+
+#### A task names every feature it descends from (item 65)
+
+**`<source-feature>` repeats, and each one carries its own tier, criteria and level.** A task that
+legitimately covers criteria from more than one feature — an end-to-end integration task is the
+ordinary case — used to have no way to say whose criterion it carried, and **three live runs met
+one and invented three different workarounds** (**P43**):
+
+| Run | What it did | Why it is wrong |
+|---|---|---|
+| 1 | invented `feature#id`, applied to the carried criteria and not to `<satisfies-criteria>` | the two halves of one task stopped referring to each other |
+| 2 | split the task, and said why | correct, and it changes the task set to suit the schema |
+| 3 | narrowed the attribution to one feature, silently | **worst of the three, because nothing says so** |
+
+Run 3's `L4-002` walked `save-link`, `tag-links` and `list-links` criterion 2 and declared
+`tag-links` alone. **No check caught it** — item 30's coverage passes, because those criteria are
+covered by other tasks. What was lost is that the coverage report, the scope cross-check,
+`tasks-summary.md` and the gate all believed the task belonged to one feature, so dropping that
+feature from scope would have silently taken the only end-to-end assertion of the other two.
+
+```xml
+<meta>
+  <source-feature slug="save-link"  moscow="must-have"   satisfies-criteria="1"   requirement-level="P0"/>
+  <source-feature slug="tag-links"  moscow="should-have" satisfies-criteria="1,3" requirement-level="P1"/>
+  <source-feature slug="list-links" moscow="should-have" satisfies-criteria="2"   requirement-level="P1"/>
+</meta>
+```
+
+**The old shape is read and never written.** One `<source-feature>slug</source-feature>` with
+sibling `<moscow>`, `<satisfies-criteria>` and `<requirement-level>` elements is still accepted by
+every reader, and the siblings still fill in an attribute the new form omits — that is what makes
+a half-migrated task readable rather than an error. New tasks carry the attribute form. This is
+item 45's rule, and it applies here for the same reason: a corpus of task files does not migrate
+itself, and a reader that refuses the old shape strands every task set generated before today.
+
+**The task's effective tier is the strongest of its edges**, and the same for its level:
+`must-have` over `should-have` over `could-have`, `P0` over `P1` over `P2`. A task is built or not
+built as a unit, so a filter — `/execute`'s `--priority`, `check-coverage.py`'s
+`--requirement-level` — must see the strongest obligation it carries. `build-manifest.py` computes
+both and writes them beside the list.
+
+**One exception, and it is deliberate: `/execute`'s preflight refuses on ANY edge.** A task
+carrying `moscow="wont-have"` anywhere is refused (item 20) even when another edge is
+`must-have` and the effective tier is therefore `must-have`. The strongest-wins rule answers *how
+important is this task*; the refusal answers *should this task exist at all*, and nothing should
+ever produce that edge — which is precisely why finding one is worth stopping for.
 
 #### Traceability: four elements, and none of them is `<priority>`
 
@@ -103,6 +159,41 @@ obligation it carries.
 test harness; they descend from the tech stack rather than from any feature, and inventing a
 `<source-feature>` for them would put a false attribution into the coverage check item 30 builds
 on.
+
+#### Criteria from more than one feature are grouped by feature (item 65)
+
+**Criterion ids are per feature.** `save-link` criterion 1 and `tag-links` criterion 1 are two
+different requirements with the same name, so a task carrying both must say which is which:
+
+```xml
+<acceptance-criteria>
+  <from-feature slug="save-link">
+    <criterion id="1" pattern="event-driven" priority="P0">
+    When a user submits a link, the system shall store it and return the stored record.
+    </criterion>
+  </from-feature>
+  <from-feature slug="tag-links">
+    <criterion id="1" pattern="state-driven" priority="P1">
+    While a link has tags, the system shall list it under each of them.
+    </criterion>
+  </from-feature>
+</acceptance-criteria>
+```
+
+- **Required when the task has more than one `<source-feature>`.** An ungrouped criterion in such
+  a task names two requirements at once, and item 59's grader fails it.
+- **Omit it when there is one**, which is most tasks. There is nothing to disambiguate, and
+  wrapping every existing task to no purpose is churn.
+- **The `<criterion>` element inside is still copied byte-for-byte**, ids included. That is why
+  the qualification is a *wrapper* rather than an attribute on the criterion or a `feature#id`
+  spelling: item 17 requires the copy to be verbatim, and any of the alternatives edits it.
+
+`<test covers=>` takes a `from-feature` attribute under the same rule — required when the task
+spans features, omitted when it does not:
+
+```xml
+<test id="2" covers="1" from-feature="tag-links">
+```
 
 #### `<cwd>` — where this task's commands run
 
@@ -468,9 +559,11 @@ Interface contracts this task provides for later tasks.
 
 ## Validation Rules
 
-0. **Traceability resolves both ways**: every id in `<meta><satisfies-criteria>` appears in
-   `<context><acceptance-criteria>`, and every criterion there is named by some `<test covers=>`.
-   Item 30 checks this across the whole task set; here it is checkable within one file
+0. **Traceability resolves both ways, per feature**: every id in a
+   `<source-feature satisfies-criteria=>` appears in that feature's carried criteria, and every
+   criterion carried is named by some `<test covers=>`. Item 30 checks this across the whole task
+   set; here it is checkable within one file. **Per feature** is item 65: matching ids across
+   features is how a task ends up citing criterion 2 of the wrong one and passing
 1. **No placeholders**: No "TODO", "TBD", "...", or "[fill in]"
 2. **No external references**: All information must be in the task file
 3. **Concrete values**: Use specific names, paths, values - not "appropriate" or "suitable"

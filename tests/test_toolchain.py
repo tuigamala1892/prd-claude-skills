@@ -5458,8 +5458,14 @@ def _():
     blocks = re.findall(r"```xml\n(.*?)```", spec, re.S)
     meta = next((b for b in blocks if "<meta>" in b and "<id>" in b), None)
     assert meta, "task-format-spec.md has no <meta> example"
-    for tag in ("source-feature", "moscow", "satisfies-criteria", "requirement-level"):
-        assert "<%s>" % tag in meta, f"the task <meta> example carries no <{tag}>"
+    # Item 65 moved these onto the element as attributes, one `<source-feature>` per feature the
+    # task descends from. The four names still have to be there, and this reads them off the
+    # example rather than looking for four opening tags that no longer exist.
+    edge = re.search(r"<source-feature\b([^>]*)/>", meta)
+    assert edge, "the task <meta> example carries no <source-feature .../>"
+    for attr in ("slug", "moscow", "satisfies-criteria", "requirement-level"):
+        assert re.search(r'\b%s="[^"]+"' % attr, edge.group(1)), (
+            f"the task <meta> example's <source-feature> carries no `{attr}`: {edge.group(0)}")
 
     # P3: <priority> keeps its meaning. A MoSCoW value inside it is the overload item 16 avoided.
     prio = re.search(r"<priority>([^<]*)</priority>", meta)
@@ -5711,6 +5717,7 @@ def _():
             os.makedirs(os.path.join(tasks, "1-foundation"))
             index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
             n = 0
+            per_feature = []
             for tier, rel in re.findall(r'<feature\s+priority="([^"]+)" file="([^"]+)"', index):
                 slug = os.path.splitext(os.path.basename(rel))[0]
                 text = open(os.path.join(prd, rel), encoding="utf-8").read()
@@ -5722,12 +5729,33 @@ def _():
                           "w", encoding="utf-8", newline="\n") as f:
                     f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n    <name>Build %s</name>\n"
                             "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
-                            "    <source-feature>%s</source-feature>\n    <moscow>%s</moscow>\n"
-                            "    <satisfies-criteria>%s</satisfies-criteria>\n"
-                            "    <requirement-level>P0</requirement-level>\n  </meta>\n"
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n  </meta>\n'
                             "  <context>\n    <acceptance-criteria>\n%s\n"
                             "    </acceptance-criteria>\n  </context>\n</task>\n"
                             % (n, slug, n, slug, tier, ids, body))
+                per_feature.append((slug, tier, ids, body))
+
+            # One task descending from TWO features, which is what item 65 exists for and what
+            # three live runs each worked around differently (P43). The criteria are grouped by
+            # feature because ids repeat across them: `1` names a different requirement in each.
+            if len(per_feature) >= 2:
+                (s1, t1, i1, b1), (s2, t2, i2, b2) = per_feature[0], per_feature[1]
+                n += 1
+                with open(os.path.join(tasks, "1-foundation", "L1-%03d-integration.xml" % n),
+                          "w", encoding="utf-8", newline="\n") as f:
+                    f.write("<task>\n  <meta>\n    <id>L1-%03d</id>\n"
+                            "    <name>Wire %s and %s together</name>\n"
+                            "    <layer>1-foundation</layer>\n    <priority>%d</priority>\n"
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n'
+                            '    <source-feature slug="%s" moscow="%s" '
+                            'satisfies-criteria="%s" requirement-level="P0"/>\n  </meta>\n'
+                            "  <context>\n    <acceptance-criteria>\n"
+                            '    <from-feature slug="%s">\n%s\n    </from-feature>\n'
+                            '    <from-feature slug="%s">\n%s\n    </from-feature>\n'
+                            "    </acceptance-criteria>\n  </context>\n</task>\n"
+                            % (n, s1, s2, n, s1, t1, i1, s2, t2, i2, s1, b1, s2, b2))
             b = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
                                                              "build-manifest.py"), tasks],
                                capture_output=True, text=True)
@@ -5771,9 +5799,17 @@ def _():
         # evaluated as the write's argument then returns "" -- which is how this check first
         # reported a missing failure that the grader had in fact produced.
         text = open(path, encoding="utf-8").read()
-        open(path, "w", encoding="utf-8", newline="\n").write(
-            text.replace("<source-feature>tag-links</source-feature>",
-                         "<source-feature>ghost</source-feature>"))
+        # The slug, wherever the schema keeps it. Item 65 moved it from the element's text into a
+        # `slug` attribute and the literal that used to be here silently stopped matching -- so
+        # the mutation mutated nothing and the assertion below failed for the one reason that
+        # says nothing about the grader. The substitution count is asserted for exactly that.
+        mutated, subs = re.subn(r'(?<=slug=")tag-links(?=")'
+                                r'|(?<=<source-feature>)tag-links(?=</source-feature>)',
+                                "ghost", text)
+        assert subs == 1, (
+            f"the ghost-slug mutation matched {subs} sites, not 1. It no longer breaks the "
+            f"attribution it exists to break")
+        open(path, "w", encoding="utf-8", newline="\n").write(mutated)
         p = grade(tasks)
         assert p.returncode == 1 and "ghost" in p.stderr and "tag-links is in scope" in p.stderr, (
             f"<source-feature> was not resolved in both directions:\n{p.stderr}")
@@ -5782,11 +5818,14 @@ def _():
         tasks = seed()
         path = a_task(tasks, "save-link")
         text = open(path, encoding="utf-8").read()
-        open(path, "w", encoding="utf-8", newline="\n").write(
-            text.replace("    <requirement-level>P0</requirement-level>\n", ""))
+        # Attribute or element, whichever this schema version keeps the level in.
+        mutated, subs = re.subn(r'\s*requirement-level="P0"'
+                                r'|[ \t]*<requirement-level>P0</requirement-level>\n', "", text)
+        assert subs >= 1, "the requirement-level mutation matched nothing to remove"
+        open(path, "w", encoding="utf-8", newline="\n").write(mutated)
         p = grade(tasks)
         assert p.returncode == 1 and "FAIL 4:" in p.stderr, (
-            f"a task carrying no <requirement-level> was not detected:\n{p.stderr}")
+            f"a task carrying no requirement-level was not detected:\n{p.stderr}")
 
         # 3. THE ONE. Break the coverage check so it names the wrong feature while keeping the
         #    count right, and assert the grader is not fooled. A test that does not force this
@@ -5808,9 +5847,17 @@ def _():
         flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
         original = open(flight, encoding="utf-8").read()
         try:
-            open(flight, "w", encoding="utf-8", newline="\n").write(original.replace(
-                'wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)',
-                'wont=""'))
+            # Match the assignment, not the exact grep. Item 65 rewrote this line to accept the
+            # per-edge `moscow="wont-have"` attribute, and the literal below silently stopped
+            # applying -- so the mutation mutated nothing and this assertion failed for the one
+            # reason that says nothing about the grader. The substitution count is asserted for
+            # exactly that: a mutation that does not apply must fail loudly, not quietly pass.
+            mutated, n = re.subn(r"(?m)^wont=\$\(.*\)$", 'wont=""', original)
+            assert n == 1, (
+                f"the preflight mutation matched {n} sites, not 1. It no longer breaks the "
+                f"refusal it is meant to break, and the assertion below would be measuring "
+                f"nothing")
+            open(flight, "w", encoding="utf-8", newline="\n").write(mutated)
             p = grade(seed())
             assert p.returncode == 1 and "FAIL 5:" in p.stderr, (
                 f"the grader did not notice preflight had stopped refusing:\n{p.stderr}")
@@ -7137,6 +7184,1047 @@ def _():
     assert documented <= artefacts.DEFINITION, (
         f"core.md documents {sorted(documented - artefacts.DEFINITION)}, which no reader "
         f"accepts")
+
+
+# --------------------------------------------- what the live run found (61/62)
+
+
+@check("the layer set is derived, and nothing instructs otherwise", finding="P39")
+def _():
+    """Items 31 and 61.
+
+    Item 31 derived the layer set from content and updated the section that describes it. The
+    *Do NOT* list eight sections below still said `every project needs all 4 layers`, and a live
+    run followed the derivation and reported the contradiction in its own instructions.
+
+    A check on the MECHANISM could not see this: the mechanism was right. What was wrong was a
+    second instruction about it, in the same file, which the model reads with equal weight.
+    """
+    rel = os.path.join(SKILLS, "breakdown-plan-layers", "SKILL.md")
+    text = open(rel, encoding="utf-8").read()
+    flat = prose(text)
+
+    # The derivation must still be instructed -- asserting only the absence of the contradiction
+    # would pass on a file that had lost both halves.
+    assert re.search(r"decide which layers exist at all", flat), (
+        "plan-layers no longer tells the model to decide which layers exist, so item 31's "
+        "derivation has no instruction behind it")
+    assert re.search(r"A tier with no work in it is not a tier", flat), (
+        "the rule that makes the derivation actionable is gone")
+
+    # And nothing may require a fixed number of layers. Match the CLAIM rather than one
+    # phrasing: any sentence pairing `every project` with a count of layers.
+    #
+    # This fires on a QUOTATION of the rescinded instruction too, and that is deliberate rather
+    # than a false positive -- it caught exactly that on the commit that removed the line. A
+    # skill is instructions to a model, which reads a quoted rule with the same weight as a
+    # stated one; the history belongs in the plan and the ledger, where P39 and item 61 hold it.
+    bad = [ln.strip() for ln in text.splitlines()
+           if re.search(r"every project.*\b(all )?\d+ layers|needs all \d+ layers", ln, re.I)]
+    assert not bad, (
+        "an instruction requires a fixed number of layers, contradicting the derivation in the "
+        "same file:\n    " + "\n    ".join(bad))
+
+    # A dropped layer is named, never silent -- the half an operator needs. Asserted at BOTH
+    # sites and scoped to each, because the first version of this was an `or` across the two:
+    # deleting the rule from the derivation paragraph left the Do-NOT bullet matching, and the
+    # mutant walked through. That is the `or across locations` failure this suite has a name for.
+    region = flat.split("First, decide which layers exist at all", 1)
+    assert len(region) == 2, "plan-layers no longer has its derivation paragraph"
+    assert re.search(r"name the ones you dropped and why", region[1][:400]), (
+        "the derivation paragraph no longer requires a dropped layer to be named, so a run that "
+        "produces one task instead of four explains nothing to the operator")
+
+    donot = flat.split("## Do NOT", 1)
+    assert len(donot) == 2, "plan-layers has no Do NOT list"
+    assert re.search(r"Drop a layer silently", donot[1]), (
+        "the Do NOT list no longer forbids dropping a layer silently; the derivation paragraph "
+        "asks for the reason and nothing forbids omitting it")
+
+
+@check("the task schema admits every layer the layer graph can produce", finding="P40")
+def _():
+    """Items 28 and 62.
+
+    `id` was `L[1-4]-[0-9]{3}` and `layer` an enum of four, while three fields ten lines below
+    read `Required except in Layer 0`. Every Layer 0 task the toolchain has generated was invalid
+    under its own schema, and item 28's per-project layer graph makes a fixed enum wrong for a
+    second, independent reason.
+
+    Asserted by RUNNING the documented pattern against the ids the toolchain actually writes.
+    """
+    spec = os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md")
+    text = open(spec, encoding="utf-8").read()
+
+    m = re.search(r"`id`:\s*Must match pattern\s*`([^`]+)`", text)
+    assert m, "task-format-spec.md documents no id pattern at all"
+    pattern = m.group(1)
+
+    # The ids this toolchain generates, including the ones its own Layer 0 templates use.
+    for tid in ("L0-001", "L1-001", "L2-014", "L4-002", "L10-003"):
+        assert re.fullmatch(pattern, tid), (
+            f"the documented id pattern {pattern!r} rejects {tid}, which the toolchain writes. "
+            f"A spec that forbids its own output is the defect P40 named")
+    for bad in ("L1-1", "X1-001", "L1-0001"):
+        assert not re.fullmatch(pattern, bad), (
+            f"the documented id pattern {pattern!r} accepts {bad}, so it constrains nothing")
+
+    # And `layer` is no longer a closed list of four. The five shipped names may be named as
+    # DEFAULTS; what must not survive is an enum that item 28's per-project graph contradicts.
+    row = [ln for ln in text.splitlines() if ln.strip().startswith("- `layer`")]
+    assert row, "task-format-spec.md documents no `layer` constraint"
+    assert not re.search(r"One of:", row[0]), (
+        f"`layer` is still a closed enum: {row[0].strip()}. Item 28 lets a project declare its "
+        f"own <layers> graph, instantiated per service with ids scoped to their block, and no "
+        f"fixed list of four names can describe that")
+    assert "0-setup" in row[0] or "0-setup" in text.split("- `layer`")[1][:400], (
+        "the layer constraint never mentions 0-setup, which three fields below call out by name")
+
+
+@check("the generator is told where its verification commands will run", finding="P42")
+def _():
+    """Item 64, first half.
+
+    A live run wrote `pathlib.Path('.git').is_dir()` as a verification step. Inside a worktree
+    `.git` is a FILE, so the step is false for the execution model the plugin itself uses -- and
+    nothing in `breakdown-generate-tasks` said where its commands would run. Every
+    environment-shaped assertion it invents was a guess.
+
+    Two halves, and the second is what makes this more than a prose check: the stated facts are
+    PARSED out of the brief, then MEASURED against a worktree built here by the toolchain's own
+    `create-worktree.sh`. The brief must say it, and git must still do it -- a brief that drifts
+    out of agreement with reality fails exactly as loudly as a brief that says nothing.
+    """
+    import shutil
+    import stat
+    import tempfile
+
+    skill = os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md")
+    text = open(skill, encoding="utf-8").read()
+
+    parts = text.split("## Where your verification commands will run", 1)
+    assert len(parts) == 2, (
+        "breakdown-generate-tasks no longer states the execution context of its verification "
+        "steps, so every environment-shaped assertion it writes is a guess again (P42)")
+    region = parts[1].split("\n## ", 1)[0]
+
+    block = re.search(r"```text\n(.*?)```", region, re.S)
+    assert block, ("the execution context is no longer stated as a block anything can parse; "
+                   "this check reads the facts rather than looking for words about them")
+    facts, key = {}, None
+    for line in block.group(1).splitlines():
+        m = re.match(r"^(\S+)\s\s+(\S.*)$", line)
+        if m:
+            key, facts[key] = m.group(1), m.group(2)
+        elif key and line.strip():
+            facts[key] += " " + line.strip()
+
+    for k in ("cwd", ".git", "branch", "tree", "siblings"):
+        assert k in facts, (
+            f"the execution context no longer states `{k}`. It states {sorted(facts)} -- and a "
+            f"fact the generator is not given is one it invents")
+
+    assert re.search(r"\bfile\b", facts[".git"], re.I) and \
+        re.search(r"never a directory|not a directory", facts[".git"], re.I), (
+        f"the brief no longer says `.git` is a file and not a directory: {facts['.git']!r}. "
+        f"That single sentence is the whole of P42's concrete instance")
+    assert "worktree-" in facts["branch"] and \
+        re.search(r"never the base branch", facts["branch"], re.I), (
+        f"the brief no longer says which branch a step runs on: {facts['branch']!r}")
+    assert re.search(r"fresh|untracked|no build output", facts["tree"], re.I), (
+        f"the brief no longer says the tree is a fresh checkout: {facts['tree']!r}")
+    assert re.search(r"not visible|NOT visible|not present|never visible", facts["siblings"]), (
+        f"the brief no longer says a sibling task's output is absent: {facts['siblings']!r}")
+
+    if not (shutil.which("git") and shutil.which("sh")):
+        return                      # nothing to measure with; the parsed half still applied
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    create = os.path.join(SKILLS, "execute-batch", "scripts", "create-worktree.sh")
+    root = tempfile.mkdtemp(prefix="exec-context-check-")
+    try:
+        app, wt = os.path.join(root, "app"), os.path.join(root, "wt")
+        os.makedirs(app)
+
+        def g(*args, cwd=app):
+            return subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                                  text=True, timeout=60)
+
+        # `trunk`, never `main` -- F1 is that assumption, and `branch` is a fact under test here.
+        for args in (["init", "-q", "-b", "trunk", "."],
+                     ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            g(*args)
+        open(os.path.join(app, "README.md"), "w").write("base")
+        g("add", "-A")
+        g("commit", "-qm", "init")
+        # An untracked leftover in the primary tree, for the `tree` fact.
+        os.makedirs(os.path.join(app, "node_modules"))
+        open(os.path.join(app, "node_modules", "left.txt"), "w").write("over")
+
+        for tid in ("L1-001", "L1-002"):
+            p = subprocess.run(["sh", create, app, tid, wt, "trunk"],
+                               capture_output=True, text=True, timeout=60)
+            assert p.returncode == 0, f"create-worktree.sh failed for {tid}: {p.stderr[-300:]}"
+        d1, d2 = os.path.join(wt, "L1-001"), os.path.join(wt, "L1-002")
+
+        gitlink = os.path.join(d1, ".git")
+        assert os.path.isfile(gitlink) and not os.path.isdir(gitlink), (
+            "git no longer represents a worktree's .git as a gitlink FILE. The brief in "
+            "breakdown-generate-tasks now states something false, which is worse than stating "
+            "nothing -- correct it there before relaxing this")
+
+        cur = g("branch", "--show-current", cwd=d1).stdout.strip()
+        assert cur == "worktree-L1-001" and cur != "trunk", (
+            f"a task's worktree is on branch {cur!r}, not `worktree-L1-001`; the brief's `branch` "
+            f"fact is now wrong and a step comparing against the base branch would pass")
+
+        open(os.path.join(d2, "sibling.txt"), "w").write("mine")
+        g("add", "-A", cwd=d2)
+        g("commit", "-qm", "sibling work", cwd=d2)
+        assert not os.path.exists(os.path.join(d1, "sibling.txt")), (
+            "a sibling task's committed output is visible from another task's worktree; the "
+            "brief's `siblings` fact is wrong and cross-task verification steps would work")
+
+        assert not os.path.exists(os.path.join(d1, "node_modules")), (
+            "an untracked directory from the primary tree appeared in the worktree; the brief's "
+            "`tree` fact is wrong and `ls node_modules` would pass in the check but not the run")
+    finally:
+        rmtree(root)
+
+
+@check("an environment-shaped verification step is a review question", finding="P42")
+def _():
+    """Item 64, second half -- the durable one.
+
+    The measured facts can go out of date. *Prefer a claim about the artefact over a claim about
+    the environment* cannot, because it is about what a verification step is for. It has to hold
+    in both places: the generator's brief, where the step is written, and `review-criteria.md`,
+    where it is judged -- and in the CRITICAL section there, because a step that cannot pass is
+    exactly what P41's run edited a task to get past.
+    """
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    parts = gen.split("### Assert the artefact, not the environment", 1)
+    assert len(parts) == 2, (
+        "the generator no longer prefers artefact assertions to environment assertions; the "
+        "five facts alone are a list that goes stale, which is the half item 64 called durable")
+    # Unescaped pipes only: one `over` cell is a pipeline, `git log --oneline \| wc -l`.
+    rows = [[c.strip() for c in re.split(r"(?<!\\)\|", ln.strip().strip("|"))]
+            for ln in parts[1].split("\n## ", 1)[0].splitlines()
+            if ln.strip().startswith("|") and not re.match(r"^\|[\s|:-]+\|$", ln.strip())]
+    rows = [r for r in rows if len(r) == 3 and r[0].lower() != "prefer"]
+    assert len(rows) >= 3, f"the prefer/over table has {len(rows)} row(s) of guidance, not 3+"
+    for prefer, over, why in rows:
+        assert "`" in prefer and "`" in over and why, (
+            f"a prefer/over row names no runnable pair or gives no reason: {[prefer, over, why]}")
+    assert any(".git" in over for _p, over, _w in rows), (
+        "the table no longer contains the assertion a live run actually wrote (`.git`), so the "
+        "one worked example P42 produced has been generalised away")
+
+    rc = open(os.path.join(SKILLS, "breakdown", "references", "review-criteria.md"),
+              encoding="utf-8").read()
+    critical = rc.split("## Critical Criteria", 1)
+    assert len(critical) == 2, "review-criteria.md has no Critical Criteria section"
+    critical = critical[1].split("## Warning Criteria", 1)[0]
+    assert "### 6. Verification Steps" in critical, (
+        "verification steps are no longer reviewed as a CRITICAL criterion; a step that cannot "
+        "pass is what P41's run rewrote a task file to get past")
+    sec6 = critical.split("### 6. Verification Steps", 1)[1].split("\n### ", 1)[0]
+    bullets = [prose(b) for b in re.split(r"\n- \[ \] ", sec6)[1:]]
+
+    assert any(re.search(r"worktree", b) and re.search(r"\.git", b) for b in bullets), (
+        "no critical criterion asks whether a step holds inside a worktree, which is where "
+        "/execute runs every one of them (P42)")
+    assert any(re.search(r"artefact|artifact", b) and re.search(r"environment|execution model", b)
+               for b in bullets), (
+        "no critical criterion prefers an assertion about the task's own output to one about "
+        "the environment, so the reviewer can only catch the examples, never the class")
+
+    table = rc.split("### Environment-Shaped Verification Steps", 1)
+    assert len(table) == 2, "review-criteria.md lists no environment-shaped patterns to flag"
+    fence = re.search(r"```\n(.*?)```", table[1], re.S)
+    assert fence, "the environment-shaped patterns are no longer in a block that can be read"
+    pairs = [ln.split("→") for ln in fence.group(1).splitlines() if "→" in ln]
+    assert len(pairs) >= 4, f"only {len(pairs)} pattern(s) are given a re-aimed replacement"
+    for bad, good in pairs:
+        assert bad.strip() and good.strip(), f"a pattern row has an empty half: {bad!r} {good!r}"
+    assert any(".git" in bad for bad, _g in pairs), (
+        "the one pattern a live run actually produced is no longer listed")
+
+
+@check("a task file edited mid-run is a stop with a diff -- by running it", finding="P41")
+def _():
+    """Item 63, the guard.
+
+    The third live crossing met a Layer 0 task whose `<verification>` block was unsatisfiable, and
+    the run edited the task file and carried on to `14/14`. Nothing forbade it; nothing recorded
+    it. Prose here is the guard a model can reason past -- item 4.13 -- so this is a script with
+    an exit code, and this check RUNS it: record, edit, verify, and read what it wrote.
+
+    The last assertion is the one to keep. The edit record must not disturb `ledger-status.sh`,
+    because that is what a resume is derived from: an entry without a commit would read there as a
+    task whose commit had vanished, and the guard against a false green would have manufactured a
+    false red.
+    """
+    import shutil
+    import stat
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "task-integrity.py")
+    assert os.path.isfile(script), "skills/execute/scripts/task-integrity.py is missing"
+
+    def rmtree(path):
+        def clear_ro(func, target, _exc):
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        try:
+            shutil.rmtree(path, onexc=clear_ro)
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_ro)
+
+    root = tempfile.mkdtemp(prefix="task-integrity-check-")
+    try:
+        tasks = os.path.join(root, "tasks", "0-setup")
+        app = os.path.join(root, "app")
+        os.makedirs(tasks)
+        os.makedirs(app)
+        tp, one, two = os.path.join(root, "tasks"), None, None
+
+        def task(tid, step):
+            path = os.path.join(tasks, f"{tid}-thing.xml")
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"<task><meta><id>{tid}</id></meta>"
+                        f"<verification><step>{step}</step></verification></task>\n")
+            return path
+
+        one = task("L0-001", "Run: pytest -q")
+        two = task("L0-002", "Run: ruff check .")
+
+        def run(*args):
+            p = subprocess.run([sys.executable, script, *args], capture_output=True,
+                               text=True, timeout=120)
+            return p.returncode, p.stdout or "", p.stderr or ""
+
+        # Nothing recorded is NOT `unchanged`, and must never be reported as one.
+        rc, out, err = run("verify", tp, app, "demo")
+        assert rc == 2, f"verify with no record exited {rc}, not 2:\n{out}{err}"
+        assert "UNCHANGED" not in out.upper(), (
+            "verify with nothing recorded reported the task files unchanged. An unmade check "
+            "reported as a passing one is the false green this whole guard exists to prevent")
+
+        rc, out, _ = run("record", tp, app, "demo")
+        assert rc == 0 and "RECORDED 2" in out, f"record exited {rc}: {out}"
+
+        rc, out, _ = run("verify", tp, app, "demo")
+        assert rc == 0 and "UNCHANGED 2" in out, f"clean verify exited {rc}: {out}"
+
+        # Now the P41 edit: one verification step rewritten to something satisfiable.
+        with open(one, "w", encoding="utf-8", newline="\n") as f:
+            f.write("<task><meta><id>L0-001</id></meta>"
+                    "<verification><step>Run: pytest -q -k not_the_broken_one</step>"
+                    "</verification></task>\n")
+        rc, out, err = run("verify", tp, app, "demo")
+        assert rc == 1, f"an edited task file exited {rc}, not 1 -- the guard did not fire"
+        assert "not_the_broken_one" in out and out.lstrip().startswith("---"), (
+            "the edit is reported without a diff of what changed. A summary of an edit to an "
+            f"acceptance criterion is not the evidence:\n{out[:400]}")
+        assert "L0-001" in err, f"the stop does not name the task:\n{err[:300]}"
+
+        # The record: an edit leaves a trace, which is the third part of item 63.
+        edits = os.path.join(app, ".execute", "demo", "task-edits.jsonl")
+        assert os.path.isfile(edits), (
+            "nothing recorded the edit. The ledger indexes commits, so without this the next "
+            "14/14 is unauditable in exactly the way P41's was")
+        entry = json.loads(open(edits, encoding="utf-8").read().splitlines()[0])
+        for field in ("task_id", "kind", "sha_before", "sha_after", "diff"):
+            assert entry.get(field), f"the edit record has no {field}: {entry}"
+        assert entry["sha_before"] != entry["sha_after"], "the record's two hashes are equal"
+        assert os.path.isfile(os.path.join(app, ".execute", "demo", entry["diff"])), (
+            f"the record points at a diff that was never written: {entry['diff']}")
+        assert open(os.path.join(app, ".execute", ".gitignore"),
+                    encoding="utf-8").read().strip() == "*", (
+            "the record is not self-ignoring, so a run's own bookkeeping shows up in the "
+            "project's `git status` -- record-task.sh writes this marker for the same reason")
+
+        # A removed task and an appeared task are both edits.
+        os.remove(two)
+        task("L0-003", "Run: true")
+        rc, _out, err = run("verify", tp, app, "demo")
+        assert rc == 1 and "removed" in err and "added" in err, (
+            f"a removed and an added task file were not both reported:\n{err[:400]}")
+
+        # And none of it may disturb the ledger a resume is derived from.
+        if shutil.which("git") and shutil.which("sh"):
+            def g(*args):
+                return subprocess.run(["git", "-C", app, *args], capture_output=True,
+                                      text=True, timeout=60)
+            for args in (["init", "-q", "-b", "trunk", "."],
+                         ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+                g(*args)
+            open(os.path.join(app, "README.md"), "w").write("x")
+            g("add", "-A")
+            g("commit", "-qm", "init")
+            sha = g("rev-parse", "HEAD").stdout.strip()
+            rec = os.path.join(SKILLS, "execute-merge", "scripts", "record-task.sh")
+            subprocess.run(["sh", rec, app, "demo", "L0-001", sha], capture_output=True,
+                           text=True, timeout=60)
+            status = os.path.join(SKILLS, "execute", "scripts", "ledger-status.sh")
+            before = subprocess.run(["sh", status, app, "demo", "3"], capture_output=True,
+                                    text=True, timeout=60).stdout
+            run("verify", tp, app, "demo")           # writes more edit records
+            after = subprocess.run(["sh", status, app, "demo", "3"], capture_output=True,
+                                   text=True, timeout=60).stdout
+            assert json.loads(before) == json.loads(after), (
+                "recording a task edit changed what ledger-status.sh reports. The edit record "
+                "must live beside the ledger and not in it: an entry with no commit reads there "
+                f"as a task whose commit has vanished.\nbefore {before}\nafter  {after}")
+    finally:
+        rmtree(root)
+
+
+@check("the guard runs before dispatch and again before anything merges", finding="P41")
+def _():
+    """Item 63, the wiring.
+
+    A guard nothing calls is a script, not a guard -- and both stamps in the manifest were
+    written for four months before anything read either of them (P28). So this asserts the calls
+    themselves, in the two skills that must make them, and the mode each one passes.
+    """
+    def invocations(path):
+        text = open(path, encoding="utf-8").read()
+        return [re.sub(r"\s+", " ", m.group(0)).strip()
+                for m in re.finditer(r"task-integrity\.py[^\n`]*", text)]
+
+    ex = os.path.join(SKILLS, "execute", "SKILL.md")
+    text = open(ex, encoding="utf-8").read()
+    calls = invocations(ex)
+    modes = [c.split()[1] for c in calls if len(c.split()) > 1]
+    assert "record" in modes, (
+        "/execute never records the task files, so there is nothing to compare them against "
+        "and the guard cannot fire at all")
+    assert "verify" in modes, "/execute never re-checks the task files before it reports"
+    for call in calls:
+        if call.split()[1:2] in (["record"], ["verify"]):
+            assert "{tasks_path}" in call and "{project_path}" in call and "{prd_slug}" in call, (
+                f"an invocation cannot address the run it belongs to: {call}")
+
+    # Order: the record is taken before any layer is dispatched, and re-checked after.
+    rec_at = text.index("task-integrity.py record")
+    dispatch_at = text.index("### Step 6: Execute Layers")
+    ver_at = text.rindex("task-integrity.py verify")
+    assert rec_at < dispatch_at < ver_at, (
+        "the snapshot is not taken before dispatch and re-checked after it; a hash taken after "
+        "the run cannot say what the run was given")
+
+    # And the two outcomes are reported as their own stop kinds, not folded into `abandoned`.
+    # Named in the table AND given a report of their own, each assertion scoped to its own
+    # region: `task_edited` appears in three places in this file, so `kind in text` was an `or`
+    # across locations and a mutant that removed the report section walked through it.
+    step8 = text.split("### Step 8: Handle Stop Condition", 1)
+    assert len(step8) == 2, "/execute no longer handles stop conditions at all"
+    step8 = step8[1].split("### Step 9", 1)[0]
+    named = {ln.strip().strip("|").split("|")[0].strip().strip("`")
+             for ln in step8.splitlines() if ln.strip().startswith("| `")}
+    for kind in ("abandoned", "usage_limit", "task_defect", "task_edited"):
+        assert kind in named, (
+            f"the stop-kind table does not name `{kind}`: {sorted(named)}. Four outcomes ask "
+            f"four different things of the operator, and a table missing one folds it into "
+            f"`abandoned`, which sends them to debug code that never failed")
+    for kind in ("task_defect", "task_edited"):
+        section = re.search(r'#### `stop_reason_kind: "%s"`(.*?)(?=\n#### |\Z)' % kind,
+                            step8, re.S)
+        assert section, (
+            f"`{kind}` is named in the table and never reported. The table says the kinds "
+            f"differ; only the report shows the operator what to do about this one")
+        assert "STOPPED:" in section.group(1), (
+            f"`{kind}`'s section shows no report block, so what the operator sees is left to "
+            f"the model that stopped -- which is where P41's run wrote its own account")
+    assert re.search(r"exit code 2|Exit 2|`NO RECORD`", text), (
+        "/execute does not say what to do when nothing was recorded -- the case where the check "
+        "silently becomes a claim nobody made")
+
+    layer = os.path.join(SKILLS, "execute-layer", "SKILL.md")
+    ltext = open(layer, encoding="utf-8").read()
+    lcalls = invocations(layer)
+    assert any(c.split()[1:2] == ["verify"] for c in lcalls), (
+        "execute-layer never re-checks the task files, so an edit is caught only after every "
+        "batch of the run has merged against it")
+    merge_at = ltext.index("/execute-merge --task-id")
+    check_at = ltext.index("task-integrity.py verify")
+    assert check_at < merge_at, (
+        "the task files are checked after the merge invocation rather than before it. Merging "
+        "work verified against a rewritten task launders the edit into the ledger as a commit")
+
+
+@check("an unsatisfiable task is reported, and reporting it has somewhere to go", finding="P41")
+def _():
+    """Item 63, the escalation path -- and the half that makes the guard bearable.
+
+    A rule that leaves the operator stuck is a rule that gets removed, so the ban on editing a
+    task file is only half of this item. The other half is that `blocked` has a shape, survives
+    the batch without being retried, and reaches `/execute` as its own stop kind.
+
+    Asserted by PARSING the documented JSON rather than by looking for words about it.
+    """
+    def blocks(path):
+        text = open(path, encoding="utf-8").read()
+        out = []
+        for m in re.finditer(r"```json\n(.*?)```", text, re.S):
+            body = re.sub(r"^\s*RESULT:\s*", "", m.group(1))
+            try:
+                out.append(json.loads(body))
+            except ValueError:
+                pass
+        return out
+
+    agent = os.path.join(AGENTS, "task-implementer.md")
+    atext = open(agent, encoding="utf-8").read()
+    assert re.search(r"task file[^.]{0,80}read-only|not (modify|edit) the task file",
+                     prose(atext), re.I), (
+        "the implementer is not told the task file is read-only, which is the one sentence "
+        "item 63 is: an implementer and an orchestrator may not modify a task file")
+
+    blocked = [b for b in blocks(agent) if b.get("status") == "blocked"]
+    assert blocked, ("the implementer has no documented `blocked` result, so an agent that "
+                     "diagnoses an unsatisfiable task has nothing to return but a failure")
+    blocker = blocked[0].get("blocker") or {}
+    for field in ("kind", "step", "contradicts"):
+        assert blocker.get(field), (
+            f"the blocker carries no `{field}`: {blocker}. The operator fixes this in "
+            f"/breakdown, and both halves of the contradiction have to be quoted or they cannot")
+    assert blocked[0].get("commit_hash") is None, (
+        "a blocked task documents a commit; nothing was implemented, so there is nothing to merge")
+
+    ver = open(os.path.join(SKILLS, "execute-verify", "SKILL.md"), encoding="utf-8").read()
+    assert re.search(r"never modify the task file|not modify the task file", ver, re.I), (
+        "the verifier may still edit the task file it is verifying against -- which is the "
+        "wrong independence exactly: independent of the implementer, not of the criteria")
+    assert re.search(r'"kind":\s*"task-defect"', ver), (
+        "the verifier has no way to report a step no implementation could pass, so its only "
+        "vocabulary for an unsatisfiable task is `failed`, which buys five retries of it")
+
+    btext = open(os.path.join(SKILLS, "execute-batch", "SKILL.md"), encoding="utf-8").read()
+    stops = [b for b in blocks(os.path.join(SKILLS, "execute-batch", "SKILL.md"))
+             if b.get("stop_reason_kind") == "task_defect"]
+    assert stops, "execute-batch never returns a `task_defect` stop, so a blocked task is lost"
+    assert stops[0].get("defect_task") and stops[0]["defect_task"] not in (
+        stops[0].get("failed", []) + stops[0].get("abandoned", [])), (
+        "the defective task is reported as failed or abandoned. It failed nothing and spent no "
+        "attempt; naming it either way sends the operator to debug the implementation")
+    # Scoped to the step that owns the claim. Searched across the whole file this passed on the
+    # usage-limit step's `Do not increment the task's attempt count`, four sections away -- the
+    # `or across locations` failure again, and the mutant that deleted the sentence survived.
+    step7b = btext.split("### Step 7b", 1)
+    assert len(step7b) == 2, (
+        "execute-batch has no step for a `blocked` result, so an unsatisfiable task rejoins the "
+        "retry queue as an ordinary failure")
+    step7b = prose(step7b[1].split("\n### ", 1)[0])
+    assert re.search(r"(do not|never)[^.]{0,80}(queue a retry|retry)", step7b, re.I), (
+        "a blocked task can still be retried. Five attempts against a task no implementation "
+        "can satisfy is five guaranteed failures and an `abandoned` report naming the wrong thing")
+    assert re.search(r"(do not|never)[^.]{0,80}increment", step7b, re.I), (
+        "a blocked task still spends an attempt, so a task nobody could implement burns the "
+        "budget a resume needs -- the same waste item 4.14 removed for the usage limit")
+
+    ltext = open(os.path.join(SKILLS, "execute-layer", "SKILL.md"), encoding="utf-8").read()
+    row = [ln for ln in ltext.splitlines() if ln.startswith("| `task_defect`")]
+    assert row, "execute-layer does not carry `task_defect` through to the orchestrator"
+    assert re.search(r"breakdown", row[0]), (
+        f"the layer does not say whose defect a `task_defect` is: {row[0].strip()}")
+
+
+def _edge_xml(edges):
+    return "".join(
+        '    <source-feature slug="%s" moscow="%s" satisfies-criteria="%s" '
+        'requirement-level="%s"/>\n' % e for e in edges)
+
+
+def _multi_task_xml(tid, edges, groups=None):
+    """A task in item 65's shape: one <source-feature> per feature, criteria grouped by feature."""
+    ctx = ""
+    if groups:
+        body = ""
+        for slug, crits in groups:
+            inner = "".join(
+                '      <criterion id="%s" pattern="event-driven" priority="P0">\n'
+                '      %s criterion %s.\n      </criterion>\n' % (c, slug, c) for c in crits)
+            body += '    <from-feature slug="%s">\n%s    </from-feature>\n' % (slug, inner)
+        ctx = "  <context>\n    <acceptance-criteria>\n%s    </acceptance-criteria>\n" \
+              "  </context>\n" % body
+    return ("<task>\n  <meta>\n    <id>%s</id>\n    <name>Probe %s</name>\n"
+            "    <layer>4-integration</layer>\n    <priority>1</priority>\n%s  </meta>\n%s"
+            "</task>\n" % (tid, tid, _edge_xml(edges), ctx))
+
+
+@check("a task names every feature it descends from, and the manifest carries all of them",
+       finding="P43")
+def _():
+    """Item 65, the producer half -- asserted by RUNNING build-manifest.py.
+
+    `<source-feature>` held one slug, so a task covering several had to lie about which. Three
+    live runs met the case and invented three workarounds; the worst narrowed the attribution to
+    one feature silently, and nothing caught it because item 30's coverage passes when the other
+    criteria are covered by other tasks. What was lost is that every consumer then believes the
+    task belongs to one feature.
+
+    The compatibility rule is asserted here too, and it is the interesting half: the singular
+    `source_feature` key is written ONLY for a single-feature task. A 1.2 reader then sees a
+    multi-feature task as unattributed rather than attributed to whichever edge came first --
+    P43's silent misattribution reintroduced by the shim meant to preserve it.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="item65-manifest-")
+    try:
+        layer = os.path.join(root, "4-integration")
+        os.makedirs(layer)
+        # The integration task run 3 met: three features, one task, criterion ids that collide.
+        open(os.path.join(layer, "L4-002-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-002",
+                 # WEAKEST FIRST, deliberately. With the strongest edge first, "the strongest of
+                 # the edges" and "the first edge" give the same answer, and the assertion below
+                 # holds for a manifest that simply takes whichever came first -- a mutant that
+                 # did exactly that walked through this check.
+                 [("list-links", "could-have", "2", "P2"),
+                  ("save-link", "must-have", "1", "P0"),
+                  ("tag-links", "should-have", "1,3", "P1")],
+                 [("list-links", ["2"]), ("save-link", ["1"]), ("tag-links", ["1", "3"])]))
+        # And one task in the shape every task file written before item 65 carries.
+        open(os.path.join(layer, "L4-003-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_task_xml("L4-003", slug="save-link", crits="4",
+                                           moscow="should-have", level="P1"))
+
+        builder = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+        p = subprocess.run([sys.executable, builder, root], capture_output=True, text=True)
+        assert p.returncode == 0, f"build-manifest.py failed: {p.stdout}\n{p.stderr}"
+        man = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+        inv = {e["id"]: e for e in man["task_inventory"]}
+
+        assert man["schema_version"] >= "1.3", (
+            f"the manifest shape changed and its version did not: {man['schema_version']}. "
+            f"check-compatibility.py is the reader that decides whether a manifest can be read "
+            f"at all, and it decides on this field")
+
+        multi = inv["L4-002"]
+        edges = multi.get("source_features")
+        assert edges and [e["slug"] for e in edges] == ["list-links", "save-link", "tag-links"], (
+            f"the manifest carries {edges!r} for a task that names three features. A task walking "
+            f"three and recorded as one is P43, and every consumer downstream believes it")
+        by_slug = {e["slug"]: e for e in edges}
+        assert by_slug["tag-links"]["satisfies_criteria"] == ["1", "3"], (
+            f"criteria are not scoped to their own feature: {by_slug['tag-links']}. Ids repeat "
+            f"across features, so an unscoped list cites criterion 1 of whichever it likes")
+        assert by_slug["save-link"]["satisfies_criteria"] == ["1"], by_slug["save-link"]
+
+        assert "source_feature" not in multi, (
+            "the manifest names ONE source_feature for a task that descends from three. A 1.2 "
+            "reader must see this task as unattributed rather than attributed to the first edge "
+            "-- writing the singular key here reintroduces P43 inside the compatibility shim")
+        assert multi.get("moscow") == "must-have" and multi.get("requirement_level") == "P0", (
+            f"the effective tier is {multi.get('moscow')}/{multi.get('requirement_level')}, not "
+            f"the strongest of the three edges. A task is built or not built as a unit, so a "
+            f"filter must see the strongest obligation it carries")
+
+        old = inv["L4-003"]
+        assert old.get("source_feature") == "save-link" and old.get("satisfies_criteria") == ["4"], (
+            f"a task in the pre-item-65 shape no longer reads: {old}. The old shape is accepted "
+            f"on read and never written -- a reader that refuses it strands every task set "
+            f"generated before today")
+        assert [e["slug"] for e in old["source_features"]] == ["save-link"], old["source_features"]
+
+        summary = open(os.path.join(root, "tasks-summary.md"), encoding="utf-8").read()
+        row = [ln for ln in summary.splitlines() if ln.startswith("| `L4-002`")]
+        assert row and all(s in row[0] for s in ("save-link", "tag-links", "list-links")), (
+            f"tasks-summary.md shows {row[0] if row else 'no row'} -- a reviewer reading one slug "
+            f"for a task that walks three is exactly the reader item 32 built this view for")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("coverage and scope attribute a task to every feature it names -- by running them",
+       finding="P43")
+def _():
+    """Item 65, the consumer half.
+
+    The tempting cheap fix for P43 was to let `check-coverage.py` accept a criterion cited by a
+    task from another feature. That makes the report pass and leaves the task set exactly as
+    unattributable as it was -- P2's mistake with the arrow reversed, a consumer weakened to
+    match an under-specified producer. So the producer carries the edges and these two read them.
+
+    Both directions are asserted: the honest multi-feature task covers all three features, and
+    the narrowed one -- run 3's silent workaround -- is reported as a shortfall naming the two
+    features it dropped.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="item65-coverage-")
+    try:
+        prd = os.path.join(root, "prd")
+        feat = os.path.join(prd, "features")
+        os.makedirs(feat)
+        slugs = [("save-link", "must-have"), ("tag-links", "should-have"),
+                 ("list-links", "should-have")]
+        # An index entry has a body -- `select-features.py` reads the name out of it, and a
+        # self-closing tag matches its pattern not at all, which reads as "names no features".
+        entries = "".join(
+            '  <feature priority="%s" file="features/%s.md">\n    <name>%s</name>\n'
+            '  </feature>\n' % (tier, slug, slug)
+            for slug, tier in slugs)
+        open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd>\n<meta><slug>probe</slug></meta>\n<features>\n%s</features>\n</prd>\n" % entries)
+        for slug, _tier in slugs:
+            open(os.path.join(feat, slug + ".md"), "w", encoding="utf-8", newline="\n").write(
+                '<feature>\n<meta><slug>%s</slug><definition>defined</definition></meta>\n'
+                '<acceptance-criteria>\n'
+                '<criterion id="1" pattern="event-driven" priority="P0">%s one.</criterion>\n'
+                '<criterion id="2" pattern="event-driven" priority="P0">%s two.</criterion>\n'
+                '</acceptance-criteria>\n</feature>\n' % (slug, slug, slug))
+
+        def build(tasks_dir, edges):
+            layer = os.path.join(tasks_dir, "4-integration")
+            os.makedirs(layer, exist_ok=True)
+            open(os.path.join(layer, "L4-001-probe.xml"), "w", encoding="utf-8",
+                 newline="\n").write(_multi_task_xml("L4-001", edges))
+            p = subprocess.run([sys.executable,
+                                os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                                tasks_dir], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout + p.stderr
+            return tasks_dir
+
+        cov = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
+        every = [(s, t, "1,2", "P0") for s, t in slugs]
+
+        honest = build(os.path.join(root, "honest"), every)
+        p = subprocess.run([sys.executable, cov, prd, honest, "--json"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert out["uncovered_features"] == [] and out["uncovered_criteria"] == [], (
+            f"one task naming three features did not cover them: {p.stdout}\n{p.stderr}")
+        assert out["attributed_tasks"] == 1, out["attributed_tasks"]
+
+        # Run 3's workaround: the same task, narrowed to the feature it resembles most.
+        narrow = build(os.path.join(root, "narrow"), [("tag-links", "should-have", "1,2", "P0")])
+        p = subprocess.run([sys.executable, cov, prd, narrow, "--json"],
+                           capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        assert sorted(f["slug"] for f in out["uncovered_features"]) == ["list-links", "save-link"], (
+            f"narrowing a three-feature task to one was not reported: {p.stdout}. This is the "
+            f"whole of P43 -- the narrowing is silent unless attribution decides coverage")
+        # And the criteria are scoped to the feature that declared them. The tempting cheap fix
+        # for P43 was to let a criterion cited by ANY task count for every feature with that id;
+        # every feature here has ids 1 and 2, so that version reports full criterion coverage
+        # for a task that touches one of the three. The plan names this explicitly: a consumer
+        # weakened to match an under-specified producer is P2's mistake with the arrow reversed.
+        assert {(c["feature"], c["id"]) for c in out["uncovered_criteria"]} >= {
+            ("save-link", "1"), ("save-link", "2"),
+            ("list-links", "1"), ("list-links", "2")}, (
+            f"criterion ids are pooled across features, so citing `tag-links` 1 and 2 covered "
+            f"every feature's 1 and 2: {out['uncovered_criteria']}")
+
+        # And the cross-check counts the task under every feature, not just the first.
+        # The cross-check compares a per-feature prediction against the tasks attributed to that
+        # feature. `list-links` is predicted `large` and is reachable ONLY through the multi-edge
+        # task, so the disagreement below can be reported only if the task counted under it --
+        # before item 65 that task belonged to whichever feature it named, and `list-links` had
+        # no tasks to compare against at all.
+        open(os.path.join(honest, "analysis.json"), "w", encoding="utf-8", newline="\n").write(
+            json.dumps({"scope": "small", "confidence": "high", "feature_signals": [
+                {"feature": "list-links", "scope": "large", "confidence": "high"}]}))
+        p = subprocess.run([sys.executable,
+                            os.path.join(SKILLS, "breakdown", "scripts", "check-scope.py"),
+                            honest], capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        out = p.stdout + p.stderr
+        assert re.search(r"list-links was analysed as large", out), (
+            f"check-scope.py did not compare `list-links`, which the only task in the set names "
+            f"as its third feature. A task counted under one of the three leaves the other two "
+            f"with nothing to compare, and the cross-check reports nothing while looking "
+            f"identical to agreement:\n{out}")
+        assert "name no source feature" not in out, (
+            f"the one task in this set is reported as unattributed:\n{out}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the wont-have refusal and the gate read the per-edge shape -- by running them",
+       finding="P43")
+def _():
+    """Item 65's two raw-text readers, which parse task files without an XML parser.
+
+    Both were written against `<moscow>wont-have</moscow>` and `<source-feature>slug</...>` as
+    literal strings. A guard that silently stops matching is worse than one that was never
+    written: item 20's refusal is defence in depth, and defence in depth that no longer fires
+    reports a clean preflight on the exact task set it exists to stop.
+    """
+    import importlib.util
+    import shutil
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "check_gate", os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"))
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+
+    root = tempfile.mkdtemp(prefix="item65-guards-")
+    try:
+        layer = os.path.join(root, "tasks", "4-integration")
+        os.makedirs(layer)
+        open(os.path.join(layer, "L4-001-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-001", [("save-link", "must-have", "1", "P0"),
+                            ("tag-links", "should-have", "1", "P1")]))
+        open(os.path.join(layer, "L4-002-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_task_xml("L4-002", slug="list-links"))
+
+        built = gate.built_features(os.path.join(root, "tasks"))
+        assert built == {"save-link", "tag-links", "list-links"}, (
+            f"the gate sees {sorted(built)} of three features. It scopes the significance "
+            f"assertion to what was BUILT, so a slug it cannot parse is a feature whose stale "
+            f"decision record stops being reported")
+
+        if not (shutil.which("git") and shutil.which("sh")):
+            return
+        app = os.path.join(root, "app")
+        os.makedirs(app)
+        for args in (["init", "-q", "-b", "trunk", "."],
+                     ["config", "user.email", "t@t.invalid"], ["config", "user.name", "T"]):
+            subprocess.run(["git", "-C", app, *args], capture_output=True, text=True)
+        open(os.path.join(app, "README.md"), "w").write("x")
+        subprocess.run(["git", "-C", app, "add", "-A"], capture_output=True)
+        subprocess.run(["git", "-C", app, "commit", "-qm", "init"], capture_output=True)
+        tasks = os.path.join(root, "tasks")
+        for name, body in (("manifest.json", '{"tasks": []}'), ("layer_plan.json", '{"layers": []}')):
+            open(os.path.join(tasks, name), "w", encoding="utf-8", newline="\n").write(body)
+
+        flight = os.path.join(SKILLS, "execute", "scripts", "preflight.sh")
+        clean = subprocess.run(["sh", flight, tasks, app], capture_output=True, text=True,
+                               timeout=120)
+        assert clean.returncode == 0, (
+            f"preflight refused a clean tree, so the refusal below would prove nothing: "
+            f"{clean.stderr}")
+
+        # A wont-have edge on a task whose OTHER edge is must-have. The effective tier is
+        # must-have, so a refusal reading the effective tier would let this through -- and the
+        # refusal is about whether the task should exist, not how important it is.
+        open(os.path.join(layer, "L4-003-probe.xml"), "w", encoding="utf-8",
+             newline="\n").write(_multi_task_xml(
+                 "L4-003", [("save-link", "must-have", "1", "P0"),
+                            ("rejected", "wont-have", "1", "P0")]))
+        p = subprocess.run(["sh", flight, tasks, app], capture_output=True, text=True, timeout=120)
+        assert p.returncode == 1 and "L4-003" in p.stderr, (
+            f"preflight did not refuse a task carrying moscow=\"wont-have\" as an edge "
+            f"(exit {p.returncode}):\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the schema, the generator and the reviewer all say a task may name several features",
+       finding="P43")
+def _():
+    """Item 65's instruction half -- and it is three files because the shape has three owners.
+
+    The generator writes the element, the spec defines it, and `review-criteria.md` is what
+    fails a task that narrows. A rule stated in one of the three is a rule two of them contradict.
+    """
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    gen = open(os.path.join(SKILLS, "breakdown-generate-tasks", "SKILL.md"),
+               encoding="utf-8").read()
+    rev = open(os.path.join(SKILLS, "breakdown", "references", "review-criteria.md"),
+               encoding="utf-8").read()
+
+    # The spec's example is parsed, not read: several edges, each with its own criteria.
+    edges = re.findall(r"<source-feature\b([^>]*)/>", spec)
+    multi = [e for e in edges if 'slug="tag-links"' in e]
+    assert len(edges) >= 3 and multi, (
+        "the spec never shows a task descending from more than one feature, so the shape it "
+        "defines has no worked example of the case it exists for")
+    assert all(re.search(r'satisfies-criteria="[^"]+"', e) for e in edges), (
+        f"an example edge carries no criteria of its own: {edges}. Per-feature ids are the "
+        f"point -- `1` means a different requirement in each feature")
+
+    # The old shape is read and never written -- item 45's rule, and the reason a corpus survives.
+    #
+    # BOTH halves, in ONE paragraph, inside the section that owns the claim. The first version of
+    # this was an alternation over the whole file, and it matched the second sentence of the very
+    # paragraph a mutant had gutted: `still accepted by every reader` survived while the promise
+    # it belonged to did not. Two halves matched separately are two claims, not one rule.
+    region = spec.split("#### A task names every feature it descends from", 1)
+    assert len(region) == 2, "the spec has no section for item 65's shape"
+    paras = [prose(p) for p in region[1].split("\n### ", 1)[0].split("\n\n")]
+    assert any(re.search(r"accepted|read", p, re.I) and re.search(r"never written|not written", p,
+                                                                 re.I) for p in paras), (
+        "the spec does not promise, in one place, that the pre-item-65 shape is still read and "
+        "no longer written. A reader that refuses it strands every task set generated before "
+        "today; a generator that keeps writing it strands the readers of the new one")
+
+    # The grouping rule, in the two files that must agree about it.
+    for name, text in (("task-format-spec.md", spec), ("breakdown-generate-tasks", gen),
+                       ("review-criteria.md", rev)):
+        assert "from-feature" in text, (
+            f"{name} does not mention <from-feature>, so criterion ids from two features are "
+            f"carried into one task with nothing saying which is which")
+    assert re.search(r"more than one .{0,40}source-feature", prose(rev), re.I), (
+        "review-criteria.md does not scope the grouping requirement to multi-feature tasks, so "
+        "it either demands a wrapper on every task or asks for nothing")
+    assert re.search(r"never narrow|not narrow|every feature (the task|it) (actually )?covers",
+                     prose(gen), re.I), (
+        "the generator is not told to name every feature the task covers. Narrowing to the "
+        "closest one is what run 3 did, and it is silent")
+
+
+@check("the layer set is the plan's, not a list in /execute's prose -- by running it",
+       finding="P44")
+def _():
+    """Item 66.
+
+    `/execute` Step 6 iterated a hardcoded five-name list while item 31 derived the set from the
+    document, item 62 made the schema admit any layer id, and item 28 let a project declare its
+    own graph instantiated per service. The producer derived and the consumer recited, and the
+    failure is silent and total: against a project whose layers are named anything else, the loop
+    finds no tasks under any of its five names and reports a COMPLETED RUN OF ZERO TASKS.
+
+    Asserted by running the script on a project whose layers no hardcoded list could contain.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "resolve-layers.py")
+    assert os.path.isfile(script), "skills/execute/scripts/resolve-layers.py is missing"
+
+    root = tempfile.mkdtemp(prefix="item66-layers-")
+    try:
+        def tasks_dir(name, layers, files):
+            """A tasks tree with a layer_plan and a manifest BUILT from the files on disk."""
+            d = os.path.join(root, name)
+            for layer, tids in files:
+                os.makedirs(os.path.join(d, layer), exist_ok=True)
+                for tid in tids:
+                    open(os.path.join(d, layer, "%s-x.xml" % tid), "w", encoding="utf-8",
+                         newline="\n").write(
+                        "<task><meta><id>%s</id><name>N</name><layer>%s</layer>"
+                        "<priority>1</priority></meta></task>\n" % (tid, layer))
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, "layer_plan.json"), "w", encoding="utf-8", newline="\n").write(
+                json.dumps({"layers": [{"id": lid, "name": lid, "tasks": []} for lid in layers]}))
+            p = subprocess.run([sys.executable,
+                                os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                                d], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout + p.stderr
+            return d
+
+        def run(d, *args):
+            p = subprocess.run([sys.executable, script, d, *args], capture_output=True, text=True)
+            return p.returncode, (p.stdout or ""), (p.stderr or "")
+
+        # A project that declared its own graph (item 28), instantiated per service. No fixed
+        # list of tier names contains any of these.
+        declared = tasks_dir("declared",
+                             ["1-contracts", "2-service-billing", "3-service-ledger"],
+                             [("2-service-billing", ["L2-001", "L2-002"]),
+                              ("3-service-ledger", ["L3-001"])])
+        rc, out, err = run(declared)
+        assert rc == 0, f"resolving a declared graph exited {rc}: {err}"
+        assert out.split() == ["2-service-billing", "3-service-ledger"], (
+            f"the layers of this run resolved to {out.split()}. A hardcoded tier list resolves "
+            f"to nothing here, skips every layer, and reports a completed run of zero -- P44")
+        assert "1-contracts" in err, (
+            "a planned layer with no tasks was not reported. It is usually item 31 dropping a "
+            "tier correctly and occasionally generation failing quietly, and only an operator "
+            "can tell those apart")
+
+        # Order is the PLAN's, not the alphabet's and not the filesystem's.
+        ordered = tasks_dir("ordered", ["9-last", "1-first"],
+                            [("1-first", ["L1-001"]), ("9-last", ["L9-001"])])
+        rc, out, _err = run(ordered)
+        assert rc == 0 and out.split() == ["9-last", "1-first"], (
+            f"layers came back as {out.split()}, not in the order layer_plan.json records them. "
+            f"The plan is the dependency order; sorting it is a different run")
+
+        # Tasks under a layer nothing planned: reported, and still executed.
+        ghost = tasks_dir("ghost", ["1-first"],
+                          [("1-first", ["L1-001"]), ("7-ghost", ["L7-001"])])
+        rc, out, err = run(ghost)
+        assert rc == 0 and out.split() == ["1-first", "7-ghost"], (
+            f"a layer with tasks and no plan entry was dropped: {out.split()}. The task files are "
+            f"the deliverable; refusing to run work that exists helps nobody")
+        assert "7-ghost" in err and "breakdown" in err, (
+            f"the plan/files disagreement was not reported as a /breakdown defect:\n{err}")
+
+        # Nothing to run is a REFUSAL, not an empty success.
+        empty = tasks_dir("empty", ["1-first", "2-second"], [])
+        rc, out, err = run(empty)
+        assert rc == 1 and "REFUSED" in err, (
+            f"a run with no tasks in any layer exited {rc}. Reporting a completed run of zero "
+            f"tasks is the exact failure P44 describes")
+        assert not out.strip(), (
+            f"a refused run still printed a layer list on stdout: {out!r}. A caller reading the "
+            f"list before the exit code acts on a run that was refused")
+
+        # And --layer names a layer of THIS run, or it is refused by name.
+        rc, out, err = run(declared, "--layer", "3-frontend")
+        assert rc == 1 and "3-frontend" in err and "2-service-billing" in err, (
+            f"--layer with a name this run does not have exited {rc}: it must refuse and say "
+            f"which layers exist, rather than iterating to a silent zero:\n{err}")
+        assert not out.strip(), f"a refused --layer still printed a layer list: {out!r}"
+        rc, _out, _err = run(declared, "--layer", "2-service-billing")
+        assert rc == 0, "a --layer the run does have was refused"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/execute asks for its layers and recites none", finding="P44")
+def _():
+    """Item 66's other half: the list is gone from the prose, and the rule replacing it is true.
+
+    Item 61's first attempt is why the second assertion exists. It removed a rescinded
+    instruction and quoted it in the replacement as a historical note -- and a model reads a
+    quoted rule with the same weight as a stated one. A file that says *"this used to iterate
+    0-setup, 1-foundation, ..."* has the list in it, whatever the sentence around it claims.
+    """
+    ex = os.path.join(SKILLS, "execute", "SKILL.md")
+    text = open(ex, encoding="utf-8").read()
+
+    assert re.search(r"resolve-layers\.py \{tasks_path\}", text), (
+        "/execute never runs resolve-layers.py, so its layer set comes from somewhere it wrote "
+        "down -- which is P44 restored")
+
+    step6 = text.split("### Step 6: Execute Layers", 1)
+    assert len(step6) == 2, "/execute has no Step 6"
+    step6 = step6[1].split("\n### ", 1)[0]
+    call_at = step6.index("resolve-layers.py")
+    loop_at = step6.index("for layer in layers:")
+    assert call_at < loop_at, (
+        "the layer list is resolved after the loop that iterates it, so the loop iterates "
+        "something else")
+
+    # No list of tier names anywhere in the file -- not as a loop, and not as a quoted history.
+    listing = re.search(r"\[[^\]\n]*['\"]0-setup['\"][^\]\n]*['\"]1-foundation['\"][^\]\n]*\]", text)
+    assert not listing, (
+        f"/execute still carries a list of tier names: {listing.group(0)}. Whether it is iterated "
+        f"or quoted as history, it is the list P44 is about -- the history belongs in the plan "
+        f"and the ledger (item 61's own first attempt made exactly this mistake)")
+
+    rules = text.split("## Critical Rules", 1)
+    assert len(rules) == 2, "/execute has no Critical Rules"
+    flat = prose(rules[1])
+    assert not re.search(r"Never skip layers|0.1.2.3.4|all 4 layers", flat), (
+        "a Critical Rule still asserts a fixed layer sequence. Item 31 derives the set, item 28 "
+        "lets a project name its own, and a rule that contradicts them is the second half of P44")
+    assert re.search(r"layers the plan declares|order it declares", flat, re.I), (
+        "the Critical Rules no longer say what IS true about layers. A check that only forbids "
+        "the old sentence passes on a file that has lost both")
 
 
 # ------------------------------------------------------------------- behavioural

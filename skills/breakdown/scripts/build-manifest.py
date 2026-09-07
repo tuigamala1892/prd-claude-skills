@@ -76,6 +76,94 @@ def task_name(path, fallback):
 # (item 30) and the cross-check (item 49) can never see.
 TRACEABILITY = ("source-feature", "moscow", "satisfies-criteria", "requirement-level")
 
+# Strongest first. `wont-have` is in the list because a task may carry one and must be REFUSED
+# rather than ranked -- /execute's preflight does that (item 20), and ranking it away here would
+# hide the very thing that refusal exists to catch.
+TIERS = ("must-have", "should-have", "could-have", "wont-have")
+LEVELS = ("P0", "P1", "P2")
+
+
+def _strongest(values, order):
+    """The strongest of `values` by `order`, ignoring anything not in it."""
+    known = [v for v in values if v in order]
+    return min(known, key=order.index) if known else None
+
+
+def source_edges(meta):
+    """Every feature this task descends from, as edges. Item 65.
+
+    A task legitimately covers criteria from more than one feature -- an end-to-end integration
+    task is the ordinary case -- and until this element repeated, three live runs met one and
+    invented three different workarounds (**P43**). The worst was the silent one: `L4-002` walked
+    `save-link`, `tag-links` and `list-links` criterion 2 and declared `tag-links` alone. Nothing
+    caught it, because item 30's coverage passes when the other criteria are covered by other
+    tasks -- what is lost is that every consumer then believes the task belongs to one feature,
+    so dropping that feature from scope silently takes the only end-to-end assertion of the other
+    two with it.
+
+    BOTH SHAPES ARE READ HERE, and only the new one is ever written (item 45's rule):
+
+        new   <source-feature slug="save-link" moscow="must-have"
+                              satisfies-criteria="1,4" requirement-level="P0"/>
+        old   <source-feature>save-link</source-feature> plus sibling <moscow>,
+              <satisfies-criteria> and <requirement-level> elements
+
+    The siblings also fill in an attribute the new form omits, which is what makes a half-migrated
+    task readable rather than an error: the edge is the unit, and the siblings are its defaults.
+    """
+    sib = {}
+    for tag in TRACEABILITY[1:]:
+        el = meta.find(tag)
+        text = " ".join((el.text or "").split()) if el is not None else ""
+        if text:
+            sib[tag] = text
+
+    edges = []
+    for el in meta.findall("source-feature"):
+        slug = (el.get("slug") or " ".join((el.text or "").split() if el.text else "")).strip()
+        if not slug:
+            continue
+        edge = {"slug": slug}
+        moscow = el.get("moscow") or sib.get("moscow")
+        level = el.get("requirement-level") or sib.get("requirement-level")
+        crit = el.get("satisfies-criteria") or sib.get("satisfies-criteria") or ""
+        ids = [x.strip() for x in crit.split(",") if x.strip()]
+        if moscow:
+            edge["moscow"] = moscow.strip()
+        if ids:
+            edge["satisfies_criteria"] = ids
+        if level:
+            edge["requirement_level"] = level.strip()
+        edges.append(edge)
+    return edges
+
+
+def edges_of(entry):
+    """The features one MANIFEST ENTRY descends from, from either manifest shape.
+
+    This is the reader's half of `source_edges`, and it lives here so the toolchain has one
+    answer to *what does this task descend from* -- `check-coverage.py` and `check-scope.py`
+    both load it from this file rather than re-deriving it, for the reason those two already
+    load `select-features.py`: the interesting failures are the ones where two answers disagree.
+
+    Schema 1.3 writes `source_features`; 1.2 and earlier wrote `source_feature` with
+    `satisfies_criteria` beside it. A reader that handles one shape either misses every
+    multi-feature task or breaks on every manifest written before item 65.
+    """
+    edges = entry.get("source_features")
+    if edges:
+        return [e for e in edges if e.get("slug")]
+    slug = entry.get("source_feature")
+    if not slug:
+        return []
+    edge = {"slug": slug}
+    if entry.get("satisfies_criteria"):
+        edge["satisfies_criteria"] = entry["satisfies_criteria"]
+    for key in ("moscow", "requirement_level"):
+        if entry.get(key):
+            edge[key] = entry[key]
+    return [edge]
+
 
 def traceability(path):
     """Item 16's elements, read from <meta>. Absent keys are OMITTED, never defaulted.
@@ -84,6 +172,18 @@ def traceability(path):
     than from a feature -- so `absent` and `empty` have to stay distinguishable. Writing
     `"source_feature": null` for both would make a task nobody attributed look exactly like one
     that cannot be attributed, and item 30's shortfall report is built on telling them apart.
+
+    Item 65 makes attribution a LIST, and the singular keys survive under one rule:
+
+      `source_features`   every edge, always -- this is what a reader should use
+      `source_feature`    the slug, and `satisfies_criteria` its ids -- **only when there is
+                          exactly one edge**. A reader that knows only the singular key then
+                          sees a multi-feature task as UNATTRIBUTED rather than attributed to
+                          whichever edge happened to be first, which is P43's silent
+                          misattribution reintroduced by the compatibility shim
+      `moscow`, `requirement_level`  the STRONGEST across the edges, always. Both are filters,
+                          and a task is built or not built as a unit, so the strongest
+                          obligation it carries is the one a filter must see
     """
     out = {}
     try:
@@ -92,18 +192,21 @@ def traceability(path):
         return out
     if meta is None:
         return out
-    for tag in TRACEABILITY:
-        el = meta.find(tag)
-        text = " ".join((el.text or "").split()) if el is not None else ""
-        if not text:
-            continue
-        key = tag.replace("-", "_")
-        if tag == "satisfies-criteria":
-            ids = [x.strip() for x in text.split(",") if x.strip()]
-            if ids:
-                out[key] = ids
-        else:
-            out[key] = text
+
+    edges = source_edges(meta)
+    if not edges:
+        return out
+    out["source_features"] = edges
+    if len(edges) == 1:
+        out["source_feature"] = edges[0]["slug"]
+        if edges[0].get("satisfies_criteria"):
+            out["satisfies_criteria"] = edges[0]["satisfies_criteria"]
+    tier = _strongest([e.get("moscow") for e in edges], TIERS)
+    level = _strongest([e.get("requirement_level") for e in edges], LEVELS)
+    if tier:
+        out["moscow"] = tier
+    if level:
+        out["requirement_level"] = level
     return out
 
 
@@ -168,7 +271,11 @@ def resolve(tasks_path, stored):
 # 1.1 adds item 16's four traceability fields to each inventory entry. A reader written against
 # 1.0 still works: the fields are additive and absent ones are omitted rather than nulled.
 # 1.2 adds item 32's two review fields, `objective` and `files`, to each inventory entry.
-MANIFEST_SCHEMA_VERSION = "1.2"
+# 1.3 adds item 65's `source_features` list. Additive: `moscow` and `requirement_level` keep
+#     their meaning as the task's effective tier and level, and `source_feature` keeps its
+#     meaning for the single-feature tasks that are all a 1.2 reader has ever seen -- it is
+#     omitted, never guessed, where a task descends from more than one.
+MANIFEST_SCHEMA_VERSION = "1.3"
 
 # Item 32's rendered view, beside the manifest it is derived from.
 SUMMARY_NAME = "tasks-summary.md"
@@ -210,9 +317,19 @@ def render_summary(inventory, by_layer, slug):
     for e in inventory:
         # A Layer 0 task descends from the tech stack rather than from a feature, so `absent`
         # is a real answer here and is printed as one rather than as an empty cell.
-        origin = e.get("source_feature") or "—"
+        #
+        # Every feature, one per line, with its own criteria on the matching line (item 65). A
+        # reviewer reading one slug for a task that walks three is exactly the reader P43 was
+        # about, and this table is the view item 32 built so the set could be checked without
+        # opening every file.
+        edges = e.get("source_features") or (
+            [{"slug": e["source_feature"],
+              "satisfies_criteria": e.get("satisfies_criteria")}] if e.get("source_feature")
+            else [])
+        origin = "<br>".join(x["slug"] for x in edges) or "—"
+        crit = "<br>".join(", ".join(x.get("satisfies_criteria") or []) or "—"
+                           for x in edges) or "—"
         tier = e.get("moscow") or "—"
-        crit = ", ".join(e.get("satisfies_criteria") or []) or "—"
         obj = e.get("objective") or e.get("name") or ""
         if len(obj) > 120:
             obj = obj[:117].rstrip() + "..."

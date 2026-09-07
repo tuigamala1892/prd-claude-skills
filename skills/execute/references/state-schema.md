@@ -79,7 +79,12 @@ Real output from `write-state.py`, for a three-task run with one task merged and
       "status": "pending",
       "layer": "2-backend",
       "name": "Create link CRUD API",
-      "source_feature": "list-links",
+      "source_features": [
+        {"slug": "list-links", "moscow": "should-have",
+         "satisfies_criteria": ["2"], "requirement_level": "P1"},
+        {"slug": "tag-links", "moscow": "could-have",
+         "satisfies_criteria": ["1", "3"], "requirement_level": "P2"}
+      ],
       "moscow": "should-have",
       "requirement_level": "P1"
     }
@@ -122,10 +127,20 @@ Real output from `write-state.py`, for a three-task run with one task merged and
 ```
 
 
-## `source_feature`, `moscow`, `requirement_level` and `tiers` (item 19)
+## `source_features`, `moscow`, `requirement_level` and `tiers` (items 19 and 65)
 
 Item 16 puts four traceability elements on a task; `build-manifest.py` carries them into the
-manifest; this file records three of them per task and **derives `tiers` from them**.
+manifest; this file records them per task and **derives `tiers` from them**.
+
+**`source_features` is a list, because a task may descend from more than one feature** (item 65).
+`source_feature` — singular — is still written when there is exactly one, and is **absent** when
+there are several rather than naming whichever came first: a reader that knows only the singular
+key then sees an unattributed task instead of a misattributed one, which is the difference P43
+was about.
+
+**`moscow` and `requirement_level` are the STRONGEST across the edges.** A task is built or not
+built as a unit, so `tiers` counts it once, at the strongest obligation it carries. The per-edge
+values stay in the list for a reader that needs to know which feature asked for what.
 
 **They are omitted when absent, never written as `null`.** A Layer 0 task legitimately carries
 no tier — it descends from the tech stack rather than from a feature — so *"has no tier"* and
