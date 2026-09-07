@@ -3689,7 +3689,7 @@ plan's** — the same arrangement as Phase 5's five commit groups.
 | Group | Status | Commit |
 |---|---|---|
 | **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `3c61ed9` |
-| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | **Landed** 2026-09-07 | `PENDING8B` |
+| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | **Landed** 2026-09-07 | `147d38e` |
 
 **Suite:** 125 checks at branch point → **128**. `failed 0`, `known 0`. **Both groups landed; the phase is complete.**
 
@@ -3819,7 +3819,7 @@ the golden comparison and the bar's own check, which read the same files.
 
 ## 8b — three references nothing followed, and the two defects found by following them
 
-**Commit:** `PENDING8B` · **Addresses:** P24 (item 39's rule, on the path that never had it),
+**Commit:** `147d38e` · **Addresses:** P24 (item 39's rule, on the path that never had it),
 P2 (a producer with no consumer) · **Files:**
 `skills/breakdown/scripts/check-references.py`, `skills/breakdown/scripts/check-gate.py`,
 `skills/crd/references/crd-format.md`, `schema/readers.md`,
