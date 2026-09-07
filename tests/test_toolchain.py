@@ -8084,6 +8084,149 @@ def _():
         "closest one is what run 3 did, and it is silent")
 
 
+@check("the layer set is the plan's, not a list in /execute's prose -- by running it",
+       finding="P44")
+def _():
+    """Item 66.
+
+    `/execute` Step 6 iterated a hardcoded five-name list while item 31 derived the set from the
+    document, item 62 made the schema admit any layer id, and item 28 let a project declare its
+    own graph instantiated per service. The producer derived and the consumer recited, and the
+    failure is silent and total: against a project whose layers are named anything else, the loop
+    finds no tasks under any of its five names and reports a COMPLETED RUN OF ZERO TASKS.
+
+    Asserted by running the script on a project whose layers no hardcoded list could contain.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "execute", "scripts", "resolve-layers.py")
+    assert os.path.isfile(script), "skills/execute/scripts/resolve-layers.py is missing"
+
+    root = tempfile.mkdtemp(prefix="item66-layers-")
+    try:
+        def tasks_dir(name, layers, files):
+            """A tasks tree with a layer_plan and a manifest BUILT from the files on disk."""
+            d = os.path.join(root, name)
+            for layer, tids in files:
+                os.makedirs(os.path.join(d, layer), exist_ok=True)
+                for tid in tids:
+                    open(os.path.join(d, layer, "%s-x.xml" % tid), "w", encoding="utf-8",
+                         newline="\n").write(
+                        "<task><meta><id>%s</id><name>N</name><layer>%s</layer>"
+                        "<priority>1</priority></meta></task>\n" % (tid, layer))
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, "layer_plan.json"), "w", encoding="utf-8", newline="\n").write(
+                json.dumps({"layers": [{"id": lid, "name": lid, "tasks": []} for lid in layers]}))
+            p = subprocess.run([sys.executable,
+                                os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py"),
+                                d], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout + p.stderr
+            return d
+
+        def run(d, *args):
+            p = subprocess.run([sys.executable, script, d, *args], capture_output=True, text=True)
+            return p.returncode, (p.stdout or ""), (p.stderr or "")
+
+        # A project that declared its own graph (item 28), instantiated per service. No fixed
+        # list of tier names contains any of these.
+        declared = tasks_dir("declared",
+                             ["1-contracts", "2-service-billing", "3-service-ledger"],
+                             [("2-service-billing", ["L2-001", "L2-002"]),
+                              ("3-service-ledger", ["L3-001"])])
+        rc, out, err = run(declared)
+        assert rc == 0, f"resolving a declared graph exited {rc}: {err}"
+        assert out.split() == ["2-service-billing", "3-service-ledger"], (
+            f"the layers of this run resolved to {out.split()}. A hardcoded tier list resolves "
+            f"to nothing here, skips every layer, and reports a completed run of zero -- P44")
+        assert "1-contracts" in err, (
+            "a planned layer with no tasks was not reported. It is usually item 31 dropping a "
+            "tier correctly and occasionally generation failing quietly, and only an operator "
+            "can tell those apart")
+
+        # Order is the PLAN's, not the alphabet's and not the filesystem's.
+        ordered = tasks_dir("ordered", ["9-last", "1-first"],
+                            [("1-first", ["L1-001"]), ("9-last", ["L9-001"])])
+        rc, out, _err = run(ordered)
+        assert rc == 0 and out.split() == ["9-last", "1-first"], (
+            f"layers came back as {out.split()}, not in the order layer_plan.json records them. "
+            f"The plan is the dependency order; sorting it is a different run")
+
+        # Tasks under a layer nothing planned: reported, and still executed.
+        ghost = tasks_dir("ghost", ["1-first"],
+                          [("1-first", ["L1-001"]), ("7-ghost", ["L7-001"])])
+        rc, out, err = run(ghost)
+        assert rc == 0 and out.split() == ["1-first", "7-ghost"], (
+            f"a layer with tasks and no plan entry was dropped: {out.split()}. The task files are "
+            f"the deliverable; refusing to run work that exists helps nobody")
+        assert "7-ghost" in err and "breakdown" in err, (
+            f"the plan/files disagreement was not reported as a /breakdown defect:\n{err}")
+
+        # Nothing to run is a REFUSAL, not an empty success.
+        empty = tasks_dir("empty", ["1-first", "2-second"], [])
+        rc, out, err = run(empty)
+        assert rc == 1 and "REFUSED" in err, (
+            f"a run with no tasks in any layer exited {rc}. Reporting a completed run of zero "
+            f"tasks is the exact failure P44 describes")
+        assert not out.strip(), (
+            f"a refused run still printed a layer list on stdout: {out!r}. A caller reading the "
+            f"list before the exit code acts on a run that was refused")
+
+        # And --layer names a layer of THIS run, or it is refused by name.
+        rc, out, err = run(declared, "--layer", "3-frontend")
+        assert rc == 1 and "3-frontend" in err and "2-service-billing" in err, (
+            f"--layer with a name this run does not have exited {rc}: it must refuse and say "
+            f"which layers exist, rather than iterating to a silent zero:\n{err}")
+        assert not out.strip(), f"a refused --layer still printed a layer list: {out!r}"
+        rc, _out, _err = run(declared, "--layer", "2-service-billing")
+        assert rc == 0, "a --layer the run does have was refused"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("/execute asks for its layers and recites none", finding="P44")
+def _():
+    """Item 66's other half: the list is gone from the prose, and the rule replacing it is true.
+
+    Item 61's first attempt is why the second assertion exists. It removed a rescinded
+    instruction and quoted it in the replacement as a historical note -- and a model reads a
+    quoted rule with the same weight as a stated one. A file that says *"this used to iterate
+    0-setup, 1-foundation, ..."* has the list in it, whatever the sentence around it claims.
+    """
+    ex = os.path.join(SKILLS, "execute", "SKILL.md")
+    text = open(ex, encoding="utf-8").read()
+
+    assert re.search(r"resolve-layers\.py \{tasks_path\}", text), (
+        "/execute never runs resolve-layers.py, so its layer set comes from somewhere it wrote "
+        "down -- which is P44 restored")
+
+    step6 = text.split("### Step 6: Execute Layers", 1)
+    assert len(step6) == 2, "/execute has no Step 6"
+    step6 = step6[1].split("\n### ", 1)[0]
+    call_at = step6.index("resolve-layers.py")
+    loop_at = step6.index("for layer in layers:")
+    assert call_at < loop_at, (
+        "the layer list is resolved after the loop that iterates it, so the loop iterates "
+        "something else")
+
+    # No list of tier names anywhere in the file -- not as a loop, and not as a quoted history.
+    listing = re.search(r"\[[^\]\n]*['\"]0-setup['\"][^\]\n]*['\"]1-foundation['\"][^\]\n]*\]", text)
+    assert not listing, (
+        f"/execute still carries a list of tier names: {listing.group(0)}. Whether it is iterated "
+        f"or quoted as history, it is the list P44 is about -- the history belongs in the plan "
+        f"and the ledger (item 61's own first attempt made exactly this mistake)")
+
+    rules = text.split("## Critical Rules", 1)
+    assert len(rules) == 2, "/execute has no Critical Rules"
+    flat = prose(rules[1])
+    assert not re.search(r"Never skip layers|0.1.2.3.4|all 4 layers", flat), (
+        "a Critical Rule still asserts a fixed layer sequence. Item 31 derives the set, item 28 "
+        "lets a project name its own, and a rule that contradicts them is the second half of P44")
+    assert re.search(r"layers the plan declares|order it declares", flat, re.I), (
+        "the Critical Rules no longer say what IS true about layers. A check that only forbids "
+        "the old sentence passes on a file that has lost both")
+
+
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():

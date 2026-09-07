@@ -3157,9 +3157,9 @@ be measured by running it.
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
 | **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `a9964ea` |
-| **66** — `/execute` takes its layer set from the plan (P44) | *Not started* | — |
+| **66** — `/execute` takes its layer set from the plan (P44) | **Landed** 2026-08-28 | `PENDING66` |
 
-**Suite:** 112 checks at branch point → **123**. `failed 0`, `known 0`.
+**Suite:** 112 checks at branch point → **125**. `failed 0`, `known 0`. **All six items landed; the phase is complete.**
 
 ---
 
@@ -3584,6 +3584,75 @@ strongest, the old shape refused, the version left behind, the summary showing o
 Three break the consumers, including the relaxed-consumer version the plan forbids. Two break the
 raw-text guards back to the retired shape. Five break the instructions, at each of the three files
 that have to agree about them.
+
+## 66 — /execute takes its layer set from the plan, not from a list in its own prose
+
+**Commit:** `PENDING66` · **Addresses:** P44 · **Files:**
+`skills/execute/scripts/resolve-layers.py` (new), `skills/execute/SKILL.md`,
+`tests/mutants/layer-set.py` (new), `tests/test_toolchain.py`
+
+### What landed, and why it is a script
+
+The plan asked for three things: iterate `layer_plan.json`, delete *"Never skip layers: Execute in
+order (0→1→2→3→4)"*, and refuse a `--layer` the plan does not declare. All three landed — but the
+first two are instructions to a model about a list, and **a list in prose is exactly what went
+stale here**. So the resolution is `resolve-layers.py`, and Step 6 iterates its stdout.
+
+It answers the question from two files, because they answer different halves of it:
+
+| Source | Says |
+|---|---|
+| `layer_plan.json` | **order** — what `/breakdown` intended, in dependency order |
+| `manifest.json` | **existence** — what was generated, derived from the files on disk |
+
+So: planned order, filtered to layers that have tasks, then any layer that has tasks and no plan
+entry — reported as a `/breakdown` defect and **executed anyway**, because the task files are the
+deliverable and refusing to run work that exists helps nobody. A planned layer with no tasks is
+reported too: usually item 31 dropping a tier correctly, occasionally generation failing quietly,
+and only an operator can tell those apart.
+
+Two refusals, both exit 1: **no layer has any task**, and **`--layer` names a layer this run does
+not have**. The first is P44 stated as an exit code — a run with nothing to execute must not
+report a completed run of zero.
+
+### The refusal prints nothing on stdout, and that was a defect I wrote first
+
+The first version printed the layer list and *then* refused. A caller reading stdout before the
+exit code would have acted on the layer set of a run that was refused — the same shape as every
+*"it printed something so it must have worked"* failure in this repository. The refusals now come
+before any output, and the check asserts stdout is empty on both of them.
+
+### The history is not quoted, and that is item 61 paying out
+
+The obvious way to explain the change is to write *"this step used to iterate `["0-setup",
+"1-foundation", …]`"*. Item 61's first attempt did exactly that with a rescinded instruction, and
+the check written for it failed immediately and correctly: **a model reads a quoted rule with the
+same weight as a stated one.** The list is therefore described and not reproduced, the history
+lives in the plan and here, and the round contains the mutant that brings it back as a historical
+note — caught by a check that forbids the list anywhere in the file, iterated or quoted.
+
+### Verification
+
+`python tests/test_toolchain.py` — **123 → 125**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/layer-set.py` — **12 of 12 caught**, no survivors and no orphans.
+
+Twelve mutants. Seven break the resolution in each direction it could plausibly break — order
+lost to the alphabet, the plan ignored entirely, unplanned layers dropped, the empty run reported
+as success, `--layer` accepting anything, and each of the two `NOTE:` lines silenced. Five break
+the wiring and the prose, including the quoted-history trap and the pair that removes the true
+half of the Critical Rule as well as the false one.
+
+### Phase 7 is complete
+
+`61` · `62` · `64` · `63` · `65` · `66`, all landed. **112 checks at the branch point → 125.**
+
+The phase is worth one closing sentence, because its shape is the argument for it: five of its six
+items came from *running* the toolchain after the plan was declared complete and merged, and the
+sixth came from *building* one of those five. None of the six was visible to the 112 checks that
+were green when the plan was closed. The plan's own summary said the honest thing at the time —
+**the plan is implemented and the toolchain is not demonstrated** — and this phase is the
+difference between those two sentences.
 
 ## What the machine sleeping taught, which was not about sleep
 

@@ -249,17 +249,49 @@ Estimated batches: 15
 Max parallelism: 3
 ```
 
+**The layers listed are `resolve-layers.py`'s, not a list written here** — a dry run that shows
+five tiers for a project with two is a plan of a run that will not happen. Run the script for this
+output as well, and print its `NOTE:` lines: a planned layer with no tasks is exactly what an
+operator wants to see *before* the run rather than after it.
+
 Exit after dry run output.
 
 ### Step 6: Execute Layers
 
-For each layer in order:
+**The layers of this run are the ones `/breakdown` recorded, in the order it recorded them.**
+Ask the script; do not write a list here:
+
+```bash
+python {skill_dir}/scripts/resolve-layers.py {tasks_path} [--layer {layer_filter}]
+```
+
+- **Exit 0** — stdout is the ordered layer list, one per line. Iterate exactly that. `NOTE:`
+  lines on stderr name a layer planned with no tasks, or tasks under a layer the plan never
+  declared; report them and carry on.
+- **Exit 1** — `REFUSED`. Either no layer has any task, or `--layer` named one this run does not
+  have. **Stop and report it verbatim.** A run with nothing to execute is not a completed run.
+- **Exit 2** — `layer_plan.json` or `manifest.json` could not be read. Stop; the preflight should
+  have caught it.
+
+**Why a script, and why this is not cosmetic.** This step used to iterate a hardcoded list of
+the five shipped tier names — the history is in the plan (P44) and is deliberately not repeated
+here, because a model reads a quoted list with the same weight as a stated one (item 61's own
+first attempt is why that sentence exists). Item 31 made the layer set derived from what the document puts work in, item 62 made the task schema admit any layer id,
+and item 28 lets a project declare its own `<layers>` graph — instantiated per service, so a layer
+is legitimately called `2-service-billing`. Against such a project this loop found no tasks under
+any of its five names, skipped every layer, and **reported a completed run of zero tasks**
+(**P44**). Nothing failed, because nothing ran.
+
+`/breakdown` Phase 4 has said the true rule for some time — *"Process exactly the layers
+`layer_plan.json` contains — never a list written here"*. This is the same rule at the other end
+of the pipeline.
 
 ```python
-layers = ["0-setup", "1-foundation", "2-backend", "3-frontend", "4-integration"]
+layers = resolve_layers()      # the script's stdout, in order
 
 for layer in layers:
-    # Skip if filter doesn't match
+    # `--layer` was validated by the script above: an unknown name is a refusal there, not a
+    # loop that quietly matches nothing. This is only the filter.
     if layer_filter and layer != layer_filter:
         continue
 
@@ -437,6 +469,10 @@ python {skill_dir}/scripts/write-state.py {tasks_path} {project_path} {prd_slug}
 
 **Report the numbers it prints.** Do not report a count that you incremented, and do not
 edit the file it writes.
+
+**A run that executed no layer at all is never `completed`.** `resolve-layers.py` refuses
+before the loop begins, so reaching the report with zero layers means the refusal was reasoned
+past — say so, name `expected` from the manifest, and report `incomplete` (**P44**).
 
 **`status` may only be `completed` when `verified == expected` and `missing` is empty.**
 Otherwise it is `incomplete`, whatever else went right. Two separate conditions, because they
@@ -775,7 +811,10 @@ This skill runs in `context: fork`:
 
 ## Critical Rules
 
-1. **Never skip layers**: Execute in order (0→1→2→3→4)
+1. **Execute the layers the plan declares**, in the order it declares them, and skip only
+   what git says is already done. There is no fixed set and no fixed count: item 31 derives the
+   set from the document, item 28 lets a project name its own. `resolve-layers.py` answers this,
+   and a list of tier names written here is how P44 happened
 2. **Respect dependencies**: Only execute tasks with satisfied deps
 3. **Stop on abandon**: If task hits 5 failures, STOP immediately
 4. **Preserve worktrees**: Never delete worktrees on failure
