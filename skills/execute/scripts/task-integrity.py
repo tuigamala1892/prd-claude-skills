@@ -109,6 +109,83 @@ def ignore_file(project_path):
             f.write("*\n")
 
 
+def differences(tasks_path, snap):
+    """(changed, removed, added, recorded) between a snapshot and the task files as they are.
+
+    Shared by `record` and `verify` because the question is the same question -- what is
+    different from the last snapshot -- asked at two moments. It was in `verify` alone until
+    item 67, which is why a re-record could replace a snapshot without anyone knowing what it
+    had replaced (**P45**).
+    """
+    hashes = os.path.join(snap, "hashes.json")
+    if not os.path.isfile(hashes):
+        return None, None, None, None
+    recorded = json.load(io.open(hashes, encoding="utf-8"))["files"]
+    present = set(task_files(tasks_path))
+    changed, removed = [], []
+    for rel, meta in sorted(recorded.items()):
+        live = os.path.join(tasks_path, rel)
+        if not os.path.isfile(live):
+            removed.append(rel)
+        elif sha256(live) != meta["sha256"]:
+            changed.append(rel)
+    added = sorted(present - set(recorded))
+    return changed, removed, added, recorded
+
+
+def write_edits(args, snap, recorded, changed, removed, added, kind):
+    """Append one record per difference, with a diff for every modified file.
+
+    `kind` is the only thing that distinguishes an edit made DURING a run from one made between
+    two of them -- deliberately. Both are the same act on the same file, and the second is
+    legitimate while the first is not; what neither may be is invisible.
+    """
+    run = run_dir(args.project_path, args.slug)
+    os.makedirs(os.path.join(run, "task-edits"), exist_ok=True)
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    lines, diffs = [], []
+
+    for rel in changed:
+        before = io.open(os.path.join(snap, rel), encoding="utf-8",
+                         errors="replace").read().splitlines(keepends=True)
+        after = io.open(os.path.join(args.tasks_path, rel), encoding="utf-8",
+                        errors="replace").read().splitlines(keepends=True)
+        diff = "".join(difflib.unified_diff(
+            before, after,
+            fromfile=f"a/{rel} ({'as dispatched' if kind == 'modified' else 'previous run'})",
+            tofile=f"b/{rel} (now)"))
+        # Named by the CONTENT it records, not by the clock. A timestamp at second resolution
+        # collided the first time this ran -- two edits to one task inside the same second, and
+        # the second diff overwrote the first, which is P45's erasure one directory down. A
+        # content hash also makes re-recording the same edit idempotent rather than duplicated.
+        after_sha = sha256(os.path.join(args.tasks_path, rel))
+        name = f"{task_id_of(rel)}-{after_sha[:12]}.diff"
+        with io.open(os.path.join(run, "task-edits", name), "w", encoding="utf-8",
+                     newline="\n") as f:
+            f.write(diff)
+        diffs.append(diff)
+        lines.append({"task_id": task_id_of(rel), "path": rel, "kind": kind, "at": at,
+                      "sha_before": recorded[rel]["sha256"], "sha_after": after_sha,
+                      "diff": f"task-edits/{name}"})
+
+    for rel in removed:
+        lines.append({"task_id": task_id_of(rel), "path": rel,
+                      "kind": "removed" if kind == "modified" else "removed-between-runs",
+                      "at": at, "sha_before": recorded[rel]["sha256"], "sha_after": None,
+                      "diff": None})
+    for rel in added:
+        lines.append({"task_id": task_id_of(rel), "path": rel,
+                      "kind": "added" if kind == "modified" else "added-between-runs",
+                      "at": at, "sha_before": None,
+                      "sha_after": sha256(os.path.join(args.tasks_path, rel)), "diff": None})
+
+    edits = os.path.join(run, "task-edits.jsonl")
+    with io.open(edits, "a", encoding="utf-8", newline="\n") as f:
+        for line in lines:
+            f.write(json.dumps(line) + "\n")
+    return lines, diffs, edits
+
+
 def cmd_record(args):
     preconditions(args.tasks_path, args.project_path)
     files = task_files(args.tasks_path)
@@ -117,6 +194,31 @@ def cmd_record(args):
 
     ignore_file(args.project_path)
     snap = snapshot_dir(args.project_path, args.slug)
+
+    # ITEM 67. Compare BEFORE replacing. A resume re-records -- an operator may fix a task
+    # between runs, and forbidding that leaves an unsatisfiable task with nowhere to go -- but
+    # until this, re-recording replaced the evidence with the thing it was evidence about. The
+    # fourth live crossing stopped on a task, the task was edited, the resume snapshotted the
+    # edited file, and `verify` reported UNCHANGED for the rest of the run (**P45**).
+    #
+    # So the edit is recorded and the run is not stopped. The distinction between `the operator`
+    # and `the run` is not visible on disk and this does not pretend to draw it: both leave the
+    # same trace, which is the honest version of the same protection.
+    changed, removed, added, recorded = differences(args.tasks_path, snap)
+    between = []
+    if recorded is not None and (changed or removed or added):
+        between, diffs, edits = write_edits(args, snap, recorded, changed, removed, added,
+                                            "edited-between-runs")
+        print(f"CHANGED SINCE LAST RUN: {len(between)} task file(s) differ from the previous "
+              f"snapshot:", file=sys.stderr)
+        for line in between:
+            print(f"  {line['kind']:<20} {line['task_id']}  {line['path']}", file=sys.stderr)
+        for diff in diffs:
+            print(diff, end="", file=sys.stderr)
+        print(f"recorded in {edits}. This is allowed -- a task may be fixed between runs -- and "
+              f"it is reported because a run that resumes into edited criteria should say so.",
+              file=sys.stderr)
+
     if os.path.isdir(snap):
         shutil.rmtree(snap)
     os.makedirs(snap)
@@ -136,7 +238,8 @@ def cmd_record(args):
                    "files": entries}, f, indent=2)
         f.write("\n")
 
-    print(f"RECORDED {len(entries)} task file(s) from {args.tasks_path}")
+    print(f"RECORDED {len(entries)} task file(s) from {args.tasks_path}"
+          + (f" ({len(between)} changed since the last run)" if between else ""))
     return 0
 
 
@@ -151,57 +254,15 @@ def cmd_verify(args):
         print("Run `task-integrity.py record` before dispatching any task.", file=sys.stderr)
         return 2
 
-    recorded = json.load(io.open(hashes, encoding="utf-8"))["files"]
-    present = set(task_files(args.tasks_path))
-
-    changed, removed, added = [], [], []
-    for rel, meta in sorted(recorded.items()):
-        live = os.path.join(args.tasks_path, rel)
-        if not os.path.isfile(live):
-            removed.append(rel)
-        elif sha256(live) != meta["sha256"]:
-            changed.append(rel)
-    for rel in sorted(present - set(recorded)):
-        added.append(rel)
+    changed, removed, added, recorded = differences(args.tasks_path, snap)
 
     if not (changed or removed or added):
         print(f"UNCHANGED {len(recorded)} task file(s) since dispatch (sha256)")
         return 0
 
-    os.makedirs(os.path.join(run_dir(args.project_path, args.slug), "task-edits"), exist_ok=True)
-    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    lines = []
-
-    for rel in changed:
-        before = io.open(os.path.join(snap, rel), encoding="utf-8",
-                         errors="replace").read().splitlines(keepends=True)
-        after = io.open(os.path.join(args.tasks_path, rel), encoding="utf-8",
-                        errors="replace").read().splitlines(keepends=True)
-        diff = "".join(difflib.unified_diff(before, after,
-                                            fromfile=f"a/{rel} (as dispatched)",
-                                            tofile=f"b/{rel} (now)"))
-        name = f"{task_id_of(rel)}-{len(lines) + 1}.diff"
-        rec = os.path.join(run_dir(args.project_path, args.slug), "task-edits", name)
-        with io.open(rec, "w", encoding="utf-8", newline="\n") as f:
-            f.write(diff)
+    lines, diffs, edits = write_edits(args, snap, recorded, changed, removed, added, "modified")
+    for diff in diffs:
         print(diff, end="")
-        lines.append({"task_id": task_id_of(rel), "path": rel, "kind": "modified", "at": at,
-                      "sha_before": recorded[rel]["sha256"],
-                      "sha_after": sha256(os.path.join(args.tasks_path, rel)),
-                      "diff": f"task-edits/{name}"})
-
-    for rel in removed:
-        lines.append({"task_id": task_id_of(rel), "path": rel, "kind": "removed", "at": at,
-                      "sha_before": recorded[rel]["sha256"], "sha_after": None, "diff": None})
-    for rel in added:
-        lines.append({"task_id": task_id_of(rel), "path": rel, "kind": "added", "at": at,
-                      "sha_before": None,
-                      "sha_after": sha256(os.path.join(args.tasks_path, rel)), "diff": None})
-
-    edits = os.path.join(run_dir(args.project_path, args.slug), "task-edits.jsonl")
-    with io.open(edits, "a", encoding="utf-8", newline="\n") as f:
-        for line in lines:
-            f.write(json.dumps(line) + "\n")
 
     print(f"EDITED {len(lines)} task file(s) changed since dispatch:", file=sys.stderr)
     for line in lines:

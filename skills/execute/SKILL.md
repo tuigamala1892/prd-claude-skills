@@ -174,6 +174,18 @@ contradiction rather than repairing it.
 right: a fresh run re-records. A `--resume` re-records too, against the task files as they stand
 now — so an operator who fixed a task between runs is not fighting the previous run's snapshot.
 
+**And a re-record says what it replaced (item 67).** When a snapshot already exists, `record`
+compares first and appends every difference to `task-edits.jsonl` as `edited-between-runs`, with
+both hashes and a diff, before taking the new one. **Report those lines at the top of the run.**
+A resume that begins by naming the task files that changed since the last one is a resume whose
+operator knows what they are resuming into.
+
+It does not stop: fixing a task between runs is the supported path, and the escalation in Step 8
+exists so that an unsatisfiable task has one. What changed is that it is no longer invisible —
+the fourth live crossing stopped on a task, the task was edited, the resume snapshotted the
+edited file, and `verify` reported `UNCHANGED` for the rest of the run (**P45**). The guard was
+protecting a dispatch, and a run is not a dispatch.
+
 ### Step 4: Handle State
 
 **Always start by asking git what is already done**, before deciding anything:
