@@ -10,7 +10,7 @@ it.** Where a format document needs to show a shared element it shows an *exampl
 attributes, the legal values and the meaning live here.
 
 ```xml
-<schema-core version="schema-5"/>
+<schema-core version="schema-6"/>
 ```
 
 The version above is the artefact schema the toolchain currently writes. It is the same string
@@ -389,6 +389,57 @@ that had deferred half its behaviour was indistinguishable from one that had non
 **A resolved gap is annotated, not deleted.** The `id` may already have been cited from a commit
 message or a review, and a deleted gap turns those citations into nothing. Say what resolved it
 and when, in the body, and leave it in place.
+---
+
+## 7. `<review>` — the half of the `defined` gate that is not mechanical
+
+**Item 40's bar is two halves: the mechanical tests pass, *and* a review has been recorded.**
+`check-definition.py` is the whole of the first half. Until schema-6 the second had nowhere to
+live, so a feature labelled `defined` and a feature labelled `defined` *after somebody read it*
+were the same file — and the gate silently had one working half.
+
+```xml
+<meta>
+  <slug>save-link</slug>
+  <definition>defined</definition>
+  <review by="lee" at="2026-09-07" sha="8f21c4a90b3e"/>
+</meta>
+```
+
+| Attribute | |
+|---|---|
+| `by` | who reviewed it. A name, not a role — a review is somebody's |
+| `at` | the date they did, `YYYY-MM-DD` |
+| `sha` | the first 12 hex of sha256 over **this file with the `<review>` element removed** |
+
+**`sha` is what makes it a record rather than a claim.** Without it, a review element says a
+review happened once, and the file it describes can be rewritten underneath it — which is the
+same defect as a ledger that records adjectives instead of commits. With it, a reader can tell
+three states apart:
+
+| | |
+|---|---|
+| **reviewed** | `sha` matches the file's current content |
+| **stale** | `sha` differs — this was reviewed, and then edited |
+| **not reviewed** | the element is absent |
+
+**A stale review is reported exactly as an absent one**, and reported rather than refused: §4.2's
+principle is that a wrong label usually signals wrong *content*, so a gate that blocks the label
+invites relabelling instead of fixing. `--strict` is where it becomes an exit code.
+
+**Any edit invalidates it, including a reflow**, and that is deliberate rather than a limitation.
+The alternative is a canonicaliser deciding which edits are cosmetic — which is a judgement, and
+judgement is the thing a reviewer was there to supply. Re-recording a review is one command.
+
+**The element is optional in the schema and required by the bar.** A `tbd` or `in-progress`
+feature has nothing to review yet, so a schema that required it everywhere would put a false
+record on every unfinished file. The obligation belongs to the label, not to the tag.
+
+**Nothing writes it automatically.** `check-definition.py --record-review` computes the hash and
+writes the element when a person asks for it; no migration produces one, and
+[`migration.md`](migration.md) records that as the reason the schema-5 → schema-6 step reports
+`PARTIAL` on every `defined` feature it meets.
+
 ---
 
 ## Who cites this file

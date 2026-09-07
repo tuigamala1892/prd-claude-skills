@@ -7,6 +7,26 @@ first half. The second half is `agents/prd-criteria-author.md` in `review-defini
 the split is not a convenience -- a test that needs judgement, run by a script, produces a
 confident wrong answer, which is worse than no answer.
 
+AND THE GATE HAS A SECOND HALF, WHICH UNTIL SCHEMA-6 HAD NOWHERE TO LIVE
+
+The bar is *the mechanical tests pass AND a review has been recorded*. For four phases only the
+first half existed, so a feature labelled `defined` and one labelled `defined` after somebody read
+it were the same file. `<review by= at= sha=>` (core section 3) is the second half, and this script
+is its reader:
+
+    reviewed      sha matches the file's content with the <review> element removed
+    STALE         sha differs -- reviewed, then edited
+    not reviewed  the element is absent
+
+Both failing states are REPORTED, never refused, and only `--strict` turns them into an exit
+code. Section 4.2's own principle is that a wrong label signals wrong content, so a gate that
+blocks the label invites relabelling rather than fixing -- which is the failure it exists to
+prevent, committed deliberately.
+
+`--record-review --by NAME` writes the element. The hash rule lives here, in the reader, so that
+producing a record and checking one cannot drift apart -- an agent computing a digest by hand is
+the kind of thing that is right four times and wrong on the fifth.
+
 THE EIGHT TESTS, AND WHERE EACH ONE LANDS
 
   1  scope states what the feature owns AND what it does not          judgement
@@ -60,11 +80,14 @@ elaborated only as far as its priority seems to justify.
 USAGE
 
     check-definition.py <prd-dir> [--feature SLUG] [--all] [--strict] [--quiet] [--json]
+    check-definition.py <prd-dir> --record-review --by NAME [--feature SLUG]
 
   --feature  check one feature by slug, for the per-feature loop in `/prd`
   --all      apply the bar to every feature, not only the ones declared `defined`. The bar is a
              gate on that label, so by default a `tbd` feature failing it is not a finding
-  --strict   exit non-zero on the one-way edges too
+  --strict   exit non-zero on the one-way edges, and on a missing or stale review
+  --record-review --by NAME
+             record a review on every `defined` feature (or one, with --feature) and exit
 
 EXIT CODES
 
@@ -75,11 +98,14 @@ EXIT CODES
 
 import argparse
 import collections
+import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
 import sys
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -214,6 +240,47 @@ def mentions_of(slug, name, files, owner_rel):
     return hits
 
 
+REVIEW = re.compile(r"[ \t]*<review\b[^>]*/>[ \t]*\n?")
+
+
+def content_sha(text):
+    """The feature's content hash: sha256 over the file WITHOUT its <review> element.
+
+    Excluding the element is what makes the record self-consistent -- hashing the whole file
+    would mean writing the review changed the file the review describes, so every review would
+    be stale the moment it was recorded.
+
+    No canonicalisation, deliberately. A reflow invalidates a review, because the alternative is
+    a canonicaliser deciding which edits are cosmetic, and that decision is the judgement the
+    reviewer was there to make. Twelve hex is git's readability trade, not a security one.
+    """
+    return hashlib.sha256(REVIEW.sub("", text).encode("utf-8")).hexdigest()[:12]
+
+
+def review_of(text):
+    """(state, attrs) where state is `reviewed`, `stale` or `absent`."""
+    m = re.search(r"<review\b([^>]*)/>", text)
+    if not m:
+        return "absent", {}
+    attrs = dict(re.findall(r'\b([a-z-]+)="([^"]*)"', m.group(1)))
+    return ("reviewed" if attrs.get("sha") == content_sha(text) else "stale"), attrs
+
+
+def record_review(path, by):
+    """Write or replace a <review> in the feature's <meta>, and return the line written."""
+    text = read(path)
+    stripped = REVIEW.sub("", text)
+    line = '  <review by="%s" at="%s" sha="%s"/>\n' % (
+        by, time.strftime("%Y-%m-%d"), content_sha(stripped))
+    m = re.search(r"([ \t]*)</meta>", stripped)
+    if not m:
+        return None
+    out = stripped[:m.start()] + line.replace("  ", m.group(1) + "  ", 1) + stripped[m.start():]
+    with io.open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(out)
+    return line.strip()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("prd_dir", metavar="prd-dir")
@@ -223,6 +290,9 @@ def main():
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--record-review", action="store_true",
+                    help="record a review on the `defined` features and exit")
+    ap.add_argument("--by", default=None, help="who reviewed it -- required by --record-review")
     args = ap.parse_args()
 
     prd_dir = args.prd_dir
@@ -235,6 +305,31 @@ def main():
         print(f"REFUSED  {err}", file=sys.stderr)
         return 2
 
+    if args.record_review:
+        if not args.by:
+            print("REFUSED  --record-review needs --by NAME. A review is somebody's, and a "
+                  "record with no name is the adjective this element replaced", file=sys.stderr)
+            return 2
+        wrote = 0
+        for r in rows:
+            if args.feature and r["slug"] != args.feature:
+                continue
+            if r["definition"] != "defined":
+                continue
+            path = os.path.join(prd_dir, r["file"].replace("/", os.sep))
+            if not os.path.isfile(path):
+                continue
+            line = record_review(path, args.by)
+            if line is None:
+                print(f"REFUSED  {r['file']} has no </meta> to record a review in",
+                      file=sys.stderr)
+                return 2
+            wrote += 1
+            if not args.quiet:
+                print(f"  recorded  {r['file']}: {line}")
+        print(f"recorded {wrote} review(s) as `{args.by}`")
+        return 0
+
     feature_slugs = {r["slug"] for r in rows}
     corpus = []
     for r in rows:
@@ -245,7 +340,7 @@ def main():
         if os.path.isfile(p):
             corpus.append((extra, None, read(p)))
 
-    findings, edges = [], []
+    findings, edges, reviews = [], [], []
     # Item 34, reported as a distribution rather than as a rule. A corpus where
     # everything is P0 carries no information, and neither does one where nothing
     # is set -- and no threshold between those two is defensible, so this counts
@@ -284,6 +379,16 @@ def main():
             else:
                 seen[cid] = True
 
+        state, attrs = review_of(text)
+        if state == "absent":
+            reviews.append((r["file"], "no review recorded -- the bar is `the mechanical tests "
+                                       "pass AND a review has been recorded`, and this is the "
+                                       "second half"))
+        elif state == "stale":
+            reviews.append((r["file"], f"the review by {attrs.get('by') or '?'} on "
+                                       f"{attrs.get('at') or '?'} is STALE: the file has changed "
+                                       f"since it was recorded"))
+
         test_2(text, crits, fail)
         test_4(text, fail)
         test_7(r["slug"], r["name"], text,
@@ -307,20 +412,24 @@ def main():
         print(json.dumps({"applied_to": applied,
                           "findings": [{"file": f, "test": t, "message": m}
                                        for f, t, m in findings],
+                          "reviews": [{"file": f, "message": m} for f, m in reviews],
                           "edges": edges}, indent=2))
     elif not args.quiet:
         for rel, test, message in findings:
             print(f"  BAR t{test}  {rel}: {message}")
+        for rel, message in reviews:
+            print(f"  REVIEW    {rel}: {message}")
         for line in edges:
             print(f"  EDGE      {line}")
 
     spread = ", ".join(f"{k} {v}" for k, v in sorted(tally.items())) or "no criteria"
     print(f"the bar applied to {applied} features: {len(findings)} mechanical failures, "
-          f"{len(edges)} one-way edges to triage; criterion priority: {spread}")
+          f"{applied - len(reviews)} of {applied} reviewed, {len(edges)} one-way edges to "
+          f"triage; criterion priority: {spread}")
 
     if findings:
         return 1
-    return 1 if (args.strict and edges) else 0
+    return 1 if (args.strict and (edges or reviews)) else 0
 
 
 if __name__ == "__main__":

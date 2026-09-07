@@ -254,6 +254,50 @@ sign-off is a thing that happens to work in flight.
 
 ---
 
+## schema-5 → schema-6: the review the gate always required
+
+**Item 40's bar is two halves — the mechanical tests pass *and* a review has been recorded — and
+for four phases the second half had nowhere to live.** `<review by= at= sha=>` in a feature's
+`<meta>` is that place ([core §7](core.md#7-review--the-half-of-the-defined-gate-that-is-not-mechanical)),
+and this step is the first whose feature half is **entirely** a person's.
+
+### The mechanical half — `migrate.py`'s
+
+| Rule | Artefact | What it does |
+|---|---|---|
+| **R11** | `index.md` | a document `<status>` outside `in-progress\|complete` becomes `in-progress` |
+| **R12** | `what-next.md` | the same, in the file that has to agree with it |
+
+**Why `in-progress` and not `complete`.** It is the weaker claim, and a machine choosing the
+stronger one would assert that an interview finished which nobody finished. The same rule settled
+the layer-graph spike: where the evidence does not decide, resolve toward protection.
+
+**This is the second rule that changes a value rather than a tag**, after R10's MoSCoW mapping,
+and it is exempted from the rename invariant by name — `applied_adds_values` lists the rules
+allowed to move a value, because that invariant is the only thing standing between a rename and
+an edit for R1–R3.
+
+### The judgement half — never the script's
+
+**R13 has no mechanical half at all, and it is the first rule of which that is true.** A review
+is a person having read the feature; there is nothing in the file to derive one from. So the
+transform is the identity, every `defined` feature reports `PARTIAL`, and `--check` refuses the
+tree until somebody records the reviews:
+
+```bash
+python skills/breakdown/scripts/check-definition.py docs/prd/<slug> --record-review --by <name>
+```
+
+**The rejected alternative was a placeholder** — a `<review>` with no reviewer, written by the
+migration so the shape would be present. That is a record of nothing, and this repository's rule
+is that a ledger records SHAs rather than adjectives. An unsigned review is the adjective.
+
+**A migration invalidates the reviews it rewrites**, and that is correct rather than unfortunate.
+`sha` covers the file with the review element removed, so any later step that rewrites a feature
+leaves its review `STALE` — which is the true statement: somebody read a document that has since
+changed. Re-reviewing is one command, and the alternative is a hash that survives edits, which is
+a record of nothing again.
+
 ## The conventions, and what they make checkable
 
 Item 4. `excluded` and `superseded` were conventions an authoring corpus invented because the
@@ -304,6 +348,8 @@ leave every existing CRD and `PROJECT.md` behind.
 | | requirement `priority` MoSCoW → `P0\|P1\|P2` on the criterion | 47 | **schema-5** |
 | | `<meta>` gains a document-level MoSCoW `<priority>` | 47 | **schema-5** |
 | | deferred criteria become `<gap kind="specification">` | 48 | **schema-5** |
+| | `<review by= at= sha=>` records that a feature was read | 40 | **schema-6** |
+| | a document `<status>` outside its own enum becomes `in-progress` | 22 | **schema-6** |
 | | `<affected-apis>` → `<affected-contracts kind="api">` | 57 | *accepted on read; not a step* |
 | `PROJECT.md` | `<feature status=>` → `built=` | 45 | schema-2 |
 | | registries stay at root; **none is added or removed by migration** | 25 | — |

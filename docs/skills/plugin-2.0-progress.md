@@ -3676,6 +3676,147 @@ as success, `--layer` accepting anything, and each of the two `NOTE:` lines sile
 the wiring and the prose, including the quoted-history trap and the pair that removes the true
 half of the Critical Rule as well as the false one.
 
+## Phase 8 — The residue.
+
+Group order: `8a` schema-6 · `8b` the three `open` reader rows, on branch `phase-8-the-residue`.
+
+**Not plan items, and that is the point of the phase.** Both were written down rather than
+carried: `SCHEMAS.json` recorded the schema-6 content work through four phases, and `readers.md`
+has carried three `open` rows since item 23's audit. Neither is a new finding; both are things the
+plan finished by *naming* and left for somebody to do. **The grouping is this ledger's, not the
+plan's** — the same arrangement as Phase 5's five commit groups.
+
+| Group | Status | Commit |
+|---|---|---|
+| **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `PENDING8A` |
+| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | *Not started* | — |
+
+**Suite:** 125 checks at branch point → **127**. `failed 0`, `known 0`.
+
+---
+
+## 8a — the review the gate always required, and the four features it had been failing
+
+**Commit:** `PENDING8A` · **Addresses:** P26 (item 40's deferred half), P10 (item 22's finding) ·
+**Files:** `schema/core.md`, `schema/migration.md`, `schema/scripts/migrate.py`,
+`skills/breakdown/scripts/check-definition.py`, `tests/fixture/prd/SCHEMAS.json`,
+`tests/fixture/prd/schema-6/**` (new), `tests/mutants/review-gate.py` (new),
+`tests/test_toolchain.py`
+
+### The content work could not be content alone, and that is the finding
+
+The item was recorded as *"schema-6 content work"* — five fixture files whose content predates the
+bars now applied to them. It is not content work, for two mechanical reasons found on opening it:
+
+- **A version with no shape delta is not a schema version.** The registry's rule 2 defines a
+  frozen fixture as one that changes only when *the migration's expected output* changes.
+- **Applying the fixes to `schema-5` in place breaks the step before it.** That comparison strips
+  `acceptance-criteria`, `gaps` and `priority`; a `<data-model>` appearing in schema-5 would have
+  to be added to *those* judgement elements — weakening an existing check to accommodate new
+  content, which is P2's mistake with the arrow reversed.
+
+So the content rides with the shape change `SCHEMAS.json` predicted all along: item 40's second
+gate half, which had been deferred since Phase 5 with *"the second half has nowhere to be
+recorded, and adding one is a schema version"*.
+
+### `<review by= at= sha=>`, and why the hash is the whole element
+
+The bar is *the mechanical tests pass **and** a review has been recorded*. Four phases had only
+the first half, so a feature labelled `defined` and one labelled `defined` **after somebody read
+it** were the same file.
+
+```xml
+<review by="lee" at="2026-09-07" sha="15538c7661d0"/>
+```
+
+**Without `sha` this element records nothing.** It would say a review happened once and let the
+file be rewritten underneath it — a ledger recording adjectives, which is the defect
+`record-task.sh` was written to avoid one artefact along. With it there are three states, and the
+middle one exists only because the hash does:
+
+| | |
+|---|---|
+| **reviewed** | `sha` matches the file with the `<review>` element removed |
+| **stale** | it differs — reviewed, then edited |
+| **not reviewed** | absent |
+
+**The hash excludes the element it lives in**, or writing a review would change the file the
+review describes and every review would be stale on arrival. That is the first mutant in the
+round, because it is the version somebody writes first and it looks entirely reasonable.
+
+**Any edit invalidates it, a reflow included.** Deliberate: the alternative is a canonicaliser
+deciding which edits are cosmetic, and that judgement is what the reviewer was there to supply.
+It was exercised without being planned — adding `<considerations>` to three features mid-build
+invalidated their reviews, and they had to be re-recorded.
+
+**Reported, never refused; `--strict` is the exit code.** §4.2's principle is that a wrong label
+signals wrong content, so a gate that blocks the label invites relabelling rather than fixing.
+
+### R13 is the first migration rule with no mechanical half at all
+
+| Rule | What it does |
+|---|---|
+| **R11**, **R12** | a document `<status>` outside `in-progress\|complete` becomes `in-progress` — the **weaker** claim, because a machine resolving toward `complete` asserts an interview finished that nobody finished |
+| **R13** | a `defined` feature must carry a `<review>`. There is nothing in the file to derive one from, so the transform is the identity and every such feature reports `PARTIAL` |
+
+**The rejected alternative was a placeholder review** written by the migration so the shape would
+be present. It is in the round as a mutant: the schema would be satisfied, the gate would pass,
+and nobody would have read anything.
+
+R11/R12 also needed adding to `applied_adds_values` — the per-rule exemption from the rename
+invariant, which R10 already needed for the same reason: mapping one value onto another is not a
+rename. The invariant caught it on the first run and refused to write the files, which is the
+exemption list working as intended rather than an obstacle.
+
+### Three checks used the fixture's defects as their positive control
+
+Fixing the corpus broke them, and each said so by name — one of them in so many words: *"If the
+fixture has been fixed, update this check deliberately."*
+
+| Check | Had asserted | Now |
+|---|---|---|
+| the well-defined bar | the fixture FAILS t2/t4 | the fixture passes, and every test is broken here instead |
+| artefact conformance | the fixture carries an invalid document status | the current version is clean; the check injects one |
+| coverage | criterion ids listed by hand | derived from the fixture, so a new criterion cannot orphan it |
+
+**A control that depends on a defect staying unfixed is a control that argues against fixing it.**
+Three of them had accumulated, all pointing at the same five files, and the item that fixed those
+files is the item that had to rewrite them.
+
+### Two of my own, caught by guards that already existed
+
+**A `<notes>` holding only a `<data-model>` is a schema-3 shape.** Item 27 split notes into
+`<data-model>` and `<considerations>`, and R6 reads the second as the marker that the split
+happened — so three features silently regressed a version until `check-artefacts.py` reported
+them as `OLD`. They now carry the consideration that belongs with each data model.
+
+**My new check hardcoded `schema-5` and `schema-6`**, and the suite's own *nothing hardcodes a
+schema fixture version* check rejected it. Both ends are now derived from the registry, which is
+what makes the check exercise the newest step rather than the step it was written against.
+
+### What the fixture is now
+
+**12 artefacts, `0 invalid, 0 written in an older spelling`** — the first time the current corpus
+has been clean on both counts. schema-5 reported 2 invalid and 8 files in an older spelling, and
+those numbers were the reason this item existed.
+
+### Verification
+
+`python tests/test_toolchain.py` — **125 → 127**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/review-gate.py` — **10 of 10 caught**, no survivors.
+
+Five mutants break the hash rule, because the hash is the difference between a record and a claim:
+it covers the review element (stale on arrival), it is never compared, staleness is reported and
+then passed by `--strict`, absence stops being reported, the recorder signs the review itself.
+Four break the migration, including the placeholder review and the status resolving toward
+`complete`. The tenth breaks the fixture back to failing the bar it is the reference for.
+
+**Two orphan checks fired**, both expected: the fixture mutant and the migrate mutants also trip
+the golden comparison and the bar's own check, which read the same files.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

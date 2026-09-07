@@ -4209,7 +4209,10 @@ def _():
     core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
     region = core.split("## 6. Gaps", 1)
     assert len(region) == 2, "core.md defines no <gaps> element"
-    region = region[1]
+    # Bounded at the next section. §6 was the last one when this was written, so an unbounded
+    # read worked by accident until core gained a §7 -- whose two-column tables then arrived
+    # here as gap kinds and raised IndexError.
+    region = region[1].split("\n## ", 1)[0]
 
     rows = [r.strip() for r in region.split("### The five kinds", 1)[1].splitlines()
             if r.strip().startswith("|")]
@@ -5547,9 +5550,19 @@ def _():
                                capture_output=True, text=True)
             return p, json.loads(p.stdout)
 
-        full = [dict(slug="save-link", crits="1,2,3,4"),
-                dict(slug="list-links", crits="1,2,3"),
-                dict(slug="tag-links", crits="1,2,3,4", moscow="should-have")]
+        # DERIVED from the fixture, not listed here. The ids were hardcoded until schema-6 gave
+        # list-links the unwanted-behaviour criterion the bar had been asking for, and a check
+        # that has to be edited whenever the corpus gains a criterion is a check that will one
+        # day be edited to agree with a defect.
+        index = open(os.path.join(prd, "index.md"), encoding="utf-8").read()
+        full = []
+        for tier, rel in re.findall(r'<feature\s+priority="([^"]+)"\s+file="([^"]+)"', index):
+            slug = os.path.splitext(os.path.basename(rel))[0]
+            text = open(os.path.join(prd, rel.replace("/", os.sep)), encoding="utf-8").read()
+            ids = re.findall(r'<criterion\b[^>]*\bid="([^"]+)"', text)
+            full.append(dict(slug=slug, crits=",".join(ids), moscow=tier))
+        assert len(full) >= 3 and all(f["crits"] for f in full), (
+            f"the fixture PRD no longer yields a coverable task set: {full}")
 
         # Complete coverage is exit 0 -- and asserting this is what stops a check that reports
         # a shortfall unconditionally from passing everything below.
@@ -6094,21 +6107,21 @@ def _():
             assert old in text, f"fixture no longer contains {old[:40]!r}"
             open(p, "w", encoding="utf-8", newline="\n").write(text.replace(old, new, 1))
 
-        # --- the baseline, and it is NOT clean. save-link and tag-links pass every mechanical
-        #     test; list-links declares `defined` with no failure-path criterion and no data
-        #     model, which is exactly the state P23 measured across a real corpus. The fixture
-        #     predates the bar, SCHEMAS.json records the fix as schema-6 work, and until then
-        #     this is a live positive control rather than a hypothetical one.
+        # --- the baseline is now CLEAN, and that is the change schema-6 made. Until then this
+        #     check used the fixture's own defects as its positive control -- list-links declared
+        #     `defined` with no failure-path criterion and no data model, exactly the state P23
+        #     measured across a real corpus. Item 40's finding was that live control firing.
+        #
+        #     A control that depends on a defect staying unfixed is a control that argues against
+        #     fixing it. Every test below now breaks the fixture itself, so the baseline asserts
+        #     the opposite thing: a corpus that passes the bar is reported as passing it, which is
+        #     what stops a check that reports something unconditionally from passing everything.
         d = work()
         p = run(d)
-        assert p.returncode == 1, (
-            "the bar passed a corpus in which a `defined` feature has no unwanted-behaviour "
-            "criterion. If the fixture has been fixed, update this check deliberately")
-        assert "list-links" in p.stdout, f"the bar names no feature:\n{p.stdout}"
-        clean = [l for l in p.stdout.splitlines()
-                 if "BAR" in l and ("save-link" in l or "tag-links" in l)]
-        assert not clean, (
-            f"a feature that passes every mechanical test was reported anyway: {clean}")
+        assert p.returncode == 0, (
+            f"the current fixture does not pass the bar it is the reference for:\n{p.stdout}")
+        assert not [l for l in p.stdout.splitlines() if "BAR" in l], (
+            f"a feature that passes every mechanical test was reported anyway:\n{p.stdout}")
 
         # --- test 2: the failure path. Turn the one unwanted-behaviour criterion into a happy
         #     path and the feature must stop qualifying.
@@ -6921,22 +6934,44 @@ def _():
         root = os.path.join(REPO, "tests", "fixture", "prd", version)
         p = run(root)
         invalid = [ln for ln in p.stdout.splitlines() if "INVALID" in ln]
-        # The one live defect in the corpus, at every version: staff-service declares a
-        # document-level <status> outside core 3's enum for that tag. It is REPORTED rather
-        # than fixed here -- the fixtures are frozen and the fix is schema-6 content work.
-        assert all("staff-service" in ln for ln in invalid), (
-            f"{version} reports a defect outside the one the corpus is known to carry:\n"
-            + "\n".join(invalid))
+        # staff-service carried a document-level <status> outside core 3's enum in schema-1..5,
+        # reported rather than fixed because those fixtures are frozen. schema-6 fixes it, so the
+        # CURRENT version must be clean and the frozen ones keep their known defect -- which is
+        # also the assertion that the fix actually reached the current fixture.
+        if version == reg["current"]:
+            assert not invalid, (
+                f"{version} is the current fixture and reports a defect it should have been "
+                f"fixed by:\n" + "\n".join(invalid))
+        else:
+            assert all("staff-service" in ln for ln in invalid), (
+                f"{version} reports a defect outside the one the corpus is known to carry:\n"
+                + "\n".join(invalid))
         assert not [ln for ln in p.stdout.splitlines()
                     if "INVALID" in ln and "user-story" in ln], (
             f"{version} is being judged by a LATER schema's rules -- an older fixture reported "
             f"for an element its version does not have:\n{p.stdout}")
 
-    # --- and the live defect is named, by file and by value.
-    p = run(os.path.join(REPO, "tests", "fixture", "prd", reg["current"], "staff-service"))
-    assert p.returncode == 1, "the invalid document status was not reported at all"
-    assert "index.md" in p.stdout and "'defined'" in p.stdout, (
-        f"the report does not name the file and the value:\n{p.stdout}")
+    # --- and an invalid document status is named, by file and by value. The corpus used to
+    #     supply this defect and schema-6 fixed it, so the check now INJECTS one: a control that
+    #     depends on a defect staying unfixed is a control that argues against fixing it.
+    inject = tempfile.mkdtemp(prefix="artefacts-status-")
+    try:
+        d = os.path.join(inject, "p")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", reg["current"],
+                                     "staff-service"), d)
+        idx = os.path.join(d, "index.md")
+        text = open(idx, encoding="utf-8").read()
+        assert "<status>in-progress</status>" in text, (
+            f"the current fixture's index.md no longer carries a document status to break:\n"
+            f"{text[:300]}")
+        open(idx, "w", encoding="utf-8", newline="\n").write(
+            text.replace("<status>in-progress</status>", "<status>defined</status>", 1))
+        p = run(d)
+        assert p.returncode == 1, "an invalid document status was not reported at all"
+        assert "index.md" in p.stdout and "'defined'" in p.stdout, (
+            f"the report does not name the file and the value:\n{p.stdout}")
+    finally:
+        shutil.rmtree(inject, ignore_errors=True)
 
     root = tempfile.mkdtemp(prefix="artefacts-22-")
     try:
@@ -8225,6 +8260,158 @@ def _():
     assert re.search(r"layers the plan declares|order it declares", flat, re.I), (
         "the Critical Rules no longer say what IS true about layers. A check that only forbids "
         "the old sentence passes on a file that has lost both")
+
+
+@check("the `defined` gate has both halves, and a stale review is not a review -- by running it",
+       finding="P26")
+def _():
+    """Item 40's second half, which schema-6 gave a place to live.
+
+    The bar is *the mechanical tests pass AND a review has been recorded*. For four phases only
+    the first half existed, so a feature labelled `defined` and one labelled `defined` after
+    somebody read it were the same file -- and nothing downstream could tell them apart.
+
+    The state worth asserting is the third one. A review element alone says a review happened
+    once and lets the file be rewritten underneath it, which is a ledger recording adjectives.
+    `sha` is what makes it a record: reviewed, STALE, or absent, and the middle one is the state
+    that only exists because the hash does.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+    root = tempfile.mkdtemp(prefix="review-40-")
+    try:
+        d = os.path.join(root, "p")
+        shutil.copytree(current_fixture("link-shelf"), d)
+
+        def run(*extra):
+            return subprocess.run([sys.executable, script, d, *extra],
+                                  capture_output=True, text=True, encoding="utf-8")
+
+        # The fixture arrives reviewed -- that is what schema-6 did -- and passes strictly.
+        p = run("--strict")
+        assert p.returncode == 0, f"the current fixture does not pass the bar:\n{p.stdout}"
+        assert re.search(r"\b(\d+) of \1 reviewed", p.stdout), (
+            f"not every `defined` feature in the current fixture is reviewed:\n{p.stdout}")
+
+        # Edit a reviewed feature and the review must go STALE. Nothing about the edit is
+        # invalid -- that is the point: the file changed after somebody read it.
+        target = os.path.join(d, "features", "save-link.md")
+        text = open(target, encoding="utf-8").read()
+        open(target, "w", encoding="utf-8", newline="\n").write(
+            text.replace("</feature>", "  <!-- one word changed after the review -->\n</feature>"))
+        p = run()
+        assert "STALE" in p.stdout and "save-link" in p.stdout, (
+            f"a feature edited after its review still reads as reviewed:\n{p.stdout}")
+        assert p.returncode == 0, (
+            "a stale review FAILED the run. Section 4.2's principle is that a wrong label signals "
+            "wrong content, so a gate that blocks invites relabelling rather than fixing -- this "
+            "one reports, and only --strict is an exit code")
+        p = run("--strict")
+        assert p.returncode == 1, "--strict passed a stale review, so the report has no teeth"
+
+        # Removing the element is the same verdict by a different route.
+        text = open(target, encoding="utf-8").read()
+        open(target, "w", encoding="utf-8", newline="\n").write(
+            re.sub(r"[ \t]*<review\b[^>]*/>\n", "", text))
+        p = run()
+        assert "no review recorded" in p.stdout, (
+            f"a feature with no review at all was not reported:\n{p.stdout}")
+
+        # And the recorder closes it, computing the hash itself -- one implementation of the
+        # rule, in the file that reads it, because a digest computed by hand is right four
+        # times and wrong on the fifth.
+        p = run("--record-review", "--by", "someone")
+        assert p.returncode == 0, f"--record-review failed:\n{p.stdout}\n{p.stderr}"
+        p = run("--strict")
+        assert p.returncode == 0, (
+            f"a freshly recorded review does not satisfy the reader that wrote it:\n{p.stdout}")
+
+        # A review with no reviewer is the adjective this element replaced.
+        p = run("--record-review")
+        assert p.returncode == 2 and "REFUSED" in p.stderr, (
+            f"--record-review wrote a review with nobody's name on it (exit {p.returncode})")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("schema-6 migrates the half it can and reports the half nobody can -- by running it",
+       finding="P28")
+def _():
+    """The schema-5 -> schema-6 step, and the first rule in the migration with no mechanical half.
+
+    R11/R12 map a document `<status>` outside its own enum onto `in-progress` -- the weaker
+    claim, because a machine resolving toward `complete` asserts an interview finished that
+    nobody finished. R13 cannot do anything at all: a review is a person having read the file.
+
+    So the step must do two things that look contradictory and are not: change what it can, and
+    refuse to call the tree finished. A migration that did only the first would leave `--check`
+    saying a partly migrated tree is done, which is the failure PARTIAL exists to name.
+    """
+    import shutil
+    import tempfile
+
+    # Derived, never named: the registry says which version is current and which precedes it.
+    # A check that names one is a check that quietly stops exercising the newest step.
+    _path, reg = schema_registry()
+    versions = list(reg["versions"])
+    target = reg["current"]
+    src_version = versions[versions.index(target) - 1]
+    assert reg["versions"][target].get("migration_from_previous") == "mixed", (
+        f"the current step {src_version} -> {target} is not `mixed`, so this check is about a "
+        f"step that no longer exists")
+
+    root = tempfile.mkdtemp(prefix="current-step-")
+    try:
+        work = os.path.join(root, "tree")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+
+        p = _run_migrate(work, "--to", target)
+        assert p.returncode == 0, f"the step failed outright:\n{p.stdout}\n{p.stderr}"
+        out = p.stdout + p.stderr
+
+        # The mechanical half: the document status that nothing had ever validated.
+        for rel in ("index.md", "what-next.md"):
+            text = open(os.path.join(work, "staff-service", rel), encoding="utf-8").read()
+            assert "<status>in-progress</status>" in text, (
+                f"staff-service/{rel} still carries a document status outside its own enum. "
+                f"/prd --resume finds unfinished PRDs by that tag, so a value nothing can "
+                f"classify is a PRD nothing can resume")
+            assert "<status>defined</status>" not in text, f"{rel} kept the invalid value"
+
+        # The judgement half: every `defined` feature is PARTIAL, and none of them was touched.
+        partial = [ln for ln in out.splitlines() if "PARTIAL" in ln and "R13" in ln]
+        assert len(partial) >= 5, (
+            f"only {len(partial)} feature(s) reported PARTIAL for the review. A step that "
+            f"invents reviews would report none:\n{out}")
+        for ln in partial:
+            path = os.path.join(work, ln.split()[1].replace("\\", os.sep).replace("/", os.sep))
+            if os.path.isfile(path):
+                assert "<review" not in open(path, encoding="utf-8").read(), (
+                    f"{ln.split()[1]} came out of the migration carrying a review nobody wrote. "
+                    f"A placeholder review is a record of nothing, which is the adjective this "
+                    f"element replaced")
+
+        # And the tree is not finished, which is the whole point of the state.
+        p = _run_migrate(work, "--to", target, "--quiet", "--check")
+        assert p.returncode == 1, (
+            f"--check called a tree finished in which no feature has been reviewed (exit "
+            f"{p.returncode}). `the migration ran` and `the migration finished` are different "
+            f"claims")
+
+        # Recording the reviews is what finishes it -- by a person, through the reader.
+        cd = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+        for project in ("link-shelf", "staff-service"):
+            subprocess.run([sys.executable, cd, os.path.join(work, project),
+                            "--record-review", "--by", "suite", "--quiet"],
+                           capture_output=True, text=True)
+        p = _run_migrate(work, "--to", target, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a tree whose features have all been reviewed is still unfinished:\n{p.stdout}\n"
+            f"{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 # ------------------------------------------------------------------- behavioural
