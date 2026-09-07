@@ -3143,7 +3143,7 @@ nowhere else.
 
 ## Phase 7 — What the run found.
 
-Plan order: `61` · `62` · `64` · `63` · `65`, on branch `phase-7-what-the-run-found`.
+Plan order: `61` · `62` · `64` · `63` · `65` · `66`, on branch `phase-7-what-the-run-found`. **66 was added to the plan while 63 was being built** — see §3.5 and section L there; the paragraph in item 63's entry below is the discovery note.
 
 **Not planned; measured.** Phases 1–6 were specified by reading the corpus. This phase was
 specified by watching the toolchain run, on 2026-08-28, immediately after the plan was declared
@@ -3157,6 +3157,7 @@ be measured by running it.
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
 | **65** — a task may name every feature it descends from | *Not started* | — |
+| **66** — `/execute` takes its layer set from the plan (P44) | *Not started* | — |
 
 **Suite:** 112 checks at branch point → **119**. `failed 0`, `known 0`.
 
@@ -3447,7 +3448,7 @@ that iterates five names, finds no tasks under any of them, and reports a comple
 This is P39's shape exactly — a consumer pinned to the five shipped names while the producer
 derives them — arriving in the file that consumes the derivation. **It is not item 63**, and
 fixing it here would be the fix-at-the-site-of-discovery habit this plan keeps naming. Recorded
-as **P44** for the plan to place.
+as **P44**, and now placed: plan §3.5 states the finding, section L holds item 66, and Phase 7's ordering carries it.
 
 ### The round found two of my own checks doing nothing, and it is the same defect twice
 

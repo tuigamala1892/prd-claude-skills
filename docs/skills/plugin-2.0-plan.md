@@ -848,6 +848,30 @@ scope cross-check, `tasks-summary.md`, the gate — believes the task belongs to
 removing that feature from scope would silently take the only end-to-end assertion of the other
 two with it.
 
+### 3.5 From implementing the phase
+
+**One finding, and its provenance is the point.** P39–P43 were found by running the toolchain.
+This one was found by *building* item 63 — reading `/execute` closely enough to wire a guard into
+it — which is a third way of finding things and worth keeping separate from the other two.
+
+**P44 — `/execute` iterates a layer list that stopped being true three items ago.**
+Step 6 loops over a hardcoded `["0-setup", "1-foundation", "2-backend", "3-frontend",
+"4-integration"]`, and Critical Rule 1 still reads *"Never skip layers: Execute in order
+(0→1→2→3→4)"*. Item 31 made the layer set derived from content, item 61 removed the instruction
+that forbade the derivation, item 62 made the task schema admit any layer id, and item 28 lets a
+project declare its own `<layers>` graph instantiated per service. **The producer derives; the
+consumer still recites.**
+
+The failure is silent and total rather than partial. A project whose layers are named anything
+else — `2-service-billing`, or simply a set that drops `3-frontend`, which the third live run
+correctly produced — gets a run that iterates five names, finds no tasks under any of them, skips
+every layer, and **reports a completed run of zero tasks**. Nothing fails, because nothing runs.
+
+**This is P33 with the arrow reversed.** P33 found the layer set hardcoded in the *producer* and
+derived on the CRD path; item 31 fixed the producer on both. Neither P33 nor item 31 mentions
+`/execute`, because the plan was reading `/breakdown` at the time — which is exactly how a
+consumer is left reciting a list the producer has stopped writing.
+
 ---
 
 ## 4. Three design decisions that resolve most of the above
@@ -2958,6 +2982,38 @@ the arrow reversed: a consumer weakened to match an under-specified producer.
 
 ---
 
+## L. What implementing the phase found
+
+**One item, and it exists as its own section for the same reason K does** — not because it is
+bigger, but because it was found a different way. K's five came from watching the toolchain run.
+This one came from reading `/execute` while wiring item 63's guard into it, which is the third
+kind: found by building.
+
+**66. `/execute` takes its layer set from the plan it was handed, not from a list in its own
+prose.**
+*Addresses P44. Depends on nothing, and does not wait for 65.*
+
+Three parts, and the first is the whole fix:
+
+- **Iterate `layer_plan.json`.** The layers of a run are the ones `/breakdown` derived and
+  recorded, in the order it recorded them. `/execute` already reads that file for its dry run;
+  Step 6 is the one place that does not use it.
+- **Delete "Never skip layers: Execute in order (0→1→2→3→4)."** It contradicts Step 6's own
+  skip-what-is-verified rule as well as the derivation, and it is the same shape as **P39**: an
+  instruction eight sections away from the behaviour it forbids, surviving the change that made
+  it false. What replaces it is the rule that is actually true — **execute the layers the plan
+  declares, in the order it declares them, and skip only what git says is done.**
+- **Refuse a layer the plan does not declare.** `--layer 3-frontend` against a plan with no such
+  layer is an operator error and must say so, rather than iterating to a silent zero.
+
+**A run that executes nothing must never report completion.** That is the half worth checking by
+test: the failure here is not that a layer is missed, it is that missing every layer looks
+exactly like a project with nothing to do. `ledger-status.sh` already knows the expected total —
+`verified 0 / 18` is available at the point the report is written, and item 4.9's rule that a
+shortfall is named applies unchanged.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3105,9 +3161,9 @@ where the commits fall is a claim about a context window and does not.
 Last, deliberately. A schema check written against a schema still moving is a check that gets
 edited rather than obeyed.
 
-### Phase 7 — What the run found.
+### Phase 7 — What the run found, and what building it found.
 
-`61` · `62` · `64` · `63` · `65`
+`61` · `62` · `64` · `63` · `65` · `66`
 
 **Not planned; measured.** Phases 1–6 were specified by reading the corpus and Phase 7 was
 specified by watching the toolchain run, which is why it is last in the document and first in
@@ -3118,6 +3174,11 @@ document that requires a layer its own schema forbids should not survive the com
 it. **64 next**, because it is a brief and costs nothing. **63 before 65**: a guard on task files
 is cheap and its absence makes every later result harder to trust, while 65 is a schema version
 and wants the guard already in place before task files start changing shape.
+
+**66 last, and it is not ordered by dependency.** It depends on nothing and could be done first;
+it is last because it was found last — while implementing 63 — and because its severity is
+easiest to misread. A silent zero-task run is worse than a loud failure, and the item is one
+file's worth of work, so anyone reordering this phase should move it *earlier* rather than later.
 
 ---
 
