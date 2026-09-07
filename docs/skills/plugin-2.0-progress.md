@@ -3156,7 +3156,7 @@ be measured by running it.
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
-| **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `PENDING65` |
+| **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `a9964ea` |
 | **66** — `/execute` takes its layer set from the plan (P44) | *Not started* | — |
 
 **Suite:** 112 checks at branch point → **123**. `failed 0`, `known 0`.
@@ -3487,7 +3487,7 @@ that carry it.
 
 ## 65 — a task may name every feature it descends from
 
-**Commit:** `PENDING65` · **Addresses:** P43 · **Files:**
+**Commit:** `a9964ea` · **Addresses:** P43 · **Files:**
 `skills/breakdown/references/task-format-spec.md`, `skills/breakdown-generate-tasks/SKILL.md`,
 `skills/breakdown/references/review-criteria.md`, `skills/breakdown/SKILL.md`,
 `skills/breakdown/scripts/build-manifest.py`, `check-coverage.py`, `check-scope.py`,
