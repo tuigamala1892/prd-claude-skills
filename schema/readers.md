@@ -24,8 +24,14 @@ be wrong within a month, and every row would be a claim rather than an observati
 failure this rule exists to catch, rebuilt as a maintenance chore.
 
 So the script measures, and this file records only what the measurement cannot explain. On the
-current corpus that is **13 of 128 elements**: ten that no machine should read, and three that
-nobody has decided about.
+current corpus that is **ten of 128 elements**, all of them prose no machine should read.
+
+**There are no `open` rows left, and that is recent.** Three CRD elements sat here as
+*a producer with no consumer* from item 23's audit until group 8b: `<project-ref>` — `Required`
+in every CRD and read by nothing — with `<prd-ref>` and `<feature-ref>`. They now resolve, in
+`check-references.py`, under the rule item 39 already applied to the PRD path: **a reference that
+names something must resolve to it, or be reported by name.** The verdict stays defined below,
+because a schema that grows an element faster than it grows a consumer will need it again.
 
 ## The three verdicts
 
@@ -59,9 +65,6 @@ is the only rule here with teeth and the reason the file is worth having.
 | `mitigation` | unread by design | Inside `<risk>`. The risk is recorded for a human to act on; a mitigation nobody wrote down is the defect, not one nothing parses |
 | `created` | unread by design | A date, for a person. Provenance the toolchain acts on is `<toolchain-version>` (item 24), which has a producer and a reader |
 | `change-request` | unread by design | A wrapper: `<summary>` and `<motivation>` carry the content, and `<motivation>` is named by the parity table as the CRD's counterpart to `<user-story>` |
-| `project-ref` | **open** | **Required** in every CRD and read by nothing. It names the `PROJECT.md` the change is against, which is exactly what `/breakdown` resolves by convention instead — a required field with no consumer is P2's shape on the CRD path |
-| `prd-ref` | **open** | Optional, and the only structured link from a CRD back to the PRD that produced the feature. Item 16 gave the PRD path task-to-feature traceability; nothing does the same for change-to-feature |
-| `feature-ref` | **open** | Inside `<related-features>`, which *is* read. The individual refs carry an `id` into `PROJECT.md` and nothing resolves it, so *"which features does this change touch"* is answered by prose |
 
 ---
 
@@ -69,8 +72,8 @@ is the only rule here with teeth and the reason the file is worth having.
 
 **It keys on the element NAME, not on the pair of artefact and name.** `<summary>` appears in
 `index.md`, in `what-next.md` and in a CRD; a script reading any one of them credits all three.
-Two elements sharing a name therefore share a verdict, and the three `open` rows above were
-triaged by hand for exactly that reason. Keying on the pair would be more precise and would
+Two elements sharing a name therefore share a verdict, and the three `open` rows this file
+carried until group 8b were triaged by hand for exactly that reason. Keying on the pair would be more precise and would
 produce mostly false results, because the reader search is textual and a script naming
 `<summary>` does not say whose.
 

@@ -174,10 +174,16 @@ def main():
     if track["adr_dir"] and args.project_path:
         ref_args += ["--adr-dir", os.path.normpath(
             os.path.join(args.project_path, track["adr_dir"]))]
-    ref_code, ref_out = (0, "") if os.path.isfile(args.document) else run(
-        "check-references.py", *ref_args)
+    # A CRD used to skip this entirely, because the script only took a PRD directory and the
+    # significance flag is a PRD element. It now resolves a CRD's OWN references -- <project-ref>,
+    # <prd-ref> and every <feature-ref id=> -- so skipping it means a change request whose
+    # references nothing follows, which is the state all three were in until this.
+    if os.path.isfile(args.document) and args.project_path:
+        ref_args += ["--project-path", args.project_path]
+    ref_code, ref_out = run("check-references.py", *ref_args)
     undriven = [ln.strip() for ln in ref_out.splitlines()
                 if "STALE" in ln and "architecturally significant" in ln]
+    dangling = [ln.strip() for ln in ref_out.splitlines() if "DANGLING" in ln]
 
     built = built_features(args.tasks_dir) if os.path.isdir(args.document) else set()
 
@@ -198,6 +204,8 @@ def main():
         findings.append(("coverage", cov_out))
     for line in undriven:
         findings.append(("significance", line))
+    for line in dangling:
+        findings.append(("references", line))
     for line in gaps:
         findings.append(("blocked", line))
     if gap_err:
@@ -221,8 +229,24 @@ def main():
         print(f"  3 blocked       {'OK' if not gaps else str(len(gaps)) + ' blocking gap(s)'}")
         for line in gaps:
             print(f"      {line}")
+        # 4 exists only on the CRD path, where the document carries references of its own.
+        # Counted in `findings` from the start and printed nowhere, which made the count the
+        # only evidence -- an operator reading `2 finding(s)` cannot act on the one they cannot
+        # see.
+        if dangling:
+            print(f"  4 references    {len(dangling)} dangling")
+            for line in dangling:
+                print(f"      {line}")
 
     stop = track["enabled"] or args.require_confirmation
+
+    # --json emits JSON and nothing else. It used to print the summary line after the object,
+    # so `--json | jq` failed on trailing data -- and nothing had parsed the output until a
+    # check did, which is how a flag can be wrong for months. The exit code carries the same
+    # decision the line describes.
+    if args.json:
+        return 0 if not findings else (1 if stop else 0)
+
     if not findings:
         print("gate: nothing to confirm")
         return 0

@@ -3689,9 +3689,9 @@ plan's** — the same arrangement as Phase 5's five commit groups.
 | Group | Status | Commit |
 |---|---|---|
 | **8a** — schema-6: item 40's second gate half, and the content the bar had been failing | **Landed** 2026-09-07 | `3c61ed9` |
-| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | *Not started* | — |
+| **8b** — `project-ref`, `prd-ref`, `feature-ref`: a producer with no consumer, three times | **Landed** 2026-09-07 | `PENDING8B` |
 
-**Suite:** 125 checks at branch point → **127**. `failed 0`, `known 0`.
+**Suite:** 125 checks at branch point → **128**. `failed 0`, `known 0`. **Both groups landed; the phase is complete.**
 
 ---
 
@@ -3814,6 +3814,109 @@ Four break the migration, including the placeholder review and the status resolv
 
 **Two orphan checks fired**, both expected: the fixture mutant and the migrate mutants also trip
 the golden comparison and the bar's own check, which read the same files.
+
+---
+
+## 8b — three references nothing followed, and the two defects found by following them
+
+**Commit:** `PENDING8B` · **Addresses:** P24 (item 39's rule, on the path that never had it),
+P2 (a producer with no consumer) · **Files:**
+`skills/breakdown/scripts/check-references.py`, `skills/breakdown/scripts/check-gate.py`,
+`skills/crd/references/crd-format.md`, `schema/readers.md`,
+`tests/mutants/crd-refs.py` (new), `tests/test_toolchain.py`
+
+### One reader for three elements, because it is one rule
+
+`readers.md` carried three `open` rows from item 23's audit: `<project-ref>` — **`Required` in
+every CRD and read by nothing** — with `<prd-ref>` and `<feature-ref>`. A producer with no
+consumer three times over, one of them required, which is P2's shape on the CRD path.
+
+They resolve in `check-references.py`, the script that already resolved the PRD path's citations.
+**The same program rather than a second one, because it is the same rule**: a reference that names
+something must resolve to it, or be reported by name. That is item 39, arriving where it had never
+been applied.
+
+| Element | What follows it now |
+|---|---|
+| `<project-ref>` | resolves to a file, and is **compared** against the project the run is for |
+| `<prd-ref>` | resolves, when present |
+| `<feature-ref id=>` | resolves against `PROJECT.md`'s `<feature id=>` |
+
+**`<project-ref>` is compared, never used to resolve.** Letting a document choose which
+`PROJECT.md` a run reads would hand a file authority over where the run points; comparing catches
+the case that matters — a CRD describing a change to one project, executed against another.
+Without `--project-path` the check says it could not make that comparison rather than reporting a
+check it did not make.
+
+### The gate had been skipping it by construction
+
+`check-references.py` took a PRD *directory*, so `check-gate.py` short-circuited it for a CRD:
+`(0, "") if os.path.isfile(args.document)`. **That is why three elements could sit unread through
+two audits** — the one caller that would have followed them could not call the script at all. The
+gate now runs it for a CRD and carries what it says.
+
+### Two defects found by making the check run rather than read
+
+Both were invisible to the first version of the check, which asserted that the word `dangling`
+appeared in the gate's source. A mutant dropped the findings loop and left the word — the fifth
+presence-assertion in this build to fail the same way — and forcing the check to *run* the gate
+found two real things behind it:
+
+- **The gate counted the dangling reference and printed it nowhere.** `gate: 2 finding(s)` with
+  every visible section reading `OK`. It now has a fourth section, on the CRD path only.
+- **`--json` was not JSON.** It printed the object and then the human summary line, so
+  `--json | jq` failed on trailing data. **Nothing had ever parsed that output until this check
+  did**, which is how a flag stays wrong for months. `--json` now emits the object and nothing
+  else; the exit code carries the same decision the line described.
+
+And the second fix was not enough either: asserting the *printed* line still passed while the
+finding was dropped, because the print does not read `findings`. The check asserts both halves of
+the contract — the human report names the reference, the machine report counts it.
+
+### A fourth control that depended on the state it was measuring
+
+`every element the schema defines has a reader` asserted that some `open` rows existed, using
+their presence as evidence its parser worked. Closing the last three broke it. It now asserts the
+`open` **verdict is still defined** and that the table parses: the vocabulary has to survive a
+corpus with no instances of it, or the next producer with no consumer arrives to a verdict nothing
+exercises.
+
+**That is four such controls in one phase** — three in 8a against the fixture's defects, one here
+against the exception list. They accumulate for a reason worth naming: a control written *while*
+a defect is live is free, and the cost lands on whoever fixes the defect.
+
+### Verification
+
+`python tests/test_toolchain.py` — **127 → 128**, `failed 0`, `known 0`.
+
+`python tests/mutate.py tests/mutants/crd-refs.py` — **9 of 9 caught**, after 8 of 9 twice.
+
+Six mutants break the resolver in each direction it could quietly stop resolving; two break the
+wiring, separately, because *the gate calls it* and *the gate does something with what it says*
+are different claims and the second one survived twice; the ninth restores an `open` row, which
+would put this file back into disagreement with the reader it now has.
+
+**The round was killed by the ten-minute timeout mid-mutant**, leaving the tree mutated. Restored
+with `git checkout-index` from the index staged before it — which is why `git add -A` before a
+round is a rule here — and re-run in the background, where a round that takes longer than a
+foreground call allows belongs.
+
+---
+
+## Phase 8 is complete
+
+`8a` · `8b`, both landed. **125 checks at branch point → 128.**
+
+**Neither group was a plan item, and both were things the plan finished by naming.**
+`SCHEMAS.json` carried the schema-6 content work through four phases and `readers.md` carried
+three `open` rows through two audits; each was recorded rather than done, and each turned out to
+be larger than its record — the content work was a schema version, and the three unread elements
+were unread because their one caller could not call the script.
+
+**What the phase actually removed** is two places where the toolchain described itself
+inaccurately: a `defined` label that nobody had to have read, and a `Required` element that
+nothing resolved. Both had been true for months, both were written down, and neither was visible
+in any run.
 
 ---
 

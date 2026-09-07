@@ -7086,14 +7086,27 @@ def _():
         f"prose about a mechanism, and prose outlives the mechanism")
     assert undeclared == 0
 
-    # `open` is a verdict, not a failure -- the parity.md rule, reached again. But --strict
-    # must still be able to insist.
+    # `open` is a verdict, not a failure -- the parity.md rule, reached again. Group 8b closed
+    # the last three, so this used to assert that some existed and now cannot: the verdict has to
+    # keep working for a corpus that has none of it, or the next unread element arrives to a
+    # vocabulary nothing exercises.
+    #
+    # The parser proof moved with it. `assert opens` was doubling as evidence that the table was
+    # being read at all -- a control that depended on rows nobody had closed yet, which is the
+    # same shape as the three fixture-defect controls schema-6 had to rewrite.
+    verdicts = open(os.path.join(SCHEMA, "readers.md"), encoding="utf-8").read()
+    assert re.search(r"\|\s*`open`\s*\|", verdicts), (
+        "readers.md no longer DEFINES the `open` verdict. Closing every open row is good news; "
+        "deleting the verdict means the next producer with no consumer has nowhere to be "
+        "recorded, and gets decided by whoever notices it")
+    rows = [ln for ln in verdicts.splitlines()
+            if ln.startswith("| `") and "|" in ln[3:]]
+    assert len(rows) > 10, (
+        f"only {len(rows)} verdict rows parsed out of readers.md, so `no open rows` may be the "
+        f"parser having quietly stopped reading the table rather than an empty exception list")
     opens = [ln for ln in p.stdout.splitlines() if "OPEN" in ln]
-    assert opens, (
-        "no open rows at all. That would be good news; check it is not the parser having "
-        "quietly stopped reading the table")
-    assert run(None, "--strict").returncode == 1, (
-        "--strict does not raise the open rows, so there is no mode that insists on them")
+    assert run(None, "--strict").returncode == (1 if opens else 0), (
+        f"--strict disagrees with the audit about the {len(opens)} open row(s) it reported")
 
     # --- the assertion itself, on a synthetic repository: an element nobody reads FAILS.
     root = tempfile.mkdtemp(prefix="readers-23-")
@@ -8412,6 +8425,159 @@ def _():
             f"{p.stderr}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a CRD's references resolve, and a required one nothing follows is not required -- by running it",
+       finding="P24")
+def _():
+    """Group 8b, and item 39's rule arriving on the path that never had it.
+
+    Three CRD elements had a producer and no consumer from item 23's audit onward, one of them
+    `Required`: `<project-ref>` naming the PROJECT.md the change is against, `<prd-ref>` linking
+    a change back to the PRD that produced the feature, and `<feature-ref id=>` naming a feature
+    in PROJECT.md. `readers.md` carried all three as `open` -- a producer with no consumer is
+    P2's shape, and a REQUIRED one is P2 with the volume up.
+
+    The reader is `check-references.py`, which already resolved the PRD path's citations. Same
+    program rather than a second one, because it is the same rule: a reference that names
+    something must resolve to it, or be reported by name.
+
+    `<project-ref>` is COMPARED against the project the run resolved, never used to resolve it.
+    A document choosing which PROJECT.md a run reads would hand a file authority over where the
+    run points; comparing catches the case that matters -- a change about another codebase.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="crd-refs-8b-")
+    try:
+        proj = os.path.join(root, "proj")
+        os.makedirs(os.path.join(proj, "docs", "prd", "link-shelf"))
+        open(os.path.join(proj, "PROJECT.md"), "w", encoding="utf-8", newline="\n").write(
+            "<project-context>\n  <meta><name>Demo</name></meta>\n  <features>\n"
+            '    <feature id="save-link" built="complete"><name>Save</name></feature>\n'
+            '    <feature id="list-links" built="partial"><name>List</name></feature>\n'
+            "  </features>\n</project-context>\n")
+        open(os.path.join(proj, "docs", "prd", "link-shelf", "index.md"), "w",
+             encoding="utf-8", newline="\n").write("<prd><meta><slug>link-shelf</slug></meta></prd>\n")
+
+        def crd(name, project_ref="PROJECT.md", prd_ref="docs/prd/link-shelf/index.md",
+                features=("save-link", "list-links")):
+            path = os.path.join(proj, name)
+            refs = "".join('    <feature-ref id="%s">note</feature-ref>\n' % f for f in features)
+            open(path, "w", encoding="utf-8", newline="\n").write(
+                "<crd>\n  <meta><slug>demo</slug><workflow>ready</workflow></meta>\n"
+                "  <context>\n"
+                f"    <project-ref>{project_ref}</project-ref>\n"
+                + (f"    <prd-ref>{prd_ref}</prd-ref>\n" if prd_ref else "")
+                + f"    <related-features>\n{refs}    </related-features>\n"
+                "  </context>\n</crd>\n")
+            return path
+
+        def run(path, *extra):
+            return subprocess.run([sys.executable, script, path, *extra],
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace")
+
+        # A CRD whose references all resolve. Without this the failures below prove nothing.
+        p = run(crd("good.md"), "--project-path", proj)
+        assert p.returncode == 0, f"a CRD with sound references was reported:\n{p.stdout}{p.stderr}"
+        assert re.search(r"\b[1-9]\d* reference\(s\) checked", p.stdout), (
+            f"the CRD branch checked no references at all:\n{p.stdout}")
+
+        # 1. a feature-ref naming a feature PROJECT.md does not have.
+        p = run(crd("ghost.md", features=("save-link", "ghost-feature")), "--project-path", proj)
+        assert p.returncode == 1 and "ghost-feature" in p.stderr, (
+            f"a <feature-ref> naming nothing resolved anyway (exit {p.returncode}):\n{p.stderr}")
+
+        # 2. a prd-ref that does not exist -- the only structured change-to-feature link there is.
+        p = run(crd("noprd.md", prd_ref="docs/prd/gone/index.md"), "--project-path", proj)
+        assert p.returncode == 1 and "prd-ref" in p.stderr, (
+            f"a dangling <prd-ref> was accepted:\n{p.stderr}")
+
+        # 3. a project-ref pointing at a PROJECT.md that is not this run's.
+        other = os.path.join(root, "other")
+        os.makedirs(other)
+        shutil.copyfile(os.path.join(proj, "PROJECT.md"), os.path.join(other, "PROJECT.md"))
+        p = run(crd("elsewhere.md", project_ref="../other/PROJECT.md"), "--project-path", proj)
+        assert p.returncode == 1 and "another project" in p.stderr, (
+            f"a CRD naming a different PROJECT.md than the run passed:\n{p.stderr}")
+
+        # 4. and the required element missing entirely.
+        path = crd("noproject.md")
+        text = open(path, encoding="utf-8").read()
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            re.sub(r"[ \t]*<project-ref>.*?</project-ref>\n", "", text))
+        p = run(path, "--project-path", proj)
+        assert p.returncode == 1 and "project-ref" in p.stderr, (
+            f"a CRD with no <project-ref> was accepted, and it is Required:\n{p.stderr}")
+
+        # Without --project-path the comparison cannot be made, and the run says so rather than
+        # reporting a check it did not make.
+        p = run(crd("alone.md"))
+        assert "no --project-path" in p.stdout, (
+            f"the CRD branch made no note of the comparison it could not make:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # And the gate stops skipping it: a CRD used to short-circuit the reference check entirely.
+    gate = open(os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+                encoding="utf-8").read()
+    assert not re.search(r'\(0, ""\) if os\.path\.isfile\(args\.document\)', gate), (
+        "the gate still short-circuits the reference check for a CRD, so the reader added here "
+        "is never reached by the one caller that matters")
+
+    # And it REPORTS what the resolver says, asserted by running it rather than by finding the
+    # word `dangling` in the source -- which is what this said first, and a mutant that dropped
+    # the findings loop while keeping the variable walked straight through it.
+    root = tempfile.mkdtemp(prefix="gate-refs-8b-")
+    try:
+        proj = os.path.join(root, "proj")
+        os.makedirs(os.path.join(proj, "tasks"))
+        open(os.path.join(proj, "PROJECT.md"), "w", encoding="utf-8", newline="\n").write(
+            "<project-context>\n  <meta><name>Demo</name></meta>\n  <features>\n"
+            '    <feature id="save-link" built="complete"><name>Save</name></feature>\n'
+            "  </features>\n</project-context>\n")
+        crd_path = os.path.join(proj, "demo.md")
+        open(crd_path, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta><slug>demo</slug><workflow>ready</workflow></meta>\n  <context>\n"
+            "    <project-ref>PROJECT.md</project-ref>\n    <related-features>\n"
+            '      <feature-ref id="ghost-feature">note</feature-ref>\n'
+            "    </related-features>\n  </context>\n</crd>\n")
+        for name, body in (("manifest.json", '{"task_inventory": []}'),
+                           ("analysis.json", '{"scope": "small"}')):
+            open(os.path.join(proj, "tasks", name), "w", encoding="utf-8",
+                 newline="\n").write(body)
+        p = subprocess.run(
+            [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+             crd_path, os.path.join(proj, "tasks"), "--project-path", proj],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert "ghost-feature" in (p.stdout + p.stderr), (
+            f"the gate ran the reference check on a CRD and reported nothing it said:\n"
+            f"{p.stdout}\n{p.stderr}")
+
+        # And it is a FINDING, not only a printed line. Asserting the printed line alone left a
+        # mutant alive that dropped the reference from `findings` while still printing it --
+        # findings are what the gate's confirmation and its count are built on, so a dangling
+        # reference that prints and does not count is a report with nothing behind it.
+        p = subprocess.run(
+            [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+             crd_path, os.path.join(proj, "tasks"), "--project-path", proj, "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        report = json.loads(p.stdout)
+        refs = [f for f in report.get("findings") or [] if f.get("assertion") == "references"]
+        assert refs and any("ghost-feature" in f["detail"] for f in refs), (
+            f"the gate's findings carry no `references` entry, so the dangling reference is "
+            f"printed and counts for nothing:\n{p.stdout}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # readers.md keeps the verdict it no longer uses.
+    readers = open(os.path.join(SCHEMA, "readers.md"), encoding="utf-8").read()
+    for tag in ("project-ref", "prd-ref", "feature-ref"):
+        assert not re.search(r"\|\s*`%s`\s*\|\s*\*\*open\*\*" % tag, readers), (
+            f"`{tag}` is still recorded as a producer with no consumer, and it now has one")
 
 
 # ------------------------------------------------------------------- behavioural
