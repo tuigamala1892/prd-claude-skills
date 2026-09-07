@@ -3156,10 +3156,39 @@ be measured by running it.
 | **61 + 62** — the two contradictions the run reported | **Landed** 2026-08-28 | `1aee6ad` |
 | **64** — the generator is told where its commands run | **Landed** 2026-08-28 | `7709000` |
 | **63** — a task file is not editable by the run it judges | **Landed** 2026-08-28 | `f16b982` |
-| **65** — a task may name every feature it descends from | **Landed** 2026-08-28 | `a9964ea` |
-| **66** — `/execute` takes its layer set from the plan (P44) | **Landed** 2026-08-28 | `6949f57` |
+| **65** — a task may name every feature it descends from | **Landed** 2026-09-07 | `a9964ea` |
+| **66** — `/execute` takes its layer set from the plan (P44) | **Landed** 2026-09-07 | `6949f57` |
 
-**Suite:** 112 checks at branch point → **125**. `failed 0`, `known 0`. **All six items landed; the phase is complete.**
+**Suite:** 112 checks at branch point → **125**. `failed 0`, `known 0`.
+
+**Phase 7 is complete.** `61` · `62` · `64` · `63` · `65` · `66` — four items on 2026-08-28 and two on 2026-09-07,
+**112 → 125 regression checks** with `known 0` throughout and every round watched failing first:
+8/8, 11/11, 17/17 (after 13/15), 17/17 (after 14/16) and 12/12.
+
+**Its shape is the argument for it.** Five of the six items came from *running* the toolchain the
+afternoon the plan was declared complete and merged; the sixth came from *building* one of those
+five. **None of the six was visible to the 112 checks that were green when the plan was closed**,
+and the reason is uniform: four are contradictions *between* correct statements, and a check that
+asserts a mechanism cannot see a second instruction about that mechanism. The fifth needed a task
+spanning two features to expose it, and the sixth needed a consumer read while wiring a guard into
+it.
+
+| Item | From | What it fixed |
+|---|---|---|
+| **61** | the run | `plan-layers` forbade the derivation its own opening section requires |
+| **62** | the run | the task schema rejected every Layer 0 task the toolchain has ever written |
+| **64** | the run | the generator asserted `.git` is a directory; in a worktree it is a file |
+| **63** | the run | `/execute` could rewrite the acceptance criteria it is judged against |
+| **65** | the run | a task could not name every feature it descends from |
+| **66** | building 63 | `/execute` recited a layer list the producer stopped writing |
+
+**Three of the six are guards that did not exist rather than code that was wrong** — the task-file
+hash, the layer resolution, the escalation path — and each replaces a sentence a model could
+reason past with an exit code it cannot. That is item 4.13 applied five phases later to the half
+of the toolchain the corpus could not describe.
+
+**What is left is not plan items.** `SCHEMAS.json` still records the schema-6 content work,
+`readers.md` still carries three `open` rows, and both were true before this phase started.
 
 ---
 
@@ -3646,17 +3675,6 @@ lost to the alphabet, the plan ignored entirely, unplanned layers dropped, the e
 as success, `--layer` accepting anything, and each of the two `NOTE:` lines silenced. Five break
 the wiring and the prose, including the quoted-history trap and the pair that removes the true
 half of the Critical Rule as well as the false one.
-
-### Phase 7 is complete
-
-`61` · `62` · `64` · `63` · `65` · `66`, all landed. **112 checks at the branch point → 125.**
-
-The phase is worth one closing sentence, because its shape is the argument for it: five of its six
-items came from *running* the toolchain after the plan was declared complete and merged, and the
-sixth came from *building* one of those five. None of the six was visible to the 112 checks that
-were green when the plan was closed. The plan's own summary said the honest thing at the time —
-**the plan is implemented and the toolchain is not demonstrated** — and this phase is the
-difference between those two sentences.
 
 ## What the machine sleeping taught, which was not about sleep
 
