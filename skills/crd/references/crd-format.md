@@ -95,7 +95,7 @@ on this path. The rule is item 39's, arriving where it had never been applied: *
 names something must resolve to it, or be reported by name.*
 
 ```bash
-python skills/breakdown/scripts/check-references.py docs/crd/<slug>.md --project-path <path>
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-references.py docs/crd/<slug>.md \n    --project-path <path>
 ```
 
 **`<project-ref>` is compared against the project the run resolved, never used to resolve it.**

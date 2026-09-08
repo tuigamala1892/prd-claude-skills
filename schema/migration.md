@@ -285,7 +285,7 @@ transform is the identity, every `defined` feature reports `PARTIAL`, and `--che
 tree until somebody records the reviews:
 
 ```bash
-python skills/breakdown/scripts/check-definition.py docs/prd/<slug> --record-review --by <name>
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py docs/prd/<slug> \n    --record-review --by <name>
 ```
 
 **The rejected alternative was a placeholder** — a `<review>` with no reviewer, written by the

@@ -12,7 +12,7 @@ difference is the whole point. What cannot be found has to be written down here,
 and a reason.
 
 ```xml
-<readers schema="schema-5"/>
+<readers schema="schema-6"/>
 ```
 
 ---
@@ -87,12 +87,21 @@ named producer* is the other half of item 23, and run naively it produces **32 c
 which 29 are usage-string placeholders**: an element name and a CLI argument are the same token,
 so `check-coverage.py <prd-dir> <tasks-dir>` reads as two undefined elements.
 
-Three filters take it to **six**, and they are stated rather than tuned: docstrings are dropped
+Three filters take it to **seven**, and they are stated rather than tuned: docstrings are dropped
 (that is where usage lives), shell scripts are skipped entirely (a shell script parses no XML),
 and a name the same file declares as an argument is an argument. What survives on this corpus is
-three real signals — `<affected-apis>`, `<phases>` and `<tbd-items>`, all **retired spellings a
-migration must still recognise**, correctly read and correctly undefined — and three placeholders
-in comments.
+three **retired spellings a migration must still recognise** — `<affected-apis>`, `<phases>` and
+`<tbd-items>`, correctly read and correctly undefined — three placeholders in comments, and one
+element that is neither.
+
+**That seventh is `<requirement-level>`, and it is undefined here for a reason worth stating.**
+It is live, not retired: item 16 puts it on a task and `write-state.py` reads it. No *schema*
+document defines it because a **task is not a versioned artefact** — `SCHEMAS.json` records that
+decision under `_items_16_17`, and `migrate.py` recognises five roots of which a task is none.
+So the element is defined in [`task-format-spec.md`](../skills/breakdown/references/task-format-spec.md),
+which this script does not scan, and the report is right to name it and right not to fail on it.
+The count above is asserted against the script's own output rather than written down, because a
+figure in prose is exactly what went stale here once already.
 
 It stays a report because **a filter tuned against one corpus is a heuristic rather than a rule**,
 and a heuristic that can fail a build has been promoted behind everyone's back. The same argument

@@ -8721,6 +8721,279 @@ def behaviour_checks():
     return len(present)
 
 
+@check("the review the gate requires has a producer on the authoring path -- by running it",
+       finding="P46")
+def _():
+    """Item 68, finding V1. Item 23's rule, run in the direction it does not check.
+
+    schema-6 exists to give item 40's gate its second half, and it shipped with a READER
+    (`check-definition.py`), a fixture and a migration rule -- and nothing on the authoring path
+    that can write one. `check-readers.py` cannot see this: it asserts every element has a
+    reader, and the reverse direction is a report by design.
+
+    The defect was not only an omission. `/prd` INSTRUCTED the author that the PRD carries no
+    place to record a review, which was true before schema-6 and false after it -- so a run
+    following its own command file would report the absence as unfixable.
+
+    Three assertions, and the third is the one that would have caught it:
+      1. the template `/prd` writes from carries <review> in <meta>
+      2. `/prd` names the producer, and the producer really has that flag
+      3. `/prd` does not still claim there is nowhere to record a review
+    """
+    fmt = open(os.path.join(SCHEMA, "prd-format.md"), encoding="utf-8").read()
+
+    # 1. Scope to the feature template's <meta> block. Matching the whole file would let the
+    #    prose below it satisfy a check about the template.
+    blocks = re.findall(r"```xml\n(.*?)```", fmt, re.S)
+    metas = [m.group(1) for b in blocks for m in [re.search(r"<meta>(.*?)</meta>", b, re.S)]
+             if m and "<slug>" in m.group(1) and "<definition>" in m.group(1)]
+    assert metas, "prd-format.md has no feature <meta> template carrying <slug> and <definition>"
+    assert any("<review" in m for m in metas), (
+        "the feature template in prd-format.md does not carry <review>. core section 7 is the "
+        "only section of the core that no format reference points at, and the bar requires the "
+        "element on every `defined` feature")
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+
+    # 2. The producer, named where the judgement it records is produced -- and it must be real.
+    assert "--record-review" in prd, (
+        "commands/prd.md never names `check-definition.py --record-review`. The element has a "
+        "reader, a fixture and a migration rule; without this it has no producer, which is P2's "
+        "shape inside the version that shipped the element")
+    definition = open(os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py"),
+                      encoding="utf-8").read()
+    assert '"--record-review"' in definition, (
+        "commands/prd.md names a flag check-definition.py does not register. A cited producer "
+        "that cannot run is the same defect one step along")
+
+    # 3. The claim, not the phrasing. `prose()` so a rewrap or an emphasis does not decide it.
+    flat = prose(prd)
+    for stale in ("carries no place to record that review",
+                  "no place to record that review",
+                  "carries no place to record"):
+        assert stale not in flat, (
+            f"commands/prd.md still tells the author {stale!r}. schema-6 IS that place, and an "
+            f"instruction that denies it is what made the element unproducible")
+
+
+@check("every file that runs an owning script is listed as its caller -- by running it",
+       finding="P47")
+def _():
+    """Item 69, finding V3. The direction `checks.md` asserted about itself and never checked.
+
+    The existing check walks the table forward: the owner exists, and each CLAIMED caller names
+    it. Nothing walked it backward, so a script wired into a new caller -- or a script that owns
+    an assertion and never gets a row at all -- was invisible. Both happened, in consecutive
+    phases: group 8b gave `check-references.py` two new callers, and Phase 7 shipped
+    `task-integrity.py` and `resolve-layers.py`, each with a REFUSED exit code and no row.
+
+    INVOKES, NOT MENTIONS, and the distinction is the whole check. Half the repository names
+    these scripts in a docstring or a cross-reference; a naive substring match reports thirty
+    files and is therefore ignored. A caller is a line that RUNS it: `python <path>/<script>`,
+    `sh <path>/<script>`, a `run("<script>")` helper, or an interpolated plugin path. That rule
+    finds exactly the four real gaps this check was written for and no others.
+    """
+    text = open(os.path.join(SCHEMA, "checks.md"), encoding="utf-8").read()
+    assert "## The table" in text, "checks.md has no table section"
+    table = text.split("## The table", 1)[1]
+
+    rows = []
+    for line in table.splitlines():
+        if not line.startswith("| ") or line.startswith("| Assertion") or set(line) <= set("| -"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 4:
+            rows.append((cells[0], cells[1].strip("`"), re.findall(r"`([^`]+)`", cells[2])))
+    assert rows, "checks.md's table parsed to no rows -- the check is measuring nothing"
+
+    def invokes(body, script):
+        for line in body.splitlines():
+            if script not in line:
+                continue
+            if re.search(r"(python\d?|sh|bash)\s+[^\s|]*" + re.escape(script), line):
+                return True
+            if re.search(r"run\(\s*[\"']" + re.escape(script), line):
+                return True
+            if re.search(r"(\$\{CLAUDE_PLUGIN_ROOT\}|\{skill_dir\})[^\s`]*" + re.escape(script),
+                         line):
+                return True
+        return False
+
+    scan = []
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "__pycache__", "data", "docs", "tests", ".tmp-phase10")]
+        for fn in files:
+            if fn.endswith((".md", ".py", ".sh")):
+                scan.append(os.path.relpath(os.path.join(root, fn), REPO).replace(os.sep, "/"))
+    assert len(scan) > 40, f"the file scan found only {len(scan)} files, so it is not scanning"
+
+    unlisted = []
+    for assertion, owner, claimed in rows:
+        if not owner.endswith((".py", ".sh")):
+            continue
+        for p in scan:
+            if p.endswith("/" + owner) or p == owner or p in claimed:
+                continue
+            try:
+                body = open(os.path.join(REPO, p), encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            if invokes(body, owner):
+                unlisted.append(f"{p} runs {owner} and is not in its `Invoked by` column")
+
+    assert not unlisted, (
+        "checks.md is behind the toolchain it describes:\n    " + "\n    ".join(unlisted)
+        + "\n\nA row is the claim that every caller is known. An unlisted caller is how "
+          "`check-references.py` reached a CRD for a whole phase with the table saying otherwise")
+
+    # And the two Phase 7 assertions that had no row at all. Named rather than derived: a
+    # script with a REFUSED exit code is an assertion, and the table's own exclusion list is
+    # seven scripts that DO things, all of which predate these two.
+    owners = {owner for _a, owner, _c in rows}
+    for script, why in (("task-integrity.py", "decides whether a task file is the one dispatched"),
+                        ("resolve-layers.py", "decides which layers this run executes")):
+        assert script in owners, (
+            f"{script} {why} and exits 1 to refuse, and checks.md gives it no row. "
+            f"`resolve-output.sh` is in the table on exactly that basis")
+
+
+@check("a documented invocation names the plugin root, never a bare relative path",
+       finding="P48")
+def _():
+    """Item 70, finding V2. Open question 1 measured this and item 9 states it as a rule.
+
+    The working directory is the TARGET PROJECT, not the plugin, so `python skills/x/y.py`
+    resolves against the wrong tree and fails with a bare `No such file or directory` -- an error
+    that reads like a missing file rather than a wrong assumption. The probe recorded the same
+    thing from the other side: a command naming no path at all left the model to brute-force it,
+    at eight tool calls including a `find /`.
+
+    Every invocation site in the repository used `${CLAUDE_PLUGIN_ROOT}` or `{skill_dir}` until
+    Phase 8 added two that did not -- one of them in `migration.md`, 87 lines from four of its
+    own that do it correctly, and the other the only documented invocation of the producer item
+    68 exists to supply. A rule with two violations needs a check; a convention with none did not.
+    """
+    bare = re.compile(r"(?<![\w/}])(python\d?|sh|bash)\s+(skills|schema|commands|agents)/[\w./-]+\.(py|sh)")
+
+    offenders = []
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "__pycache__", "data", "docs", "tests", ".tmp-phase10")]
+        for fn in files:
+            if not fn.endswith(".md"):
+                continue
+            p = os.path.join(root, fn)
+            rel = os.path.relpath(p, REPO).replace(os.sep, "/")
+            for n, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1):
+                m = bare.search(line)
+                if m:
+                    offenders.append(f"{rel}:{n}  {m.group(0)}")
+
+    assert not offenders, (
+        "a documented command uses a path relative to the plugin, which resolves against the "
+        "target project instead:\n    " + "\n    ".join(offenders)
+        + "\n\nUse ${CLAUDE_PLUGIN_ROOT}/... in a command or reference, {skill_dir}/... in a "
+          "skill. And pass the path as an ARGUMENT: the variable is expanded by the harness at "
+          "command-expansion time and is NOT exported to the shell the script runs in")
+
+
+@check("no shipped artefact describes a state the toolchain has left -- by running it",
+       finding="P49")
+def _():
+    """Item 71, finding V4. Three instances, one shape, and each was found a different way.
+
+    (a) A SCRIPT SAYS A LANDED ITEM IS PENDING. `check-scope.py` shipped in group 5b saying
+        `ATTRIBUTION IS ITEM 16's, AND IT HAS NOT LANDED`; item 16 landed in 5d, two commits
+        later, and by item 65 the same file was calling `edges_of()`. The docstring is a comment
+        and costs nothing; line 170 prints `(item 16 adds the attribution)` to an OPERATOR, so a
+        real generator defect reads as a not-yet-built feature. The landed set is derived from
+        the ledger rather than listed here, so this generalises past the instance that caused it.
+
+    (b) A REGISTRY STATES A COUNT THAT IS WRONG. `readers.md` said the reverse report yields six.
+        It yields seven. Asserting the number against the SCRIPT rather than against a constant
+        is the only version of this that cannot go stale the same way.
+
+    (c) THREE SIBLING REGISTRIES STAMP A SUPERSEDED SCHEMA. `checks.md`, `parity.md` and
+        `readers.md` carried `schema-5` while the core carried `schema-6`, and only the core's
+        stamp was asserted. Either reading of that stamp indicts it: if it means what the core's
+        means it was wrong, and if it means `last reconciled at` then it was ANNOUNCING that
+        these files were a version behind while nothing read it -- which (b) and item 69's
+        missing rows independently confirm. Settled as the first reading: one meaning for one
+        syntax, and `reconciled at` is what item 69's reverse check measures properly.
+    """
+    # ---- (a) a landed item, described as pending, in something that ships
+    ledger = open(os.path.join(REPO, "docs", "skills", "plugin-2.0-progress.md"),
+                  encoding="utf-8").read()
+    landed = set()
+    for line in ledger.splitlines():
+        if line.startswith("| **") and ("Landed" in line or "Done" in line):
+            landed.update(int(n) for n in re.findall(r"\b(\d{1,2})\b", line.split("|")[1]))
+    assert len(landed) > 50, (
+        f"only {len(landed)} landed items parsed from the ledger -- the check is measuring "
+        f"almost nothing, which is how a control passes over its own subject in silence")
+
+    pending = re.compile(r"(has not landed|have not landed|has not yet landed|is not yet built|"
+                         r"does not exist yet|item \d{1,2} adds\b|item \d{1,2} will\b)", re.I)
+    stale = []
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "__pycache__", "data", "docs", "tests", ".tmp-phase10")]
+        for fn in files:
+            if not fn.endswith((".py", ".sh", ".md")):
+                continue
+            p = os.path.join(root, fn)
+            rel = os.path.relpath(p, REPO).replace(os.sep, "/")
+            for n, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1):
+                if not pending.search(line):
+                    continue
+                cited = {int(x) for x in re.findall(r"item (\d{1,2})", line, re.I)}
+                if cited & landed:
+                    stale.append(f"{rel}:{n}  {line.strip()[:100]}")
+    assert not stale, (
+        "a shipped artefact says a landed item is still pending:\n    " + "\n    ".join(stale)
+        + "\n\nThe ledger records these as landed. A docstring costs a reader a minute; a line "
+          "printed to an operator costs them the diagnosis")
+
+    # ---- (b) the registry's own count, against the script that produces it
+    readers_md = open(os.path.join(SCHEMA, "readers.md"), encoding="utf-8").read()
+    script = os.path.join(SCHEMA, "scripts", "check-readers.py")
+    p = subprocess.run([sys.executable, script], capture_output=True, text=True, encoding="utf-8")
+    actual = len(re.findall(r"^\s*READ-ONLY\b", p.stdout, re.M))
+    assert actual, f"check-readers.py reported no READ-ONLY lines at all:\n{p.stdout[-400:]}"
+
+    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+             "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    m = re.search(r"filters take it to \*\*(\w+)\*\*", readers_md)
+    assert m, ("readers.md no longer states how many candidates survive its filters. The number "
+               "is the only part of that paragraph a reader can check")
+    claimed = words.get(m.group(1).lower(), None)
+    assert claimed == actual, (
+        f"readers.md says the reverse report yields {m.group(1)} ({claimed}); running "
+        f"check-readers.py yields {actual}. A registry whose own figure is wrong is the failure "
+        f"it exists to prevent, one level in")
+
+    # ---- (c) one meaning for one syntax, across every schema document that stamps a version
+    schemas = json.load(open(os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json"),
+                             encoding="utf-8"))
+    current = schemas["current"]
+    stamped = 0
+    for fn in sorted(os.listdir(SCHEMA)):
+        if not fn.endswith(".md"):
+            continue
+        body = open(os.path.join(SCHEMA, fn), encoding="utf-8").read()
+        for tag, version in re.findall(r"<([a-z-]+)\s+(?:version|schema)=\"(schema-\d+)\"\s*/>",
+                                       body):
+            stamped += 1
+            assert version == current, (
+                f"schema/{fn} stamps <{tag} ...=\"{version}\"> while SCHEMAS.json calls "
+                f"{current!r} current. A stamp that is allowed to lag is a stamp nobody reads, "
+                f"which is P28's own finding")
+    assert stamped >= 4, (
+        f"only {stamped} schema stamps found; the core, checks, parity and readers all carry one, "
+        f"so a lower count means this loop has stopped matching them")
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():

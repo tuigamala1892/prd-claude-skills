@@ -106,11 +106,15 @@ def task_counts(manifest):
     The test now builds the manifest by RUNNING build-manifest.py, which is the only version of
     this assertion that could have caught it.
 
-    ATTRIBUTION IS ITEM 16's, AND IT HAS NOT LANDED. A task file carries no <source-feature>
-    yet, so on the PRD path nothing here can be attributed and the per-feature comparison has
-    nothing to run on. That is reported as a number rather than passed over in silence: a
-    cross-check that quietly compares nothing is indistinguishable from one that found no
-    disagreement, and this repository has shipped that mistake before.
+    ATTRIBUTION IS ITEM 16's, AND IT LANDED IN GROUP 5d. This file shipped one group earlier,
+    when a task carried no <source-feature> at all and the per-feature comparison had nothing to
+    run on; item 65 then made an edge repeatable, which is why `edges_of()` is read below rather
+    than a single slug. What survives from that period is the COUNT: a task that names no source
+    feature is still reported rather than passed over, because a cross-check that quietly
+    compares nothing is indistinguishable from one that found no disagreement, and this
+    repository has shipped that mistake before. Today an unattributed task means a Layer 0 task,
+    which legitimately has no source feature, or a generator that failed to attribute one --
+    and only an operator can tell those apart.
     """
     per_feature, unattributed = {}, 0
     for task in manifest.get("task_inventory") or []:
@@ -167,7 +171,8 @@ def main():
 
     if signals and unattributed:
         lines.append(f"scope: {unattributed} of {total} task(s) name no source feature, so they "
-                     f"were not compared (item 16 adds the attribution)")
+                     f"were not compared. Layer 0 tasks legitimately have none; anywhere else "
+                     f"this is a task the generator did not attribute")
 
     # ---- confidence: reported, never compared.
     unsure = [r for r in signals if r.get("confidence") in ("low", "medium")]

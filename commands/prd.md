@@ -442,9 +442,26 @@ Pass the `BAR` lines you already have. The mechanical tests are settled before t
 dispatched, and an agent re-deciding them would produce a second answer to a question that has
 one.
 
-**`defined` needs both halves**: the mechanical tests passing *and* a review recorded. Where the
-PRD carries no place to record that review, say so plainly to the author rather than treating the
-absence as a pass.
+**Record the review, once the author accepts it.** The judgement half has a place to live since
+schema-6, and this is the command that writes it:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py {prd_dir} \
+    --record-review --by {name} [--feature {slug}]
+```
+
+It writes `<review by= at= sha=>` into the feature's `<meta>` and computes the hash itself. **Do
+not hand-write the element** — `sha` is sha256 over the file with the review removed, and a digest
+written by hand is right four times and wrong on the fifth.
+
+**`--by` is a person, and it is required.** A review is somebody's; the script refuses without it.
+Record the name of whoever actually read the feature, which after an agent-assisted review is
+still the author who accepted or rejected what it proposed.
+
+**`defined` needs both halves**: the mechanical tests passing *and* a review recorded. Report a
+feature that passes the mechanical tests and carries no review as what it is — not yet `defined` —
+rather than treating the absence as a pass. Any later edit makes the review stale, including a
+reflow, and re-recording is this same one command.
 
 **Schema conformance is checked in Phase 9, not here.** `check-artefacts.py` (item 22) asks
 whether every artefact *is* what the schema says it is, and the only moment that can be true of

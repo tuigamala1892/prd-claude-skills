@@ -9,7 +9,7 @@ side — the plan itself was PRD-only for forty-three items. A paragraph describ
 goes stale the week after it is written; a table with probes cannot, because the probes are run.
 
 ```xml
-<parity schema="schema-5"/>
+<parity schema="schema-6"/>
 ```
 
 ---
