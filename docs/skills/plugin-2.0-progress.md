@@ -736,12 +736,12 @@ a stated-green baseline; the rounds are where the real findings were, and they a
 
 | Item | Status | Commit |
 |---|---|---|
-| **25 + 28 + 37** — the artefact, its guard, its readers | **Landed** 2026-08-26 | `_` |
-| **51** — a Design phase in `/prd`, the producer | **Landed** 2026-08-26 | `_` |
-| **31** — derive the layer set from content, both paths | **Landed** 2026-08-26 | `_` |
-| **56** — enforce `<banned>` and `<task-limits>` | **Landed** 2026-08-26 | `_` |
-| **26** — seed PROJECT.md on greenfield | **Landed** 2026-08-27 | `_` |
-| **57** — impact analysis reports contracts, not APIs | **Landed** 2026-08-27 | `_` |
+| **25 + 28 + 37** — the artefact, its guard, its readers | **Landed** 2026-08-26 | `3982022` |
+| **51** — a Design phase in `/prd`, the producer | **Landed** 2026-08-26 | `3c6781f` |
+| **31** — derive the layer set from content, both paths | **Landed** 2026-08-26 | `7d320b0` |
+| **56** — enforce `<banned>` and `<task-limits>` | **Landed** 2026-08-26 | `7d320b0` |
+| **26** — seed PROJECT.md on greenfield | **Landed** 2026-08-27 | `95ac1fc` |
+| **57** — impact analysis reports contracts, not APIs | **Landed** 2026-08-27 | `95ac1fc` |
 
 ---
 
@@ -4049,6 +4049,164 @@ The round breaks the *moment* rather than the comparison, because the comparison
 the re-record stops comparing, compares and records nothing, records without a diff, records both
 kinds under one name, drops the count from stdout, turns a legitimate between-runs edit into a
 stop, undoes item 63's mid-dispatch stop, and names the diff by the clock again.
+
+---
+
+## Phase 10 — What verifying the implementation found.
+
+One group, `68` · `69` · `70` · `71`, on branch `phase-10-what-verification-found`. **Specified by
+[`plugin-2.0-verification.md`](plugin-2.0-verification.md)** — a static reading of the repository
+against the plan, 67 items one at a time, looking for the thing each item said it would build.
+
+| Item | Status | Commit |
+|---|---|---|
+| **68 + 69 + 70 + 71** — the four defects verification found | **Landed** 2026-09-08 | `de812a2` |
+
+**Suite:** 129 checks at branch point → **133**. `failed 0`, `known 0`.
+
+**Its shape is the argument for it, and it is a different shape from Phase 7's.** Phase 7 came
+from *running* the toolchain and found things a static suite could not see. This phase came from
+*reading* it, and found four things the suite could not see for the opposite reason: **every one
+of them is a gap between two correct statements, or a statement that stopped being true when a
+later item landed.** No decision recorded in this ledger was wrong. What went wrong is that
+nothing was watching the seam.
+
+| Item | The seam it closes |
+|---|---|
+| **68** | schema-6 shipped `<review>` with a reader and no producer, and `/prd` said there was nowhere to record one |
+| **69** | `checks.md` asserted that every caller is named and was only ever checked forward |
+| **70** | two Phase 8 commands used a path that resolves against the target project |
+| **71** | three artefacts describe a state the toolchain has left, one of them to an operator |
+
+---
+
+## 68 + 69 + 70 + 71 — four seams, and the registries found two of them
+
+**Commit:** `de812a2` · **Addresses:** P46–P49 (findings V1–V4) · **Files:**
+`schema/prd-format.md`, `schema/checks.md`, `schema/readers.md`, `schema/parity.md`,
+`schema/migration.md`, `commands/prd.md`, `skills/crd/references/crd-format.md`,
+`skills/breakdown/scripts/check-scope.py`, `tests/mutants/verification.py` (new),
+`tests/test_toolchain.py`
+
+### Why four items are one commit
+
+They are four instances of one thing: **an artefact that stopped being true and had nothing
+watching it.** Splitting them would produce four commits whose messages are the same sentence, and
+the four checks share a property that is easier to argue once than four times — each asserts
+against a *mechanism* rather than against the text it is fixing, because three of the four fixes
+are prose and prose is what this repository has watched pass while doing nothing five times.
+
+### Item 68 — the element that had a reader, a fixture and a migration rule, and no producer
+
+`<review>` is item 40's second gate half and the whole content of schema-6. It shipped with
+`check-definition.py` reading it, six fixture features carrying it, and migration rule R13 naming
+it — and **zero** occurrences of `<review` or `record-review` anywhere in `commands/`, `skills/`
+or `schema/prd-format.md`. Core §7 was the only section of the core that no format reference
+pointed at.
+
+**The omission was not the worst half.** `/prd` Phase 7 read *"where the PRD carries no place to
+record that review, say so plainly to the author rather than treating the absence as a pass"* —
+true before schema-6, false after it. A run following its own command file would meet a feature
+that passes the mechanical tests, look for the place to record the review, and **report the
+absence as unfixable.** That sentence is replaced rather than softened; it now says what to report
+instead.
+
+**The check asserts the flag is real, not merely cited.** `commands/prd.md` names
+`--record-review`, and the check reads `check-definition.py`'s argparse to confirm it exists. A
+cited producer that cannot run is the same defect one step along, and this is the cheapest possible
+place to catch it.
+
+### Item 69 — the table that could only be checked in the direction it was written
+
+`checks.md` says every assertion names its owner **and its callers**, and the suite walked that
+forward: the owner exists, each claimed caller cites it. Backward, five gaps — two scripts that own
+assertions and had no row at all (`task-integrity.py`, `resolve-layers.py`, both Phase 7, both with
+`REFUSED` exit codes), and three caller lists that had gone stale, two of them because group 8b
+wired `check-references.py` into a CRD.
+
+**`check-references.py` reached a CRD for a whole phase with this table saying otherwise**, which
+is the argument for the item in one sentence.
+
+**"Runs it" is the whole of the design, and getting it wrong would have made the check useless.**
+Half the repository names these scripts in a docstring or a cross-reference; a substring match
+reports thirty files and is therefore ignored — the fate of every alarm nobody can silence. A
+caller is a line that *runs* it: an interpreter and a path, a `run("<script>")` helper, or an
+interpolated plugin root. That rule finds exactly the five real gaps and no others, and it was
+prototyped against the repository before it was written into the suite, because a rule tuned after
+the fact against its own output is not a rule.
+
+**One correction it forced.** The rule initially missed `build-what-next.py`, which
+`commands/prd.md` invokes inside backticks with no `python` prefix. That is a real invocation and
+the rule was too narrow, not the document — widened to match an interpolated plugin path on its own.
+
+### Item 70 — two commands that cannot resolve
+
+Open question 1 measured this and item 9 states it. Every invocation site obeyed it until Phase 8
+added two that do not: one in `migration.md`, **87 lines from four of its own that are correct**,
+and one in `crd-format.md` which is the only documented invocation of the producer item 68 exists
+to supply — so an operator who found it could not run it.
+
+### Item 71 — three artefacts describing a state the toolchain has left
+
+Three instances, and the check generalises past all three rather than pinning each.
+
+- **The landed set is derived from the ledger, not listed in the check.** Any script claiming a
+  numbered item is pending, where this file records it landed, fails. `check-scope.py` was telling
+  an operator that item 16 *"has not landed"* — it landed two commits later — and attributing an
+  unattributed task to a missing feature rather than to a Layer 0 task or a generator defect.
+- **`readers.md`'s count is asserted against `check-readers.py`'s own output.** It said six; the
+  script prints seven. A figure in prose is what went stale, so the fix cannot be another figure
+  in prose.
+- **Every schema stamp equals `SCHEMAS.json`'s current**, not only the core's.
+
+### The stamp was already saying it, and nothing read it
+
+`checks.md`, `parity.md` and `readers.md` carried `schema-5` against a core carrying `schema-6`,
+and only the core's stamp was ever asserted. **Either reading of that stamp indicts it.** If it
+means what the core's means, all three were wrong. If it means *last reconciled at*, then it was
+**announcing that these three files were a version behind** — and item 69's five missing rows and
+`readers.md`'s wrong count are two independent confirmations that they were.
+
+Settled as the first reading: **one meaning for one syntax.** The *reconciled at* claim is real and
+is better served by item 69's reverse check, which measures reconciliation rather than asserting
+it. A stamp nobody reads is P28's own finding, one level in.
+
+### What the registries earned here
+
+Two of the four findings were found *by* the machinery this plan built, and a third was found *in*
+it. `check-readers.py` cannot see item 68 — it asserts every element has a reader and the reverse
+is a report by design — but `readers.md`'s own wrong count and `checks.md`'s own missing rows are
+both self-reports from files that exist to be checkable. **A registry that can be caught out of
+date is worth more than a paragraph that cannot**, and this phase is the first evidence for that
+claim that did not come from the person who wrote it.
+
+### Verification
+
+`python tests/test_toolchain.py` — **129 → 133**, `failed 0`, `known 0`.
+
+**Each of the four checks was watched failing before its fix**, and item 68's three assertions
+were watched failing *separately* — the template, then the producer, then the denial — by fixing
+one at a time. The third was proved live by mutation rather than by ordering: the stale sentence
+was reinstated, the check failed naming it, and the file was restored.
+
+`python tests/mutate.py tests/mutants/verification.py` — ****14 of 14 caught**, baseline green, every file restored by hash**.
+
+Four mutants break item 68 in each direction it could quietly stop working, including the one that
+matters most — `/prd` citing a flag the script does not register. Four break item 69's table, two
+by removing a row that never existed until this item and two by removing a caller. Two revert the
+paths. Three break item 71's three halves. The fourteenth breaks **the check's own control**: item
+71 derives its landed set from the ledger, and a parse that silently returned nothing would let the
+check pass over its entire subject in silence. That is the failure group 8b named, and this is
+where it gets tested rather than asserted.
+
+**Three orphans, and they were checked rather than waved through.** The harness reported three
+checks that failed while matching no mutant's expectation — the bar's mechanical tests, the
+schema-6 migration and the `defined` gate. All three run `check-definition.py --record-review`,
+and mutant 3 renames that flag, so the suspicion was that they are collateral from one mutant
+rather than a fourth thing broken. **That is the benign one of MISSED's two meanings and it is
+not the one to assume**, so it was reproduced: mutant 3 applied alone, the three checks run, all
+three fail, the file restored and confirmed byte-identical. Collateral, and real checks firing
+for a real breakage.
 
 ---
 

@@ -1,9 +1,16 @@
 # Plugin 2.0 — Implementation Verification
 
 **Status:** Findings **V1–V13**, each re-verified against the repository before being written
-down. **V1–V4 graduate to [`plugin-2.0-plan.md`](plugin-2.0-plan.md) as P46–P49 and items 68–71**;
+down. **V1–V4 graduated to [`plugin-2.0-plan.md`](plugin-2.0-plan.md) as P46–P49 and items 68–71**;
 V5–V13 are recorded here and remediated without new items, because each is either a measurement
 the plan already specifies or a document that has gone stale.
+
+**B1–B6 landed 2026-09-08 as Phase 10** (`de812a2`), suite 129 → 133, `failed 0`, `known 0`,
+mutation 14/14. **B7 has not been done**: `ARCHITECTURE.md`, `README.md`,
+`target-state-data-flow.md` and `CLAUDE.md`'s tree are still as V12 and V13 describe them, and
+they are a phase of their own. This line is here rather than left to be inferred — a status header
+that has stopped being true is V8, and writing this document without one would have been the
+finding arriving in the document that reported it.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
 P1–P45, nine phases, all recorded as landed in
