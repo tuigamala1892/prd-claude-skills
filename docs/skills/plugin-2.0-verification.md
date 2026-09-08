@@ -32,7 +32,22 @@ largest cost in decisions, which the size table alone scored as a clear win.
 protocol, so the reason it sat undone through thirteen phases — *"time the authoring"* does not
 say what to do — no longer holds.
 
-**V7's three `open` parity rows** are unchanged and correctly recorded.
+**V7 is decided.** The three `open` rows were not three of a kind:
+
+- **Declared dependency edges — settled as deliberate.** `<depends-on>` orders items *within* a
+  document and a CRD is one item. Ordering between separate CRDs is a different capability that
+  **nothing consumes**; adding the element would be a producer with no reader, which is what item
+  27 itself refused.
+- **A data model channel — the row was reading the spelling.** `<contract kind="schema">` is the
+  CRD's channel and it has readers. What is genuinely missing is narrower and now its own row:
+  that channel never reaches a task. **P53, item 75.**
+- **The significance flag — sharpened into a defect.** `check-references.py` reads
+  `<architecturally-significant>` and `check-gate.py` runs it for a CRD, while `crd-format.md`
+  mentions it zero times. A live reader with no producer — P46's shape, on the other path.
+  **P54, item 76.**
+
+**Neither item is built.** Both are specified in plan §Q, which is the state `checks.md` describes
+for an assertion somebody has specified and not yet built.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
 P1–P45, nine phases, all recorded as landed in

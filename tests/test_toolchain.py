@@ -8947,9 +8947,20 @@ def _():
             for n, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1):
                 if not pending.search(line):
                     continue
-                cited = {int(x) for x in re.findall(r"item (\d{1,2})", line, re.I)}
-                if cited & landed:
-                    stale.append(f"{rel}:{n}  {line.strip()[:100]}")
+                # THE CLAIM AND THE ITEM MUST BE IN THE SAME CLAUSE. Pairing them anywhere on a
+                # line conflates *this line mentions item N* with *this line says item N is
+                # pending*, and that produced a false positive the day it was written: a parity
+                # row reading "item 57 generalised it; an added entity is a contract naming a ref
+                # that DOES NOT EXIST YET" was flagged, where the thing not existing is a schema
+                # ref and not an item. Splitting on clause boundaries is the rule a reader
+                # applies -- a claim about an item ends where its sentence does.
+                for clause in re.split(r"[.;]|\s—\s", line):
+                    if not pending.search(clause):
+                        continue
+                    cited = {int(x) for x in re.findall(r"item (\d{1,2})", clause, re.I)}
+                    if cited & landed:
+                        stale.append(f"{rel}:{n}  {clause.strip()[:100]}")
+                        break
     assert not stale, (
         "a shipped artefact says a landed item is still pending:\n    " + "\n    ".join(stale)
         + "\n\nThe ledger records these as landed. A docstring costs a reader a minute; a line "
