@@ -1,9 +1,10 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** **Phases 1–9 complete and merged as of 2026-09-07.** Phase 10 is open, holding items
-68–71 from [`plugin-2.0-verification.md`](plugin-2.0-verification.md) — a static verification of
+**Status:** **Phases 1–11 complete and merged as of 2026-09-08.** Phases 10 and 11 hold items
+68–72 from [`plugin-2.0-verification.md`](plugin-2.0-verification.md) — a static verification of
 the implementation against this document, which found four defects that arrived *after* the
-decisions they sit beside. Phase 5 was the only phase large enough to need splitting, and **the
+decisions they sit beside, and four documents that had described a smaller project than exists
+since before the plan began. Phase 5 was the only phase large enough to need splitting, and **the
 split into five commit groups is in the ledger**, being a sequencing decision rather than a change
 to what is specified here. This document
 stays a **specification**; what has actually landed, and where the implementation departed from
@@ -3187,6 +3188,61 @@ for an interpreter followed by a repository-relative script path.
 
 ---
 
+## O. What the documents said
+
+**P50 — the documents that onboard a reader describe a smaller project than exists.**
+*Verification: static, exhaustive, and confirmed by running four new checks against them.*
+Nine phases landed without `ARCHITECTURE.md`, `README.md` or `target-state-data-flow.md` being
+touched once, and the ledger mentions none of the three — not as done, not as deferred. What they
+said on 2026-09-08:
+
+| Document | The claim |
+|---|---|
+| `ARCHITECTURE.md` | the `.claude/` layout `CLAUDE.md` warns against; an `execute-task` skill in four places, removed at item 4.15; **zero** occurrences of `schema/`; a model table assigning `sonnet` to almost every component against files declaring haiku, sonnet and opus; and a fork example teaching `allowed-tools:` |
+| `README.md` | *14 skills* and *8 subagent definitions* against 15 and 10; no `schema/`; and `claude --plugin-dir <path>` alone |
+| `target-state-data-flow.md` | **Status: Target state. None of this is built.** |
+| `CLAUDE.md` | a tree omitting `prd-criteria-author`, `architecture-format.md`, three of the seven `schema/*.md` and most of the 33 scripts |
+
+**Two of these are worse than staleness.** The `allowed-tools:` example is the defect item 4.11
+existed to remove, taught as a positive example on a skill that does not exist — a reader copying
+it writes a skill that does not fork and cannot be told why, and the suite's F13 guard scans
+`skills/`, not the document that teaches the pattern. And README's one-flag load command is the
+first thing a new user runs; without `--add-dir`, `/breakdown` stops in Phase 1, which was
+measured on 2026-08-26 and written into `CLAUDE.md` alone.
+
+**Why it went unnoticed for nine phases is the interesting half.** Every check in the suite reads
+`skills/`, `commands/`, `agents/`, `schema/` or `tests/`. **Nothing read the four documents at the
+repository root**, so the only artefacts with no automated reader at all were the ones a human
+reads first. That is P4's shape — a producer with no consumer — inverted: a *consumer-facing*
+artefact with no producer-side check.
+
+**72. The documents that describe the repository are checked against it.**
+*Addresses P50. Depends on nothing; deliberately last.*
+
+The content fixes are ordinary editing. The item is the four checks, because this file went stale
+for nine phases precisely by being the thing nobody checked:
+
+- **The layout, in both directions.** Every skill and agent named in `ARCHITECTURE.md`'s file tree
+  and `CLAUDE.md`'s must exist, and every one on disk must be named. A ghost sends a reader to a
+  missing file; **an omission is worse, because there is nothing to look up and no way to notice**
+  — `execute-task` was the first kind and `schema/` the second. `README.md` states counts rather
+  than enumerating, so its counts are compared to the directories.
+- **A documented frontmatter example must be one a skill could declare.** No `allowed-tools:` in
+  any `yaml` block, and every row of the model table must name a real component and the model its
+  own file declares. A table of assignments nobody compares to the frontmatter is a table of
+  intentions.
+- **The documented way to load the plugin must be the one that works** — both flags, in both
+  documents that give the command.
+- **A document describing a target state must say whether it was reached**, and removing the false
+  claim is only half: a reader still needs the true one.
+
+**`target-state-data-flow.md` is corrected, not rewritten.** Its value now is the *before and
+after* — the left column of its §0 table is what the toolchain was, and everything below it is
+what the plan changed. Rewriting it in the present tense would delete the only record of the
+starting state, and `ARCHITECTURE.md` already describes what runs.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3262,12 +3318,14 @@ for an interpreter followed by a repository-relative script path.
 | 69 | The caller table is checked in both directions | **P47** | Structural |
 | 70 | A documented invocation names the plugin root | **P48** | Correctness |
 | 71 | No shipped artefact describes a state the toolchain has left | **P49** | Consistency |
+| 72 | The documents that describe the repository are checked against it | **P50** | Consistency |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
 (R11). Composed, they gave six phases; four more have since been added by measurement rather than
 by reading — Phase 7 by running the toolchain, Phase 8 by finishing what the plan had only named,
-Phase 9 by the fourth crossing and Phase 10 by verifying the implementation against this document.
+Phase 9 by the fourth crossing, and Phases 10 and 11 by verifying the implementation
+against this document.
 **Every phase is independently shippable**, and each is defined by what becomes possible once it
 lands rather than by size.
 
@@ -3399,6 +3457,20 @@ cheap once the alternative has been built. 70 is mechanical and depends on nothi
 first and every fix carries a mutation round. This ledger has recorded five times that a check
 asserting text rather than the claim it carries passes while doing nothing, and a phase made
 entirely of text fixes is where that failure would be invisible.
+
+### Phase 11 — The documents catch up.
+
+`72`
+
+**Last, and it could not have been earlier.** A check that the documents describe the repository
+is a check against a repository still moving; written during Phase 4 it would have been edited
+rather than obeyed, which is the argument Phase 6 made about item 22 and the reason this file
+keeps making it.
+
+**Its finding is about the suite rather than the documents.** Every check in the suite reads
+`skills/`, `commands/`, `agents/`, `schema/` or `tests/`. Nothing read the four documents at the
+repository root, so the only artefacts with no automated reader at all were the ones a human
+reads first — and they drifted for nine phases without a single check going red.
 
 ---
 
