@@ -3431,6 +3431,58 @@ that makes it cheap.
 
 ---
 
+## Q. What deciding the parity rows found
+
+**Two items, and neither is built.** V7 asked what to do about the three `open` rows in
+[`parity.md`](../../schema/parity.md), which had been recorded as legitimately undecided since
+item 50. Deciding them settled one outright, showed a second was reading the *spelling* rather
+than the capability, and turned the third into a defect with a name. The two below are what
+survives; both are specified here and neither has landed, which is the state `checks.md` describes
+for an assertion somebody has specified and not yet built.
+
+**P53 — a CRD declares a schema change and no task ever sees it.**
+*Verification: static, exhaustive.*
+The PRD path carries `<notes><data-model>` into a task's `<context>` — item 17, and the task
+format defines the element as *"the feature's own `<notes><data-model>`, carried. NOT
+re-inferred."* The CRD path has the same information in `<contract kind="schema" ref="...">`
+(item 57) and **no route for it**: `breakdown-analyze-prd` does not mention a CRD anywhere in its
+instructions, and `generate-tasks` carries `architecture.md`'s registry entries rather than the
+document's own `<affected-contracts>`. So a change request that adds or alters an entity states it
+in the document, has it read by `crd-impact-analysis`, and then hands the implementer a task that
+does not carry it. **This is P4 on the path P4 was not measured on** — a producer whose consumer
+stops one step short.
+
+**P54 — the significance flag has a live reader on the CRD path and no producer.**
+*Verification: static, exhaustive.*
+`check-references.py` reads `<architecturally-significant>`, and since group 8b `check-gate.py`
+runs that script **for a CRD**. `crd-format.md` mentions the element **zero** times. So the
+consumer is live on this path and scanning for something the schema does not let anyone write —
+**exactly P46's shape**, which item 68 fixed for `<review>` on the PRD path, arriving on the other
+one. A refactor CRD is the document item 35 exists for.
+
+**75. The CRD's schema contracts reach the task that implements them.**
+*Addresses P53. Depends on nothing.*
+
+`generate-tasks` carries a CRD's `<contract kind="schema">` entries into `<context><data-model>`,
+the way item 17 carries a feature's. **Copied, never re-inferred**, on the same rule and for the
+same reason. The task format needs no new element — it needs its existing one to have a second
+producer, and its spec sentence widened from *the feature's own* to name both sources.
+
+**76. `<architecturally-significant>` on a CRD.**
+*Addresses P54. A CRD schema version.*
+
+The element, its `because` enum and its `criteria` list, defined once in `core.md` and cited by
+both format references rather than copied — the rule item 44 exists for. **It is a schema
+version**, so it carries a migration step, and the migration has no mechanical half: significance
+is a declared judgement and R13's precedent says a machine may not invent one.
+
+**Cost it before taking it.** The reader already exists and already runs, so the work is the
+element, one core section, one migration rule and a fixture — the same shape as item 35 on the
+PRD path, minus the reader. What it buys is a design step for refactor CRDs, which is the case
+item 35 was written for and the one the CRD path cannot currently express.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3509,6 +3561,8 @@ that makes it cheap.
 | 72 | The documents that describe the repository are checked against it | **P50** | Consistency |
 | 73 | No task may depend on an interface a later layer exports | **P51** | **Correctness** |
 | 74 | A declared layer order is obeyed, not improved on | **P52** | **Correctness** |
+| 75 | The CRD's schema contracts reach the task that implements them | **P53** | **Correctness** |
+| 76 | `<architecturally-significant>` on a CRD | **P54** | Structural |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
