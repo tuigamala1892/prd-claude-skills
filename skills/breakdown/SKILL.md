@@ -357,6 +357,10 @@ Extract directly from CRD structure:
 - Open gaps from `<gaps>`, reported with the PRD path's, below
 - Affected files from `<impact-analysis><affected-files>`
 - Affected features from `<impact-analysis><affected-features>`
+- **Schema contracts from `<impact-analysis><affected-contracts>`, into `data_models`** (item 75)
+  — `kind="schema"` entries, copied and marked declared. This is the CRD's data model, and until
+  item 75 it was read by `crd-impact-analysis` and by nothing that generates a task, so the
+  implementer was handed a change to a model the document had already described (**P53**)
 - Tech stack from PROJECT.md context
 - Related existing features from `<context><related-features>`
 
@@ -396,8 +400,13 @@ declared layer graph, written in Phase 1.
 
 The two paths differ only in what the evidence is, not in how the question is answered: a PRD
 supplies it as inferred models, endpoints and components; a CRD supplies it as
-`<affected-schemas>`, `<affected-apis>` and `<affected-files>`. Both are answering *which tiers
-does this work touch?*
+`<affected-contracts>` — `kind="schema"` and `kind="api"` — and `<affected-files>`. Both are
+answering *which tiers does this work touch?*
+
+**`<affected-schemas>` and `<affected-apis>` were the spelling until item 57** and are still
+accepted on read, as every pre-migration shape is. This line named them as current until item 75
+noticed; a document that tells a reader to look for a retired element sends them to a section the
+producer stopped writing.
 
 **When `architecture.json` declares `layer_blocks`, that graph replaces the default tiers
 entirely.** Not merged with them: a project that declared its own tiers did not ask for

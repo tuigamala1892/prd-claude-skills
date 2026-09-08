@@ -223,6 +223,28 @@ every inferred entry already must be.
 **`<notes><considerations>` is not read.** It is the catch-all, and it is unread by design rather
 than by oversight. Do not mine it for entities.
 
+### On the CRD path they come from `<affected-contracts>`, and the rule is the same (item 75)
+
+A CRD has no features carrying `<notes>`, and it is not silent about its data model: it declares
+one in `<impact-analysis><affected-contracts>` as `<contract kind="schema" ref="...">`. **Read
+those into `data_models` exactly as you read a feature's declared one** — copied, marked
+declared rather than inferred, and not embellished.
+
+**An entry whose `ref` names something that does not exist yet is an addition, not an error.** A
+change request that adds an entity says so by naming a ref the codebase has not got; refusing it
+would make the one case with the most to carry the one case that carries nothing.
+
+**Read `kind="schema"` only.** `kind="api"` is an endpoint and belongs to `api_endpoints`; the
+other kinds are contracts this pass has no slot for and must not force into one.
+
+**`<affected-apis>` and `<affected-schemas>` are retired spellings** (item 57) and are still
+accepted on read, as every pre-migration shape is: treat them as `kind="api"` and `kind="schema"`
+respectively. Do not write them.
+
+**Why this exists at all.** Before it, a CRD declared its schema changes, `crd-impact-analysis`
+read them, and the task that implemented them was handed none of it — the document knew the model
+and the implementer had to guess (**P53**).
+
 ### `gaps` are carried, never resolved
 
 Copy each feature's `<gap>` entries out verbatim, adding the feature slug. **Do not judge them,
