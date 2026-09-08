@@ -1,9 +1,11 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** In implementation as of 2026-08-25; Phases 1–4 complete, Phase 5 in progress on branch
-`phase-5-consumers-and-parity` — the only phase large enough to need splitting, and **the split into
-five commit groups is in the ledger**, being a sequencing decision rather than a change to what is
-specified here. This document
+**Status:** **Phases 1–9 complete and merged as of 2026-09-07.** Phase 10 is open, holding items
+68–71 from [`plugin-2.0-verification.md`](plugin-2.0-verification.md) — a static verification of
+the implementation against this document, which found four defects that arrived *after* the
+decisions they sit beside. Phase 5 was the only phase large enough to need splitting, and **the
+split into five commit groups is in the ledger**, being a sequencing decision rather than a change
+to what is specified here. This document
 stays a **specification**; what has actually landed, and where the implementation departed from
 what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
 is implemented except what that file lists.
@@ -1498,6 +1500,13 @@ the after-measurement records both numbers together.
 the must-have, exits `INVALID` rather than clean: *"no won't-have tasks"* is vacuous when nothing
 was generated at all. That guard is not hypothetical — two checks in Phase 1 passed against
 nothing before it was added to them.
+
+> **Half-taken as of 2026-09-08 (V6).** The *before* baseline was recorded in Phase 1 — 394 words,
+> 8 criteria and 64 elements across four features — on what is now the `schema-1` fixture. Items
+> 33, 34, 1, 2, 27, 29 and 35 then changed exactly what it measures, and **the after-measurement
+> has not been taken.** The size half is one command against the current fixture; the timing half
+> is still a stopwatch against a person and still cannot be scripted. *One number beats none*, and
+> there is still one number.
 
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
@@ -3074,6 +3083,110 @@ protection.
 
 ---
 
+## N. What verifying the implementation found
+
+**Four items, and the way they were found is again different from K, L and M.** Those three came
+from *running* the toolchain, from *building* an item, and from *watching a guard work*. These came
+from reading the repository against this document — 67 items, one at a time, looking for the thing
+each one said it would build. Full method, limits and findings V1–V13 in
+[`plugin-2.0-verification.md`](plugin-2.0-verification.md); the four below are the ones that are
+changes to the toolchain rather than to a document.
+
+**None of them is a decision that was wrong.** Every one arrived *after* a correct decision, in the
+gap between an item landing and the next item noticing — which is the same shape as Phase 7 and is
+why the count keeps being small and the causes keep being uniform.
+
+**P46 — `<review>` has a reader, a fixture and a migration rule, and no producer.**
+*Verification: static, exhaustive, and confirmed by running the reader.*
+schema-6 exists to give item 40's gate its second half. The element is defined in core §7, read by
+`check-definition.py`, written by migration rule R13, and carried by all six schema-6 fixture
+features — and a search of `commands/`, all of `skills/` and `schema/prd-format.md` for `<review`
+or `record-review` returns **zero matches**. §7 is the only section of the core that no format
+reference points at. Worse, `/prd` instructed the opposite: *"where the PRD carries no place to
+record that review, say so plainly to the author"* — true before schema-6, false after it, so a run
+following its own command file reports the absence as unfixable. **This is item 23's rule failing
+in the direction it does not check**: `check-readers.py` asserts every element has a reader, and
+the reverse is a report by design.
+
+**P47 — the assertion registry drifted, in the one direction nothing checks.**
+*Verification: measured, by running the table.*
+`checks.md` asserts that every assertion names its owner *and its callers*, and the suite walked
+that forward only — owner exists, claimed caller cites it. Backward, five gaps: `task-integrity.py`
+and `resolve-layers.py` own assertions with `REFUSED` exit codes and had no row at all, and three
+caller lists were stale, two of them because group 8b wired `check-references.py` into a CRD. **A
+table that can only be checked forward records what somebody wrote, not what is true.**
+
+**P48 — two documented commands use a path that cannot resolve.**
+*Verification: static, exhaustive.*
+Open question 1 measured it and item 9 states it: the working directory is the target project, so
+`python skills/x/y.py` resolves against the wrong tree. Every invocation site obeyed that until
+Phase 8 added two that do not — one in `migration.md`, 87 lines from four of its own that are
+correct, and the other the only documented invocation of the producer P46 says is missing.
+
+**P49 — three shipped artefacts describe a state the toolchain has left.**
+*Verification: measured, by running each.*
+`check-scope.py` still told an operator that item 16 *"has not landed"* and attributed a real
+generator defect to a missing feature; `readers.md` stated a count of six against a script that
+prints seven; and `checks.md`, `parity.md` and `readers.md` stamped `schema-5` against a core
+carrying `schema-6`. The third is the interesting one. Either the stamp means what the core's
+means — in which case it was wrong — or it means *last reconciled at*, in which case **it was
+already announcing that these files were a version behind, and nothing read it.** P47 and the
+`readers.md` count are independent confirmations of the second reading. A stamp nobody reads is
+P28's own finding, one level in.
+
+**68. Give `<review>` a producer, and stop denying it has one.**
+*Addresses P46. Depends on schema-6 and on nothing else.*
+
+Three edits and one check, and the third edit is the one that matters:
+
+- `schema/prd-format.md`'s feature `<meta>` template carries `<review by= at= sha=>`, with a
+  pointer to core §7. It is the template `/prd` writes from, and the element was absent from it.
+- `commands/prd.md` Phase 7 runs `check-definition.py --record-review --by NAME`, beside the agent
+  dispatch that produces the judgement it records. **Nothing may hand-write the element**: `sha` is
+  a digest over the file with the review removed, and a hash written by hand is right four times.
+- The sentence telling the author there is nowhere to record a review is **replaced**, not
+  softened. It is the instruction that made the element unproducible, and it now says what to
+  report instead — a feature that passes the mechanical tests and carries no review is not yet
+  `defined`.
+
+The check asserts all three, and asserts the flag it names is really registered in the script it
+names: **a cited producer that cannot run is the same defect one step along.**
+
+**69. The caller table is checked in both directions.**
+*Addresses P47. The reverse check is the item; the five corrections are its first output.*
+
+For every owner in `checks.md`, every file that *runs* it must appear in its column — and
+`task-integrity.py` and `resolve-layers.py` get the rows they never had.
+
+**"Runs it" is the whole of the design.** Half the repository names these scripts in a docstring or
+a cross-reference, so a substring match reports thirty files and is therefore ignored — the fate of
+every alarm nobody can silence. A caller is a line that *runs* it: `python <path>/<script>`,
+`sh <path>/<script>`, a `run("<script>")` helper, or an interpolated plugin path. That rule finds
+exactly the five real gaps and nothing else, and the column definition is widened to say that a
+caller may be another script, because two of the five are `check-gate.py`.
+
+**70. A documented invocation names the plugin root.**
+*Addresses P48.* Mechanical, and worth a check for one reason: this stopped being a convention with
+no violations and became a rule with two. The check scans every `.md` outside `docs/` and `tests/`
+for an interpreter followed by a repository-relative script path.
+
+**71. No shipped artefact describes a state the toolchain has left.**
+*Addresses P49. Three instances, one shape, and the check generalises past all three.*
+
+- **The landed set is derived from the ledger**, not listed in the check. Any script claiming a
+  numbered item is still pending, where the ledger records it landed, fails — so this catches the
+  next one rather than only these two.
+- **`readers.md`'s count is asserted against `check-readers.py`'s own output.** A figure in prose
+  is exactly what went stale, so the fix cannot be another figure in prose. The seventh candidate
+  is `<requirement-level>`, which is live rather than retired and undefined in `schema/` because a
+  task is not a versioned artefact — stated in the file, because a report that names something and
+  does not explain it invites somebody to "fix" it.
+- **Every schema stamp equals `SCHEMAS.json`'s current**, not only the core's. **Decided: one
+  meaning for one syntax.** The *last reconciled at* reading is real and is better served by item
+  69's reverse check, which measures reconciliation instead of asserting it.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3138,11 +3251,25 @@ protection.
 | 58 | One table of assertions; item 6 becomes a caller | P16 | Structural |
 | 59 | A runtime test across the breakdown→execute boundary | **P22**, P20 | **Blocking** |
 | 60 | `execute-layer` stops maintaining a derived file | **P38** | **Correctness** |
+| 61 | `plan-layers` stops contradicting its own derivation | **P39** | **Correctness** |
+| 62 | The task schema admits every layer the layer graph can produce | **P40** | **Correctness** |
+| 63 | A task's `<verification>` is not editable by the run it judges | **P41** | **Correctness** |
+| 64 | The generator is told where its verification commands run | **P42** | Correctness |
+| 65 | A task may name every feature it descends from | **P43** | **Correctness** |
+| 66 | `/execute` takes its layer set from the plan, not its own prose | **P44** | **Correctness** |
+| 67 | A snapshot that replaces another says what changed between them | **P45** | Correctness |
+| 68 | Give `<review>` a producer, and stop denying it has one | **P46** | **Correctness** |
+| 69 | The caller table is checked in both directions | **P47** | Structural |
+| 70 | A documented invocation names the plugin root | **P48** | Correctness |
+| 71 | No shipped artefact describes a state the toolchain has left | **P49** | Consistency |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
-(R11). Composed, they give six phases. **Every phase is independently shippable**, and each is
-defined by what becomes possible once it lands rather than by size.
+(R11). Composed, they gave six phases; four more have since been added by measurement rather than
+by reading — Phase 7 by running the toolchain, Phase 8 by finishing what the plan had only named,
+Phase 9 by the fourth crossing and Phase 10 by verifying the implementation against this document.
+**Every phase is independently shippable**, and each is defined by what becomes possible once it
+lands rather than by size.
 
 ### Phase 1 — Fix what is broken today. No schema change.
 
@@ -3239,6 +3366,39 @@ and wants the guard already in place before task files start changing shape.
 it is last because it was found last — while implementing 63 — and because its severity is
 easiest to misread. A silent zero-task run is worse than a loud failure, and the item is one
 file's worth of work, so anyone reordering this phase should move it *earlier* rather than later.
+
+### Phase 8 — The residue.
+
+`8a` · `8b`
+
+**Not plan items, and that is the point of the phase.** Both were things the plan finished by
+*naming*: `SCHEMAS.json` had recorded the schema-6 content work through four phases, and
+`readers.md` had carried three `open` rows since item 23's audit. The grouping is the ledger's
+rather than this document's, which is why the two groups have letters and not numbers.
+
+### Phase 9 — The guard at the right boundary.
+
+`67`
+
+**One item, specified by the fourth crossing** — the first run item 63's guard was ever active
+for, and the first to find a defect in it. It is a phase of one because it depends on item 63 and
+on nothing else, and because a guard measuring the right thing at the wrong boundary is worth
+fixing before the next crossing rather than after it.
+
+### Phase 10 — What verifying the implementation found.
+
+`68` · `69` · `70` · `71`
+
+**68 first**, because it is the only one of the four a user meets: a `/prd` run today is told that
+a place to record a review does not exist, in the schema version whose headline change is that
+place. **69 before 71**, because 71's third part is a decision about what a stamp means and 69's
+reverse check is what makes *last reconciled at* measurable rather than asserted — the decision is
+cheap once the alternative has been built. 70 is mechanical and depends on nothing.
+
+**Three of the four are stale prose in a shipped artefact**, so every check here is watched failing
+first and every fix carries a mutation round. This ledger has recorded five times that a check
+asserting text rather than the claim it carries passes while doing nothing, and a phase made
+entirely of text fixes is where that failure would be invisible.
 
 ---
 
@@ -3395,6 +3555,14 @@ it is Phase 1, which is eight items, all reversible, all fixing something real.
    *What this does not do is gate item 28 behind the experiment.* P18 is correctly graded the
    largest gap against the field, the experiment decides what ships **alongside** item 28, and
    Phase 3 does not wait for Phase 2's fixtures to have been run through twice.
+
+   > **Unrun as of 2026-09-08 (V5).** Item 28 shipped in Phase 3 and the mitigations went with it
+   > — the five-tier graph is a default rather than a requirement, a supplied `<layers>` is
+   > validated acyclic and reachable, and `architecture.json` records which graph a run used. **The
+   > experiment that decides what ships alongside them has not been run**, so the third row of the
+   > table above has not been reached for or against, and neither has item 43's third arm. Recorded
+   > here rather than left to be noticed: the decision rule was deliberately written before the
+   > measurement, and a rule with no measurement is the half that does nothing.
 
 ---
 
