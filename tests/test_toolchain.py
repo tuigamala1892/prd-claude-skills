@@ -9262,6 +9262,73 @@ def _():
         "which no task exports and which are external libraries rather than missing contracts")
 
 
+@check("a declared layer order is obeyed, not improved on -- by running it on both controls",
+       finding="P52")
+def _():
+    """Item 74. The skill states this rule and a live run broke half of it.
+
+    `plan-layers` may decide WHICH layers exist -- item 31, a tier with no work is not a tier --
+    and may not decide what ORDER they run in when the project declared one. Its Dependency
+    Ordering section: *a contradiction, not an ordering. Report it and place the tasks by layer.*
+    Two obligations. Against an inverted graph the run wrote `ordering_conflicts` at severity
+    critical, naming both layers, and then emitted them resequenced into the buildable order.
+
+    SUBSEQUENCE, NOT EQUALITY, because dropping an empty layer is expected.
+
+    BOTH FIXTURES CAME FROM THE SAME DECLARED GRAPH, which is what makes the pair worth having:
+    the only difference between them is the behaviour under test. `inverted/` obeyed the order,
+    `inverted-halted/` did not.
+    """
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-layer-order.py")
+    assert os.path.isfile(script), "check-layer-order.py does not exist"
+    base = os.path.join(REPO, "tests", "fixture", "layering")
+
+    def run(arm, *extra):
+        return subprocess.run([sys.executable, script, os.path.join(base, arm), *extra],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+    # Negative control: same graph, order obeyed. A checker that refuses everything is useless.
+    p = run("inverted")
+    assert p.returncode == 0, (
+        f"the arm that OBEYED the declared order was refused. Its emitted 0-setup, 3-backend, "
+        f"4-foundation is a legal subsequence of 0,1,2,3,4 -- dropping empty layers is item 31:\n"
+        f"{p.stderr[:400]}")
+
+    # Positive control: same graph, order resequenced.
+    p = run("inverted-halted")
+    assert p.returncode == 1, (
+        f"the arm that RESEQUENCED the declared graph passed. It emitted 0-setup, 4-foundation, "
+        f"3-backend against a declared 0,1,2,3,4:\n{p.stdout[-400:]}")
+    # Layers that were DROPPED, so they can only have come from the declared line. Asserting the
+    # word "declared" instead was satisfied by the refusal's opening sentence -- two sites, and
+    # the mutant that deleted the line passed. The site-counting rule, a fourth time.
+    for want in ("1-integration", "2-frontend"):
+        assert want in p.stderr, (
+            f"the refusal does not print the declared order -- {want!r} is in it and nowhere "
+            f"else. An operator has to see both sequences to know which rule was disobeyed:\n"
+            f"{p.stderr[:400]}")
+    assert "4-foundation -> 3-backend" in p.stderr or "4-foundation" in p.stderr, (
+        f"the refusal does not print the emitted order:\n{p.stderr[:400]}")
+
+    # No declared graph is not a violation -- the shipped default promises nothing about order
+    # beyond its own definition, and refusing here would make the check fire on every ordinary run.
+    p = run("sound")
+    assert p.returncode == 0 and "no declared graph" in p.stdout, (
+        f"a project with no architecture.md was judged against a graph it never declared:\n"
+        f"{p.stdout[:300]}{p.stderr[:300]}")
+
+    # The subsequence rule itself, rather than the two recorded outcomes: a dropped layer is
+    # legal and a swapped pair is not, asserted on the function so a fixture cannot drift past it.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("clo", script)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    declared = ["0-a", "1-b", "2-c", "3-d"]
+    assert m.is_subsequence(["0-a", "2-c"], declared)[0], "dropping a layer must be legal"
+    assert m.is_subsequence(declared, declared)[0], "the identity must be legal"
+    assert not m.is_subsequence(["2-c", "1-b"], declared)[0], "a swapped pair must not be legal"
+    assert not m.is_subsequence(["0-a", "9-z"], declared)[0], "an undeclared layer must not be legal"
+
 # ------------------------------------------------------------------------ runner
 
 def main():
