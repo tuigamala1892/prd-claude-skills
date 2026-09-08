@@ -9410,6 +9410,78 @@ def _():
             f"the probe counts {m2.group(1)}. The measurement has stopped describing the schema "
             f"it was taken on")
 
+@check("a CRD's schema contracts have a route into the task that implements them",
+       finding="P53")
+def _():
+    """Item 75. One element, two producers -- and the second one was missing.
+
+    The PRD path carries `<notes><data-model>` into a task's `<context>`: analyze-prd reads it
+    into `data_models`, generate-tasks copies it, and the task format defines the element. The CRD
+    path declares the same information as `<contract kind="schema">`, has it read by
+    `crd-impact-analysis` -- and then hands the implementer a task carrying none of it.
+
+    THE ROUTE IS THREE LINKS AND ALL THREE MUST HOLD. Asserting only that some file mentions
+    `affected-contracts` would pass on a repository where any one of them is missing, which is the
+    state this item found: crd-format.md and crd-impact-analysis both named it, and the two
+    components between the document and the task did not.
+    """
+    def read(*parts):
+        return open(os.path.join(REPO, *parts), encoding="utf-8", errors="replace").read()
+
+    # 1. The producer: /breakdown's CRD extraction list must take the contracts into data_models.
+    bd = read("skills", "breakdown", "SKILL.md")
+    crd_extract = bd.split("**For CRD:**", 1)
+    assert len(crd_extract) == 2, "breakdown/SKILL.md has no CRD extraction list"
+    crd_extract = crd_extract[1].split("### Phase 3", 1)[0]
+    assert "affected-contracts" in crd_extract and "data_models" in crd_extract, (
+        "the CRD extraction list does not take <affected-contracts> into data_models. Without it "
+        "the document's schema changes stop at analysis and never reach a task")
+
+    # 2. The reader: analyze-prd must say where a CRD's data models come from.
+    ap = read("skills", "breakdown-analyze-prd", "SKILL.md")
+    assert "affected-contracts" in ap, (
+        "breakdown-analyze-prd never mentions <affected-contracts>. It is the component that "
+        "fills data_models, and on the CRD path it had no instruction at all")
+    apf = prose(ap)
+    assert "kind=" in ap and 'schema' in ap, "analyze-prd does not say which contract kind to read"
+
+    # 3. The carrier: generate-tasks must carry them, under the same `touches` rule.
+    gt = read("skills", "breakdown-generate-tasks", "SKILL.md")
+    section = gt.split("The data model is copied, never inferred", 1)
+    assert len(section) == 2, "generate-tasks has no data-model rule to widen"
+    rule = section[1].split("###", 1)[0]
+    assert "affected-contracts" in rule or "kind=\"schema\"" in rule, (
+        "generate-tasks' data-model rule is still PRD-only. It is the component that writes "
+        "<context><data-model>, so a producer upstream with no carrier here changes nothing")
+    assert "touch" in prose(rule).lower(), (
+        "the CRD half names no scoping rule. Carrying every contract in the document into every "
+        "task is the failure `touches` exists to prevent")
+
+    # 4. The format: one element, two sources, said in the spec that defines it.
+    spec = read("skills", "breakdown", "references", "task-format-spec.md")
+    dm = spec.split("- `data-model`:", 1)
+    assert len(dm) == 2, "task-format-spec.md no longer defines `data-model`"
+    dm = dm[1].split("\n- `", 1)[0]
+    assert "CRD" in dm and "kind=\"schema\"" in dm, (
+        "task-format-spec.md still defines <data-model> as the feature's own only. The element "
+        "needed a second producer, not a second element, and the spec is where that is said")
+    assert re.search(r"never inferred|Copied, never", dm), (
+        "the widened definition dropped the copied-never-inferred rule, which is the half that "
+        "keeps a second source from becoming a second guess")
+
+    # 5. And the retired spellings must not be named as current anywhere that routes work.
+    for name, text in (("breakdown/SKILL.md", bd),
+                       ("breakdown-analyze-prd/SKILL.md", ap),
+                       ("breakdown-generate-tasks/SKILL.md", gt)):
+        for line in text.splitlines():
+            if "affected-schemas" not in line and "affected-apis" not in line:
+                continue
+            assert re.search(r"retired|deprecat|until item 57|accepted on read", line, re.I), (
+                f"{name} names <affected-schemas>/<affected-apis> without saying they are "
+                f"retired: {line.strip()[:100]}. Item 57 replaced them with <affected-contracts>, "
+                f"and a document pointing a reader at a section the producer stopped writing is "
+                f"the same defect as a stale caller list")
+
 # ------------------------------------------------------------------------ runner
 
 def main():

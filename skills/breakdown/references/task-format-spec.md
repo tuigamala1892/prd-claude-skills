@@ -278,7 +278,8 @@ discarding the document.**
   </acceptance-criteria>
 
   <data-model>
-  <!-- The feature's own <notes><data-model>, carried. NOT re-inferred. -->
+  <!-- PRD: the feature's own <notes><data-model>. CRD: the <contract kind="schema">
+       entries this task touches. Carried, NOT re-inferred, on either path. -->
   Link: id, url, title, created_at. Tags are a separate entity, joined many-to-many.
   </data-model>
 
@@ -306,9 +307,16 @@ discarding the document.**
 **Constraints:**
 - `acceptance-criteria`: The source criteria **verbatim, with their original ids**. Every id here
   must appear in `<meta><satisfies-criteria>`, and vice versa
-- `data-model`: Present when the source feature declares a `<notes><data-model>`. **Copied, never
-  inferred** — a data model half-read and half-invented is worse than either, because nobody can
-  tell which half is the author's
+- `data-model`: **One element, two producers** (item 75). On the PRD path it is the source
+  feature's `<notes><data-model>`. On the CRD path it is the `<contract kind="schema">` entries
+  from `<impact-analysis><affected-contracts>` that *this task touches* — the same *touches* rule
+  the registry entries take. **Copied, never inferred** on either path: a data model half-read and
+  half-invented is worse than either, because nobody can tell which half is the author's.
+
+  **The element needed a second producer, not a second element.** A CRD declared its schema
+  changes, `crd-impact-analysis` read them, and the task that implemented them was handed none of
+  it — the document said what the model was and the implementer had to guess (**P53**). That is
+  P4's shape on the path P4 was never measured on
 - `prd-excerpt`: What is left after the two above. Must include all relevant requirements from PRD
 - `tech-stack`: Must specify versions where known
 - Do NOT reference external files - all context must be inline

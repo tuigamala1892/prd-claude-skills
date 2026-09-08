@@ -411,6 +411,18 @@ When it declares none, **omit the element** — do not infer one to fill the slo
 half-read and half-invented is worse than either, because nobody can tell which half is the
 author's.
 
+**On the CRD path the source is `<contract kind="schema">`, and every word above still holds
+(item 75).** A CRD has no features; it declares its schema changes in
+`<impact-analysis><affected-contracts>`, and `analyze-prd` reads them into `data_models` marked
+declared. Carry into `<context><data-model>` the entries **this task touches** — the same
+*touches* rule the registry entries take, and for the same reason: a task that gets the whole
+document's model back is a task nobody can size.
+
+**Omit the element when the task touches none**, exactly as on the PRD path. And **do not infer
+one from `<affected-files>`** — a filename is evidence that something changed, not a statement of
+what the model is, and a model half-read and half-guessed is the failure this rule exists to
+prevent.
+
 ## Generation Process
 
 For each task in the layer plan:
