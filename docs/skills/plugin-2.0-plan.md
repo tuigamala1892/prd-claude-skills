@@ -3452,13 +3452,29 @@ in the document, has it read by `crd-impact-analysis`, and then hands the implem
 does not carry it. **This is P4 on the path P4 was not measured on** — a producer whose consumer
 stops one step short.
 
-**P54 — the significance flag has a live reader on the CRD path and no producer.**
-*Verification: static, exhaustive.*
-`check-references.py` reads `<architecturally-significant>`, and since group 8b `check-gate.py`
-runs that script **for a CRD**. `crd-format.md` mentions the element **zero** times. So the
-consumer is live on this path and scanning for something the schema does not let anyone write —
-**exactly P46's shape**, which item 68 fixed for `<review>` on the PRD path, arriving on the other
-one. A refactor CRD is the document item 35 exists for.
+**P54 — the significance flag exists on one path and is unsayable on the other.**
+*Verification: static, exhaustive — and corrected below, because the first statement of it was
+wrong in a way that would have changed the fix.*
+`crd-format.md` mentions `<architecturally-significant>` **zero** times, so a refactor CRD — the
+document item 35 exists for — has no way to say that it warrants a design step.
+
+> **Corrected 2026-09-08 while building item 76.** This was first written as *a live reader with
+> no producer*: `check-references.py` reads the element, `check-gate.py` runs that script for a
+> CRD, therefore the consumer was said to be scanning for something the schema forbade anyone to
+> write — P46's shape, item 68's defect on the other path.
+>
+> **It was not scanning.** `main()` takes the CRD branch at `os.path.isfile()` and **returns
+> before** the significance screen, which iterates a PRD *directory*. The element had neither a
+> producer nor a reader here.
+>
+> **Both halves of that inference were checkable and only one was checked.** *The gate runs the
+> script for a CRD* is true and was verified; *therefore the screen inside it runs on a CRD* was
+> assumed. It is the same failure as P52's *silent*, four items earlier: **the adjacent fact was
+> measured and the one that mattered was inferred from it.**
+>
+> It changes the fix rather than only the wording. Adding the element alone — which is what the
+> original P54 implied was enough — would have shipped a producer with no consumer, **the exact
+> defect item 76 exists to remove, inverted.**
 
 **75. The CRD's schema contracts reach the task that implements them.**
 *Addresses P53. Depends on nothing.*
@@ -3469,17 +3485,29 @@ same reason. The task format needs no new element — it needs its existing one 
 producer, and its spec sentence widened from *the feature's own* to name both sources.
 
 **76. `<architecturally-significant>` on a CRD.**
-*Addresses P54. A CRD schema version.*
+*Addresses P54. Not a schema version, and that was measured.*
 
-The element, its `because` enum and its `criteria` list, defined once in `core.md` and cited by
-both format references rather than copied — the rule item 44 exists for. **It is a schema
-version**, so it carries a migration step, and the migration has no mechanical half: significance
-is a declared judgement and R13's precedent says a machine may not invent one.
+The element, its `because` enum and its `criteria` list, defined once in **core §8** and cited by
+both format references rather than copied — the rule item 44 exists for. `prd-format.md` gives up
+its own copy in the same pass, so the PRD path stops being the definition and starts being a
+citation.
 
-**Cost it before taking it.** The reader already exists and already runs, so the work is the
-element, one core section, one migration rule and a fixture — the same shape as item 35 on the
-PRD path, minus the reader. What it buys is a design step for refactor CRDs, which is the case
-item 35 was written for and the one the CRD path cannot currently express.
+**The reader ships with it, and the original text of this item was wrong to say otherwise.**
+`check_crd()` gains the same two assertions the PRD screen makes plus the enum: a `because` that
+is empty or outside core §8's six values is a refusal, and a flag no decision record drives is a
+warning, because the flag is a judgement and its absence proves nothing.
+
+**It is not a schema version, and the reason is measured rather than argued.** The element is
+optional, so no existing CRD becomes invalid; `check-artefacts.py` closes a child set only where
+the schema says *exactly these* — `<notes>` — and `<meta>` has never been closed. A schema-6 CRD
+carrying the element **validates unchanged**, which was run before this was decided. A version
+would have bought a frozen fixture and a migration step whose transform is the identity, against
+`SCHEMAS.json`'s own warning that maintaining the same project twice is what makes people abandon
+versioned fixtures.
+
+**What it buys** is a design step for refactor CRDs: *"replace the session store"* is
+architecturally significant in a way that *"add a column"* is not, and until this the difference
+was unsayable.
 
 ---
 
@@ -3562,7 +3590,7 @@ item 35 was written for and the one the CRD path cannot currently express.
 | 73 | No task may depend on an interface a later layer exports | **P51** | **Correctness** |
 | 74 | A declared layer order is obeyed, not improved on | **P52** | **Correctness** |
 | 75 | The CRD's schema contracts reach the task that implements them | **P53** | **Correctness** |
-| 76 | `<architecturally-significant>` on a CRD | **P54** | Structural |
+| 76 | `<architecturally-significant>` on a CRD | **P54** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first

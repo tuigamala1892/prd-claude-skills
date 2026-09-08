@@ -51,6 +51,7 @@ written to remove, and the surest way to grow one is to define it somewhere nobo
 | priority vocabularies | [4](#4-priority) | `/prd`, `/crd` | `/breakdown`'s `--priority` and `--requirement-level` |
 | `<scope>`, `<confidence>` | [5](#5-scope-and-confidence) | `crd-impact-analysis`, `breakdown-analyze-prd` | `check-scope.py`, `/breakdown`'s report |
 | `<gaps>` / `<gap>` | [6](#6-gaps--what-a-document-knows-it-is-missing) | `/prd`, `/crd` | `breakdown-analyze-prd`, `breakdown-review-tasks`, `/breakdown`'s report |
+| `<architecturally-significant>` | [8](#8-architecturally-significant--a-judgement-declared) | `/prd`, `/crd` | `check-references.py`, `check-gate.py`, `/breakdown`'s report |
 
 That last row was an empty cell until item 49, and it was stated rather than hidden: `<scope>`
 and `<confidence>` were required fields on the CRD path with **no consumer anywhere in the
@@ -442,16 +443,63 @@ writes the element when a person asks for it; no migration produces one, and
 
 ---
 
+## 8. `<architecturally-significant>` — a judgement, declared
+
+```xml
+<meta>
+  <slug>archive-links</slug>
+  <architecturally-significant
+      because="quality-attribute|risk|first-of-a-kind|cross-cutting|external-dependency|constraint"
+      criteria="3,7"/>
+</meta>
+```
+
+| Attribute | Required | |
+|---|---|---|
+| `because` | Yes | Which kind of significance. One of the six above |
+| `criteria` | No | The criterion ids that carry it, comma-separated, no spaces |
+
+**It cannot be derived, and that is why it is declared.** Not every non-functional requirement is
+architecturally significant and some functional ones are, so no structural property of the file —
+not a `<non-functional>` section, not a count, not a pattern — answers the question. A machine
+that inferred it would be inventing the judgement a design step exists to act on.
+
+**It exists to make a design step affordable.** Without it a design pass runs across every item in
+the document rather than the handful that warrant one, which is the cost that stops anyone running
+one at all.
+
+**It sits in `<meta>`** because significance is a property of the item's *nature*, not of its
+place in a plan.
+
+### Both paths, and the CRD's was the last to arrive (item 76)
+
+The PRD had this from item 35. The CRD did not, while **`check-references.py` read it and
+`check-gate.py` ran that script for a CRD** — a live reader scanning for an element the format
+never defined, which is P46's shape and the defect item 68 fixed for `<review>` on the other path.
+
+**A refactor CRD is the document item 35 was written for.** *"Replace the session store"* is
+architecturally significant in a way that *"add a column"* is not, and until item 76 a change
+request had no way to say which it was.
+
+**It did not need a schema version, and that was measured rather than assumed.** The element is
+optional, so no existing CRD becomes invalid; `check-artefacts.py` closes a child set only where
+the schema says *exactly these* — `<notes>` — and `<meta>` has never been closed, so a CRD
+carrying it validates against schema-6 unchanged. A version would have bought a frozen fixture and
+a migration step whose transform is the identity, against `SCHEMAS.json`'s own warning that
+maintaining the same project twice is what makes people abandon versioned fixtures.
+
+---
+
 ## Who cites this file
 
 | Document | Cites it for |
 |---|---|
-| [`prd-format.md`](prd-format.md) | identity, criteria, status, priority |
+| [`prd-format.md`](prd-format.md) | identity, criteria, status, priority, significance |
 | [`migration.md`](migration.md) | every element it moves between versions |
 | [`decision-record.md`](decision-record.md) | identity — a record's `**Drives:**` resolves to a feature |
 | [`checks.md`](checks.md) | status, criteria, gaps — it names the script that decides each |
 | [`readers.md`](readers.md) | every element it defines, and whether anything reads it |
-| [`crd-format.md`](../skills/crd/references/crd-format.md) | identity, criteria, status, priority, scope, confidence |
+| [`crd-format.md`](../skills/crd/references/crd-format.md) | identity, criteria, status, priority, scope, confidence, significance |
 | [`project-format.md`](../skills/crd/references/project-format.md) | status |
 | [`task-format-spec.md`](../skills/breakdown/references/task-format-spec.md) | identity, criteria |
 | [`breakdown/SKILL.md`](../skills/breakdown/SKILL.md) | criteria, status, priority — it is the reader both paths share |
