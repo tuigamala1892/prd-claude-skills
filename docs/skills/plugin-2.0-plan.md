@@ -3243,6 +3243,72 @@ starting state, and `ARCHITECTURE.md` already describes what runs.
 
 ---
 
+## P. What the experiment found
+
+**One item, and its provenance is a fifth kind.** K came from running the toolchain, L from
+building an item, M from watching a guard work, N and O from reading the repository against this
+document. This one came from **an experiment this plan specified and then did not run for six
+phases** — open question 7's, whose full result and three self-inflicted defects are recorded at
+the foot of that question.
+
+**P51 — a wrong layer graph produces an unbuildable task set, and nothing mechanical notices.**
+*Verification: measured, three live `/breakdown` arms, 2026-09-08.*
+An `architecture.md` declaring the five default layer names with the dependency direction
+reversed is accepted by `check-architecture.py` — correctly: it is acyclic, its ids are unique and
+every layer is reachable. **Structural validity is not buildability.** The arm that obeyed it
+emitted 14 tasks carrying **16** dependencies on interfaces exported by a layer that runs *after*
+them — backend endpoints importing `Link`, `get_db` and `db_session` from `4-foundation` — and
+`check-coverage.py` and `check-gate.py` both exited **0**.
+
+**A second run of the same graph refused instead**, diagnosing it correctly and stopping. That
+disagreement is the finding rather than a footnote to it: **the toolchain's protection against a
+wrong graph was a model judgement, and it fired in one run of two.** OQ7 predicted this failure
+would be *"silent and hard to attribute"*; it is worse than predicted, because it is silent
+*sometimes*, which is the case no amount of reading the output can be relied on to catch.
+
+**P52 — `breakdown-plan-layers` silently overrode the declared graph.**
+*Verification: measured, and checked against the artefacts rather than the run's own report.*
+Given a graph declaring `0-setup, 1-integration, 2-frontend, 3-backend, 4-foundation`, it emitted
+`0-setup, 4-foundation, 3-backend` — foundation moved ahead of backend, reversing the declared
+direction. Its own SKILL.md says a project that declares a graph gets its own and nothing grafted
+on, and that the caller has already validated it. **The correction was an improvement and it was
+silent**, which is P16's shape: the operator believes the declared rule is in force. It is also
+why the second arm halted — two phases disagreed about the graph and generation would not choose.
+**No item yet.** Recorded on the day it was found rather than the day somebody remembers it, which
+is the rule `checks.md` states for an ownerless assertion.
+
+**73. No task may depend on an interface a later layer exports.**
+*Addresses P51. Depends on nothing.*
+
+**This is not the mitigation open question 7 specified, and the departure is the experiment's own
+result.** That text asks `/breakdown` to *report when a supplied graph decomposes materially
+differently from the shipped default* — which needs a baseline, a second decomposition, and a
+threshold for "materially". The measurement showed something cheaper and stronger: **the defect
+is visible inside a single task set.** A task naming an interface that a later task exports is
+unbuildable on its own terms. No default to compare against, no judgement about degree, and it
+would have caught the silent arm on the run that produced it.
+
+- **An exit code, not an instruction.** The protection that already existed was a model reading
+  the graph and reasoning about it, and it worked once in two runs. Item 4.13's principle,
+  arriving where OQ7 left the question open.
+- **Order comes from `layer_plan.json`, not from the layer number.** A layer id is not a rank —
+  the graph that produced this finding has ids ascending while its dependencies do not, which is
+  the whole point of it.
+- **An unexported dependency is not a violation.** `python`, `pip`, `sqlite3` and
+  `fastapi.testclient.TestClient` are external libraries declared as interfaces; a first version
+  of this metric counted them and reported nine findings against a task set that was sound.
+- **It names both causes and chooses neither.** Either the declared graph orders these wrongly or
+  generation put a task in the wrong layer, and deciding between them is a judgement about the
+  project rather than something a script may settle.
+
+**Item 43 gains its third arm here**, which is what the LOAD-BEARING outcome buys.
+`tests/fixture/layering/` holds real generator output from all three runs — the sound decomposition
+as the negative control, the inverted one as the positive. **Neither was hand-built**: a fixture
+written to match the checker validates the code against itself, which is the defect item 21 hit
+from the other direction.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3319,6 +3385,7 @@ starting state, and `ARCHITECTURE.md` already describes what runs.
 | 70 | A documented invocation names the plugin root | **P48** | Correctness |
 | 71 | No shipped artefact describes a state the toolchain has left | **P49** | Consistency |
 | 72 | The documents that describe the repository are checked against it | **P50** | Consistency |
+| 73 | No task may depend on an interface a later layer exports | **P51** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first

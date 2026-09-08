@@ -9201,6 +9201,67 @@ def _():
         f"leaves a reader with no status, which is the same problem quieter")
 
 
+@check("no task depends on a layer that runs after it -- by running it on both controls",
+       finding="P51")
+def _():
+    """Item 73, and open question 7 is why it is an exit code.
+
+    OQ7 ran a PRD through the shipped graph and through an inverted one. The inverted arm emitted
+    14 tasks in which backend endpoints imported `Link`, `get_db` and `db_session` from a layer
+    the declared graph runs AFTER them -- 16 unsatisfiable edges -- and `check-coverage.py` and
+    `check-gate.py` both exited 0. A second run of the same graph noticed and refused. **The
+    protection was a model judgement and it fired in one run of two.**
+
+    BOTH CONTROLS, AND THE NEGATIVE ONE IS NOT DECORATION. A checker that refuses everything
+    would pass a test that only feeds it the bad arm. `sound/` is real generator output from the
+    default graph and must be silent; `inverted/` is real output from the inverted one and must
+    refuse. Neither was hand-built -- a fixture written to match the checker validates the code
+    against itself.
+    """
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-layering.py")
+    assert os.path.isfile(script), "check-layering.py does not exist"
+    base = os.path.join(REPO, "tests", "fixture", "layering")
+
+    def run(arm, *extra):
+        return subprocess.run([sys.executable, script, os.path.join(base, arm), *extra],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+    # Negative control: the sound arm must be silent, or the check has no discrimination.
+    p = run("sound")
+    assert p.returncode == 0, (
+        f"check-layering.py refused the SOUND arm, which came out of the default graph with no "
+        f"forward references at all:\n{p.stderr[:500]}")
+
+    # Positive control: the inverted arm must refuse, and must NAME what it found.
+    p = run("inverted")
+    assert p.returncode == 1, (
+        f"check-layering.py passed the INVERTED arm. That task set has backend endpoints "
+        f"importing their models from a layer that runs after them; if this passes, the check "
+        f"has no subject:\n{p.stdout[-500:]}")
+    assert "4-foundation" in p.stderr and "3-backend" in p.stderr, (
+        f"the refusal does not name both layers, so an operator cannot act on it:\n{p.stderr[:400]}")
+    assert re.search(r"needs '(get_db|Link|db_session)'", p.stderr), (
+        f"the refusal names no interface. A count is not a finding -- item 30's lesson:\n"
+        f"{p.stderr[:400]}")
+
+    # --json is the object and nothing else (group 8b's defect, not repeated).
+    p = run("inverted", "--json")
+    data = json.loads(p.stdout)
+    assert len(data["violations"]) >= 10, (
+        f"the inverted arm yields {len(data['violations'])} violations; the measured run had 16. "
+        f"A positive control that has drifted toward zero is a check losing its subject")
+    assert data["order_source"] == "layer_plan.json", (
+        "order came from directory names rather than the plan. A layer id is not a rank -- the "
+        "graph that produced this fixture has ids ascending while its dependencies do not")
+
+    # An external library is NOT a violation. The first version of this metric counted `python`
+    # and `sqlite3` as unmet contracts and reported 9 findings against the sound arm.
+    p = run("sound", "--json")
+    assert json.loads(p.stdout)["violations"] == [], (
+        "the sound arm reports violations. Its tasks depend on `python`, `pip` and `sqlite3`, "
+        "which no task exports and which are external libraries rather than missing contracts")
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():
