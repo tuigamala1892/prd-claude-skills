@@ -4581,6 +4581,51 @@ same trap.
 
 ---
 
+## V6 — the authoring after-measurement, and it went the other way
+
+Not a phase and not an item: **a measurement item 21 has owed since Phase 1**, on branch
+`v6-the-authoring-after-measurement`, commit `fd07de5`. Suite **139 → 140**, `failed 0`, `known 0`.
+
+The full trajectory is in the plan at item 21. Three things belong here.
+
+**The before was recomputed, not quoted.** Phase 1 recorded 394 words / 8 criteria / 64 elements,
+and the frozen `schema-1` fixture was re-measured with today's script rather than that number
+being carried forward — both ends of a comparison have to come off one ruler. It returns
+394/8/64 exactly, so the recorded figure holds and the instrument is stable across twelve phases.
+
+**The result contradicts the plan's own fear.** Item 33 is graded a likely failure point and
+priced as the migration's hardest step; at `schema-3` it takes **8 words and 24 elements out**.
+The criteria count never moves — 8 throughout — so that is a per-criterion saving. What roughly
+doubled the prose by `schema-6` is content the bar asks an author to know: a user story, gaps, a
+data model, a recorded review. **Elements went down, 64 → 59. The tagging got cheaper and the
+thinking got dearer**, which is the trade item 40 exists to make.
+
+**The figures are asserted against the probe, not written down.** `readers.md` claimed six against
+a script printing seven, and this is the same class of claim — a measurement recorded in prose.
+Five of the six fixtures are frozen and `schema-6` is not, so the check guards exactly the drift
+that can happen.
+
+### An instrument note, and it is the session's fourth of this kind
+
+The check was watched failing in both directions, and **the first attempt at the second direction
+was a no-op**: an HTML comment appended to a feature file, which the word counter strips along
+with every other tag. The metric never moved, the check passed, and it read as the check having a
+hole. Redone with real prose.
+
+That is now four times in this session that a mutation failed to move the thing it claimed to
+move — a stale anchor, another mutant's collateral, a layer renamed to something no graph
+declares, and now a comment inside a tag-stripping counter. **All four look identical to a check
+with no teeth, and all four are the site-counting rule in other clothes.**
+
+### What is still owed
+
+**The timing half, and no script can take it.** *Is this tolerable to write?* is a stopwatch
+against a person authoring the same four features under both templates. One caveat for whoever
+takes it: `schema-6`'s +237 words includes the fixture's own content debt being paid — four
+features that failed the bar and were fixed — so part of that is not a per-feature cost.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
