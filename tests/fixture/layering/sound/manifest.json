@@ -1,0 +1,253 @@
+{
+  "task_inventory": [
+    {
+      "id": "L0-001",
+      "name": "Project skeleton and dependency manifest",
+      "layer": "0-setup",
+      "file": "0-setup/L0-001-project-skeleton.xml",
+      "objective": "Create the three root-level project files for Link Shelf: a pyproject.toml declaring the project metadata and its four dependencies, a requirements.txt pinning the same set for installation, and a .gitignore that excludes Python bytecode, the pytest cache and the file-backed SQLite database.",
+      "files": [
+        "pyproject.toml",
+        "requirements.txt",
+        ".gitignore"
+      ]
+    },
+    {
+      "id": "L0-002",
+      "name": "Package layout and pytest configuration",
+      "layer": "0-setup",
+      "file": "0-setup/L0-002-package-layout.xml",
+      "objective": "Create the `app` and `app.models` Python packages and a pytest.ini that sets the test path to `tests` and puts the repository root on sys.path, so that `python -m pytest` run from the repository root collects from `tests/` and `import app` resolves without the project being installed.",
+      "files": [
+        "pytest.ini",
+        "app/__init__.py",
+        "app/models/__init__.py"
+      ]
+    },
+    {
+      "id": "L0-003",
+      "name": "SQLAlchemy engine, session, declarative Base and app instance",
+      "layer": "0-setup",
+      "file": "0-setup/L0-003-database-and-app.xml",
+      "objective": "Create the SQLite database plumbing (engine, session factory, declarative Base, get_db dependency), a bare FastAPI application instance with no routes mounted, and a pytest conftest exposing two fixtures - an isolated per-test database session and a TestClient bound to that same session - which every Layer 1, 2 and 4 test will use.",
+      "files": [
+        "app/database.py",
+        "app/main.py",
+        "tests/conftest.py",
+        "tests/test_setup.py"
+      ]
+    },
+    {
+      "id": "L1-001",
+      "name": "Link model",
+      "layer": "1-foundation",
+      "file": "1-foundation/L1-001-link-model.xml",
+      "source_features": [
+        {
+          "slug": "save-link",
+          "moscow": "must-have",
+          "requirement_level": "P0"
+        }
+      ],
+      "source_feature": "save-link",
+      "moscow": "must-have",
+      "requirement_level": "P0",
+      "objective": "Declare the `Link` SQLAlchemy model - the table that stores one saved URL with an optional title and the time it was stored - exactly as the save-link feature's data model specifies it, and register it on `app/models/__init__.py` so `Base.metadata` knows about the table. This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria through. It satisfies none of save-link's criteria itself: those are HTTP-level (201, 422) and are met by L2-001 (POST /links), which writes into this table. Correspondingly, this task defines no route, no Pydantic schema and no validation - a bad URL is rejected by L2-001's request schema, not by the column.",
+      "files": [
+        "app/models/link.py",
+        "app/models/__init__.py",
+        "tests/test_model_link.py"
+      ]
+    },
+    {
+      "id": "L1-002",
+      "name": "Tag model",
+      "layer": "1-foundation",
+      "file": "1-foundation/L1-002-tag-model.xml",
+      "source_features": [
+        {
+          "slug": "tag-links",
+          "moscow": "should-have",
+          "requirement_level": "P0"
+        }
+      ],
+      "source_feature": "tag-links",
+      "moscow": "should-have",
+      "requirement_level": "P0",
+      "objective": "Declare the `Tag` SQLAlchemy model - the table holding one free-text tag name, unique across the shelf and compared case-sensitively - exactly as the tag-links feature's data model specifies it, and register it on `app/models/__init__.py` so `Base.metadata` knows about the table. This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria through. It satisfies none of tag-links' criteria itself: those are HTTP-level (200, 404, filtered listings) and are met by L2-003 (POST /links/{id}/tags) and L2-002 (GET /links?tag=), which read and write this table. Correspondingly, this task defines no route, no Pydantic schema, and no tag-attachment logic. This task also declares NO relationship to links. The many-to-many join is L1-003's work.",
+      "files": [
+        "app/models/tag.py",
+        "app/models/__init__.py",
+        "tests/test_model_tag.py"
+      ]
+    },
+    {
+      "id": "L1-003",
+      "name": "LinkTag join table and Link-Tag association",
+      "layer": "1-foundation",
+      "file": "1-foundation/L1-003-link-tag-join.xml",
+      "source_features": [
+        {
+          "slug": "tag-links",
+          "moscow": "should-have",
+          "requirement_level": "P0"
+        }
+      ],
+      "source_feature": "tag-links",
+      "moscow": "should-have",
+      "requirement_level": "P0",
+      "objective": "Declare the `LinkTag` join table - one row per attachment of one tag to one link, with a composite primary key over (link_id, tag_id) - and add the many-to-many `tags` attribute to the existing `Link` model so a link can be read and written with its tags. This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria through. It satisfies none of tag-links' criteria itself: those are HTTP-level (200, 404, filtered listings) and are met by L2-003 and L2-002 through this table. What this task guarantees is the storage-level property those endpoints lean on - the composite primary key makes a second attachment of the same tag to the same link impossible, which is what makes re-tagging idempotent underneath tag-links criterion 2. This task defines no route, no Pydantic schema, and no orphan-tag cleanup policy.",
+      "files": [
+        "app/models/link_tag.py",
+        "app/models/link.py",
+        "app/models/__init__.py",
+        "tests/test_model_link_tag.py"
+      ]
+    },
+    {
+      "id": "L2-001",
+      "name": "POST /links -- save a link",
+      "layer": "2-backend",
+      "file": "2-backend/L2-001-save-link-endpoint.xml",
+      "source_features": [
+        {
+          "slug": "save-link",
+          "moscow": "must-have",
+          "satisfies_criteria": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "requirement_level": "P0"
+        }
+      ],
+      "source_feature": "save-link",
+      "satisfies_criteria": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "moscow": "must-have",
+      "requirement_level": "P0",
+      "objective": "Create the Pydantic request and response schemas for a link and the `POST /links` route that stores one, so that posting a url with an optional title returns 201 with the stored record, and a request whose url is missing or is not an absolute http or https URL is rejected with 422 having written nothing. This task also owns `LinkResponse`, the SINGLE response schema every link-returning endpoint in this project uses. L2-002 (`GET /links`) and L2-003 (`POST /links/{id}/tags`) both import it from `app/schemas/link.py` and neither redefines it. It therefore carries the link's tag NAMES as well as its four columns, because tag-links criterion 1 requires the tagging endpoint's response to report every attached tag, and a second response schema for that would make two endpoints disagree about the shape of a link. This task mounts nothing. It defines an `APIRouter` and leaves it unmounted; L4-001 includes it on the application.",
+      "files": [
+        "app/api/__init__.py",
+        "app/schemas/link.py",
+        "app/api/save_link.py",
+        "tests/test_save_link.py"
+      ]
+    },
+    {
+      "id": "L2-002",
+      "name": "GET /links -- list links, with optional tag filter",
+      "layer": "2-backend",
+      "file": "2-backend/L2-002-list-links-endpoint.xml",
+      "source_features": [
+        {
+          "slug": "list-links",
+          "moscow": "must-have",
+          "satisfies_criteria": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "requirement_level": "P0"
+        },
+        {
+          "slug": "tag-links",
+          "moscow": "should-have",
+          "satisfies_criteria": [
+            "3"
+          ],
+          "requirement_level": "P0"
+        }
+      ],
+      "moscow": "must-have",
+      "requirement_level": "P0",
+      "objective": "Create the `GET /links` route: it returns every stored link as a JSON array ordered most recently created first, an empty array when nothing is stored, an untitled link reported with a null title rather than omitted, and - when the optional `?tag=` query parameter is given - exactly the links carrying that tag, matched case-sensitively. If the stored links cannot be read, it answers 500 with an error body, never an empty array, so that a failure to read is never reported as an empty shelf. This is ONE route serving two features: the base listing (list-links) and the tag filter (tag-links criterion 3), unioned into a single endpoint with an optional query parameter so that the filter is not built as a second route. This task imports `LinkResponse` from L2-001 and defines no response schema of its own. It writes exactly one non-test file, `app/api/list_links.py`, and mounts nothing - L4-001 includes the router on the application.",
+      "files": [
+        "app/api/list_links.py",
+        "tests/test_list_links.py"
+      ]
+    },
+    {
+      "id": "L2-003",
+      "name": "POST /links/{id}/tags -- attach tags to a link",
+      "layer": "2-backend",
+      "file": "2-backend/L2-003-tag-links-endpoint.xml",
+      "source_features": [
+        {
+          "slug": "tag-links",
+          "moscow": "should-have",
+          "satisfies_criteria": [
+            "1",
+            "2",
+            "4"
+          ],
+          "requirement_level": "P0"
+        }
+      ],
+      "source_feature": "tag-links",
+      "satisfies_criteria": [
+        "1",
+        "2",
+        "4"
+      ],
+      "moscow": "should-have",
+      "requirement_level": "P0",
+      "objective": "Create the tag request schema and the `POST /links/{link_id}/tags` route: posting a list of tag names to an existing link attaches them and answers 200 with the link reporting every tag it now carries; posting a tag the link already carries answers 200 and leaves it attached exactly once; and posting to a link id that does not exist answers 404 having created no tag rows at all. Tags are get-or-create by EXACT name - an existing `tags` row is reused, a new one is inserted only when no row has that name - and names are compared and stored case-sensitively, so \"Python\" and \"python\" are two different tags. DELIBERATELY NOT IMPLEMENTED: any cleanup of tags left with no remaining links. That question is the tag-links feature's open gap 1 (kind=decision, raised 2026-08-27): \"Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot.\" This task must not invent a policy for it - no orphan sweep, no `cascade=\"all, delete-orphan\"`, no `ondelete=` clause, no delete of any kind. This endpoint only ever adds. Answering an undecided product question by accident is worse than leaving it open, because the accidental answer is invisible to whoever eventually decides it. This task imports `LinkResponse` from L2-001 and defines no link response schema of its own. It mounts nothing - L4-001 includes the router on the application.",
+      "files": [
+        "app/schemas/tag.py",
+        "app/api/tag_links.py",
+        "tests/test_tag_links.py"
+      ]
+    },
+    {
+      "id": "L4-001",
+      "name": "Mount routers and end-to-end flow test",
+      "layer": "4-integration",
+      "file": "4-integration/L4-001-mount-routers-integration.xml",
+      "source_features": [
+        {
+          "slug": "save-link",
+          "moscow": "must-have",
+          "requirement_level": "P0"
+        },
+        {
+          "slug": "list-links",
+          "moscow": "must-have",
+          "requirement_level": "P0"
+        },
+        {
+          "slug": "tag-links",
+          "moscow": "should-have",
+          "requirement_level": "P0"
+        }
+      ],
+      "moscow": "must-have",
+      "requirement_level": "P0",
+      "objective": "Mount the three existing routers - `save_link`, `list_links` and `tag_links` - on the existing FastAPI application in `app/main.py`, create the database schema at application startup so the file-backed application works when it is actually run and not only under test, and add `tests/test_integration.py`: an end-to-end test that saves two links, tags one of them, lists them unfiltered and lists them filtered by tag, all through the REAL mounted application. That composition is the whole point of this task and no other task owns it. Every acceptance criterion of all three features is already satisfied and tested by Layer 2, and each Layer 2 test file proved its router correct against a throwaway application serving ONLY that router. None of them proved the three routers coexist: that they agree on one `LinkResponse` shape, that they share one database session through `get_db`, and that a link saved by one endpoint, tagged by a second, is found by the third. This task therefore claims NO acceptance criterion - `satisfies-criteria` is empty on all three `source-feature` elements. Re-claiming a criterion Layer 2 already owns would make the coverage report ambiguous about which task actually proves it.",
+      "files": [
+        "app/main.py",
+        "tests/test_integration.py"
+      ]
+    }
+  ],
+  "summary": {
+    "total_tasks": 10,
+    "tasks_per_layer": {
+      "0-setup": 3,
+      "1-foundation": 3,
+      "2-backend": 3,
+      "4-integration": 1
+    }
+  },
+  "toolchain_version": "2.0.0",
+  "schema_version": "1.3",
+  "prd": {
+    "project_path": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/default/app"
+  }
+}

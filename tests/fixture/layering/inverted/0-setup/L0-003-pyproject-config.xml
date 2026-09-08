@@ -1,0 +1,289 @@
+<task>
+  <meta>
+    <id>L0-003</id>
+    <name>Declare Python dependencies and pytest config</name>
+    <layer>0-setup</layer>
+    <priority>3</priority>
+    <estimated-files>1</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug link-shelf). Project type: greenfield.
+    Project path: C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app
+
+    The PRD's tech stack: Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x, SQLite
+    (file-backed, no server process), pytest 8.x. Backend only - no frontend, no
+    container runtime.
+
+    The PRD declares three dependencies: fastapi, sqlalchemy, pytest. A fourth,
+    httpx, is added here and is NOT a product decision: FastAPI 0.110+ ships
+    starlette's TestClient, which requires httpx at runtime, and every endpoint
+    task's verification runs pytest against that TestClient. Without httpx declared,
+    L3-002's smoke test and every later endpoint test fail at import with an error
+    about a missing optional dependency rather than about the code under test.
+
+    SQLite is deliberate: "SQLite rather than PostgreSQL so the whole project runs
+    with no external service: a fixture that needs a database server running is a
+    fixture that fails for reasons unrelated to what is being tested." SQLite ships
+    with CPython, so it needs no entry in the dependency list.
+
+    No migration tool. Neither the declared stack nor the dependency list contains
+    Alembic or any alternative. L4-001 creates the schema with
+    Base.metadata.create_all. Do NOT add alembic, do NOT add a migrations
+    directory, and do NOT add a versioned migration chain -- that would introduce
+    an undeclared dependency.
+
+    pytest configuration lives in this same file, under
+    [tool.pytest.ini_options]. That is why there is no pytest.ini, no setup.cfg and
+    no tox.ini: keeping the configuration here means pytest setup costs zero extra
+    files.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x, SQLite (file-backed, no server
+    process), pytest 8.x, httpx (transitively required by starlette's TestClient).
+    </tech-stack>
+
+    <project-structure>
+    Before this task:
+      .gitignore        (from L0-001)
+      architecture.md   (pre-existing)
+      app/
+        __init__.py     (from L0-001)
+      tests/
+        __init__.py     (from L0-001)
+
+    After this task:
+      pyproject.toml    (created by this task)
+      .gitignore
+      architecture.md
+      app/__init__.py
+      tests/__init__.py
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="app_package" type="python-package">
+    Created by L0-001. Importable package `app` at the repository root, holding
+    only app/__init__.py at the time this task runs.
+    </interface>
+
+    <interface name="tests_package" type="python-package">
+    Created by L0-001. Importable package `tests` at the repository root, holding
+    only tests/__init__.py at the time this task runs.
+
+    Its presence at the root is why the setuptools package list in requirement 2
+    must be written out explicitly -- see that requirement.
+    </interface>
+
+    <interface name="app_subpackages_declared_not_present" type="filesystem">
+    app/api/, app/models/ and app/schemas/ are created by L0-002, which runs from
+    the same predecessor as this task and is therefore NOT visible here.
+
+    This matters for exactly one thing: the setuptools `packages` list in this file
+    names those three subpackages, and they will not exist on disk while this task
+    runs. That is correct and expected. It also means this task must NOT attempt an
+    install -- `pip install -e .` would fail on the missing directories. Installing
+    is L0-004's job, and by then both tasks have merged.
+    </interface>
+
+    <interface name="python_interpreter" type="executable">
+    Python 3.11 is available on PATH as `python`. Python 3.11 ships `tomllib` in the
+    standard library, which the verification steps use to parse the file this task
+    writes.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Write pyproject.toml declaring the project metadata, the four runtime dependencies
+  (fastapi, sqlalchemy, pytest, httpx), the explicit setuptools package list, and
+  the pytest configuration -- all in one file.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `pyproject.toml` at the repository root with exactly the content
+    between the two markers below.
+
+    The `&lt;![CDATA[` and `]]&gt;` markers are XML packaging so that the version
+    bounds survive intact in this task file. They are NOT part of pyproject.toml --
+    do not copy either marker into the file.
+<![CDATA[
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "link-shelf"
+version = "0.1.0"
+description = "Save a link, list saved links newest first, and tag them."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "sqlalchemy>=2.0,<3",
+    "pytest>=8,<9",
+    "httpx",
+]
+
+[tool.setuptools]
+packages = ["app", "app.api", "app.models", "app.schemas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+]]>
+    </requirement>
+
+    <requirement id="2">
+    The `[tool.setuptools] packages` list MUST be written out explicitly as shown,
+    and must NOT be replaced with a `find` directive or deleted in favour of
+    automatic discovery.
+
+    Reason: it pins what the distribution installs to this file. Without it,
+    setuptools falls back to flat-layout auto-discovery, which decides what ships by
+    applying its own built-in exclude list -- and that built-in list is the only
+    thing keeping the root-level `tests` package out of the distribution.
+
+    Be clear about the strength of this claim: auto-discovery does produce the
+    correct result for this tree on current setuptools. This is therefore a
+    determinism choice, not a workaround for a build failure. Naming the four
+    packages makes the installed set a property of pyproject.toml rather than of
+    whichever setuptools version happens to be installed.
+
+    Consequence for later layers: every module layers 3 and 4 add lands inside
+    `app`, `app.api`, `app.models` or `app.schemas`, all four of which are listed,
+    so no later task needs to touch this list. A task that introduced a NEW
+    subpackage of `app` would have to add it here, because a package that is not
+    listed is silently omitted from a non-editable build.
+    </requirement>
+
+    <requirement id="3">
+    pytest, though a test-only tool, goes in `[project].dependencies` rather than in
+    an optional-dependencies group. L0-004 installs with a plain `pip install -e .`
+    and then runs pytest; putting pytest in an extra would mean that command
+    installs no test runner and L0-004's own verification could not run.
+    </requirement>
+
+    <requirement id="4">
+    `httpx` is declared with no version bound. The PRD pins fastapi, sqlalchemy and
+    pytest; httpx is a transitive requirement of starlette's TestClient and is
+    pinned by whatever fastapi resolves to. Adding a bound here that fastapi
+    disagrees with would produce a resolver conflict at install time for no benefit.
+    </requirement>
+
+    <requirement id="5">
+    Do NOT create pytest.ini, setup.cfg, setup.py, tox.ini, requirements.txt or
+    requirements-dev.txt. All configuration belongs in pyproject.toml.
+
+    Do NOT create a virtual environment and do NOT run pip. L0-004 does both.
+
+    Do NOT modify .gitignore, app/__init__.py or tests/__init__.py.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Verify the file exists and is valid TOML:
+    `python -c "import tomllib,pathlib; tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); print('valid toml')"`
+    Expected: exit code 0, stdout contains `valid toml`.
+    </test>
+
+    <test id="2">
+    Verify project name and Python floor:
+    `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); p=d['project']; print(p['name'], p['requires-python']); sys.exit(0 if p['name']=='link-shelf' and p['requires-python']=='>=3.11' else 1)"`
+    Expected: exit code 0, stdout shows `link-shelf >=3.11`.
+    </test>
+
+    <test id="3">
+    Verify all four dependencies are declared, by distribution name. The regex
+    matches the leading name and stops at the first character that cannot appear in
+    one, which is how the version bound is discarded without writing it out:
+    `python -c "import tomllib,pathlib,re,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); names={re.match(r'[A-Za-z0-9._-]+', s).group(0).lower() for s in d['project']['dependencies']}; want={'fastapi','sqlalchemy','pytest','httpx'}; print('missing:', sorted(want-names)); sys.exit(0 if want.issubset(names) else 1)"`
+    Expected: exit code 0, stdout shows `missing: []`.
+    </test>
+
+    <test id="4">
+    Verify the declared version bounds match the PRD's stack. Each expected bound is
+    rebuilt from character codes so this test file never has to contain a raw
+    less-than sign; chr(60) is `&lt;` and chr(62) is `&gt;`:
+    `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); deps=set(d['project']['dependencies']); ge=chr(62)+'='; lt=chr(60); want={'fastapi'+ge+'0.110', 'sqlalchemy'+ge+'2.0,'+lt+'3', 'pytest'+ge+'8,'+lt+'9'}; print('missing:', sorted(want-deps)); sys.exit(0 if want.issubset(deps) else 1)"`
+    Expected: exit code 0, stdout shows `missing: []`.
+    </test>
+
+    <test id="5">
+    Verify the explicit setuptools package list is present and complete, so the
+    installed package set is pinned by this file as requirement 2 describes:
+    `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); got=d['tool']['setuptools']['packages']; print(got); sys.exit(0 if sorted(got)==['app','app.api','app.models','app.schemas'] else 1)"`
+    Expected: exit code 0, stdout lists the four packages.
+    </test>
+
+    <test id="6">
+    Verify pytest configuration lives in this file and points at tests/:
+    `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); tp=d['tool']['pytest']['ini_options']['testpaths']; print(tp); sys.exit(0 if tp==['tests'] else 1)"`
+    Expected: exit code 0, stdout shows `['tests']`.
+    </test>
+
+    <test id="7">
+    Verify no migration tool was introduced:
+    `python -c "import pathlib,sys; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8').lower(); sys.exit(1 if 'alembic' in t else 0)"`
+    Expected: exit code 0 (alembic must NOT appear; schema creation is
+    Base.metadata.create_all in L4-001).
+    </test>
+
+    <test id="8">
+    Verify no competing configuration file was created:
+    `python -c "import pathlib,sys; bad=[n for n in ('pytest.ini','setup.cfg','setup.py','tox.ini','requirements.txt') if pathlib.Path(n).exists()]; print('unexpected:', bad); sys.exit(0 if not bad else 1)"`
+    Expected: exit code 0, stdout shows `unexpected: []`.
+    </test>
+
+    <test id="9">
+    Verify no XML packaging marker leaked from requirement 1 into the written file:
+    `python -c "import pathlib,sys; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8'); sys.exit(1 if 'CDATA' in t or ']]' in t else 0)"`
+    Expected: exit code 0.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>pyproject.toml</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import tomllib,pathlib; tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); print('valid toml')"` - must exit 0 and print `valid toml`</step>
+    <step>Run: `python -c "import tomllib,pathlib,re,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); names={re.match(r'[A-Za-z0-9._-]+', s).group(0).lower() for s in d['project']['dependencies']}; sys.exit(0 if {'fastapi','sqlalchemy','pytest','httpx'}.issubset(names) else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); deps=set(d['project']['dependencies']); ge=chr(62)+'='; lt=chr(60); want={'fastapi'+ge+'0.110', 'sqlalchemy'+ge+'2.0,'+lt+'3', 'pytest'+ge+'8,'+lt+'9'}; sys.exit(0 if want.issubset(deps) else 1)"` - must exit 0, confirming the PRD's version bounds were written exactly</step>
+    <step>Run: `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); sys.exit(0 if sorted(d['tool']['setuptools']['packages'])==['app','app.api','app.models','app.schemas'] else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import tomllib,pathlib,sys; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); sys.exit(0 if d['tool']['pytest']['ini_options']['testpaths']==['tests'] else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import pathlib,sys; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8'); sys.exit(1 if 'alembic' in t.lower() or 'CDATA' in t else 0)"` - must exit 0, confirming no migration tool was added and no XML marker leaked into the file</step>
+    <step>Do NOT run `pip install` as part of verifying this task. app/api, app/models and app/schemas are created by L0-002 and are absent from this worktree, so an editable install would fail on packages that do not exist yet. The install is verified by L0-004.</step>
+  </verification>
+
+  <exports>
+    <interface name="pyproject" type="build-configuration">
+    pyproject.toml at the repository root.
+
+    Distribution name: link-shelf, version 0.1.0
+    Build backend:     setuptools.build_meta (setuptools>=68)
+    Python floor:      >=3.11
+
+    Runtime dependencies, exactly as resolvable by `pip install -e .`:
+<![CDATA[
+        fastapi>=0.110
+        sqlalchemy>=2.0,<3
+        pytest>=8,<9
+        httpx
+]]>
+    Installed packages: app, app.api, app.models, app.schemas
+    (tests is deliberately NOT installed)
+
+    pytest configuration, in [tool.pytest.ini_options]:
+        testpaths = ["tests"]
+
+    Consequences for later tasks:
+    - `pytest` invoked with no path argument collects from tests/ only.
+    - There is no migration tool. L4-001 creates the schema with
+      Base.metadata.create_all; no task may add alembic or a migrations directory.
+    - There is no separate dev-dependency group. Everything needed to run the test
+      suite is installed by `pip install -e .`.
+    </interface>
+  </exports>
+</task>

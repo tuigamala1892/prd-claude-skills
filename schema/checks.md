@@ -64,6 +64,7 @@ somebody remembers it.
 | The manifest matches the files on disk, and the review summary is current | `build-manifest.py` | `skills/breakdown/SKILL.md` | 60, 32 |
 | Every in-scope feature and criterion has a task, named where it does not | `check-coverage.py` | `skills/breakdown/SKILL.md` · `skills/breakdown/scripts/check-gate.py` | 30 |
 | `ADR-NNN` / `OQ-NNN` / principle citations resolve; significance read in both directions | `check-references.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` · `schema/decision-record.md` · `skills/crd/references/crd-format.md` · `skills/breakdown/scripts/check-gate.py` | 39, 35 |
+| No task depends on an interface a later layer exports | `check-layering.py` | `skills/breakdown/SKILL.md` | 73 |
 | Coverage, significance and blocking gaps, before `/execute` may run | `check-gate.py` | `skills/breakdown/SKILL.md` | 38 |
 | This toolchain can read this manifest, or refuses to guess | `check-compatibility.py` | `skills/execute/SKILL.md` | 24 |
 | Declared `<definition>` ≤ the ceiling its content supports; `<gaps>` well-formed, and aged | `check-status.py` | `commands/prd.md` | 3 |

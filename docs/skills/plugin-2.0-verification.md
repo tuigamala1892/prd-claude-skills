@@ -11,9 +11,13 @@ the plan already specifies or a document that has gone stale.
 stopped being true is V8, and writing this document without one would have been the finding
 arriving in the document that reported it.
 
-**V5 and V6 remain outstanding by decision**, not by omission: open question 7's graph experiment
-is unrun and item 21's authoring after-measurement is half-taken, and both now say so in the plan
-where a reader meets them. **V7's three `open` parity rows** are unchanged and correctly recorded.
+**V5 is closed.** Open question 7's experiment ran on 2026-09-08; the answer is **LOAD-BEARING**,
+and it landed as Phase 12 and item 73 along with a second finding, P52, left ownerless on purpose.
+
+**V6 remains outstanding by decision**, not by omission: item 21's authoring after-measurement is
+still half-taken — the size half is one command, the timing half is a stopwatch against a person —
+and the plan says so where a reader meets it. **V7's three `open` parity rows** are unchanged and
+correctly recorded.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
 P1–P45, nine phases, all recorded as landed in

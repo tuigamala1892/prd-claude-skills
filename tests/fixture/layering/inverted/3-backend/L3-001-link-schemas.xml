@@ -1,0 +1,300 @@
+<task>
+  <meta>
+    <id>L3-001</id>
+    <name>Define Link request and response schemas</name>
+    <layer>3-backend</layer>
+    <priority>1</priority>
+    <estimated-files>2</estimated-files>
+
+    <!--
+      This task asserts NO acceptance criterion, and satisfies-criteria is therefore empty.
+
+      The layer plan assigns save-link#3 and save-link#4 to this task. That attribution is not
+      carried here, deliberately. Both criteria are statements about the HTTP boundary - "the
+      system shall return 422 and store nothing" - and this task builds neither an endpoint nor
+      a store. Its tests assert `pydantic.ValidationError` from `LinkCreate.model_validate`,
+      which is neither a 422 nor a "store nothing" assertion. Claiming them here would tell the
+      coverage report that a unit test on a Pydantic model had verified an HTTP status code and
+      a row count it never observes.
+
+      Coverage is not lost: L3-003 cites save-link 1, 2, 3 and 4 and asserts all four end to end
+      through the `client` fixture, including the row-count half of 3 and 4.
+
+      requirement-level is omitted rather than set: the spec defines it as "the highest among the
+      ids named here", and no ids are named, so there is nothing to derive it from.
+    -->
+    <source-feature slug="save-link" moscow="must-have" satisfies-criteria=""/>
+  </meta>
+
+  <context>
+    <data-model>
+    Link(id integer pk, url text not null, title text null,
+    created_at timestamp not null)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Save a link (slug save-link).
+
+    User story: As someone collecting links, I want to store a URL with an optional title, so
+    that I can come back to it without keeping a browser tab open.
+
+    Description: A POST endpoint that accepts a URL and an optional title, stores it, and
+    returns the stored record including its generated id and creation timestamp.
+
+    The URL is the only required field. If no title is supplied the field is stored as null
+    rather than being derived from the page, because fetching the page would make the endpoint
+    depend on the network.
+
+    Considerations (from the feature's notes, not an acceptance criterion): duplicate URLs are
+    allowed. Deduplication needs a rule for what to do with the existing record's tags and
+    timestamp, and that decision is out of scope.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+ (which brings Pydantic v2), SQLAlchemy 2.x, SQLite
+    (file-backed, no server process), pytest 8.x, httpx (required by starlette's TestClient).
+    Backend only - no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - created by L0-001)
+      pyproject.toml              (exists - created by L0-003, declares deps and pytest config)
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - created by L0-001)
+        api/
+          __init__.py             (exists - created by L0-002)
+        models/
+          __init__.py             (exists - created by L0-002)
+        schemas/
+          __init__.py             (exists - created by L0-002)
+      tests/
+        __init__.py               (exists - created by L0-001)
+
+    This task creates app/schemas/link.py and tests/test_link_schemas.py.
+    Test files in this project are flat under tests/ - there are no tests/ subpackages.
+    All commands run from the repository root; this task declares no `cwd`.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="python-environment" type="toolchain">
+    Provided by L0-004. A virtual environment with the project installed, in which:
+
+        python -c "import fastapi, sqlalchemy, httpx, pydantic"
+
+    succeeds, and `pytest` is on PATH. Pydantic v2 is present as a FastAPI 0.110+ dependency;
+    it is not declared separately in pyproject.toml and must not be added there by this task.
+    </interface>
+
+    <interface name="app.schemas" type="python-package">
+    Provided by L0-002. An empty package:
+
+        # app/schemas/__init__.py
+        (empty file)
+
+    This task adds a module inside it. It does not need to re-export anything from
+    app/schemas/__init__.py - downstream tasks import from app.schemas.link directly.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Define the two Pydantic v2 models that carry link payloads over HTTP: LinkCreate for the
+  request body of POST /links, and LinkRead for the response body of POST /links and
+  GET /links. LinkCreate's url validation is the mechanism L3-003 later relies on to produce 422
+  for save-link criteria 3 and 4, and it must reject before any database session is touched -
+  which it does by construction, because FastAPI validates the request body before the handler
+  function is entered. This task builds the mechanism only; it asserts neither criterion, and
+  L3-003 is where both are tested end to end.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `app/schemas/link.py`.
+    </requirement>
+
+    <requirement id="2">
+    Define class `LinkCreate(BaseModel)` with exactly two fields:
+    - url: str          (required - no default, so a missing url is a validation error)
+    - title: str | None (optional - defaults to None)
+    </requirement>
+
+    <requirement id="3">
+    On `LinkCreate`, define a Pydantic v2 field validator for `url` that rejects any value
+    which is not an absolute http or https URL. Implement it with
+    `urllib.parse.urlparse`, and raise `ValueError("url must be an absolute http or https URL")`
+    when either of these holds:
+    - the parsed scheme is not exactly "http" or "https" (so "ftp://example.com/x" and
+      "javascript:alert(1)" are rejected), or
+    - the parsed netloc is empty (so "/relative/path", "not-a-url" and "http://" are rejected).
+    Use the decorator form:
+        @field_validator("url")
+        @classmethod
+        def _url_must_be_absolute_http(cls, value: str) -> str: ...
+    Return the value unchanged when it passes. Do not strip, lowercase, or otherwise rewrite
+    the url - callers get back exactly what they submitted.
+
+    Type the field as `str`. Do NOT type it as pydantic's `HttpUrl` or `AnyHttpUrl`. Pydantic v2
+    normalises those types and appends a trailing slash to a bare-authority URL
+    ("https://example.com" becomes "https://example.com/"), which would make the endpoint return
+    a url that is not the one submitted and break save-link criterion 1 ("the submitted url") in
+    L3-003.
+    </requirement>
+
+    <requirement id="4">
+    Define class `LinkRead(BaseModel)` with exactly four fields:
+    - id: int
+    - url: str
+    - title: str | None
+    - created_at: datetime   (from the stdlib `datetime` module)
+    </requirement>
+
+    <requirement id="5">
+    Give `LinkRead` the model config `model_config = ConfigDict(from_attributes=True)` so that
+    FastAPI can serialise a SQLAlchemy `Link` ORM instance returned directly from a route
+    handler. L3-003 returns the ORM object, not a dict, and without this config that raises a
+    validation error at response time.
+    </requirement>
+
+    <requirement id="6">
+    `title` on `LinkRead` must be a nullable field that is always PRESENT in the serialised
+    output. Do not mark it with `exclude=True` and do not configure
+    `response_model_exclude_none`. save-link criterion 2 and list-links criterion 3 both
+    require an untitled link to report `"title": null` rather than omit the key.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Test-first. Write every test below into `tests/test_link_schemas.py` BEFORE writing
+    `app/schemas/link.py`, run `pytest tests/test_link_schemas.py` and watch them fail on the
+    missing import, then write the schemas until they pass. Runner: pytest.
+
+    Imports for the file: `pytest`, `from datetime import datetime`, `import types`,
+    `from pydantic import ValidationError` and
+    `from app.schemas.link import LinkCreate, LinkRead`.
+    </test>
+
+    <test id="2">
+    Test: test_link_create_rejects_missing_url
+    - Call `LinkCreate.model_validate({})` inside `pytest.raises(ValidationError)`
+    - Call `LinkCreate.model_validate({"title": "A title but no url"})` inside
+      `pytest.raises(ValidationError)`
+    - On the second call, capture the exception as `exc_info` and assert that
+      `"url"` appears in `[error["loc"][0] for error in exc_info.value.errors()]`, so the
+      failure is attributed to the url field and not to some other field
+    - This test cites no acceptance criterion; it asserts requirement 2's "required, no default".
+      save-link#3 says the system shall return 422 and store nothing, and this test observes
+      neither a status code nor a row count - it observes a ValidationError from a model in
+      isolation. L3-003 owns the end-to-end test for that criterion.
+    </test>
+
+    <test id="3">
+    Test: test_link_create_rejects_non_absolute_http_url
+    - For each of these values, assert `LinkCreate.model_validate({"url": value})` raises
+      `ValidationError`:
+        "not-a-url"
+        "/relative/path"
+        "example.com"
+        "ftp://example.com/file.txt"
+        "javascript:alert(1)"
+        "http://"
+        ""
+    - Then, in the same test, assert the validator is not rejecting everything: for each of
+      these values, `LinkCreate.model_validate({"url": value})` must succeed and the resulting
+      model's `.url` must equal the value unchanged:
+        "http://example.com"
+        "https://example.com"
+        "https://example.com/a/b?c=d#e"
+        "https://sub.example.co.uk:8443/path"
+    - The unchanged-value assertion is what proves no normalisation is happening; a trailing
+      slash appearing on "https://example.com" means requirement 3 was implemented with
+      pydantic's HttpUrl type instead of a str plus validator
+    - This test cites no acceptance criterion; it asserts requirement 3's validator directly.
+      As with test 2, save-link#4 is a statement about a 422 response and an unchanged row
+      count, and this test observes neither. L3-003 owns the end-to-end test for it.
+    </test>
+
+    <test id="4">
+    Test: test_link_create_accepts_absent_title_as_none
+    - Assert `LinkCreate.model_validate({"url": "https://example.com"}).title is None`
+    - Assert `LinkCreate.model_validate({"url": "https://example.com", "title": None}).title
+      is None`
+    - Assert `LinkCreate.model_validate({"url": "https://example.com", "title": "Hello"}).title
+      == "Hello"`
+    - This test cites no acceptance criterion. It guards the optionality that save-link
+      criterion 2 depends on, but criterion 2 is a statement about the endpoint returning 201,
+      which this task does not build; L3-003 owns the test for it. Recorded here rather than
+      attributed to a criterion it does not actually assert.
+    </test>
+
+    <test id="5">
+    Test: test_link_read_serialises_null_title_as_a_present_key
+    - Build `LinkRead(id=1, url="https://example.com", title=None,
+      created_at=datetime(2026, 1, 2, 3, 4, 5))`
+    - Assert `"title" in model.model_dump()`
+    - Assert `model.model_dump()["title"] is None`
+    - Assert `model.model_dump()["id"] == 1` and that it is an `int`
+    - This test cites no acceptance criterion; it asserts requirement 6 directly. The criteria
+      about null titles in a response (save-link#2, list-links#3) are asserted end-to-end in
+      L3-003 and L3-004.
+    </test>
+
+    <test id="6">
+    Test: test_link_read_reads_from_object_attributes
+    - Define a plain local class inside the test with attributes id, url, title, created_at
+      (a `types.SimpleNamespace` is sufficient and needs no new import beyond `types`)
+    - Assert `LinkRead.model_validate(that_object).url == "https://example.com"`
+    - This proves requirement 5's `from_attributes=True` is set; without it this call raises
+      ValidationError. Cites no criterion - it asserts the ORM-compatibility contract that
+      L3-003 relies on.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/schemas/link.py</file>
+    <file>tests/test_link_schemas.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.schemas.link import LinkCreate, LinkRead"` - must exit 0 with no output</step>
+    <step>Run: `pytest tests/test_link_schemas.py -v` - all 5 test functions pass</step>
+    <step>Run: `python -c "from app.schemas.link import LinkCreate; print(LinkCreate.model_validate({'url': 'https://example.com'}).url)"` - must print exactly `https://example.com` with no trailing slash</step>
+    <step>Verify: `app/schemas/link.py` contains no import of `HttpUrl` or `AnyHttpUrl` from pydantic</step>
+  </verification>
+
+  <exports>
+    <interface name="LinkCreate" type="pydantic-model">
+    from pydantic import BaseModel, field_validator
+
+    class LinkCreate(BaseModel):
+        """Request body for POST /links."""
+        url: str            # required; must be an absolute http or https URL
+        title: str | None   # optional; defaults to None
+
+        # Rejects any url whose scheme is not http/https or whose netloc is empty.
+        # Raises pydantic.ValidationError at request-parse time, before any route
+        # handler runs, so nothing is ever written to the database for a bad payload.
+    </interface>
+
+    <interface name="LinkRead" type="pydantic-model">
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict
+
+    class LinkRead(BaseModel):
+        """Response body for POST /links and each element of GET /links."""
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None   # always present in the serialised output, null when unset
+        created_at: datetime
+
+        # from_attributes=True means a route handler may return the SQLAlchemy Link ORM
+        # instance directly and FastAPI will serialise it against this model.
+    </interface>
+  </exports>
+</task>

@@ -1,0 +1,85 @@
+{
+  "prd_meta": {
+    "name": "Link Shelf",
+    "slug": "link-shelf",
+    "status": "in-progress"
+  },
+  "features": [
+    {
+      "name": "Save a link",
+      "priority": "must-have",
+      "summary": "Accept a URL with an optional title and store it.",
+      "spec_file": "features/save-link.md"
+    },
+    {
+      "name": "List saved links",
+      "priority": "must-have",
+      "summary": "Return every saved link, newest first.",
+      "spec_file": "features/list-links.md"
+    },
+    {
+      "name": "Tag links",
+      "priority": "should-have",
+      "summary": "Attach free-text tags to a link and filter the list by tag.",
+      "spec_file": "features/tag-links.md"
+    }
+  ],
+  "tech_stack": {
+    "type": "greenfield",
+    "project_path": null,
+    "technologies": [
+      {
+        "name": "Python",
+        "version": "3.11",
+        "purpose": "Backend language"
+      },
+      {
+        "name": "FastAPI",
+        "version": "0.110+",
+        "purpose": "HTTP API framework"
+      },
+      {
+        "name": "SQLAlchemy",
+        "version": "2.x",
+        "purpose": "ORM and schema definition"
+      },
+      {
+        "name": "SQLite",
+        "version": "file-backed",
+        "purpose": "Database (no external server)"
+      },
+      {
+        "name": "pytest",
+        "version": "8.x",
+        "purpose": "Test runner"
+      }
+    ],
+    "template": {
+      "path": "webapps/backends/python",
+      "provides": [
+        "FastAPI application structure"
+      ],
+      "detected_from": "Python + FastAPI in selected technologies"
+    }
+  },
+  "dependencies": [
+    {
+      "name": "fastapi",
+      "version": "0.110+",
+      "purpose": "HTTP API framework"
+    },
+    {
+      "name": "sqlalchemy",
+      "version": "2.x",
+      "purpose": "ORM and schema definition"
+    },
+    {
+      "name": "pytest",
+      "version": "8.x",
+      "purpose": "Test runner used by every task's verification block"
+    }
+  ],
+  "architecture": {
+    "declared": false
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "feature": "tag-links",
+  "scope": "medium",
+  "confidence": "high",
+  "data_models": [
+    {
+      "name": "Tag",
+      "fields": ["id integer pk", "name text unique not null"],
+      "relationships": ["has_many: LinkTag"],
+      "source": "declared",
+      "inferred_from": "tag-links"
+    },
+    {
+      "name": "LinkTag",
+      "fields": ["link_id fk Link.id", "tag_id fk Tag.id", "primary key (link_id, tag_id)"],
+      "relationships": ["belongs_to: Link", "belongs_to: Tag"],
+      "source": "declared",
+      "inferred_from": "tag-links"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/links/:id/tags",
+      "purpose": "Attach tags to an existing link",
+      "inferred_from": "tag-links"
+    },
+    {
+      "method": "GET",
+      "path": "/api/links?tag=:tag_name",
+      "purpose": "Filter links by tag",
+      "inferred_from": "tag-links"
+    }
+  ],
+  "frontend_components": [
+    {
+      "name": "TagFilter",
+      "type": "widget",
+      "purpose": "Filter links by selected tag",
+      "inferred_from": "tag-links"
+    },
+    {
+      "name": "TagInput",
+      "type": "form",
+      "purpose": "Add tags to a link",
+      "inferred_from": "tag-links"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "1",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "1",
+      "text": "When tags are posted to an existing link, the system shall attach them and return 200 with the link reporting every attached tag."
+    },
+    {
+      "id": "2",
+      "pattern": "event-driven",
+      "priority": "P1",
+      "derived_from": "2",
+      "text": "When a tag already attached to a link is posted again, the system shall return 200 and leave the tag attached exactly once."
+    },
+    {
+      "id": "3",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "3",
+      "text": "When links are listed with a tag filter, the system shall return exactly the links carrying that tag."
+    },
+    {
+      "id": "4",
+      "pattern": "unwanted-behaviour",
+      "priority": "P0",
+      "derived_from": "4",
+      "text": "If tags are posted to a link id that does not exist, then the system shall return 404 and create no tag rows."
+    }
+  ],
+  "gaps": [
+    {
+      "feature": "tag-links",
+      "id": "1",
+      "kind": "decision",
+      "raised": "2026-08-27",
+      "body": "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot."
+    }
+  ]
+}

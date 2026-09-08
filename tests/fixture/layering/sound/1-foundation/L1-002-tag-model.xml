@@ -1,0 +1,518 @@
+<task>
+  <meta>
+    <id>L1-002</id>
+    <name>Tag model</name>
+    <layer>1-foundation</layer>
+    <priority>2</priority>
+    <estimated-files>2</estimated-files>
+
+    <source-feature slug="tag-links" moscow="should-have"
+                   satisfies-criteria="" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- This task satisfies NONE of tag-links' acceptance criteria, and satisfies-criteria is
+         therefore empty. All four of them are HTTP-level assertions - "return 200", "return
+         404", "when links are listed with a tag filter" - and a status code cannot be produced
+         by a SQLAlchemy model. L2-003 (POST /links/{id}/tags) satisfies tag-links criteria 1, 2
+         and 4; L2-002 (GET /links?tag=) satisfies criterion 3. All four are met by reading and
+         writing the table this task declares. No criterion is claimed here, so no <criterion>
+         element is carried and no <test> below cites one; inventing a criterion id to fill the
+         attribute would put a false claim into the coverage report.
+         requirement-level is P0 because P0 is the highest priority among tag-links' criteria
+         (1, 3 and 4 are P0; 2 is P1). -->
+    </acceptance-criteria>
+
+    <data-model>
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Tag links (slug: tag-links, should-have).
+
+    As someone collecting links, I want to tag what I save and filter by tag, so that a shelf of
+    two hundred links stays usable.
+
+    Attach zero or more free-text tags to a link, and filter the list endpoint by tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated
+    string column. This is the one place the fixture deliberately requires a real
+    relationship: a single-table shortcut would make the data-model layer trivial and
+    the fixture would stop exercising the part of layer planning most likely to break.
+
+    Considerations (verbatim from the feature):
+    Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an
+    implementer inventing either behaviour and calling it correct.
+
+    This feature is should-have rather than must-have so layer planning has to decide
+    where a lower-priority item lands, rather than treating every feature identically.
+
+    CONSEQUENCE FOR THIS TASK: "Python" and "python" are two different tags. The `name` column
+    must NOT carry a case-insensitive collation, must NOT be lower-cased on write, and no
+    lookup written anywhere may use `lower()`, `ilike` or `COLLATE NOCASE`.
+
+    SCOPE LIMIT: this task declares the `Tag` entity ONLY. The `LinkTag` half of the data
+    model above is declared by L1-003, which also adds the many-to-many relationship. It is
+    quoted here unaltered because the feature declares both entities in one block.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    SQLAlchemy 2.x - use the 2.0 typed declarative style: `Mapped[...]` annotations with
+      `mapped_column(...)`. Do NOT use the legacy `Column(...)` form and do NOT use
+      `declarative_base()`.
+    SQLite, file-backed (database, no external server). SQLite's default TEXT comparison is
+      BINARY, i.e. case-sensitive, which is exactly the behaviour this feature requires. It
+      becomes case-insensitive only if a column is declared `COLLATE NOCASE`, so the
+      requirement here is to add nothing rather than to configure something.
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root
+    FastAPI 0.110+ and httpx are installed but are NOT used by this task - a model has no
+      HTTP surface.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW or EDIT are touched by this task):
+
+    .gitignore              (exists - L0-001)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; provides Base, engine, SessionLocal, get_db)
+      main.py               (exists - L0-003; bare FastAPI instance, no routes)
+      models/
+        __init__.py         EDIT - this task ADDS the Tag import to the existing list
+        tag.py              NEW - this task
+        link.py             (exists - L1-001; the Link model, already registered in __init__.py)
+        link_tag.py         (created later by L1-003)
+    tests/
+      conftest.py           (exists - L0-003; provides the db_session and client fixtures)
+      test_setup.py         (exists - L0-003)
+      test_model_link.py    (exists - L1-001; must still pass after this task)
+      test_model_tag.py     NEW - this task (the test file, additional to the two above)
+
+    ORDERING NOTE. Layer 1 runs SEQUENTIALLY: L1-001 -> L1-002 (this task) -> L1-003. The three
+    tasks all edit `app/models/__init__.py`, so they cannot run in parallel worktrees; they
+    would edit the same two lines from the same base and collide in the merge queue.
+
+    What that means here: `app/models/link.py` DOES exist in this worktree and
+    `app/models/__init__.py` already imports `Link`. Requirement 2 adds the `Tag` line to that
+    existing list -- do not delete the `Link` import, and do not rewrite the file from the
+    docstring up.
+
+    This task still writes nothing that references `Link`: `app/models/tag.py` declares no
+    relationship to links, and `tests/test_model_tag.py` exercises `Tag` alone. The Link-Tag
+    many-to-many join is L1-003's work, not this task's. `app/models/__init__.py` is the one
+    file where both names legitimately appear.
+
+    `app/models/link_tag.py` does NOT exist yet. Importing it here fails with
+    ModuleNotFoundError.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+    Every model class in `app/models/` must subclass this and set `__tablename__`.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Not used by this task - it is the route dependency, and this task defines no route. It is
+    listed so the implementer knows the session plumbing already exists and must not be rebuilt.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/database.py, created by L0-003
+    from pathlib import Path
+    from sqlalchemy import Engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db
+    DATABASE_URL: str     # "sqlite:///&lt;absolute path to link_shelf.db&gt;"
+    engine: Engine        # created with connect_args={"check_same_thread": False}
+
+    `Base.metadata.create_all(bind=engine)` is NOT called at import time. Do not call it in
+    this task either - the test fixture creates the schema for tests, and L4-001 creates it
+    for the running application. This task must leave `link_shelf.db` non-existent.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    `expire_on_commit=False` means ORM attributes stay readable after `commit()` without a
+    refresh. The tests below rely on this: after `db_session.commit()` the instance's `id` can
+    be read directly.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with every
+    table in `Base.metadata` already created.
+
+    Use in a test as:
+        def test_something(db_session: Session) -&gt; None:
+            db_session.add(some_model_instance)
+            db_session.commit()
+
+    Contract this task relies on:
+    - The database is empty at the start of each test and discarded at the end.
+    - Tables are created from `Base.metadata`, which conftest.py populates by running
+      `import app.models`. A model class that is NOT imported in `app/models/__init__.py` gets
+      no table, and every test touching it fails with "no such table". This is why
+      requirement 2 below is mandatory, not cosmetic.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `TestClient` wrapping `app.main.app`, with `get_db` overridden to yield the same
+    Session as `db_session`.
+
+    NOT used by this task. There are no routes to call at this layer; every test below uses
+    `db_session` only. Requesting `client` here would test nothing this task owns.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, as it stands when this task starts
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+
+    __all__ = ["Link"]
+
+    L0-002 created this file with the docstring alone; L1-001 then added the `Link` import and
+    `__all__`. This task runs AFTER L1-001 has merged, so the content above is what is on disk
+    when you start. Requirement 2 ADDS the `Tag` line to it. Read the file before editing it
+    rather than assuming either shape.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py, created by L1-001 -- present in this worktree, not written by you
+    from datetime import datetime
+    from app.database import Base
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # primary key
+        url: Mapped[str]                # Text, NOT NULL, duplicates ALLOWED
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # NOT NULL, Python-side default, microsecond resolution
+
+    This task does NOT modify, import or test `Link`. It is listed only so you know the model
+    exists in this worktree and that `app/models/__init__.py` already imports it. The
+    many-to-many join between Link and Tag is L1-003's work, not this task's.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequence for this task: the test file must be `tests/test_model_tag.py`, it is run with
+    `python -m pytest` from the repository root, and `from app.models.tag import Tag` resolves
+    without the project being installed.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Declare the `Tag` SQLAlchemy model - the table holding one free-text tag name, unique across
+  the shelf and compared case-sensitively - exactly as the tag-links feature's data model
+  specifies it, and register it on `app/models/__init__.py` so `Base.metadata` knows about the
+  table.
+
+  This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria
+  through. It satisfies none of tag-links' criteria itself: those are HTTP-level (200, 404,
+  filtered listings) and are met by L2-003 (POST /links/{id}/tags) and L2-002 (GET
+  /links?tag=), which read and write this table. Correspondingly, this task defines no route,
+  no Pydantic schema, and no tag-attachment logic.
+
+  This task also declares NO relationship to links. The many-to-many join is L1-003's work.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/models/tag.py` with exactly this content:
+
+    """The Tag model: one free-text tag name."""
+
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        """A tag name. Names are unique, and are compared case-sensitively."""
+
+        __tablename__ = "tags"
+
+        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - `__tablename__ = "tags"`. Lower-case plural. L1-003 writes a foreign key targeting
+      `"tags.id"` by that exact string, so renaming the table breaks a task that cannot see
+      this file.
+
+    - `name` is `unique=True` and `nullable=False`, straight from the declared data model
+      `Tag(id integer pk, name text unique not null)`. The uniqueness is what lets L2-003 look
+      an existing tag up by name and reuse its row instead of creating a second one.
+
+    - `Text` with NO collation argument. Do NOT write `Text(collation="NOCASE")`, do NOT add
+      `sqlalchemy.text("... COLLATE NOCASE")`, and do NOT add a functional index over
+      `lower(name)`. SQLite compares TEXT with the BINARY collation by default, which is
+      case-sensitive - which is the behaviour the feature requires. The correct implementation
+      here is the absence of a collation, not the presence of one.
+
+    - No normalisation of any kind. Do not lower-case, upper-case, strip, or otherwise
+      transform `name` on write - no `validates` hook, no `default`, no property setter. The
+      value stored is the value given. "Python" and "python" are two distinct tags with two
+      distinct rows, and both are legal.
+
+    - Do NOT define a `links` relationship, do NOT import `Link`, and do NOT reference
+      `link_tags`. `app/models/link.py` and `app/models/link_tag.py` do not exist in this
+      worktree. L1-003 declares the association.
+
+    - Do NOT call `Base.metadata.create_all` anywhere in this file.
+    </requirement>
+
+    <requirement id="2">
+    Replace the content of `app/models/__init__.py` with exactly this:
+
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "Tag"]
+
+    This import is what registers the `tags` table on `Base.metadata`. `tests/conftest.py`
+    runs `import app.models` before calling `Base.metadata.create_all`, so a model that is not
+    imported here has no table and every test touching it fails with "no such table: tags".
+
+    The `Link` line is ALREADY PRESENT when this task starts: L1-001 added it and this task
+    runs after L1-001 has merged. You are ADDING the `Tag` line to an existing import list and
+    extending `__all__`, not writing the file from scratch. Do not remove the `Link` import --
+    deleting it would drop the `links` table from `Base.metadata` and break L1-001's tests.
+
+    Do NOT add `LinkTag`: `app/models/link_tag.py` does not exist yet in this worktree and
+    importing it raises ModuleNotFoundError at collection time. L1-003 adds it.
+    </requirement>
+
+    <requirement id="3">
+    Do NOT create or edit any other file. Specifically: do not touch `app/database.py`,
+    `app/main.py`, `tests/conftest.py`, `tests/test_setup.py`, `pytest.ini`, `pyproject.toml`,
+    `requirements.txt` or `.gitignore`. Do not create the `LinkTag` model - that is L1-003's
+    file and creating it here would collide in the merge queue. Do not create a Pydantic
+    schema, a router, a route or a migration - this project has no migration tool, the schema
+    is created from `Base.metadata`. Do not run `git init` and do not touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_model_tag.py` FIRST, run `python -m pytest
+    tests/test_model_tag.py -v` and watch it fail with ModuleNotFoundError, then write
+    `app/models/tag.py` and `app/models/__init__.py` until it passes.
+
+    No test element below carries a `covers` attribute because this task carries no acceptance
+    criterion - see the note in the acceptance-criteria element above. Each test asserts one
+    declared data model instead.
+
+    <test id="1">
+    Create test file: `tests/test_model_tag.py`.
+    Header imports:
+      import pytest
+      from sqlalchemy import select
+      from sqlalchemy.exc import IntegrityError
+      from sqlalchemy.orm import Session
+
+      from app.database import Base
+      from app.models import Tag
+    Import `Tag` from the package (`app.models`), not from `app.models.tag`, so the test also
+    proves requirement 2's export.
+    </test>
+
+    <test id="2">
+    Test: test_tag_stores_a_name
+    - Request the `db_session` fixture
+    - tag = Tag(name="python")
+    - db_session.add(tag); db_session.commit()
+    - Assert isinstance(tag.id, int) and tag.id &gt; 0
+    - Assert tag.name == "python"
+    </test>
+
+    <test id="3">
+    Test: test_tag_name_is_unique
+    - Request the `db_session` fixture
+    - db_session.add(Tag(name="python")); db_session.commit()
+    - db_session.add(Tag(name="python"))
+    - with pytest.raises(IntegrityError): db_session.commit()
+    - db_session.rollback()   (required, or the session stays in a failed transaction)
+    - Assert Tag.__table__.columns["name"].unique is True
+    </test>
+
+    <test id="4">
+    Test: test_tag_name_is_required
+    - Request the `db_session` fixture
+    - db_session.add(Tag(name=None))
+    - with pytest.raises(IntegrityError): db_session.commit()
+    - db_session.rollback()
+    - Assert Tag.__table__.columns["name"].nullable is False
+    </test>
+
+    <test id="5">
+    Test: test_tag_names_differing_only_in_case_are_distinct_tags
+    - This encodes the feature's stated decision that tag names are matched case-sensitively.
+    - Request the `db_session` fixture
+    - db_session.add_all([Tag(name="Python"), Tag(name="python"), Tag(name="PYTHON")])
+    - db_session.commit()   (must NOT raise - the unique constraint is case-sensitive, so
+      these are three different names)
+    - names = sorted(db_session.execute(select(Tag.name)).scalars().all())
+    - Assert names == ["PYTHON", "Python", "python"]
+    </test>
+
+    <test id="6">
+    Test: test_looking_a_tag_up_by_name_is_case_sensitive
+    - Request the `db_session` fixture
+    - db_session.add_all([Tag(name="Python"), Tag(name="python")]); db_session.commit()
+    - found = db_session.execute(select(Tag).where(Tag.name == "python")).scalars().all()
+    - Assert [t.name for t in found] == ["python"]   (exactly one row, and not "Python")
+    - missing = db_session.execute(select(Tag).where(Tag.name == "PyThOn")).scalars().all()
+    - Assert missing == []
+    </test>
+
+    <test id="7">
+    Test: test_tag_name_is_stored_without_normalisation
+    - Request the `db_session` fixture
+    - db_session.add(Tag(name="  Read Later  ")); db_session.commit()
+    - stored = db_session.execute(select(Tag)).scalars().one()
+    - Assert stored.name == "  Read Later  "   (no stripping, no case folding)
+    </test>
+
+    <test id="8">
+    Test: test_tags_table_is_registered_with_the_expected_shape
+    - Requires no fixture
+    - Assert Tag.__tablename__ == "tags"
+    - Assert "tags" in Base.metadata.tables
+    - Assert set(Tag.__table__.columns.keys()) == {"id", "name"}
+    - Assert [c.name for c in Tag.__table__.primary_key.columns] == ["id"]
+    - Assert Tag.__table__.columns["name"].type.collation is None   (no NOCASE collation)
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/models/tag.py</file>
+    <file>app/models/__init__.py</file>
+    <file>tests/test_model_tag.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.models import Tag; print(Tag.__tablename__)"` - prints `tags`, proving the model imports through the package export this task added</step>
+    <step>Run: `python -c "from app.models import Tag; cols = Tag.__table__.columns; assert set(cols.keys()) == {'id', 'name'}, sorted(cols.keys()); assert cols['name'].nullable is False; assert cols['name'].unique is True; print('columns ok')"` - prints `columns ok`</step>
+    <step>Run: `python -c "from app.models import Tag; assert [c.name for c in Tag.__table__.primary_key.columns] == ['id']; print('pk ok')"` - prints `pk ok`</step>
+    <step>Run: `python -c "from app.models import Tag; from sqlalchemy.schema import CreateTable; ddl = str(CreateTable(Tag.__table__).compile(dialect=__import__('sqlalchemy.dialects.sqlite', fromlist=['dialect']).dialect())); assert 'NOCASE' not in ddl.upper(), ddl; print('case-sensitive ok')"` - prints `case-sensitive ok`; the emitted DDL must contain no case-insensitive collation, because tag names are matched case-sensitively</step>
+    <step>Run: `python -c "import app.models; from app.database import Base; assert 'tags' in Base.metadata.tables, sorted(Base.metadata.tables); print('registered ok')"` - prints `registered ok`, confirming the conftest fixture will create this table</step>
+    <step>Run: `python -m pytest tests/test_model_tag.py -v` - exit code 0, all 7 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; the 5 tests from L0-003's tests/test_setup.py still pass alongside this task's 7, proving the new table did not break the fixture isolation check</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # Text, NOT NULL, UNIQUE, default (case-sensitive) collation
+
+    Import as: `from app.models import Tag`  (also available as
+    `from app.models.tag import Tag`)
+
+    Downstream contract:
+    - Table name is `tags`; the primary key column is `tags.id`. L1-003's foreign key targets
+      `"tags.id"` by that string.
+    - `name` is unique, so "find or create" is the correct way to attach a tag:
+          tag = db.execute(select(Tag).where(Tag.name == name)).scalars().first()
+          if tag is None:
+              tag = Tag(name=name)
+              db.add(tag)
+      Creating a second row with an existing name raises IntegrityError.
+    - Comparison is CASE-SENSITIVE and the value is stored exactly as supplied. "Python" and
+      "python" are two rows. Never call `.lower()`, `func.lower()`, `ilike` or `COLLATE
+      NOCASE` when matching a tag name - not on write, not on lookup, and not on the `?tag=`
+      filter in L2-002.
+    - No relationship attribute exists on this class. L1-003 declares the association, and it
+      does so as `Link.tags` only; there is no `Tag.links`. Query from the tag side with an
+      explicit join: `select(Link).join(LinkTag).join(Tag).where(Tag.name == name)`.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py after this task
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "Tag"]
+
+    Downstream contract: `import app.models` registers the `links` and `tags` tables on
+    `Base.metadata`, which is what makes `Base.metadata.create_all` in `tests/conftest.py`
+    create them. L1-003 adds `LinkTag` to this same file and must ADD to the import list,
+    never replace it.
+    </interface>
+  </exports>
+</task>

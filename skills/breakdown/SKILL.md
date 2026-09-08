@@ -615,6 +615,32 @@ For each layer in order:
    record's `**Drives:**` — is **not** in this script. `check-references.py` already runs it, and
    a rule stated in two programs is a rule that gets changed in one of them.
 
+4a. **No task may depend on a layer that runs after it** (item 73):
+
+   ```bash
+   python {skill_dir}/scripts/check-layering.py {tasks_dir}
+   ```
+
+   **Exit 1 is a stop, and it is about the build order rather than the content.** A task naming
+   an interface that a *later* task exports cannot be implemented when it runs — the thing it
+   imports will not exist yet. Every violation is named with the task, the interface and both
+   layers.
+
+   Two causes, and the script deliberately does not choose between them: the declared `<layers>`
+   graph orders these the wrong way round, or generation put a task in the wrong layer. **Report
+   the list verbatim and let the operator decide.**
+
+   **Why this exists as an exit code.** Open question 7 ran a PRD through the shipped graph and
+   through an inverted one. The inverted arm produced 14 tasks with **16** such dependencies —
+   backend endpoints importing their models from a layer that runs after them — and
+   `check-coverage.py` and `check-gate.py` both exited 0. A second run of the same graph noticed
+   and refused. **The protection was a model judgement and it fired once in two runs**, which is
+   F15 and item 4.13: a guard a model can reason past is not a guard.
+
+   A dependency naming something *no* task exports is not a violation — those are external
+   libraries declared as interfaces, and counting them made a first version of this report 9
+   findings against a task set that was sound.
+
 5. **The gate between here and `/execute`** (item 38):
 
    ```bash

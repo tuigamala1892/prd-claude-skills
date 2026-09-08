@@ -1,0 +1,272 @@
+<task>
+  <meta>
+    <id>L3-002</id>
+    <name>Create FastAPI application and links router</name>
+    <layer>3-backend</layer>
+    <priority>2</priority>
+    <estimated-files>3</estimated-files>
+
+    <!--
+      This task asserts NO acceptance criterion, and satisfies-criteria is therefore empty.
+      It creates the FastAPI application object and an empty APIRouter that L3-003, L3-004 and
+      L3-006 hang their handlers on. An empty router serves no user-visible behaviour, so there
+      is no criterion it could honestly claim. save-link#1..4 are claimed by L3-003,
+      list-links#1..4 and tag-links#3 by L3-004, and tag-links#1,2,4 by L3-006.
+
+      It is attributed to save-link because save-link owns the first endpoint this router
+      carries (POST /links, L3-003) and the analysis pass flags save-link as the cross-cutting
+      feature of this PRD ("named by 3 other documents"). Claiming a criterion here to fill the
+      attribute would tell the coverage report that a smoke test asserting the OpenAPI schema
+      loads had verified a behaviour it never exercises, so the attribute is left empty
+      deliberately.
+
+      requirement-level is OMITTED rather than set. The spec defines it as "the highest among the
+      ids named here", and no ids are named, so there is nothing to derive it from. Unlike the
+      empty satisfies-criteria - which build-manifest.py reduces to an empty id list and drops,
+      making it indistinguishable from omission - a requirement-level value DOES propagate: it
+      reaches the manifest and feeds `_strongest` and the requirement-level filter. Its
+      absence is handled cleanly there by `if level:`.
+
+      No `acceptance-criteria` element is emitted either, for the same reason the task carries no
+      `constraints` element: an empty element is a different, defective claim from an absent one.
+      The criteria of save-link are carried by L3-003.
+    -->
+    <source-feature slug="save-link" moscow="must-have" satisfies-criteria=""/>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Link Shelf is a local, single-user link store. From the PRD overview: "One endpoint to save
+    a link, one to get them all back, and tags so the list stays navigable past a few dozen
+    entries." No authentication, no multi-tenancy, no sharing.
+
+    Three endpoints are planned across this layer, all on the same router this task creates:
+      POST /links                    (L3-003, feature save-link)
+      GET  /links                    (L3-004, features list-links and tag-links)
+      POST /links/{link_id}/tags     (L3-006, feature tag-links)
+
+    There is no /api prefix. The analysis pass records the basis: "No /api prefix - the PRD
+    never mentions one."
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+ (which brings Pydantic v2 and starlette), SQLAlchemy 2.x,
+    SQLite (file-backed, no server process), pytest 8.x, httpx (required by starlette's
+    TestClient). Backend only - no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - created by L0-001)
+      pyproject.toml              (exists - created by L0-003, declares deps and pytest config)
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - created by L0-001)
+        api/
+          __init__.py             (exists - created by L0-002)
+        models/
+          __init__.py             (exists - created by L0-002)
+        schemas/
+          __init__.py             (exists - created by L0-002)
+          link.py                 (created by L3-001 - NOT read by this task)
+      tests/
+        __init__.py               (exists - created by L0-001)
+
+    This task creates app/main.py, app/api/links.py and tests/test_app_smoke.py.
+    All commands run from the repository root; this task declares no `cwd`.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <!--
+      ORDERING NOTE, recorded not repaired. architecture.md declares layer 4 (foundation)
+      depends-on layer 3 (backend), so the backend tier runs BEFORE the tier that defines the
+      declarative Base, session factory, models and pytest fixtures. The layer plan records this
+      as ordering conflicts OC-001 and OC-002, both with the verdict NOT BUILDABLE AS DECLARED.
+
+      This particular task IS buildable in its declared position, and deliberately so: it takes
+      NO dependency on layer 4. Every interface listed below comes from layer 0 or from this same
+      layer. Its sibling L3-003 is not so lucky - see the dependencies section of that file.
+
+      The layer plan's `requires_from_later_layer: ["L4-001"]` for this task is therefore
+      over-stated. See requirement 3 for why main.py does not import app.db.
+    -->
+
+    <interface name="python-environment" type="toolchain">
+    Provided by L0-004. A virtual environment with the project installed, in which:
+
+        python -c "import fastapi, sqlalchemy, httpx"
+
+    succeeds, and `pytest` is on PATH. httpx is what makes
+    `from fastapi.testclient import TestClient` importable; it is already declared in
+    pyproject.toml by L0-003 and must not be added again.
+    </interface>
+
+    <interface name="app.api" type="python-package">
+    Provided by L0-002. An empty package:
+
+        # app/api/__init__.py
+        (empty file)
+
+    This task adds app/api/links.py inside it. Leave app/api/__init__.py empty - main.py
+    imports the module by path (`from app.api import links`), so no re-export is needed.
+    </interface>
+
+    <interface name="app" type="python-package">
+    Provided by L0-001. An empty package at app/__init__.py. This task adds app/main.py
+    beside it.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the FastAPI application object in app/main.py and an empty APIRouter in
+  app/api/links.py, wire the router into the app, and prove with a smoke test that the
+  application imports and serves. This establishes the two module paths - `app.main:app` and
+  `app.api.links:router` - that every remaining backend task writes against.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `app/api/links.py` containing exactly one module-level name, `router`:
+
+        from fastapi import APIRouter
+
+        router = APIRouter(tags=["links"])
+
+    Pass `tags=["links"]` so the generated OpenAPI groups these routes.
+
+    Pass NO `prefix` argument. Every later handler declares its full path instead
+    (`@router.post("/links")`, `@router.get("/links")`,
+    `@router.post("/links/{link_id}/tags")`). A prefix of "/links" would force L3-003 and L3-004
+    to register the empty path `@router.post("")`, which is easy to get wrong and reads as a bug.
+    L3-003, L3-004 and L3-006 are all written against the no-prefix contract exported below;
+    changing it here breaks all three.
+
+    Define NO route handlers in this task. The router is created empty. L3-003, L3-004 and
+    L3-006 each reopen this file in sequence - their depends_on entries chain them so they never
+    write it concurrently.
+    </requirement>
+
+    <requirement id="2">
+    Create file `app/main.py` containing a module-level FastAPI instance named `app`:
+
+        from fastapi import FastAPI
+        from app.api import links
+
+        app = FastAPI(title="Link Shelf")
+        app.include_router(links.router)
+
+    The instance must be named `app` at module level, because `app.main:app` is the import
+    string a server would use and the smoke test imports that exact name.
+    </requirement>
+
+    <requirement id="3">
+    `app/main.py` must import nothing from `app.db`, `app.models` or `app.schemas`. Its only
+    project import is `from app.api import links`. This keeps the module importable in the
+    declared layer order, where app/db.py and app/models/link.py do not yet exist.
+
+    Deviation from the layer plan, recorded rather than made silently: the plan's description for
+    L3-002 says main.py should "import get_db and trigger schema creation". L4-001's own
+    description places `Base.metadata.create_all` inside app/db.py, so importing get_db into
+    main.py would be dead code that ALSO makes this task unbuildable in its declared position,
+    for no gain. Written the buildable way deliberately.
+    </requirement>
+
+    <requirement id="4">
+    Set the application title to exactly `Link Shelf` (matching the PRD's `meta`/`name` element). Do
+    not set a version, description, or any other FastAPI constructor argument - none is
+    specified anywhere in the PRD and inventing one adds a value nobody chose.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Test-first. Write every test below into `tests/test_app_smoke.py` BEFORE creating
+    app/main.py and app/api/links.py, run `pytest tests/test_app_smoke.py` and watch it fail on
+    the missing import, then write the two modules until it passes. Runner: pytest.
+
+    This file uses `TestClient` constructed directly on the app - it must NOT use a `client` or
+    `db_session` fixture. Those fixtures live in tests/conftest.py, created by L4-004 in a
+    later layer; depending on them here would make this task unbuildable for no benefit, since
+    an empty router needs no database.
+
+        from fastapi.testclient import TestClient
+        from app.main import app
+    </test>
+
+    <test id="2">
+    Test: test_app_object_exists_and_is_named
+    - Assert `app.title == "Link Shelf"`
+    - This test cites no acceptance criterion; it asserts requirement 4. No criterion in this
+      PRD describes the application object's metadata.
+    </test>
+
+    <test id="3">
+    Test: test_app_serves_its_openapi_schema
+    - Build `client = TestClient(app)`
+    - `response = client.get("/openapi.json")`
+    - Assert `response.status_code == 200`
+    - Assert `response.json()["info"]["title"] == "Link Shelf"`
+    - This is the smoke assertion: a 200 here proves the ASGI application constructed, the
+      router was included without a routing conflict, and the app can serve a request. Cites no
+      acceptance criterion - no criterion in this PRD describes the OpenAPI schema.
+    </test>
+
+    <test id="4">
+    Test: test_links_router_is_included_and_empty
+    - `from app.api.links import router`
+    - `from fastapi import APIRouter`
+    - Assert `isinstance(router, APIRouter)`
+    - Assert `router.routes == []`, proving no handler was added in this task (requirement 1)
+    - Assert `router.prefix == ""`, proving the no-prefix contract that L3-003, L3-004 and
+      L3-006 are written against
+    - Cites no acceptance criterion; it asserts requirements 1 and the router-prefix
+      constraint, which are structural decisions rather than product behaviour.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/main.py</file>
+    <file>app/api/links.py</file>
+    <file>tests/test_app_smoke.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.main import app; print(app.title)"` - must print exactly `Link Shelf`</step>
+    <step>Run: `python -c "from app.api.links import router; print(len(router.routes))"` - must print exactly `0`</step>
+    <step>Run: `pytest tests/test_app_smoke.py -v` - all 3 test functions pass</step>
+    <step>Verify: `app/main.py` contains no occurrence of the string `app.db`, `app.models` or `app.schemas`</step>
+  </verification>
+
+  <exports>
+    <interface name="app" type="fastapi-application">
+    # app/main.py
+    from fastapi import FastAPI
+    from app.api import links
+
+    app: FastAPI   # title="Link Shelf"; the links router is already included
+
+    # Import path for a server or a TestClient: app.main:app
+    # Imports nothing from app.db, app.models or app.schemas.
+    </interface>
+
+    <interface name="router" type="fastapi-apirouter">
+    # app/api/links.py
+    from fastapi import APIRouter
+
+    router: APIRouter   # tags=["links"], NO prefix, no routes yet
+
+    # Contract for every task that adds a handler to this file:
+    #   the router has NO prefix, so each handler declares its FULL path.
+    #
+    #   @router.post("/links")                  -> POST /links                 (L3-003)
+    #   @router.get("/links")                   -> GET  /links                 (L3-004)
+    #   @router.post("/links/{link_id}/tags")   -> POST /links/{id}/tags       (L3-006)
+    #
+    # Adding a handler requires no change to app/main.py: the router object is already
+    # included, so a route registered on it is served automatically.
+    </interface>
+  </exports>
+</task>

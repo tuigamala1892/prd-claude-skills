@@ -1,0 +1,226 @@
+<task>
+  <meta>
+    <id>L0-002</id>
+    <name>Package layout and pytest configuration</name>
+    <layer>0-setup</layer>
+    <priority>2</priority>
+    <estimated-files>3</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug: link-shelf). Greenfield, single repository, backend only.
+
+    There is NO template. Layer 0 creates the project tree from scratch; nothing is copied
+    from elsewhere. The target directory is already an initialised git repository - do NOT
+    run `git init` and do NOT touch `.git`.
+
+    This task creates the two Python packages every later task imports from (`app` and
+    `app.models`) and the pytest configuration that makes `python -m pytest`, run from the
+    repository root, find the tests and import the `app` package.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    pytest 8.x (test runner; the `pythonpath` ini option used below requires pytest 7 or
+    later and is present in 8.x)
+    FastAPI 0.110+, SQLAlchemy 2.x, SQLite (file-backed), httpx - all installed by L0-001
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW are created by this task):
+
+    .gitignore          (exists - created by L0-001)
+    pyproject.toml      (exists - created by L0-001)
+    requirements.txt    (exists - created by L0-001)
+    pytest.ini          NEW - this task
+    app/
+      __init__.py       NEW - this task
+      database.py       (created by L0-003)
+      main.py           (created by L0-003)
+      models/
+        __init__.py     NEW - this task
+    tests/              NEW directory - this task (empty; L0-003 adds conftest.py)
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="requirements.txt" type="dependency-manifest">
+    Repository-root file created by L0-001, four lines:
+      fastapi&gt;=0.110
+      sqlalchemy&gt;=2.0,&lt;3.0
+      httpx&gt;=0.27
+      pytest&gt;=8.0,&lt;9.0
+    Already installed into the environment: `python -m pytest --version` reports 8.x.
+    </interface>
+
+    <interface name="pyproject.toml" type="project-metadata">
+    Repository-root file created by L0-001. Declares:
+      project.name = "link-shelf"
+      project.requires-python = "&gt;=3.11"
+      tool.setuptools.packages = ["app", "app.models"]
+    The two package names in that list are the two this task creates.
+    </interface>
+
+    <interface name=".gitignore" type="vcs-config">
+    Repository-root file created by L0-001. Already ignores `__pycache__/` and
+    `.pytest_cache/`, so nothing this task produces at runtime needs a new ignore rule.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the `app` and `app.models` Python packages and a pytest.ini that sets the test
+  path to `tests` and puts the repository root on sys.path, so that `python -m pytest` run
+  from the repository root collects from `tests/` and `import app` resolves without the
+  project being installed.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create the directory `app/` and the file `app/__init__.py` with exactly this content:
+
+    """Link Shelf application package."""
+
+    __version__ = "0.1.0"
+    </requirement>
+
+    <requirement id="2">
+    Create the directory `app/models/` and the file `app/models/__init__.py` with exactly
+    this content:
+
+    """SQLAlchemy models for Link Shelf."""
+
+    Leave it at the docstring. Layer 1 tasks add model imports and an `__all__` to this file
+    (Link, Tag, LinkTag); this task must not anticipate them, and must not create any model
+    module.
+    </requirement>
+
+    <requirement id="3">
+    Create the empty directory `tests/`. It holds no file at the end of this task - L0-003
+    adds `tests/conftest.py` and `tests/test_setup.py`. The directory must exist now because
+    pytest resolves the `testpaths` setting below against it, and a missing `testpaths`
+    entry is a collection error rather than an empty run.
+
+    Git does not track empty directories, so `tests/` will not appear in this task's commit.
+    That is expected and correct: the directory becomes tracked when L0-003 adds files to it.
+    </requirement>
+
+    <requirement id="4">
+    Create `pytest.ini` at the repository root with exactly this content:
+
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    What each line does and why it is required:
+    - `testpaths = tests` makes a bare `python -m pytest` collect only from `tests/`.
+    - `pythonpath = .` prepends the repository root (pytest resolves it relative to the
+      rootdir) to sys.path, so `from app.database import Base` works in tests without the
+      project being pip-installed. Without this line every later task's tests fail with
+      ModuleNotFoundError: No module named 'app'.
+    - `python_files`, `python_classes`, `python_functions` pin the default discovery
+      patterns explicitly so later tasks can rely on `tests/test_*.py` being collected.
+    - `addopts = -q` keeps output short; `-v` on the command line still overrides it.
+    </requirement>
+
+    <requirement id="5">
+    Do NOT create `app/database.py`, `app/main.py`, `tests/conftest.py` or any model module.
+    Those belong to L0-003 and Layer 1. Do NOT run `git init` and do NOT touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Check: the `app` package imports and exposes its version.
+    Command:
+    python -c "import app; assert app.__version__ == '0.1.0', app.__version__; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="2">
+    Check: the `app.models` package imports.
+    Command:
+    python -c "import app.models; assert app.models.__doc__ is not None; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="3">
+    Check: pytest.ini declares testpaths and pythonpath.
+    Command:
+    python -c "import configparser; c = configparser.ConfigParser(); c.read('pytest.ini'); assert c['pytest']['testpaths'] == 'tests', c['pytest']['testpaths']; assert c['pytest']['pythonpath'] == '.', c['pytest']['pythonpath']; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="4">
+    Check: pytest runs from the repository root and collects zero tests without a collection
+    error. pytest exits with code 5 ("no tests collected") when the run is otherwise healthy
+    and the test directory is empty; it exits with code 4 ("usage error") when `testpaths`
+    points at something that does not exist. This check asserts 5, not 0.
+    Command:
+    python -c "import subprocess, sys; r = subprocess.run([sys.executable, '-m', 'pytest', '--collect-only']); assert r.returncode == 5, r.returncode; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>pytest.ini</file>
+    <file>app/__init__.py</file>
+    <file>app/models/__init__.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import app, app.models; print(app.__version__)"` - prints `0.1.0`, proving both packages this task created are importable from the repository root</step>
+    <step>Run: `python -c "import pathlib; assert pathlib.Path('app/__init__.py').is_file(); assert pathlib.Path('app/models/__init__.py').is_file(); assert pathlib.Path('pytest.ini').is_file(); assert pathlib.Path('tests').is_dir(); print('layout ok')"` - prints `layout ok`</step>
+    <step>Run: `python -c "import configparser; c = configparser.ConfigParser(); c.read('pytest.ini'); s = c['pytest']; assert s['testpaths'] == 'tests'; assert s['pythonpath'] == '.'; assert s['python_files'] == 'test_*.py'; print('pytest.ini ok')"` - prints `pytest.ini ok`</step>
+    <step>Run: `python -c "import subprocess, sys; r = subprocess.run([sys.executable, '-m', 'pytest', '--collect-only']); assert r.returncode == 5, 'expected exit 5 (no tests collected), got ' + str(r.returncode); print('collection ok')"` - prints `collection ok`; exit code 5 means pytest started cleanly and found the empty tests directory, exit code 4 would mean testpaths does not resolve</step>
+  </verification>
+
+  <exports>
+    <interface name="app" type="python-package">
+    # app/__init__.py
+    """Link Shelf application package."""
+
+    __version__ = "0.1.0"
+
+    Importable as `import app`. Directory `app/` at the repository root.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py
+    """SQLAlchemy models for Link Shelf."""
+
+    Importable as `import app.models`. Directory `app/models/` at the repository root.
+    Currently exports nothing. Layer 1 tasks add their model classes here; a task adding a
+    model must import it in this file so that `Base.metadata` knows about the table when
+    `create_all` runs.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root)
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Downstream contract for every later task:
+    - Run tests as `python -m pytest` from the repository root; the rootdir is the
+      repository root because pytest.ini lives there.
+    - Test files go in `tests/` and must be named `tests/test_*.py` to be collected.
+    - `from app.database import Base` resolves in tests without installing the project, because
+      `pythonpath = .` prepends the repository root to sys.path.
+    </interface>
+
+    <interface name="tests" type="directory">
+    tests/
+    Empty directory at the repository root, resolved by pytest's `testpaths` setting.
+    L0-003 populates it with conftest.py and test_setup.py.
+    </interface>
+  </exports>
+</task>

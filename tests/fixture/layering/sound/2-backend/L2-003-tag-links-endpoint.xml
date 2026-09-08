@@ -1,0 +1,835 @@
+<task>
+  <meta>
+    <id>L2-003</id>
+    <name>POST /links/{id}/tags -- attach tags to a link</name>
+    <layer>2-backend</layer>
+    <priority>3</priority>
+    <estimated-files>2</estimated-files>
+
+    <source-feature slug="tag-links" moscow="should-have"
+                    satisfies-criteria="1,2,4" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- tag-links criterion 3 - the tag FILTER on the listing - is satisfied by L2-002, not by
+         this task, and is therefore not carried here. This task carries 1, 2 and 4.
+         requirement-level is P0, the highest among them (1 and 4 are P0; 2 is P1). -->
+    <criterion id="1" pattern="event-driven" priority="P0" derived-from="1">
+      When tags are posted to an existing link, the system shall attach them and return 200 with
+      the link reporting every attached tag.
+    </criterion>
+    <criterion id="2" pattern="event-driven" priority="P1" derived-from="2">
+      When a tag already attached to a link is posted again, the system shall return 200 and
+      leave the tag attached exactly once.
+    </criterion>
+    <criterion id="4" pattern="unwanted-behaviour" priority="P0" derived-from="4">
+      If tags are posted to a link id that does not exist, then the system shall return 404 and
+      create no tag rows.
+    </criterion>
+    </acceptance-criteria>
+
+    <data-model>
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Tag links (slug: tag-links, should-have).
+
+    As someone collecting links, I want to tag what I save and filter by tag, so that a shelf of
+    two hundred links stays usable.
+
+    Attach zero or more free-text tags to a link, and filter the list endpoint by tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated
+    string column. This is the one place the fixture deliberately requires a real
+    relationship: a single-table shortcut would make the data-model layer trivial and
+    the fixture would stop exercising the part of layer planning most likely to break.
+
+    Considerations (verbatim from the feature):
+    Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an
+    implementer inventing either behaviour and calling it correct.
+
+    This feature is should-have rather than must-have so layer planning has to decide
+    where a lower-priority item lands, rather than treating every feature identically.
+
+    CONSEQUENCES FOR THIS TASK:
+    - The endpoint path is `/links/{link_id}/tags`, UNPREFIXED. Not `/api/links/...`, and not
+      `/links/:id/tags`. FastAPI path parameters use braces.
+    - Tag names are CASE-SENSITIVE. "Python" and "python" are two different tags and posting
+      both to one link attaches two tags. Never `.lower()`, never `func.lower()`, never
+      `.ilike()`, never `COLLATE NOCASE` - not when looking a tag up, and not when storing one.
+    - Tags are GET-OR-CREATE by exact name: reuse the existing `tags` row whose name matches
+      exactly, and insert a new row only when there is none. `tags.name` is UNIQUE, so blindly
+      inserting would raise IntegrityError the second time a name is used.
+    - Names are stored EXACTLY as supplied - no stripping, no case folding, no normalisation.
+
+    OPEN GAP, DELIBERATELY NOT RESOLVED HERE (tag-links gap 1, kind=decision, raised
+    2026-08-27): "Whether a tag with no remaining links is deleted or kept is undecided.
+    Keeping them makes an autocomplete list easy and lets the list rot."
+
+    This task must NOT invent an answer. Concretely: implement no orphan-tag cleanup, no
+    sweep of tags with no remaining links, no `cascade="all, delete-orphan"` reaching `Tag`,
+    no `ondelete=` clause added anywhere, and no post-request hook that removes tags. This
+    endpoint only ever ADDS; it never deletes a `Tag` row or a `link_tags` row. Adding a
+    delete rule would answer an undecided product question by accident, and the answer would
+    then be invisible to whoever eventually decides it.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ -- `APIRouter`, `Depends`, `HTTPException`, `status`, and a path parameter
+      declared as `{link_id}` in the route path with a matching `link_id: int` argument.
+    Pydantic 2.x -- `BaseModel`, `Field`. Use the v2 spellings; `LinkResponse` is imported from
+      L2-001 and is NOT redefined here.
+    SQLAlchemy 2.x -- `select`, `Session`, `Session.get`. Use the 2.0 `select(...)` construct
+      with `db.execute(stmt).scalars().first()`, NOT the legacy `db.query(...)` interface.
+    SQLite, file-backed (database, no external server).
+      IMPORTANT SQLite behaviour, stated by L1-003: foreign keys are DECLARED in the DDL but
+      NOT ENFORCED, because the project does not issue `PRAGMA foreign_keys=ON`. A `link_tags`
+      row pointing at a missing link id would insert WITHOUT error. The database will therefore
+      NOT produce criterion 4's 404 for you: this route must look the link up in Python and
+      return 404 itself. Do not add the pragma.
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root.
+    httpx -- imported by `fastapi.testclient.TestClient`; already installed by L0-001.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW are created by this task):
+
+    .gitignore              (exists - L0-001)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; Base, engine, SessionLocal, get_db)
+      main.py               (exists - L0-003; bare FastAPI instance, NO routers included)
+      models/
+        __init__.py         (exists - L1-003; exports Link, LinkTag, Tag)
+        link.py             (exists - L1-001/L1-003; Link with its `tags` relationship)
+        tag.py              (exists - L1-002)
+        link_tag.py         (exists - L1-003)
+      api/
+        __init__.py         (exists - L2-001)
+        save_link.py        (exists - L2-001)
+        tag_links.py        NEW - this task
+        list_links.py       (created by L2-002, running in PARALLEL - NOT visible here)
+      schemas/
+        link.py             (exists - L2-001; LinkCreate and the shared LinkResponse)
+        tag.py              NEW - this task
+    tests/
+      conftest.py           (exists - L0-003; db_session and client fixtures)
+      test_setup.py         (exists - L0-003; 5 tests, must keep passing)
+      test_model_link.py    (exists - L1-001; 6 tests, must keep passing)
+      test_model_tag.py     (exists - L1-002; 7 tests, must keep passing)
+      test_model_link_tag.py (exists - L1-003; 9 tests, must keep passing)
+      test_save_link.py     (exists - L2-001; 4 tests, must keep passing)
+      test_tag_links.py     NEW - this task (the test file, additional to the two above)
+
+    ISOLATION NOTE. This task runs in its own git worktree, at the same time as L2-002, which
+    creates `app/api/list_links.py`. That file does NOT exist here. Do not import, reference or
+    mention `app.api.list_links` in any file this task writes - `from app.api.list_links import
+    router` fails with ModuleNotFoundError. This task also must not create that file. The two
+    tasks share everything L2-001 and Layer 1 produced and nothing else.
+
+    `app/schemas/` has no `__init__.py` and needs none - it is a PEP 420 implicit namespace
+    package inside the regular package `app`, and both `from app.schemas.link import
+    LinkResponse` and `from app.schemas.tag import TagAttach` resolve under `pythonpath = .`.
+    Do NOT add an `__init__.py` to it: L2-002 asserts in its own verification that the file is
+    absent, and creating it here would be a second task writing a file it does not own.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="LinkResponse" type="pydantic-schema">
+    # app/schemas/link.py, created by L2-001 - ALREADY EXISTS, do NOT redefine it
+    from datetime import datetime
+
+    from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+    class LinkResponse(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str] = Field(default_factory=list)
+
+    Import as: `from app.schemas.link import LinkResponse`
+
+    Contract this task relies on:
+    - THIS IS THE ONE RESPONSE SCHEMA FOR A LINK. Do not define a `TaggedLink`, `LinkWithTags`
+      or any other link response model in this task. `LinkResponse` already carries the tag
+      names precisely so that this endpoint can satisfy criterion 1 - "return 200 with the link
+      reporting every attached tag" - without a second schema.
+    - `from_attributes=True` means `response_model=LinkResponse` serialises a `Link` ORM
+      instance directly, so the route may `return link`.
+    - `tags` is a list of tag NAMES (`list[str]`), converted from `link.tags` (a `list[Tag]`) by
+      a `mode="before"` validator that reads `item.name`. Order is `Tag.id` ascending and stable
+      across reloads, so a response body listing tag names may be asserted directly without
+      sorting.
+    - `tags` defaults to `[]`, so a link with nothing attached reports an empty array.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py, created by L1-001 and extended by L1-003 - ALREADY EXISTS
+    from datetime import datetime
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+    from app.database import Base
+
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # integer primary key, autoincrement
+        url: Mapped[str]                # Text, NOT NULL, NOT unique
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # DateTime, NOT NULL, default=utcnow (naive UTC)
+
+        tags: Mapped[list[Tag]] = relationship(
+            Tag,
+            secondary=LinkTag.__table__,
+            lazy="selectin",
+            order_by=Tag.id,
+        )
+
+    Import as: `from app.models import Link`
+
+    Contract this task relies on:
+    - `db.get(Link, link_id)` returns the `Link` or `None`. `None` is criterion 4's case.
+    - `link.tags` is a `list[Tag]`, EMPTY (never None) when nothing is attached.
+    - This task never creates, edits or deletes a `Link`. It only reads one and appends to its
+      `tags` collection.
+    </interface>
+
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py, created by L1-002 - ALREADY EXISTS
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # Text, NOT NULL, UNIQUE, default (case-sensitive) collation
+
+    Import as: `from app.models import Tag`
+
+    Contract this task relies on, quoted from L1-002's export:
+    - `name` is unique, so "find or create" is the correct way to attach a tag:
+          tag = db.execute(select(Tag).where(Tag.name == name)).scalars().first()
+          if tag is None:
+              tag = Tag(name=name)
+              db.add(tag)
+      Creating a second row with an existing name raises IntegrityError.
+    - Comparison is CASE-SENSITIVE and the value is stored exactly as supplied. "Python" and
+      "python" are two rows. Never call `.lower()`, `func.lower()`, `ilike` or `COLLATE NOCASE`
+      when matching a tag name.
+    - `Tag` has NO `.links` attribute - the association is declared one-way on `Link.tags`.
+    </interface>
+
+    <interface name="LinkTag" type="sqlalchemy-model">
+    # app/models/link_tag.py, created by L1-003 - ALREADY EXISTS
+    from sqlalchemy import ForeignKey, Integer
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class LinkTag(Base):
+        __tablename__ = "link_tags"
+
+        link_id: Mapped[int]   # Integer, FK -&gt; links.id, part of the composite primary key
+        tag_id: Mapped[int]    # Integer, FK -&gt; tags.id,  part of the composite primary key
+
+    Import as: `from app.models import LinkTag`
+
+    Contract this task relies on, quoted from L1-003's export:
+    - The primary key is the PAIR (link_id, tag_id). A second row with the same pair raises
+      `sqlalchemy.exc.IntegrityError`. Re-attaching a tag a link already carries is therefore
+      impossible at the storage layer; L2-003 must check membership before appending (e.g.
+      `if tag not in link.tags: link.tags.append(tag)`) rather than relying on the exception.
+      That is criterion 2: the endpoint must answer 200, not 500.
+    - Foreign keys are declared but NOT enforced by SQLite at runtime (no
+      `PRAGMA foreign_keys=ON`). A row pointing at a missing link id inserts silently, so this
+      task MUST look the link up in Python and return 404 when it is absent - the database will
+      not do it. That is criterion 4.
+    - No delete rule is declared. Whether a tag with no remaining links is deleted or kept is
+      the tag-links open gap 1 and is still undecided; nothing here answers it.
+    - This task uses `LinkTag` only in its TESTS, to count the association rows. The route
+      writes them through `link.tags.append(tag)`.
+    </interface>
+
+    <interface name="Link.tags" type="sqlalchemy-relationship">
+    # app/models/link.py, added by L1-003
+    tags: Mapped[list[Tag]] = relationship(
+        Tag,
+        secondary=LinkTag.__table__,
+        lazy="selectin",
+        order_by=Tag.id,
+    )
+
+    Downstream contract L1-003 states:
+    - `link.tags` is a `list[Tag]`, empty (never None) when nothing is attached.
+    - Attach with `link.tags.append(tag)` then `db.commit()`; that writes one `link_tags` row.
+      Detach with `link.tags.remove(tag)`, which deletes the association row and leaves the
+      `Tag` row alone - THIS TASK NEVER DETACHES ANYTHING.
+    - The order is `Tag.id` ascending - stable across reloads, so the response body listing tags
+      may be asserted directly without sorting.
+    - `lazy="selectin"` means the collection is loaded eagerly, so serialising the link to
+      `LinkResponse` does not depend on a lazy load firing at response time.
+    - No `cascade` argument is set. The default for a `secondary` relationship removes only the
+      association rows, never a `Tag` row. Do not add a cascade.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Use in a route as: `db: Session = Depends(get_db)`
+
+    This is the ONLY way a route in this project may obtain a session. A route that builds its
+    own `SessionLocal()` cannot be overridden by a test and would read a different database
+    from the one the test wrote its link into.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    Two consequences this task depends on directly:
+    - `autoflush=False`: a pending object is NOT written before the next query runs. If one
+      request posts the same NEW tag name twice, the second lookup would NOT see the first
+      pending `Tag` and would insert a duplicate, which `tags.name` being unique turns into an
+      IntegrityError at commit. This is why requirement 2 calls `db.flush()` immediately after
+      adding a new tag. Do not remove that flush and do not "fix" it by enabling autoflush.
+    - `expire_on_commit=False`: attributes stay readable after `commit()` without a refresh.
+    </interface>
+
+    <interface name="app" type="fastapi-application">
+    # app/main.py, created by L0-003
+    from fastapi import FastAPI
+
+    app = FastAPI(title="Link Shelf", version="0.1.0", ...)
+
+    NO routers are included. This task must NOT edit `app/main.py` and must NOT call
+    `app.include_router(...)` anywhere. L2-002 runs in a parallel worktree and would edit the
+    same file; L4-001 mounts all three routers together.
+
+    Consequence for this task's tests: conftest's `client` fixture wraps this bare application
+    and serves NO route. The test file builds its own single-router application - see test 1.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with `links`,
+    `tags` and `link_tags` already created and EMPTY.
+
+    Contract this task relies on:
+    - The database is empty at the start of each test, so "create no tag rows" is assertable as
+      "the tags table row count did not change".
+    - Rows written through this session are visible to a request served by a route whose
+      `get_db` is overridden to yield this same session, and the reverse - so a test can create
+      a `Link` directly and then tag it through the endpoint.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    DO NOT USE IT IN THIS TASK. It wraps `app.main.app`, which includes no routers until
+    L4-001, so every request through it returns 404 - and a 404 is exactly what criterion 4
+    asserts, so using this fixture would make that test pass for entirely the wrong reason.
+    Test 1 defines a local `api` fixture instead. Do not request `client` anywhere in
+    `tests/test_tag_links.py`.
+    </interface>
+
+    <interface name="save_link_router" type="fastapi-router">
+    # app/api/save_link.py, created by L2-001 - EXISTS in this worktree
+    from fastapi import APIRouter
+
+    router = APIRouter()
+
+    @router.post("/links", response_model=LinkResponse, status_code=201)
+    def save_link(payload: LinkCreate, db: Session = Depends(get_db)) -&gt; Link: ...
+
+    NOT used by this task and NOT imported by it. It is listed so the implementer knows that
+    the module-level name `router` is the project's convention - this task must also name its
+    router `router`, in its own module `app/api/tag_links.py` - and that L2-001 already owns
+    `POST /links`. This task's route is `POST /links/{link_id}/tags`, a different path; the two
+    do not conflict when L4-001 mounts both.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequences: the test file must be `tests/test_tag_links.py`; tests run with
+    `python -m pytest` from the repository root; and `from app.api.tag_links import router`
+    resolves from the source tree without the project being pip-installed.
+    </interface>
+
+    <interface name="fastapi.testclient.TestClient" type="third-party-class">
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class TestClient:
+        def __init__(self, app: FastAPI) -&gt; None: ...
+        def post(self, url: str, json: object = None, **kwargs) -&gt; "httpx.Response": ...
+
+    `response.status_code` is an int; `response.json()` decodes the body.
+    An `HTTPException(status_code=404)` raised inside a route is HANDLED by FastAPI and comes
+    back as a normal 404 response with a `{"detail": ...}` body - the TestClient does not
+    re-raise it.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the tag request schema and the `POST /links/{link_id}/tags` route: posting a list of
+  tag names to an existing link attaches them and answers 200 with the link reporting every
+  tag it now carries; posting a tag the link already carries answers 200 and leaves it attached
+  exactly once; and posting to a link id that does not exist answers 404 having created no tag
+  rows at all.
+
+  Tags are get-or-create by EXACT name - an existing `tags` row is reused, a new one is inserted
+  only when no row has that name - and names are compared and stored case-sensitively, so
+  "Python" and "python" are two different tags.
+
+  DELIBERATELY NOT IMPLEMENTED: any cleanup of tags left with no remaining links. That question
+  is the tag-links feature's open gap 1 (kind=decision, raised 2026-08-27): "Whether a tag with
+  no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list
+  easy and lets the list rot." This task must not invent a policy for it - no orphan sweep, no
+  `cascade="all, delete-orphan"`, no `ondelete=` clause, no delete of any kind. This endpoint
+  only ever adds. Answering an undecided product question by accident is worse than leaving it
+  open, because the accidental answer is invisible to whoever eventually decides it.
+
+  This task imports `LinkResponse` from L2-001 and defines no link response schema of its own.
+  It mounts nothing - L4-001 includes the router on the application.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/schemas/tag.py` with exactly this content:
+
+    """Pydantic schemas for the tagging endpoint."""
+
+    from pydantic import BaseModel, Field
+
+
+    class TagAttach(BaseModel):
+        """Request body for POST /links/{link_id}/tags."""
+
+        tags: list[str] = Field(default_factory=list)
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The body is an OBJECT with a `tags` key holding a list of names -
+      `{"tags": ["python", "web"]}` - not a bare JSON array. An object leaves room for the
+      request to grow without becoming a breaking change.
+
+    - `default_factory=list` makes `tags` optional, so `{}` is a legal body meaning "attach
+      nothing". The feature says "attach zero or more free-text tags", so zero must be legal and
+      must not be a 422.
+
+    - `list[str]` and nothing more. Do NOT add a `min_length`, `max_length`, `pattern` or
+      `strip_whitespace` constraint, and do NOT add a validator that lower-cases, strips or
+      otherwise normalises a name. Tags are FREE TEXT stored exactly as supplied; the feature
+      states that names are matched case-sensitively, and L1-002 already proved a name is stored
+      without normalisation.
+
+    - Do NOT define a link response model in this file. `LinkResponse` in `app/schemas/link.py`
+      is the one response schema for a link and already carries the tag names.
+
+    - Do NOT create `app/schemas/__init__.py`. `app/schemas` is a PEP 420 implicit namespace
+      package and `from app.schemas.tag import TagAttach` resolves without one.
+    </requirement>
+
+    <requirement id="2">
+    Create `app/api/tag_links.py` with exactly this content:
+
+    """POST /links/{link_id}/tags - attach tags to a stored link."""
+
+    from fastapi import APIRouter, Depends, HTTPException, status
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from app.database import get_db
+    from app.models import Link, Tag
+    from app.schemas.link import LinkResponse
+    from app.schemas.tag import TagAttach
+
+    router = APIRouter()
+
+
+    @router.post("/links/{link_id}/tags", response_model=LinkResponse)
+    def attach_tags(
+        link_id: int,
+        payload: TagAttach,
+        db: Session = Depends(get_db),
+    ) -&gt; Link:
+        """Attach the posted tags to the link and return it with every tag it carries."""
+        link = db.get(Link, link_id)
+        if link is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"link {link_id} does not exist",
+            )
+        for name in payload.tags:
+            tag = db.execute(select(Tag).where(Tag.name == name)).scalars().first()
+            if tag is None:
+                tag = Tag(name=name)
+                db.add(tag)
+                db.flush()
+            if tag not in link.tags:
+                link.tags.append(tag)
+        db.commit()
+        db.refresh(link)
+        return link
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The path is `"/links/{link_id}/tags"` with NO prefix, and the module-level router name is
+      `router`. L4-001 imports it as `from app.api.tag_links import router as tag_links_router`
+      and mounts it with a bare `app.include_router(...)`, so the path written here is the path
+      the application serves. Do not pass `prefix=` or `tags=` to `APIRouter()`. Do not write
+      `:id` - FastAPI path parameters use braces - and do not name the parameter `id`, which
+      shadows the builtin.
+
+    - `link_id: int`. FastAPI converts the path segment and answers 422 by itself for a
+      non-integer id. Do not accept `str` and parse it by hand.
+
+    - No explicit `status_code=`. FastAPI's default for POST is 200, and criteria 1 and 2 both
+      require 200. Do NOT write `status_code=201`: nothing is created from the caller's point of
+      view - the link already existed and is being amended.
+
+    - `db.get(Link, link_id)` then `if link is None: raise HTTPException(404)` is criterion 4,
+      and it must come FIRST, before any tag is looked up or created. SQLite does not enforce
+      foreign keys in this project, so nothing below would fail on a missing link - the check
+      has to be here, and it has to be before the loop, so that a 404 provably creates no tag
+      rows.
+
+    - `select(Tag).where(Tag.name == name)` - the get-or-create lookup. CASE-SENSITIVE and exact.
+      Do NOT write `func.lower(Tag.name) == name.lower()`, `Tag.name.ilike(name)`, or any
+      `COLLATE NOCASE` clause. Do NOT `.strip()` or transform `name` before storing it.
+
+    - `db.flush()` immediately after `db.add(tag)` is MANDATORY, not cosmetic. The session is
+      built with `autoflush=False`, so without the flush a second occurrence of the same NEW
+      name inside one request would not see the first pending `Tag`, would insert a duplicate,
+      and `tags.name` being unique would turn that into an IntegrityError at commit - a 500 for
+      a request that should answer 200. The flush also assigns the new tag its id.
+
+    - `if tag not in link.tags: link.tags.append(tag)` is criterion 2. The composite primary key
+      on `link_tags` makes a duplicate attachment impossible at the storage layer, but that
+      manifests as an IntegrityError and therefore a 500. The membership check keeps the
+      response at 200 with the tag attached exactly once. Do NOT replace it with a try/except
+      around the commit: a failed commit poisons the transaction and would lose the other tags
+      in the same request.
+
+    - `db.refresh(link)` after the commit re-reads the link and its `tags` collection from
+      storage, so the response provably reports what is stored rather than what is in memory.
+
+    - The route returns the `Link` ORM instance and lets `response_model=LinkResponse` do the
+      conversion. Do not build a dict by hand and do not define a second response schema.
+
+    - `db: Session = Depends(get_db)`. Do not construct `SessionLocal()` in the route.
+
+    - THE OPEN GAP. This module contains NO delete of any kind: no `db.delete(...)`, no
+      `link.tags.remove(...)`, no `cascade=`, no `ondelete=`, no sweep of tags with no remaining
+      links. Whether an orphaned tag is kept or removed is undecided (tag-links gap 1) and this
+      task must leave it undecided. A verification step below asserts the module's source
+      contains none of those words.
+
+    - Do NOT call `app.include_router(...)` and do NOT import `app.main` here.
+
+    - Do NOT call `Base.metadata.create_all` anywhere.
+
+    - Do NOT import `app.api.list_links`: it is L2-002's file and does not exist in this
+      worktree.
+    </requirement>
+
+    <requirement id="3">
+    Do NOT create or edit any other file. Specifically: do not touch `app/main.py`,
+    `app/database.py`, `app/api/__init__.py`, `app/api/save_link.py`, `app/schemas/link.py`,
+    any file under `app/models/`, `tests/conftest.py`, or any existing test file. Do not create
+    `app/api/list_links.py` - it is L2-002's file, L2-002 is running right now in a parallel
+    worktree, and creating it here would collide in the merge queue. Do not create
+    `app/schemas/__init__.py`.
+
+    Do not create a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not run `git init` and do not touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_tag_links.py` FIRST, run `python -m pytest
+    tests/test_tag_links.py -v` and watch it fail with ModuleNotFoundError on
+    `app.api.tag_links`, then write the two files above until it passes.
+
+    Every test below carries `covers`, naming the tag-links acceptance criterion it asserts.
+    This task has one source feature, so no `from-feature` attribute is used.
+
+    PATTERN NOTE. Criteria 1 and 2 are `event-driven`: each is one action producing one
+    observable outcome, so each test performs the post and asserts the outcome. Criterion 4 is
+    `unwanted-behaviour` and already states its negative case - 404 AND no tag rows created -
+    so test 4 asserts the row COUNT is unchanged, not merely the status code. A status-code-only
+    test would pass against a route that returns 404 after having already inserted the tags.
+
+    <test id="1">
+    Create test file: `tests/test_tag_links.py`.
+    Header imports and the local application fixture, exactly:
+
+      import pytest
+      from fastapi import FastAPI
+      from fastapi.testclient import TestClient
+      from sqlalchemy import select
+      from sqlalchemy.orm import Session
+
+      from app.api.tag_links import router
+      from app.database import get_db
+      from app.models import Link, LinkTag, Tag
+
+
+      @pytest.fixture(name="api")
+      def api_fixture(db_session: Session):
+          """A throwaway application serving ONLY this task's router, on the test session."""
+          application = FastAPI()
+          application.include_router(router)
+          application.dependency_overrides[get_db] = lambda: db_session
+          with TestClient(application) as test_client:
+              yield test_client
+
+    Add two counting helpers used by several tests below, defined at module level:
+
+      def tag_names(db_session: Session) -&gt; list[str]:
+          return list(db_session.execute(select(Tag.name).order_by(Tag.id)).scalars().all())
+
+
+      def attachment_count(db_session: Session) -&gt; int:
+          return len(db_session.execute(select(LinkTag)).scalars().all())
+
+    Why the local fixture and not conftest's `client`: `app.main.app` includes no routers until
+    L4-001, so every request through `client` returns 404 - and criterion 4 asserts a 404, so
+    using that fixture would make test 4 pass for entirely the wrong reason. Do NOT request the
+    `client` fixture anywhere in this file.
+
+    Why the tests create links through `db_session` and not through `POST /links`: L2-001's
+    router is a different module and mounting it here would test two tasks at once. Every link
+    below is created with `Link(...)` directly on `db_session`.
+    </test>
+
+    <test id="2" covers="1">
+    Test: test_posting_tags_to_an_existing_link_attaches_them_and_returns_200_with_every_tag
+    - Request the `api` and `db_session` fixtures
+    - first = Link(url="https://example.com/1")
+      second = Link(url="https://example.com/2")
+      db_session.add_all([first, second]); db_session.commit()
+    - THE ACTION: response = api.post(f"/links/{first.id}/tags",
+                                      json={"tags": ["python", "web"]})
+    - Assert response.status_code == 200
+    - body = response.json()
+    - Assert body["id"] == first.id
+    - Assert body["url"] == "https://example.com/1"
+    - Assert body["tags"] == ["python", "web"]   (ordered by Tag.id, which L1-003 made stable)
+    - Assert tag_names(db_session) == ["python", "web"]
+    - Assert attachment_count(db_session) == 2
+    - A SECOND post reports EVERY attached tag, not only the newly posted one:
+        again = api.post(f"/links/{first.id}/tags", json={"tags": ["reading"]})
+        Assert again.status_code == 200
+        Assert again.json()["tags"] == ["python", "web", "reading"]
+    - An EXISTING tag row is reused rather than duplicated when a second link uses the name:
+        other = api.post(f"/links/{second.id}/tags", json={"tags": ["python"]})
+        Assert other.status_code == 200
+        Assert other.json()["tags"] == ["python"]
+        Assert tag_names(db_session) == ["python", "web", "reading"]   (still three rows)
+        Assert attachment_count(db_session) == 4
+    - Names differing only in CASE are different tags, stored exactly as supplied:
+        cased = api.post(f"/links/{second.id}/tags", json={"tags": ["Python"]})
+        Assert cased.status_code == 200
+        Assert cased.json()["tags"] == ["python", "Python"]   (Tag.id order: python then Python)
+        Assert tag_names(db_session) == ["python", "web", "reading", "Python"]
+    - Posting an empty list is legal and attaches nothing:
+        empty = api.post(f"/links/{first.id}/tags", json={"tags": []})
+        Assert empty.status_code == 200
+        Assert empty.json()["tags"] == ["python", "web", "reading"]
+        Assert tag_names(db_session) == ["python", "web", "reading", "Python"]
+    </test>
+
+    <test id="3" covers="2">
+    Test: test_reposting_an_already_attached_tag_returns_200_and_leaves_it_attached_once
+    - Request the `api` and `db_session` fixtures
+    - link = Link(url="https://example.com/1"); db_session.add(link); db_session.commit()
+    - first = api.post(f"/links/{link.id}/tags", json={"tags": ["python"]})
+      Assert first.status_code == 200
+      Assert first.json()["tags"] == ["python"]
+      Assert attachment_count(db_session) == 1
+    - THE ACTION: post the SAME tag again.
+        second = api.post(f"/links/{link.id}/tags", json={"tags": ["python"]})
+    - Assert second.status_code == 200   (200, NOT 500 - the composite primary key must not
+      surface as a server error)
+    - Assert second.json()["tags"] == ["python"]   (exactly once in the response)
+    - Assert attachment_count(db_session) == 1     (exactly one link_tags row)
+    - Assert tag_names(db_session) == ["python"]   (exactly one tags row)
+    - The same holds when the duplicate is inside ONE request body - this is the case the
+      session's `autoflush=False` would otherwise break for a brand-new name:
+        third = api.post(f"/links/{link.id}/tags", json={"tags": ["web", "web", "python"]})
+        Assert third.status_code == 200
+        Assert third.json()["tags"] == ["python", "web"]
+        Assert attachment_count(db_session) == 2
+        Assert tag_names(db_session) == ["python", "web"]
+    </test>
+
+    <test id="4" covers="4">
+    Test: test_posting_tags_to_a_missing_link_returns_404_and_creates_no_tag_rows
+    - This is the negative case criterion 4 states: a link id that does not exist, so 404 AND no
+      tag rows created. Assert the row counts, not just the status code.
+    - Request the `api` and `db_session` fixtures
+    - Create ONE real link so the tables are not trivially empty and the missing id is provably
+      the reason for the 404:
+        link = Link(url="https://example.com/1"); db_session.add(link); db_session.commit()
+        missing_id = link.id + 1000
+    - Assert tag_names(db_session) == [] and attachment_count(db_session) == 0
+    - THE ACTION: response = api.post(f"/links/{missing_id}/tags",
+                                      json={"tags": ["python", "web"]})
+    - Assert response.status_code == 404
+    - Assert response.json()["detail"] == f"link {missing_id} does not exist"
+    - Assert tag_names(db_session) == []          (NO tag rows were created)
+    - Assert attachment_count(db_session) == 0    (and no attachments either)
+    - Now attach a real tag so the tables are non-empty, and repeat: a 404 must still create
+      nothing, including for a name that has never been seen.
+        api.post(f"/links/{link.id}/tags", json={"tags": ["python"]})
+        Assert tag_names(db_session) == ["python"]
+        Assert attachment_count(db_session) == 1
+        second = api.post(f"/links/{missing_id}/tags", json={"tags": ["brand-new"]})
+        Assert second.status_code == 404
+        Assert tag_names(db_session) == ["python"]   (unchanged - "brand-new" was NOT inserted)
+        Assert attachment_count(db_session) == 1     (unchanged)
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/schemas/tag.py</file>
+    <file>app/api/tag_links.py</file>
+    <file>tests/test_tag_links.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.schemas.tag import TagAttach; assert list(TagAttach.model_fields) == ['tags'], list(TagAttach.model_fields); assert TagAttach().tags == []; assert TagAttach(tags=['python', 'Python']).tags == ['python', 'Python']; assert TagAttach(tags=['  Read Later  ']).tags == ['  Read Later  ']; print('request schema ok')"` - prints `request schema ok`; the body is optional, and names are carried through with no stripping and no case folding</step>
+    <step>Run: `python -c "from app.api.tag_links import router; routes = [(r.path, sorted(r.methods), r.status_code) for r in router.routes]; assert routes == [('/links/{link_id}/tags', ['POST'], None)], routes; print('route ok')"` - prints `route ok`; exactly one route, at the unprefixed braced path, answering POST with no overridden status code so success is FastAPI's default 200</step>
+    <step>Run: `python -c "from app.api.tag_links import router; from app.schemas.link import LinkResponse; assert router.routes[0].response_model is LinkResponse, router.routes[0].response_model; print('response model ok')"` - prints `response model ok`; the route serialises through L2-001's shared LinkResponse, which is what carries the attached tag names</step>
+    <step>Run: `python -c "import inspect; from app.api.tag_links import attach_tags; params = list(inspect.signature(attach_tags).parameters); assert params[0] == 'link_id', params; assert 'payload' in params and 'db' in params, params; print('signature ok')"` - prints `signature ok`; the path parameter is named `link_id` and the session arrives by dependency</step>
+    <step>Run: `python -c "import inspect, app.api.tag_links as m; src = inspect.getsource(m); assert 'db.get(Link, link_id)' in src, 'the link must be looked up in Python - SQLite does not enforce the foreign key'; assert 'HTTP_404_NOT_FOUND' in src; assert 'Tag.name == name' in src, 'get-or-create must match the exact name'; assert 'db.flush()' in src, 'autoflush is off; a new tag must be flushed before the next lookup'; assert 'not in link.tags' in src, 'membership check is what keeps a repost at 200'; print('logic ok')"` - prints `logic ok`</step>
+    <step>Run: `python -c "import inspect, app.api.tag_links as m; src = inspect.getsource(m); low = src.lower(); assert 'ilike' not in low, 'tag matching must stay case-sensitive'; assert 'nocase' not in low, 'tag matching must stay case-sensitive'; assert 'func.lower' not in src and '.lower()' not in src, 'tag matching must stay case-sensitive'; assert '.strip()' not in src, 'names are stored exactly as supplied'; print('case-sensitive ok')"` - prints `case-sensitive ok`</step>
+    <step>Run: `python -c "import inspect, app.api.tag_links as m; src = inspect.getsource(m); low = src.lower(); assert 'delete' not in low, 'tag-links gap 1 is undecided: this endpoint must never delete'; assert 'cascade' not in low, 'no cascade may answer the orphan-tag question'; assert 'ondelete' not in low; assert 'orphan' not in low; assert 'remove(' not in low; print('open gap left open ok')"` - prints `open gap left open ok`; the orphan-tag decision (tag-links gap 1, raised 2026-08-27) is deliberately unanswered and the module contains no removal of any kind</step>
+    <step>Run: `python -c "import inspect, app.api.tag_links as m; src = inspect.getsource(m); assert 'include_router' not in src, 'mounting routers is L4-001 work'; assert 'SessionLocal' not in src, 'use the get_db dependency, not the session factory directly'; print('scope ok')"` - prints `scope ok`. Both assertions are about this module's own source, so they hold whenever they are run</step>
+    <step>Run: `python -c "from app.main import app; mounted = [getattr(r, 'path', '') for r in app.routes]; assert not any('/links' in getattr(r, 'path', '') for r in app.routes), [getattr(r, 'path', '') for r in app.routes]; print('router left unmounted ok')"` - prints `router left unmounted ok`; this task defines the router and L4-001 is the task that includes it, so app/main.py must still serve no link route</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('app/schemas/__init__.py').exists(), 'app/schemas is a PEP 420 namespace package and must stay one'; print('namespace package ok')"` - prints `namespace package ok`. This asserts a design decision this task depends on, not the absence of a sibling task's work: it holds before the layer merges and after, so re-running verification later gives the same answer</step>
+    <step>Run: `python -m pytest "tests/test_tag_links.py::test_posting_tags_to_a_missing_link_returns_404_and_creates_no_tag_rows" -v` - exit code 0; this is criterion 4's negative case, asserting the 404 AND that the tags and link_tags row counts are unchanged both when the tables are empty and when they already hold rows</step>
+    <step>Run: `python -m pytest "tests/test_tag_links.py::test_reposting_an_already_attached_tag_returns_200_and_leaves_it_attached_once" -v` - exit code 0; this is criterion 2, asserting a repost answers 200 rather than surfacing the composite primary key as a 500, and leaves exactly one link_tags row</step>
+    <step>Run: `python -m pytest tests/test_tag_links.py -v` - exit code 0, all 3 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; L0-003's 5 setup tests, L1-001's 6, L1-002's 7, L1-003's 9 and L2-001's 4 all still pass alongside this task's 3. L2-002's tests are NOT in this worktree - it runs in parallel - so do not expect them here</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="TagAttach" type="pydantic-schema">
+    # app/schemas/tag.py
+    from pydantic import BaseModel, Field
+
+
+    class TagAttach(BaseModel):
+        tags: list[str] = Field(default_factory=list)
+
+    Import as: `from app.schemas.tag import TagAttach`
+
+    Downstream contract:
+    - The request body for `POST /links/{link_id}/tags` is an OBJECT with a `tags` key:
+      `{"tags": ["python", "web"]}`. Not a bare JSON array.
+    - `tags` is optional and defaults to `[]`, so `{}` is a legal body meaning "attach nothing"
+      and answers 200 rather than 422. The feature allows zero or more tags.
+    - Names are FREE TEXT, carried through with no stripping, no case folding and no length or
+      pattern constraint. `"Python"` and `"python"` reach the route as two different names and
+      become two different tags.
+    </interface>
+
+    <interface name="tag_links_router" type="fastapi-router">
+    # app/api/tag_links.py
+    from fastapi import APIRouter, Depends, HTTPException, status
+
+    router = APIRouter()
+
+    @router.post("/links/{link_id}/tags", response_model=LinkResponse)
+    def attach_tags(
+        link_id: int,
+        payload: TagAttach,
+        db: Session = Depends(get_db),
+    ) -&gt; Link: ...
+
+    Import as: `from app.api.tag_links import router`
+    L4-001 mounts it as:
+        from app.api.tag_links import router as tag_links_router
+        app.include_router(tag_links_router)
+
+    Downstream contract:
+    - The router carries NO prefix. Its single route is `POST /links/{link_id}/tags`, and
+      `app.include_router(router)` with no arguments serves it at exactly that path. It does not
+      conflict with L2-001's `POST /links`.
+    - It is NOT mounted by this task. `app/main.py` is untouched; L4-001 mounts this router
+      together with L2-001's and L2-002's.
+    - Success is 200 (not 201) with a `LinkResponse` body reporting EVERY tag the link now
+      carries, previously attached ones included, ordered by `Tag.id` ascending.
+    - Tags are get-or-create by EXACT name. An existing `tags` row is reused across links; a new
+      row is inserted only when no row has that name. Names are CASE-SENSITIVE and stored
+      exactly as supplied.
+    - Re-posting a tag the link already carries answers 200 and leaves it attached exactly once.
+      Duplicates within a single request body are equally harmless.
+    - A `link_id` with no row answers 404 with `{"detail": "link &lt;id&gt; does not exist"}` and
+      creates NO `tags` and NO `link_tags` rows. A non-integer `link_id` answers 422, from
+      FastAPI's own path conversion.
+    - The endpoint NEVER deletes. Whether a tag with no remaining links is kept or removed is
+      the tag-links open gap 1 (kind=decision, raised 2026-08-27) and remains undecided; no
+      cascade, no `ondelete`, and no orphan sweep exists anywhere in this task's output. A later
+      task that needs a detach or a cleanup must resolve that gap first rather than inferring an
+      answer from this module's silence.
+    - L4-001's end-to-end test may rely on all of the above: save two links through
+      `POST /links`, tag one through this endpoint, then assert `GET /links?tag=NAME` returns
+      exactly the tagged one.
+    </interface>
+  </exports>
+</task>

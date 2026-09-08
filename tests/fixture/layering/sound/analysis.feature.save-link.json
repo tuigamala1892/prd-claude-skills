@@ -1,0 +1,70 @@
+{
+  "feature": "save-link",
+  "scope": "small",
+  "confidence": "high",
+  "data_models": [
+    {
+      "name": "Link",
+      "fields": [
+        "id integer pk",
+        "url text not null",
+        "title text null",
+        "created_at timestamp not null"
+      ],
+      "relationships": [],
+      "source": "declared",
+      "raw": "Link(id integer pk, url text not null, title text null, created_at timestamp not null)"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/links",
+      "purpose": "Store a URL with optional title and return stored record with id and timestamp",
+      "inferred_from": "save-link",
+      "request_fields": ["url", "title"],
+      "response_fields": ["id", "url", "title", "created_at"]
+    }
+  ],
+  "components": [
+    {
+      "name": "SaveLinkForm",
+      "type": "form",
+      "feature": "save-link",
+      "inferred_from": "save-link",
+      "fields": ["url", "title"]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "1",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "1",
+      "criterion": "When a link is posted with a url and a title, the system shall store it and return 201 with an integer id, the submitted url and title, and a created_at timestamp."
+    },
+    {
+      "id": "2",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "2",
+      "criterion": "When a link is posted with a url and no title, the system shall store it with a null title and return 201."
+    },
+    {
+      "id": "3",
+      "pattern": "unwanted-behaviour",
+      "priority": "P0",
+      "derived_from": "3",
+      "criterion": "If a link is posted with no url field, then the system shall return 422 and store nothing."
+    },
+    {
+      "id": "4",
+      "pattern": "unwanted-behaviour",
+      "priority": "P1",
+      "derived_from": "4",
+      "criterion": "If a link is posted with a url that does not parse as an absolute http or https URL, then the system shall return 422 and store nothing."
+    }
+  ],
+  "gaps": [],
+  "feature_edges": []
+}

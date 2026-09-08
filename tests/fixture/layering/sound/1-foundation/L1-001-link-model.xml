@@ -1,0 +1,489 @@
+<task>
+  <meta>
+    <id>L1-001</id>
+    <name>Link model</name>
+    <layer>1-foundation</layer>
+    <priority>1</priority>
+    <estimated-files>2</estimated-files>
+
+    <source-feature slug="save-link" moscow="must-have"
+                   satisfies-criteria="" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- This task satisfies NONE of save-link's acceptance criteria, and satisfies-criteria is
+         therefore empty. All four of them are HTTP-level assertions - "return 201", "return
+         422" - and an HTTP status code cannot be produced by a SQLAlchemy model. Task L2-001
+         (POST /links) satisfies save-link criteria 1, 2, 3 and 4, and it does so by writing
+         rows into the table this task declares. No criterion is claimed here, so no <criterion>
+         element is carried and no <test> below cites one; inventing a criterion id to fill the
+         attribute would put a false claim into the coverage report.
+         requirement-level is P0 because P0 is the highest priority among save-link's criteria
+         (1, 2 and 3 are P0; 4 is P1). -->
+    </acceptance-criteria>
+
+    <data-model>
+    Link(id integer pk, url text not null, title text null,
+    created_at timestamp not null)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Save a link (slug: save-link, must-have).
+
+    As someone collecting links, I want to store a URL with an optional title, so that I can
+    come back to it without keeping a browser tab open.
+
+    A POST endpoint that accepts a URL and an optional title, stores it, and returns the
+    stored record including its generated id and creation timestamp.
+
+    The URL is the only required field. If no title is supplied the field is stored as
+    null rather than being derived from the page, because fetching the page would make
+    the endpoint depend on the network.
+
+    Considerations (verbatim from the feature):
+    Duplicate URLs are allowed. Deduplication sounds obviously desirable but needs a
+    rule for what to do with the existing record's tags and timestamp, and that decision
+    is not worth making for a fixture.
+
+    CONSEQUENCE FOR THIS TASK: `url` carries NO unique constraint and NO unique index. Two
+    rows with the same url are a supported state, not a bug. Do not add uniqueness to url.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    SQLAlchemy 2.x - use the 2.0 typed declarative style: `Mapped[...]` annotations with
+      `mapped_column(...)`. Do NOT use the legacy `Column(...)` form and do NOT use
+      `declarative_base()`.
+    SQLite, file-backed (database, no external server)
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root
+    FastAPI 0.110+ and httpx are installed but are NOT used by this task - a model has no
+      HTTP surface.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW or EDIT are touched by this task):
+
+    .gitignore              (exists - L0-001)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; provides Base, engine, SessionLocal, get_db)
+      main.py               (exists - L0-003; bare FastAPI instance, no routes)
+      models/
+        __init__.py         EDIT - this task adds the Link import and __all__
+        link.py             NEW - this task
+        tag.py              (created by L1-002, which runs in PARALLEL with this task and is
+                             NOT visible in this worktree - see the isolation note below)
+        link_tag.py         (created by L1-003)
+    tests/
+      conftest.py           (exists - L0-003; provides the db_session and client fixtures)
+      test_setup.py         (exists - L0-003)
+      test_model_link.py    NEW - this task (the test file, additional to the two above)
+
+    ISOLATION NOTE. This task runs in its own git worktree, at the same time as L1-002, which
+    creates `app/models/tag.py`. That file does NOT exist here and this task must not import,
+    reference or mention `Tag` in any file it writes. Layer 1's third task (L1-003) joins the
+    two once both have merged. Writing `from app.models.tag import Tag` here fails with
+    ModuleNotFoundError.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+    Every model class in `app/models/` must subclass this and set `__tablename__`.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Not used by this task - it is the route dependency, and this task defines no route. It is
+    listed so the implementer knows the session plumbing already exists and must not be rebuilt.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/database.py, created by L0-003
+    from pathlib import Path
+    from sqlalchemy import Engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db
+    DATABASE_URL: str     # "sqlite:///&lt;absolute path to link_shelf.db&gt;"
+    engine: Engine        # created with connect_args={"check_same_thread": False}
+
+    `Base.metadata.create_all(bind=engine)` is NOT called at import time. Do not call it in
+    this task either - the test fixture creates the schema for tests, and L4-001 creates it
+    for the running application. This task must leave `link_shelf.db` non-existent.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    `expire_on_commit=False` means ORM attributes stay readable after `commit()` without a
+    refresh. The tests below rely on this: after `db_session.commit()` the instance's `id` and
+    `created_at` can be read directly.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with every
+    table in `Base.metadata` already created.
+
+    Use in a test as:
+        def test_something(db_session: Session) -&gt; None:
+            db_session.add(some_model_instance)
+            db_session.commit()
+
+    Contract this task relies on:
+    - The database is empty at the start of each test and discarded at the end.
+    - Tables are created from `Base.metadata`, which conftest.py populates by running
+      `import app.models`. A model class that is NOT imported in `app/models/__init__.py` gets
+      no table, and every test touching it fails with "no such table". This is why
+      requirement 2 below is mandatory, not cosmetic.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `TestClient` wrapping `app.main.app`, with `get_db` overridden to yield the same
+    Session as `db_session`.
+
+    NOT used by this task. There are no routes to call at this layer; every test below uses
+    `db_session` only. Requesting `client` here would test nothing this task owns.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, as it stands when this task starts
+    """SQLAlchemy models for Link Shelf."""
+
+    That single docstring line is the entire current content (written by L0-002). This task
+    replaces it with the content given in requirement 2.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequence for this task: the test file must be `tests/test_model_link.py`, it is run with
+    `python -m pytest` from the repository root, and `from app.models.link import Link`
+    resolves without the project being installed.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Declare the `Link` SQLAlchemy model - the table that stores one saved URL with an optional
+  title and the time it was stored - exactly as the save-link feature's data model specifies
+  it, and register it on `app/models/__init__.py` so `Base.metadata` knows about the table.
+
+  This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria
+  through. It satisfies none of save-link's criteria itself: those are HTTP-level (201, 422)
+  and are met by L2-001 (POST /links), which writes into this table. Correspondingly, this
+  task defines no route, no Pydantic schema and no validation - a bad URL is rejected by
+  L2-001's request schema, not by the column.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/models/link.py` with exactly this content:
+
+    """The Link model: one stored URL with an optional title."""
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+    class Link(Base):
+        """A saved link: a URL, an optional title, and when it was stored."""
+
+        __tablename__ = "links"
+
+        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        url: Mapped[str] = mapped_column(Text, nullable=False)
+        title: Mapped[str | None] = mapped_column(Text, nullable=True)
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime, nullable=False, default=utcnow
+        )
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - `__tablename__ = "links"`. Lower-case plural. L1-003 writes a foreign key targeting
+      `"links.id"` by that exact string, so renaming the table breaks a task that cannot see
+      this file.
+
+    - `url` has NO `unique=True` and NO unique index. The save-link feature states verbatim
+      that duplicate URLs are allowed and deduplication is deliberately not done. A unique
+      constraint here would make a supported state raise IntegrityError.
+
+    - `title` is `Mapped[str | None]` with `nullable=True`. An untitled link stores SQL NULL.
+      Do not substitute an empty string, and do not add a default.
+
+    - `created_at` uses `default=utcnow` - a PYTHON-side default evaluated at INSERT - and NOT
+      `server_default=func.now()`. SQLite's `CURRENT_TIMESTAMP` has one-second resolution, so
+      two links saved in the same second would carry identical timestamps and the
+      newest-first ordering that L2-002 must guarantee would be a coin flip. `utcnow` returns
+      microsecond resolution, which makes that ordering deterministic.
+
+    - `utcnow` returns a NAIVE datetime (`.replace(tzinfo=None)`) holding UTC. SQLAlchemy's
+      SQLite DATETIME type stores a string with no offset and reads back a naive datetime, so
+      writing an aware value and reading a naive one would make `written == read` false.
+      Naive-in, naive-out keeps the round trip equal. Do not use `datetime.utcnow()`: it is
+      deprecated from Python 3.12 and this file must not emit a DeprecationWarning.
+
+    - `utcnow` is passed as the function itself (`default=utcnow`), not called
+      (`default=utcnow()`). Calling it would freeze one timestamp at import time and give
+      every row the same `created_at`.
+
+    - Do NOT define a `tags` relationship, do NOT import `Tag`, and do NOT reference
+      `link_tags`. `app/models/tag.py` and `app/models/link_tag.py` do not exist in this
+      worktree. L1-003 adds the relationship to this file later.
+
+    - Do NOT call `Base.metadata.create_all` anywhere in this file.
+    </requirement>
+
+    <requirement id="2">
+    Replace the content of `app/models/__init__.py` with exactly this:
+
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+
+    __all__ = ["Link"]
+
+    This import is what registers the `links` table on `Base.metadata`. `tests/conftest.py`
+    runs `import app.models` before calling `Base.metadata.create_all`, so a model that is not
+    imported here has no table and every test touching it fails with "no such table: links".
+
+    Add ONLY the `Link` import. Do not add `Tag` or `LinkTag`: their modules do not exist in
+    this worktree, and importing them raises ModuleNotFoundError at collection time. L1-002
+    adds `Tag` to this same file from its own worktree and L1-003 adds `LinkTag`; the final
+    file names all three.
+    </requirement>
+
+    <requirement id="3">
+    Do NOT create or edit any other file. Specifically: do not touch `app/database.py`,
+    `app/main.py`, `tests/conftest.py`, `tests/test_setup.py`, `pytest.ini`, `pyproject.toml`,
+    `requirements.txt` or `.gitignore`. Do not create a Pydantic schema, a router, a route or
+    a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not run `git init` and do not touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_model_link.py` FIRST, run `python -m pytest
+    tests/test_model_link.py -v` and watch it fail with ModuleNotFoundError, then write
+    `app/models/link.py` and `app/models/__init__.py` until it passes.
+
+    No test element below carries a `covers` attribute because this task carries no acceptance
+    criterion - see the note in the acceptance-criteria element above. Each test asserts one
+    declared data model instead.
+
+    <test id="1">
+    Create test file: `tests/test_model_link.py`.
+    Header imports:
+      from datetime import datetime
+
+      import pytest
+      from sqlalchemy import select
+      from sqlalchemy.exc import IntegrityError
+      from sqlalchemy.orm import Session
+
+      from app.database import Base
+      from app.models import Link
+    Import `Link` from the package (`app.models`), not from `app.models.link`, so the test
+    also proves requirement 2's export.
+    </test>
+
+    <test id="2">
+    Test: test_link_stores_a_url_and_a_title
+    - Request the `db_session` fixture
+    - before = datetime(2000, 1, 1)  (any instant known to precede the run)
+    - link = Link(url="https://example.com/a", title="Example A")
+    - db_session.add(link); db_session.commit()
+    - Assert isinstance(link.id, int) and link.id &gt; 0
+    - Assert link.url == "https://example.com/a"
+    - Assert link.title == "Example A"
+    - Assert isinstance(link.created_at, datetime)
+    - Assert link.created_at &gt; before
+    </test>
+
+    <test id="3">
+    Test: test_link_title_may_be_omitted_and_is_stored_as_null
+    - Request the `db_session` fixture
+    - db_session.add(Link(url="https://example.com/untitled")); db_session.commit()
+    - Re-read it: stored = db_session.execute(select(Link)).scalars().one()
+    - Assert stored.title is None  (SQL NULL, not the empty string)
+    - Assert stored.url == "https://example.com/untitled"
+    - Also assert the column itself permits it:
+      assert Link.__table__.columns["title"].nullable is True
+    </test>
+
+    <test id="4">
+    Test: test_link_url_is_required
+    - Request the `db_session` fixture
+    - db_session.add(Link(url=None))
+    - with pytest.raises(IntegrityError): db_session.commit()
+    - db_session.rollback()   (required, or the session stays in a failed transaction)
+    - Assert Link.__table__.columns["url"].nullable is False
+    </test>
+
+    <test id="5">
+    Test: test_duplicate_urls_are_allowed
+    - This encodes the feature's stated decision that deduplication is deliberately not done.
+    - Request the `db_session` fixture
+    - db_session.add(Link(url="https://example.com/same", title="first"))
+    - db_session.add(Link(url="https://example.com/same", title="second"))
+    - db_session.commit()   (must NOT raise)
+    - rows = db_session.execute(
+          select(Link).where(Link.url == "https://example.com/same")
+      ).scalars().all()
+    - Assert len(rows) == 2
+    - Assert rows[0].id != rows[1].id
+    - Assert Link.__table__.columns["url"].unique is not True
+    </test>
+
+    <test id="6">
+    Test: test_created_at_is_set_automatically_and_does_not_go_backwards
+    - Request the `db_session` fixture
+    - first = Link(url="https://example.com/1"); db_session.add(first); db_session.commit()
+    - second = Link(url="https://example.com/2"); db_session.add(second); db_session.commit()
+    - Assert first.created_at is not None and second.created_at is not None
+    - Assert second.created_at &gt;= first.created_at
+    - Assert first.created_at.tzinfo is None   (naive UTC, so a round trip compares equal)
+    - Assert Link.__table__.columns["created_at"].nullable is False
+    </test>
+
+    <test id="7">
+    Test: test_links_table_is_registered_with_the_expected_shape
+    - Requires no fixture
+    - Assert Link.__tablename__ == "links"
+    - Assert "links" in Base.metadata.tables
+    - Assert set(Link.__table__.columns.keys()) == {"id", "url", "title", "created_at"}
+    - Assert [c.name for c in Link.__table__.primary_key.columns] == ["id"]
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/models/link.py</file>
+    <file>app/models/__init__.py</file>
+    <file>tests/test_model_link.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.models import Link; print(Link.__tablename__)"` - prints `links`, proving the model imports through the package export this task added</step>
+    <step>Run: `python -c "from app.models import Link; cols = Link.__table__.columns; assert set(cols.keys()) == {'id', 'url', 'title', 'created_at'}, sorted(cols.keys()); assert cols['url'].nullable is False; assert cols['title'].nullable is True; assert cols['created_at'].nullable is False; print('columns ok')"` - prints `columns ok`</step>
+    <step>Run: `python -c "from app.models import Link; assert Link.__table__.columns['url'].unique is not True, 'url must not be unique: duplicate URLs are allowed'; assert not any(ix.unique for ix in Link.__table__.indexes), 'no unique index on links'; print('duplicates allowed ok')"` - prints `duplicates allowed ok`</step>
+    <step>Run: `python -c "from app.models import Link; assert [c.name for c in Link.__table__.primary_key.columns] == ['id']; print('pk ok')"` - prints `pk ok`</step>
+    <step>Run: `python -c "import app.models; from app.database import Base; assert 'links' in Base.metadata.tables, sorted(Base.metadata.tables); print('registered ok')"` - prints `registered ok`, confirming the conftest fixture will create this table</step>
+    <step>Run: `python -W error::DeprecationWarning -c "from app.models.link import utcnow; a = utcnow(); b = utcnow(); assert a.tzinfo is None; assert b &gt;= a; assert (a.microsecond, b.microsecond) != (0, 0) or b &gt; a; print('utcnow ok')"` - prints `utcnow ok`; the `-W error` turns any deprecated datetime call into a failure</step>
+    <step>Run: `python -m pytest tests/test_model_link.py -v` - exit code 0, all 6 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; the 5 tests from L0-003's tests/test_setup.py still pass alongside this task's 6, proving the new table did not break the fixture isolation check</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py
+    from datetime import datetime
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        ...
+
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # integer primary key, autoincrement
+        url: Mapped[str]                # Text, NOT NULL, NOT unique
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # DateTime, NOT NULL, default=utcnow (naive UTC)
+
+    Import as: `from app.models import Link`  (also available as
+    `from app.models.link import Link`, and `from app.models.link import utcnow`)
+
+    Downstream contract:
+    - Table name is `links`; the primary key column is `links.id`. L1-003's foreign key
+      targets `"links.id"` by that string.
+    - `url` is deliberately NOT unique. Saving the same URL twice creates two rows with
+      different ids. Any endpoint that assumes one row per URL is wrong.
+    - `title` is NULL when omitted. L2-002 must report it as JSON `null`, never drop the key.
+    - `created_at` is assigned by Python at INSERT with microsecond resolution and is a NAIVE
+      datetime holding UTC. Ordering newest-first is
+      `select(Link).order_by(Link.created_at.desc())`; two links inserted back to back get
+      distinct timestamps, so that ordering is stable.
+    - No relationship attribute exists yet. L1-003 adds `Link.tags`.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py after this task
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+
+    __all__ = ["Link"]
+
+    Downstream contract: `import app.models` registers the `links` table on `Base.metadata`,
+    which is what makes `Base.metadata.create_all` in `tests/conftest.py` create it. L1-002
+    adds `Tag` and L1-003 adds `LinkTag` to this same file; a later task must ADD to the
+    import list, never replace it.
+    </interface>
+  </exports>
+</task>

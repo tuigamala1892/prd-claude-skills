@@ -1,0 +1,56 @@
+{
+  "present": true,
+  "path": "C:\\Users\\Lee\\AppData\\Local\\Temp\\oq7-poor-neutral\\poor\\app\\architecture.md",
+  "version": "1.0",
+  "layer_blocks": [
+    {
+      "applies_to": null,
+      "layers": [
+        {
+          "id": "0",
+          "name": "setup",
+          "depends_on": []
+        },
+        {
+          "id": "1",
+          "name": "integration",
+          "depends_on": [
+            "0"
+          ]
+        },
+        {
+          "id": "2",
+          "name": "frontend",
+          "depends_on": [
+            "1"
+          ]
+        },
+        {
+          "id": "3",
+          "name": "backend",
+          "depends_on": [
+            "2"
+          ]
+        },
+        {
+          "id": "4",
+          "name": "foundation",
+          "depends_on": [
+            "3"
+          ]
+        }
+      ]
+    }
+  ],
+  "banned": [],
+  "testing": null,
+  "task_limits": null,
+  "scaffold": null,
+  "repo_structure": null,
+  "principles": [],
+  "registries": [],
+  "design_track": {
+    "enabled": false,
+    "adr_dir": null
+  }
+}

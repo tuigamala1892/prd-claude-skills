@@ -1,0 +1,347 @@
+<task>
+  <meta>
+    <id>L0-004</id>
+    <name>Install dependencies and verify the environment</name>
+    <layer>0-setup</layer>
+    <priority>4</priority>
+    <estimated-files>0</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug link-shelf). Project type: greenfield.
+    Project path: C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app
+
+    This is the last task of layer 0 and the gate for everything after it. Every
+    task in layers 3 and 4 depends on it, directly or transitively: they all import
+    fastapi or sqlalchemy, and every one of them runs pytest.
+
+    What this task proves, and why each part matters:
+    - The four declared dependencies resolve together. fastapi, sqlalchemy, pytest
+      and httpx have never been resolved as a set before this point, and a version
+      conflict found here is far cheaper than the same conflict found inside L3-002.
+    - The `app` distribution installs. pyproject.toml names the four installed
+      packages explicitly, and setuptools rejects a listed package whose directory
+      does not exist -- so this is the first point in the build where the manifest
+      and the tree on disk are checked against each other. L0-003 could not perform
+      that check, because L0-002's subpackages had not merged yet.
+    - httpx imports. It is the dependency no feature declared, added because
+      starlette's TestClient needs it. If it is missing, every endpoint test from
+      L3-002 onward fails at import rather than on an assertion.
+    - pytest runs. Exit code 5 means "no tests collected", which is the CORRECT
+      result here: layer 0 creates no test modules, and the first real test arrives
+      with L3-002. Treating 5 as a failure would block the layer for doing exactly
+      what it was asked to do.
+
+    No external service is needed. SQLite is file-backed and ships with CPython, so
+    there is no database server to start, no container to run, and no port to wait
+    on. Do not add one.
+
+    Platform: this project's recorded platform is Windows (win32), so the Windows
+    interpreter path is given first below. The POSIX path is given alongside it so
+    the commands are runnable either way.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x, SQLite (file-backed, no server
+    process), pytest 8.x, httpx.
+    </tech-stack>
+
+    <project-structure>
+    Before this task (all committed by L0-001, L0-002 and L0-003):
+      .gitignore
+      architecture.md
+      pyproject.toml
+      app/
+        __init__.py
+        api/__init__.py
+        models/__init__.py
+        schemas/__init__.py
+      tests/
+        __init__.py
+
+    After this task, additionally (and NOT committed -- .venv/ is gitignored):
+      .venv/            the virtual environment created by this task
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="pyproject" type="build-configuration">
+    Created by L0-003. pyproject.toml at the repository root.
+
+    Distribution name: link-shelf, version 0.1.0
+    Build backend:     setuptools.build_meta (setuptools>=68)
+    Python floor:      >=3.11
+<![CDATA[
+dependencies = [
+    "fastapi>=0.110",
+    "sqlalchemy>=2.0,<3",
+    "pytest>=8,<9",
+    "httpx",
+]
+
+[tool.setuptools]
+packages = ["app", "app.api", "app.models", "app.schemas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+]]>
+    </interface>
+
+    <interface name="app_packages" type="python-package">
+    Created by L0-001 and L0-002. All four packages named in the setuptools list
+    exist on disk with a docstring-only __init__.py:
+        app, app.api, app.models, app.schemas
+    Their presence is what lets `pip install -e .` succeed here, where it could not
+    have succeeded inside L0-003.
+    </interface>
+
+    <interface name="gitignore" type="filesystem">
+    Created by L0-001. Already ignores `.venv/`, `.pytest_cache/`, `__pycache__/`,
+    `*.egg-info/`, `*.db` and `*.db-journal`, so nothing this task produces on disk
+    needs to be committed or cleaned up by hand.
+    </interface>
+
+    <interface name="python_interpreter" type="executable">
+    Python 3.11 available on PATH as `python`, with the standard-library `venv`
+    module. No other tooling (poetry, pipenv, conda, uv) is assumed or permitted --
+    pyproject.toml declares a setuptools build backend and pip is the installer.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create a virtual environment at .venv, install the project and its four declared
+  dependencies into it in editable mode, and prove the environment works: fastapi,
+  sqlalchemy and httpx all import, the `app` package imports from the installed
+  distribution, and pytest runs to completion.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create a virtual environment in the directory `.venv` at the repository root:
+
+        python -m venv .venv
+
+    Use the standard library `venv` module. Do not use virtualenv, poetry, pipenv,
+    conda or uv.
+    </requirement>
+
+    <requirement id="2">
+    Use the environment's own interpreter for every subsequent command in this task.
+    Do NOT rely on shell activation (`activate` / `Activate.ps1`); activation does
+    not survive between separately-invoked commands, and a command that silently
+    falls back to the system interpreter would install the dependencies in the wrong
+    place while still appearing to succeed.
+
+    The interpreter path is:
+        Windows:        .venv\Scripts\python.exe
+        Linux / macOS:  .venv/bin/python
+
+    In the commands below this path is written the Windows way, matching this
+    project's recorded platform.
+    </requirement>
+
+    <requirement id="3">
+    Upgrade pip inside the environment before installing:
+
+        .venv\Scripts\python.exe -m pip install --upgrade pip
+
+    Editable installs of a project that has only a pyproject.toml (no setup.py) use
+    PEP 660, which needs pip 21.3 or newer. Upgrading first removes the one failure
+    mode that produces a confusing error about a missing setup.py.
+    </requirement>
+
+    <requirement id="4">
+    Install the project in editable mode, which pulls in all four declared
+    dependencies:
+
+        .venv\Scripts\python.exe -m pip install -e .
+
+    Editable, not a plain install: later layers edit app/ constantly, and a
+    non-editable install would leave every task testing a stale copy.
+    </requirement>
+
+    <requirement id="5">
+    Confirm the three third-party runtime imports succeed together, and report the
+    resolved versions so a later resolver surprise can be diagnosed:
+
+        .venv\Scripts\python.exe -c "import fastapi, sqlalchemy, httpx; print(fastapi.__version__, sqlalchemy.__version__, httpx.__version__)"
+
+    The command must exit 0. httpx is included deliberately -- it is the dependency
+    no feature declared, and this is the only place before L3-002 where its absence
+    would be caught.
+    </requirement>
+
+    <requirement id="6">
+    Confirm pytest runs and treat exit code 5 as success:
+
+        .venv\Scripts\python.exe -m pytest -q
+
+    Accept exit code 0 (tests passed) or 5 (no tests collected). Exit code 5 is the
+    expected result at this point, because layer 0 creates no test modules. Any
+    other exit code -- in particular 4 (usage error, which is what a broken
+    [tool.pytest.ini_options] produces) -- is a failure of this task.
+    </requirement>
+
+    <requirement id="7">
+    Do NOT create, edit or delete any tracked file. This task installs software; it
+    does not author code.
+
+    Specifically: do not add a test module to make pytest exit 0 instead of 5, do
+    not amend pyproject.toml if a dependency fails to resolve, and do not add
+    requirements.txt. If the four declared dependencies genuinely cannot resolve
+    together, that is a finding to report, not a manifest to rewrite -- the manifest
+    is L0-003's output and reflects the PRD's declared stack.
+
+    Do not run any git command.
+    </requirement>
+
+    <requirement id="8">
+    Do NOT start a database server, container, or any background process. SQLite is
+    file-backed and ships with CPython. There is nothing to start and nothing to
+    wait for.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Verify the virtual environment exists and its interpreter is present:
+    `python -c "import pathlib,sys; p=pathlib.Path('.venv/Scripts/python.exe'); q=pathlib.Path('.venv/bin/python'); print('interpreter:', p if p.exists() else q); sys.exit(0 if p.exists() or q.exists() else 1)"`
+    Expected: exit code 0, stdout naming the interpreter path.
+    </test>
+
+    <test id="2">
+    Verify the environment's interpreter is Python 3.11 or newer:
+    `.venv\Scripts\python.exe -c "import sys; print(sys.version); sys.exit(0 if sys.version_info >= (3, 11) else 1)"`
+    Expected: exit code 0, stdout showing a 3.11 or newer version string.
+    </test>
+
+    <test id="3">
+    Verify the command really ran inside the environment and not against the system
+    interpreter:
+    `.venv\Scripts\python.exe -c "import sys,pathlib; print(sys.prefix); sys.exit(0 if pathlib.Path(sys.prefix).name == '.venv' else 1)"`
+    Expected: exit code 0, stdout ending in `.venv`.
+    </test>
+
+    <test id="4">
+    Verify the three third-party dependencies import and report their versions:
+    `.venv\Scripts\python.exe -c "import fastapi, sqlalchemy, httpx; print(fastapi.__version__, sqlalchemy.__version__, httpx.__version__)"`
+    Expected: exit code 0. fastapi version 0.110 or greater, sqlalchemy version
+    starting `2.`.
+    </test>
+
+    <test id="5">
+    Verify the declared version floors were actually honoured by the resolver, not
+    merely requested:
+    `.venv\Scripts\python.exe -c "import sys,fastapi,sqlalchemy; f=tuple(int(x) for x in fastapi.__version__.split('.')[:2]); print(fastapi.__version__, sqlalchemy.__version__); sys.exit(0 if f >= (0,110) and sqlalchemy.__version__.startswith('2.') else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="6">
+    Verify the project itself installed, and that all four packages named in the
+    setuptools list import from the environment:
+    `.venv\Scripts\python.exe -c "import app, app.api, app.models, app.schemas; print('app distribution importable')"`
+    Expected: exit code 0, stdout contains `app distribution importable`.
+    </test>
+
+    <test id="7">
+    Verify the install is editable, so later layers' edits to app/ take effect
+    without reinstalling:
+    `.venv\Scripts\python.exe -c "import sys,pathlib,app; here=pathlib.Path('app').resolve(); there=pathlib.Path(app.__file__).parent.resolve(); print(there); sys.exit(0 if here == there else 1)"`
+    Expected: exit code 0, and the printed path is the repository's own app/
+    directory rather than one inside .venv/Lib/site-packages.
+    </test>
+
+    <test id="8">
+    Verify pytest runs to completion, accepting 0 or 5:
+    `.venv\Scripts\python.exe -c "import subprocess,sys; r=subprocess.run([sys.executable,'-m','pytest','-q']); print('pytest exit', r.returncode); sys.exit(0 if r.returncode in (0,5) else 1)"`
+    Expected: exit code 0, stdout containing `pytest exit 5` at this point in the
+    build (no test modules exist yet). `pytest exit 0` would also pass.
+    </test>
+
+    <test id="9">
+    Verify no tracked file was created or modified by this task -- in particular
+    that no test module was added to force a green pytest run and no requirements
+    file appeared:
+    `python -c "import pathlib,sys; bad=[p.name for p in pathlib.Path('tests').iterdir() if p.name not in ('__init__.py','__pycache__')] + [n for n in ('requirements.txt','requirements-dev.txt','setup.py') if pathlib.Path(n).exists()]; print('unexpected:', bad); sys.exit(0 if not bad else 1)"`
+    Expected: exit code 0, stdout shows `unexpected: []`.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <!-- None. This task installs software into .venv/, which .gitignore excludes.
+         It creates no tracked file. -->
+  </files-to-create>
+
+  <verification>
+    <step>Run: `.venv\Scripts\python.exe -c "import sys,pathlib; sys.exit(0 if pathlib.Path(sys.prefix).name == '.venv' and sys.version_info >= (3,11) else 1)"` - must exit 0, confirming a Python 3.11+ environment at .venv (POSIX equivalent interpreter: `.venv/bin/python`)</step>
+    <step>Run: `.venv\Scripts\python.exe -c "import fastapi, sqlalchemy, httpx; print(fastapi.__version__, sqlalchemy.__version__, httpx.__version__)"` - must exit 0 and print three version strings</step>
+    <step>Run: `.venv\Scripts\python.exe -c "import sys,fastapi,sqlalchemy; f=tuple(int(x) for x in fastapi.__version__.split('.')[:2]); sys.exit(0 if f >= (0,110) and sqlalchemy.__version__.startswith('2.') else 1)"` - must exit 0, confirming the declared floors were honoured</step>
+    <step>Run: `.venv\Scripts\python.exe -c "import app, app.api, app.models, app.schemas; print('app distribution importable')"` - must exit 0 and print `app distribution importable`</step>
+    <step>Run: `.venv\Scripts\python.exe -c "import sys,pathlib,app; sys.exit(0 if pathlib.Path('app').resolve() == pathlib.Path(app.__file__).parent.resolve() else 1)"` - must exit 0, confirming the install is editable and resolves to the repository's own app/</step>
+    <step>Run: `.venv\Scripts\python.exe -c "import subprocess,sys; r=subprocess.run([sys.executable,'-m','pytest','-q']); print('pytest exit', r.returncode); sys.exit(0 if r.returncode in (0,5) else 1)"` - must exit 0; `pytest exit 5` (no tests collected) is the expected and correct result for layer 0</step>
+    <step>Run: `python -c "import pathlib,sys; bad=[p.name for p in pathlib.Path('tests').iterdir() if p.name not in ('__init__.py','__pycache__')]; sys.exit(0 if not bad else 1)"` - must exit 0, confirming no test module was added to force a green pytest run</step>
+  </verification>
+
+  <exports>
+    <interface name="virtual_environment" type="path">
+    .venv at the repository root.
+
+    Interpreter:
+        Windows:        .venv\Scripts\python.exe
+        Linux / macOS:  .venv/bin/python
+
+    How every later task should invoke it -- by explicit path, never via shell
+    activation, because activation does not survive between separately-invoked
+    commands:
+        .venv\Scripts\python.exe -m pytest tests/test_save_link.py -v
+        .venv\Scripts\python.exe -c "import app.main"
+
+    NOTE FOR LAYERS 3 AND 4: `.venv/` is listed in .gitignore, so this directory is
+    NOT committed and therefore does NOT travel with the merge into a later task's
+    worktree. What layer 0 hands forward is the proven-resolvable manifest, not the
+    populated directory. A later task that finds no .venv present re-creates it with
+    the same three commands this task ran -- `python -m venv .venv`,
+    `.venv\Scripts\python.exe -m pip install --upgrade pip`,
+    `.venv\Scripts\python.exe -m pip install -e .` -- and is guaranteed by this task
+    that they succeed.
+    </interface>
+
+    <interface name="installed_dependencies" type="python-environment">
+    Installed into .venv by `pip install -e .`, resolved together and verified to
+    import:
+<![CDATA[
+    fastapi     >=0.110    HTTP API framework; provides TestClient via starlette
+    sqlalchemy  >=2.0,<3   ORM and schema definition (2.x declarative style)
+    pytest      >=8,<9     test runner
+    httpx       (unpinned) required at runtime by starlette's TestClient
+
+    link-shelf  0.1.0      this project, editable, exposing packages
+                           app, app.api, app.models, app.schemas
+]]>
+    Not installed, and not to be added by any later task:
+    - alembic or any other migration tool -- L4-001 creates the schema with
+      Base.metadata.create_all
+    - any database server, driver or container runtime -- SQLite is file-backed
+      and ships with CPython
+    </interface>
+
+    <interface name="test_runner" type="command">
+    pytest, configured by [tool.pytest.ini_options] in pyproject.toml with
+    testpaths = ["tests"].
+
+    Invocation:
+        .venv\Scripts\python.exe -m pytest -q            collects from tests/ only
+        .venv\Scripts\python.exe -m pytest tests/test_save_link.py -v
+
+    Exit codes a later task's verification should expect:
+        0   tests ran and passed
+        1   tests ran and at least one failed
+        5   no tests collected -- correct for layer 0, a FAILURE for any layer 3
+            or layer 4 task, every one of which writes at least one test
+
+    State at the end of layer 0: the suite is empty and `pytest -q` exits 5. The
+    first test module is tests/test_app_smoke.py, written by L3-002.
+    </interface>
+  </exports>
+</task>

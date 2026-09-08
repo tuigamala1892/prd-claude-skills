@@ -1,0 +1,42 @@
+{
+  "layer": "4-integration",
+  "reviewed_at": "2026-09-08T00:00:00Z",
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0
+  },
+  "results": [
+    {
+      "task_id": "L4-001",
+      "task_file": "L4-001-mount-routers-integration.xml",
+      "pass": true,
+      "critical_issues": [],
+      "warnings": []
+    }
+  ],
+  "verdict": "PASSED",
+  "action_required": null,
+  "notes": {
+    "layer_4_specific_checks": {
+      "source_features": "All 3 source features present (save-link must-have P0, list-links must-have P0, tag-links should-have P0) with empty satisfies-criteria as required for Layer 4 integration task",
+      "criterion_elements": "Correctly has 0 criterion elements; all twelve criteria across the three features are owned and tested by Layer 2 (L2-001, L2-002, L2-003)",
+      "file_scope": "1 file to edit (app/main.py), 1 test file to create (tests/test_integration.py); within 3-file limit",
+      "main_py_editing": "Requirement 1 clearly specifies EDITING app/main.py with its exact current content reproduced; preserves existing docstring and constructor arguments byte-for-byte while adding lifespan handler and router mounts",
+      "router_imports": "All three router imports correctly specified with exact module paths and aliases: save_link_router, list_links_router, tag_links_router",
+      "prefix_prohibition": "Explicitly forbids prefix= argument to include_router; states endpoints are UNPREFIXED (/links and /links/{link_id}/tags)",
+      "test_fixture_usage": "Test requirements explicitly forbid building a local FastAPI application and require using the client fixture; prevents testing routers in isolation rather than composition",
+      "orphan_tag_gap": "tag-links gap 1 (decision on orphan tag cleanup) explicitly left undecided; requirement 2 forbids any delete/cascade/ondelete operations",
+      "verification_steps": "11 concrete verification steps; all have Run commands and expected outputs; check route mounting, schema creation, test suite composition, and database file handling"
+    },
+    "critical_criteria_met": [
+      "Completeness: All required XML sections present with no empty sections",
+      "Self-Containment: All context inline; interface contracts include imports and type annotations; tech stack versions specified",
+      "Interface Contracts: All 15 interfaces have name and type attributes; complete specifications provided",
+      "Requirements Specificity: 2 requirements with unique ids; exact file paths (app/main.py, tests/test_integration.py); exact class/function names; exact router names; concrete test values and URLs",
+      "Test Requirements: 4 tests with unique ids; concrete setup (client fixture requests); specific assertions (status codes, JSON paths, ordered lists); no ambiguous language",
+      "Verification Steps: All 11 steps are runnable Python commands; each specifies expected outcome (route presence, schema creation, test pass/fail)",
+      "File Scope: 1 non-test file to edit, 1 test file to create; within 3-file default limit"
+    ]
+  }
+}
