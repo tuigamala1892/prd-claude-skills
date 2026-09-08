@@ -221,6 +221,8 @@ the element was left where a naive reader finds it.
     <slug>{{feature-slug}}</slug>
     <!-- priority is NOT here. It lives on the index entry -- core §4 -->
     <definition>tbd|in-progress|defined|excluded|superseded</definition>
+    <!-- required by the BAR on a `defined` feature, optional in the schema. Core §7 -->
+    <review by="{{who read it}}" at="{{YYYY-MM-DD}}" sha="{{first 12 hex}}"/>
     <!-- optional; a judgement, never derived. See below -->
     <architecturally-significant
         because="quality-attribute|risk|first-of-a-kind|cross-cutting|external-dependency|constraint"
@@ -284,6 +286,13 @@ much of it is built. `excluded` and `superseded` are how a feature that is *not 
 stays in the PRD as a record instead of vanishing from it, and each is paired with the element
 that says why: no `<rationale>` on an `excluded` feature, and no successor on a `superseded` one,
 means the file records a decision nobody can reconstruct.
+
+**`<review>` is core §7**, and it is the half of the `defined` gate a script cannot supply.
+Optional in the schema and **required by the bar**: a `tbd` or `in-progress` feature has nothing to
+review yet, so an element required everywhere would put a false record on every unfinished file.
+`sha` is what separates *reviewed* from *reviewed, then edited*, which is why nothing writes the
+element by hand — `check-definition.py --record-review --by NAME` computes the hash and writes it,
+and `commands/prd.md` Phase 7 is where `/prd` runs it.
 
 **`<gaps>` is core §6**, and it goes between `</acceptance-criteria>` and `<notes>` — stated,
 because a migration needs somewhere definite to put it.

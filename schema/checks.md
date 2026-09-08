@@ -14,7 +14,7 @@ its column names and reports their combined output. Each is independently runnab
 testable, and owns its assertion — so *"which script says a slug has no file"* has one answer.
 
 ```xml
-<checks schema="schema-5"/>
+<checks schema="schema-6"/>
 ```
 
 ---
@@ -25,11 +25,15 @@ testable, and owns its assertion — so *"which script says a slug has no file"*
 |---|---|
 | **Assertion** | What must be true, not which element spells it |
 | **Owner** | The one script that decides it. `—` where nothing decides it yet |
-| **Invoked by** | Every document that runs it. A script nobody calls is not an assertion, it is a file |
+| **Invoked by** | Every file that runs it -- a skill, a command, a reference, or another script. A script nobody calls is not an assertion, it is a file |
 | **Item** | Where the assertion was specified |
 
-**Every owner and every caller is checked by running it**: the script must exist, and each caller
-named must cite it by name. That is what stops this table describing a toolchain that has moved on.
+**Every owner and every caller is checked by running it**, and **in both directions since item
+69**: the script must exist, each caller named must cite it by name, and — the half that was
+missing — every file that *runs* an owner must appear in its column. The forward direction alone
+could not see a script wired into a new caller, which is how `check-references.py` reached a CRD
+for a whole phase with this table saying otherwise. A caller is a line that runs it, not a line
+that mentions it; half the repository names these scripts in a docstring.
 
 **A row with no owner is kept, not deleted.** An assertion this plan has specified and not yet
 built is a fact about the project; the defect this file exists to prevent is one nobody wrote
@@ -58,17 +62,19 @@ somebody remembers it.
 | `<rules>` parses; `<layers>` acyclic and reachable | `check-architecture.py` | `skills/breakdown/SKILL.md` · `commands/prd.md` | 28, 31 |
 | `<banned>` and `<task-limits>` are enforced against real files | `check-rules.py` | `skills/breakdown-review-tasks/SKILL.md` · `skills/execute-verify/SKILL.md` | 56 |
 | The manifest matches the files on disk, and the review summary is current | `build-manifest.py` | `skills/breakdown/SKILL.md` | 60, 32 |
-| Every in-scope feature and criterion has a task, named where it does not | `check-coverage.py` | `skills/breakdown/SKILL.md` | 30 |
-| `ADR-NNN` / `OQ-NNN` / principle citations resolve; significance read in both directions | `check-references.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` · `schema/decision-record.md` | 39, 35 |
+| Every in-scope feature and criterion has a task, named where it does not | `check-coverage.py` | `skills/breakdown/SKILL.md` · `skills/breakdown/scripts/check-gate.py` | 30 |
+| `ADR-NNN` / `OQ-NNN` / principle citations resolve; significance read in both directions | `check-references.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` · `schema/decision-record.md` · `skills/crd/references/crd-format.md` · `skills/breakdown/scripts/check-gate.py` | 39, 35 |
 | Coverage, significance and blocking gaps, before `/execute` may run | `check-gate.py` | `skills/breakdown/SKILL.md` | 38 |
 | This toolchain can read this manifest, or refuses to guess | `check-compatibility.py` | `skills/execute/SKILL.md` | 24 |
 | Declared `<definition>` ≤ the ceiling its content supports; `<gaps>` well-formed, and aged | `check-status.py` | `commands/prd.md` | 3 |
 | Index ↔ `features/` reconcile; no reference to a slug that has no file | `check-rename.py` | `commands/prd.md` | 6, 42 |
-| The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/prd.md` | 40, 34 |
+| The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/prd.md` · `schema/migration.md` | 40, 34 |
 | A rename finishes across every reference, or rolls back | `rename-feature.py` | `commands/prd.md` | 42 |
 | An artefact moves exactly one schema version forward, or escalates | `migrate.py` | `skills/migrate/SKILL.md` · `agents/schema-migrator.md` · `schema/migration.md` | 41 |
-| `what-next.md` is derived from the PRD, never hand-maintained, and stamped once | `build-what-next.py` | `schema/prd-format.md` | 11, 12, 24 |
+| `what-next.md` is derived from the PRD, never hand-maintained, and stamped once | `build-what-next.py` | `schema/prd-format.md` · `commands/prd.md` | 11, 12, 24 |
 | Every artefact is the shape its schema version describes | `check-artefacts.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` | 22 |
+| A task file is the one this run was dispatched with, or the run stops | `task-integrity.py` | `skills/execute/SKILL.md` · `skills/execute-layer/SKILL.md` | 63, 67 |
+| Which layers this run executes, derived from the plan rather than recited | `resolve-layers.py` | `skills/execute/SKILL.md` | 66 |
 | Every element the schema defines has a reader, or a recorded reason it has none | `check-readers.py` | `tests/test_toolchain.py` | 23 |
 
 ---
