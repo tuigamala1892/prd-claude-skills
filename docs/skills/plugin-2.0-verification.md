@@ -46,8 +46,9 @@ say what to do — no longer holds.
   mentions it zero times. A live reader with no producer — P46's shape, on the other path.
   **P54, item 76.**
 
-**Neither item is built.** Both are specified in plan §Q, which is the state `checks.md` describes
-for an assertion somebody has specified and not yet built.
+**Item 75 landed 2026-09-08** (`c689a19`), closing the data-model row: one element, two producers, and the CRD's `kind="schema"` contracts now reach the task that touches them. Wiring it found a second defect — `/breakdown` Phase 3 named `<affected-schemas>` and `<affected-apis>`, the spellings item 57 retired.
+
+**Item 76 is not built**, and is specified in plan §Q — the state `checks.md` describes for an assertion somebody has specified and not yet built. **One `open` parity row remains**, and it is that one.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
 P1–P45, nine phases, all recorded as landed in
