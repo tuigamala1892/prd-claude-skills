@@ -121,6 +121,10 @@ DRIVES_FIELD = re.compile(r"^\s*\*\*Drives:\*\*\s*(.+?)\s*$", re.M)
 # Item 35. `criteria=` is optional and not read here -- which criteria carry the
 # significance is for a person reading the record, not for this check.
 SIGNIFICANT = re.compile(r"<architecturally-significant\b([^>]*)>")
+# Core section 8's enum. Named here because this is the script that decides it: a `because`
+# outside the set claims a design step is warranted in a kind nothing downstream can act on.
+SIGNIFICANCE_KINDS = {"quality-attribute", "risk", "first-of-a-kind", "cross-cutting",
+                      "external-dependency", "constraint"}
 SLUG_EL = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
 
 # The published ASR heuristics, reduced to the two that leave a mark in the file. Matched
@@ -334,6 +338,28 @@ def check_crd(crd_path, project_path):
     if not refs:
         warnings.append(f"{rel}: <related-features> names no feature. `which features does this "
                         f"change touch` is then answered by prose")
+
+    # Item 76: significance, on this path too. The screen further down iterates a PRD *directory*
+    # and `main()`'s CRD branch returns before reaching it, so a CRD's flag was read by nothing.
+    # The element and its reader had to arrive together -- adding the element alone would have
+    # been a producer with no consumer, which is the defect item 76 was written to fix, inverted.
+    #
+    # Same two assertions as the PRD path, plus the enum: a `because` nobody can name is not a
+    # significance, one outside core section 8's set names a kind nothing acts on, and a flag no
+    # decision record drives is a WARNING rather than a refusal -- the flag is a judgement and
+    # its absence proves nothing.
+    for attrs in SIGNIFICANT.findall(text):
+        counted += 1
+        because = re.search(r'because="([^"]*)"', attrs)
+        if not because or not because.group(1).strip():
+            errors.append(f"{rel}: <architecturally-significant> names no `because`, so it says "
+                          f"a design step is warranted without saying which kind")
+        elif because.group(1) not in SIGNIFICANCE_KINDS:
+            errors.append(f"{rel}: <architecturally-significant because=\"{because.group(1)}\"> "
+                          f"is not one of {'|'.join(sorted(SIGNIFICANCE_KINDS))} (core section 8)")
+        else:
+            warnings.append(f"{rel}: is architecturally significant ({because.group(1)}). A "
+                            f"change of this shape is what a design step is for")
     return errors, warnings, counted
 
 

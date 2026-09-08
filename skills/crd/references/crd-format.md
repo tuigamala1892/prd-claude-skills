@@ -37,6 +37,8 @@ copies of the criterion shape before the core existed, and they had already drif
   <created>2026-01-12</created>
   <workflow>ready</workflow>
   <priority>should-have</priority>
+  <!-- optional; a judgement, never derived. Core §8 -->
+  <architecturally-significant because="cross-cutting" criteria="2,3"/>
 </meta>
 ```
 
@@ -48,6 +50,23 @@ copies of the criterion shape before the core existed, and they had already drif
 | `created` | Yes | YYYY-MM-DD | Creation date |
 | `workflow` | Yes | see [core §3](../../../schema/core.md#3-status) | Where this change is in the process |
 | `priority` | Yes | Core [§4](../../../schema/core.md#4-priority) — MoSCoW | Whether this change request is in scope at all |
+| `architecturally-significant` | No | Core [§8](../../../schema/core.md#8-architecturally-significant--a-judgement-declared) | Whether this change warrants a design step |
+
+### `<architecturally-significant>` — core §8, and it arrived last (item 76)
+
+**Defined in [core §8](../../../schema/core.md#8-architecturally-significant--a-judgement-declared),
+identically to the PRD's.** Optional, `because` from the six-value enum, `criteria` naming the
+criterion ids that carry it.
+
+**A refactor CRD is the document item 35 was written for.** *"Replace the session store"* is
+architecturally significant in a way that *"add a column"* is not, and until item 76 a change
+request had no way to say which it was — while `check-references.py` was already reading the
+element and `check-gate.py` was already running that script for a CRD. A live reader with no
+producer, which is P46's shape on the path item 68 did not reach.
+
+**It needed no schema version**, and that was measured: the element is optional and
+`check-artefacts.py` closes a child set only for `<notes>`, so a CRD carrying it validates against
+schema-6 unchanged. Core §8 records the reasoning.
 
 **`<priority>` is the whole document's, and it is the only MoSCoW in the file.** Change requests
 compete for attention the way features compete for a release, and `--list` is the survey that

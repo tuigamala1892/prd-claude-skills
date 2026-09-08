@@ -9482,6 +9482,78 @@ def _():
                 f"and a document pointing a reader at a section the producer stopped writing is "
                 f"the same defect as a stale caller list")
 
+@check("a CRD can declare architectural significance, and something reads it -- by running it",
+       finding="P54")
+def _():
+    """Item 76. The element and its reader had to arrive together, which is not what P54 said.
+
+    P54 was first written as *a live reader with no producer* -- `check-references.py` reads
+    `<architecturally-significant>` and `check-gate.py` runs it for a CRD, so the consumer was
+    said to be scanning for something the CRD schema never defined. **It was not scanning.**
+    `main()` takes the CRD branch and returns before the significance screen, which iterates a PRD
+    *directory*. The element had neither producer nor reader on this path, and adding the format
+    half alone would have shipped exactly the defect the item exists to remove.
+
+    So both halves are asserted, and the reader is asserted BY RUNNING IT rather than by finding
+    the identifier in the source: the screen exists in that file either way, and what was wrong
+    was which branch reaches it.
+    """
+    import shutil
+    import tempfile
+
+    crd_fmt = open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
+                   encoding="utf-8").read()
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+
+    # The producer: the CRD format defines it, and defines it by citing the core (item 44).
+    assert "architecturally-significant" in crd_fmt, (
+        "crd-format.md does not define <architecturally-significant>. A refactor CRD is the "
+        "document item 35 was written for")
+    assert re.search(r"core\s*§?\s*8|#8-architecturally-significant", crd_fmt, re.I), (
+        "crd-format.md defines the element without citing the core. Two definitions of one "
+        "element is what item 44 exists to prevent -- it is how three <criterion> definitions "
+        "came to disagree")
+    assert re.search(r"^## 8\.", core, re.M), "core.md has no section 8 to cite"
+
+    # The reader, by running it on a CRD that carries the flag.
+    root = tempfile.mkdtemp(prefix="item76-")
+    try:
+        crd = os.path.join(root, "change.md")
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>swap-session-store</slug>\n"
+            "    <architecturally-significant because=\"cross-cutting\" criteria=\"1\"/>\n"
+            "  </meta>\n</crd>\n")
+        script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+
+        def run(path):
+            return subprocess.run([sys.executable, script, path], capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace")
+
+        p = run(crd)
+        assert "architecturally significant" in p.stdout.lower(), (
+            f"check-references.py read a CRD carrying the flag and said nothing about it. The "
+            f"significance screen iterates a PRD directory and the CRD branch returns before "
+            f"reaching it, so the element would have had no reader on this path:\n{p.stdout[:400]}")
+
+        # An unusable `because` must refuse, or the flag says a design step is warranted in a
+        # kind nothing downstream can act on.
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>swap-session-store</slug>\n"
+            "    <architecturally-significant because=\"vibes\"/>\n  </meta>\n</crd>\n")
+        p = run(crd)
+        assert p.returncode == 1 and "not one of" in p.stderr, (
+            f"a `because` outside core section 8's enum was accepted:\n{p.stderr[:300]}")
+
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>swap-session-store</slug>\n"
+            "    <architecturally-significant/>\n  </meta>\n</crd>\n")
+        p = run(crd)
+        assert p.returncode == 1 and "names no `because`" in p.stderr, (
+            f"a flag with no `because` was accepted, so it claims a design step is warranted "
+            f"without saying which kind:\n{p.stderr[:300]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
 # ------------------------------------------------------------------------ runner
 
 def main():

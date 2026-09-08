@@ -362,18 +362,15 @@ machine-readable form; inbound ones are found by grepping this feature's slug ac
 Relationship *prose* stays in the notes. A second structured list of the same relationships would
 be two producers for one idea.
 
-### `<architecturally-significant>` — a judgement, declared
+### `<architecturally-significant>` — core §8
 
-**Not all non-functional requirements are architecturally significant, and some functional ones
-are.** That is the whole reason this is a declared flag rather than a query: it cannot be derived
-from a `<non-functional>` section or from any structural property of the file.
+**Defined in [core §8](core.md#8-architecturally-significant--a-judgement-declared), and identical
+to the CRD's since item 76.** The `because` enum, the optional `criteria` list, and the argument
+for why it is declared rather than derived all live there. Nothing about it is PRD-specific, which
+is exactly why it is not defined here.
 
-`because` states which kind of significance, and `criteria` optionally names the criteria that
-carry it. It sits in `<meta>` because significance is a property of the requirement's *nature*,
-not of its place in the plan.
-
-**It exists to make a design step affordable.** Without it, a design pass runs across every
-feature in the PRD rather than the handful that warrant one.
+On this path it is item 35, and what it buys is a design step over the handful of features that
+warrant one instead of over every feature in the PRD.
 
 ### There is no `<phases>` element, and that is a decision
 
