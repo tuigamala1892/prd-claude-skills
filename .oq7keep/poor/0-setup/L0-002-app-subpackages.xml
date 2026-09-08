@@ -1,0 +1,207 @@
+<task>
+  <meta>
+    <id>L0-002</id>
+    <name>Create app subpackages</name>
+    <layer>0-setup</layer>
+    <priority>2</priority>
+    <estimated-files>3</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug link-shelf). Project type: greenfield.
+    Project path: C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app
+
+    Later layers write into three subpackages of `app`, and each of those tasks is
+    capped at three files. Creating the package markers here keeps a later task from
+    having to spend one of its three files on a __init__.py.
+
+    Which later tasks write where, so the three subpackages are justified rather
+    than guessed:
+      app/models/  - L4-002 writes app/models/link.py (the Link model);
+                     L4-003 writes app/models/tag.py and app/models/link_tag.py
+      app/api/     - L3-002 creates app/api/links.py (the APIRouter);
+                     L3-003, L3-004 and L3-006 add handlers to that same file
+      app/schemas/ - L3-001 writes app/schemas/link.py (LinkCreate, LinkRead);
+                     L3-005 writes app/schemas/tag.py (TagAttach, LinkWithTags)
+
+    No other subpackage is created. In particular there is no app/services/ and no
+    app/core/: the PRD has three endpoints and no service layer was inferred, and
+    an empty package that nothing imports is dead weight.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x, SQLite (file-backed, no server
+    process), pytest 8.x. Backend only.
+    </tech-stack>
+
+    <project-structure>
+    Before this task:
+      .gitignore        (from L0-001)
+      architecture.md   (pre-existing)
+      app/
+        __init__.py     (from L0-001)
+      tests/
+        __init__.py     (from L0-001)
+
+    After this task:
+      app/
+        __init__.py
+        api/
+          __init__.py   (created by this task)
+        models/
+          __init__.py   (created by this task)
+        schemas/
+          __init__.py   (created by this task)
+      tests/
+        __init__.py
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="app_package" type="python-package">
+    Created by L0-001. Importable package `app` at the repository root.
+
+    app/__init__.py
+        """Link Shelf application package."""
+
+    This task adds subpackages beneath it. Do not modify app/__init__.py.
+    </interface>
+
+    <interface name="python_interpreter" type="executable">
+    Python 3.11 is available on PATH as `python`.
+    Used by this task only to confirm the created subpackages are importable.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the three subpackages of `app` that layers 3 and 4 write into -- app.models,
+  app.api and app.schemas -- each with a package marker so it is importable before
+  any module lands in it.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create directory `app/models/` and inside it the file `app/models/__init__.py`
+    containing exactly this single line:
+
+    """SQLAlchemy models for Link Shelf."""
+
+    Do NOT add any import or re-export here. L4-002 and L4-003 create the model
+    modules; re-exporting a module that does not exist yet makes `import app.models`
+    raise ImportError for every task between now and then.
+    </requirement>
+
+    <requirement id="2">
+    Create directory `app/api/` and inside it the file `app/api/__init__.py`
+    containing exactly this single line:
+
+    """FastAPI routers for Link Shelf."""
+
+    Do NOT create app/api/links.py here -- L3-002 creates it, and L3-003, L3-004 and
+    L3-006 append handlers to it. Creating it here would put this task in conflict
+    with L3-002 over the same file.
+    </requirement>
+
+    <requirement id="3">
+    Create directory `app/schemas/` and inside it the file
+    `app/schemas/__init__.py` containing exactly this single line:
+
+    """Pydantic request and response schemas for Link Shelf."""
+
+    Do NOT add any import or re-export here, for the same reason as requirement 1.
+    </requirement>
+
+    <requirement id="4">
+    Do NOT modify `app/__init__.py`, `tests/__init__.py` or `.gitignore`. They are
+    L0-001's output and are already correct.
+    </requirement>
+
+    <requirement id="5">
+    Do NOT create `pyproject.toml`. That is L0-003, which runs alongside this task
+    from the same predecessor and must not be raced.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Verify all three subpackage directories exist:
+    `python -c "import pathlib,sys; ds=[pathlib.Path('app/models'), pathlib.Path('app/api'), pathlib.Path('app/schemas')]; sys.exit(0 if all(d.is_dir() for d in ds) else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="2">
+    Verify all three package markers exist and are non-empty:
+    `python -c "import pathlib,sys; ps=[pathlib.Path('app/models/__init__.py'), pathlib.Path('app/api/__init__.py'), pathlib.Path('app/schemas/__init__.py')]; sys.exit(0 if all(p.is_file() and p.stat().st_size > 0 for p in ps) else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="3">
+    Verify all three subpackages import cleanly with no third-party dependency
+    installed (nothing is installed at this point in the layer -- L0-004 does that,
+    so an accidental `from fastapi import FastAPI` in a marker file is caught here):
+    `python -c "import app.models, app.api, app.schemas; print('subpackages importable')"`
+    Expected: exit code 0, stdout contains `subpackages importable`.
+    </test>
+
+    <test id="4">
+    Verify the marker files declare nothing beyond their docstring -- no eager
+    re-export of a module that does not exist yet:
+    `python -c "import app.models, app.api, app.schemas, sys; mods=[app.models, app.api, app.schemas]; extra=[n for m in mods for n in vars(m) if not n.startswith('__')]; print('extra names:', extra); sys.exit(0 if not extra else 1)"`
+    Expected: exit code 0, stdout shows `extra names: []`.
+    </test>
+
+    <test id="5">
+    Verify no route module was created early:
+    `python -c "import pathlib,sys; sys.exit(1 if pathlib.Path('app/api/links.py').exists() else 0)"`
+    Expected: exit code 0 (the file must NOT exist; L3-002 creates it).
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/api/__init__.py</file>
+    <file>app/models/__init__.py</file>
+    <file>app/schemas/__init__.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import app.models, app.api, app.schemas; print('subpackages importable')"` - must exit 0 and print `subpackages importable`</step>
+    <step>Run: `python -c "import pathlib,sys; ps=[pathlib.Path('app/models/__init__.py'), pathlib.Path('app/api/__init__.py'), pathlib.Path('app/schemas/__init__.py')]; sys.exit(0 if all(p.is_file() and p.stat().st_size > 0 for p in ps) else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import app.models, app.api, app.schemas, sys; extra=[n for m in (app.models, app.api, app.schemas) for n in vars(m) if not n.startswith('__')]; sys.exit(0 if not extra else 1)"` - must exit 0, confirming the markers re-export nothing</step>
+    <step>Run: `python -c "import pathlib,sys; sys.exit(1 if pathlib.Path('app/api/links.py').exists() else 0)"` - must exit 0, confirming L3-002's file was not created early</step>
+  </verification>
+
+  <exports>
+    <interface name="app.models" type="python-package">
+    Importable package `app.models`, empty apart from its docstring.
+
+    app/models/__init__.py
+        """SQLAlchemy models for Link Shelf."""
+
+    Consumers: L4-002 adds app/models/link.py; L4-003 adds app/models/tag.py and
+    app/models/link_tag.py. Each imports its own module path directly
+    (`from app.models.link import Link`); nothing is re-exported from the package
+    marker.
+    </interface>
+
+    <interface name="app.api" type="python-package">
+    Importable package `app.api`, empty apart from its docstring.
+
+    app/api/__init__.py
+        """FastAPI routers for Link Shelf."""
+
+    Consumers: L3-002 creates app/api/links.py holding the APIRouter; L3-003,
+    L3-004 and L3-006 add handlers to that same module.
+    </interface>
+
+    <interface name="app.schemas" type="python-package">
+    Importable package `app.schemas`, empty apart from its docstring.
+
+    app/schemas/__init__.py
+        """Pydantic request and response schemas for Link Shelf."""
+
+    Consumers: L3-001 adds app/schemas/link.py (LinkCreate, LinkRead);
+    L3-005 adds app/schemas/tag.py (TagAttach, LinkWithTags).
+    </interface>
+  </exports>
+</task>

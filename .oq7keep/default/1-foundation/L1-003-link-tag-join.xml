@@ -1,0 +1,764 @@
+<task>
+  <meta>
+    <id>L1-003</id>
+    <name>LinkTag join table and Link-Tag association</name>
+    <layer>1-foundation</layer>
+    <priority>3</priority>
+    <estimated-files>3</estimated-files>
+
+    <source-feature slug="tag-links" moscow="should-have"
+                   satisfies-criteria="" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- This task satisfies NONE of tag-links' acceptance criteria, and satisfies-criteria is
+         therefore empty. All four of them are HTTP-level assertions - "return 200", "return
+         404", "when links are listed with a tag filter" - and a status code cannot be produced
+         by a SQLAlchemy model. L2-003 (POST /links/{id}/tags) satisfies tag-links criteria 1, 2
+         and 4; L2-002 (GET /links?tag=) satisfies criterion 3. All four are met by reading and
+         writing the join table this task declares. No criterion is claimed here, so no
+         <criterion> element is carried and no <test> below cites one; inventing a criterion id
+         to fill the attribute would put a false claim into the coverage report.
+         requirement-level is P0 because P0 is the highest priority among tag-links' criteria
+         (1, 3 and 4 are P0; 2 is P1). -->
+    </acceptance-criteria>
+
+    <data-model>
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Tag links (slug: tag-links, should-have).
+
+    As someone collecting links, I want to tag what I save and filter by tag, so that a shelf of
+    two hundred links stays usable.
+
+    Attach zero or more free-text tags to a link, and filter the list endpoint by tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated
+    string column. This is the one place the fixture deliberately requires a real
+    relationship: a single-table shortcut would make the data-model layer trivial and
+    the fixture would stop exercising the part of layer planning most likely to break.
+
+    Considerations (verbatim from the feature):
+    Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an
+    implementer inventing either behaviour and calling it correct.
+
+    This feature is should-have rather than must-have so layer planning has to decide
+    where a lower-priority item lands, rather than treating every feature identically.
+
+    CONSEQUENCES FOR THIS TASK:
+    - A real join table is REQUIRED. Do not replace it with a comma-separated string column on
+      `links`, a JSON array column, or a SQLAlchemy `ARRAY`. The feature rules the shortcut out
+      by name.
+    - The `Tag` half of the data model above was declared by L1-002 and already exists. This
+      task declares the `LinkTag` half and wires the two entities together.
+    - Nothing here folds case. This task adds no lookup by name, but if the implementer writes
+      one for a test it must use `Tag.name == value`, never `lower()` or `ilike`.
+
+    OPEN GAP, DELIBERATELY NOT RESOLVED HERE (tag-links gap 1, kind=decision, raised
+    2026-08-27): "Whether a tag with no remaining links is deleted or kept is undecided.
+    Keeping them makes an autocomplete list easy and lets the list rot." Do NOT implement any
+    orphan-tag cleanup: no `cascade="all, delete-orphan"` reaching Tag, no `ON DELETE` clause
+    intended to remove tags, no post-delete hook. Inventing a policy for an undecided question
+    is out of scope for this task and for L2-003.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    SQLAlchemy 2.x - use the 2.0 typed declarative style: `Mapped[...]` annotations with
+      `mapped_column(...)`, and `relationship(...)` for the association. Do NOT use the legacy
+      `Column(...)` form and do NOT use `declarative_base()`.
+    SQLite, file-backed (database, no external server).
+      IMPORTANT SQLite behaviour: foreign key constraints are DECLARED in the DDL but are NOT
+      ENFORCED unless `PRAGMA foreign_keys=ON` is issued per connection, and L0-003's engine
+      does not issue it. So a `LinkTag` row pointing at a non-existent link id will insert
+      without error. Do not write a test asserting that an orphan foreign key raises, and do
+      not add the pragma - L2-003 checks that a link exists in Python and returns 404
+      (tag-links criterion 4). The composite PRIMARY KEY, by contrast, IS enforced by SQLite,
+      and this task tests it.
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root
+    FastAPI 0.110+ and httpx are installed but are NOT used by this task - a model has no
+      HTTP surface.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW or MODIFY are touched by this task):
+
+    .gitignore                  (exists - L0-001)
+    pyproject.toml              (exists - L0-001)
+    requirements.txt            (exists - L0-001)
+    pytest.ini                  (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py               (exists - L0-002)
+      database.py               (exists - L0-003; Base, engine, SessionLocal, get_db)
+      main.py                   (exists - L0-003; bare FastAPI instance, no routes)
+      models/
+        __init__.py             MODIFY - this task adds the LinkTag import; Link and Tag are
+                                already imported there by L1-001 and L1-002
+        link.py                 MODIFY - this task adds the `tags` relationship to the
+                                existing Link class; see requirement 2 for its current content
+        tag.py                  (exists - L1-002; the Tag model, unchanged by this task)
+        link_tag.py             NEW - this task
+    tests/
+      conftest.py               (exists - L0-003; db_session and client fixtures)
+      test_setup.py             (exists - L0-003)
+      test_model_link.py        (exists - L1-001; must keep passing, see verification)
+      test_model_tag.py         (exists - L1-002; must keep passing, see verification)
+      test_model_link_tag.py    NEW - this task (the test file, additional to the three above)
+
+    Unlike L1-001 and L1-002, which ran in parallel worktrees, this task runs after BOTH have
+    merged. `app/models/link.py` and `app/models/tag.py` are both present here and both may be
+    imported.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+    Every model class in `app/models/` must subclass this and set `__tablename__`.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py, created by L1-001 - ALREADY EXISTS in this worktree
+    from datetime import datetime
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        ...
+
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # integer primary key, autoincrement
+        url: Mapped[str]                # Text, NOT NULL, NOT unique
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # DateTime, NOT NULL, default=utcnow (naive UTC)
+
+    Import as: `from app.models import Link` or `from app.models.link import Link`
+
+    Contract this task must not break:
+    - Table name `links`, primary key column `links.id` - this task's foreign key targets it.
+    - `url` is deliberately NOT unique; duplicate URLs are a supported state.
+    - `title` is nullable; `created_at` is naive UTC with microsecond resolution.
+    - The class currently has NO relationship attribute. This task adds exactly one: `tags`.
+    </interface>
+
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py, created by L1-002 - ALREADY EXISTS in this worktree
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # Text, NOT NULL, UNIQUE, default (case-sensitive) collation
+
+    Import as: `from app.models import Tag` or `from app.models.tag import Tag`
+
+    Contract this task must not break:
+    - Table name `tags`, primary key column `tags.id` - this task's foreign key targets it.
+    - `name` is unique and case-sensitive; "Python" and "python" are two rows.
+    - The class has NO relationship attribute and this task does NOT add one to it. The
+      association is declared one-way, on `Link.tags` only. Do not edit `app/models/tag.py`.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, as it stands when this task starts (L1-001 and L1-002 both
+    # merged their import into it)
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "Tag"]
+
+    If the merge of L1-001 and L1-002 left the import lines in a different order, or left
+    `__all__` in a different order, that is fine - both names are present. This task ADDS
+    `LinkTag` to both, and must not remove `Link` or `Tag`.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Not used by this task - it is the route dependency, and this task defines no route. It is
+    listed so the implementer knows the session plumbing already exists and must not be rebuilt.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/database.py, created by L0-003
+    from pathlib import Path
+    from sqlalchemy import Engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db
+    DATABASE_URL: str     # "sqlite:///&lt;absolute path to link_shelf.db&gt;"
+    engine: Engine        # created with connect_args={"check_same_thread": False}
+
+    `Base.metadata.create_all(bind=engine)` is NOT called at import time and must not be
+    called by this task. The test fixture creates the schema for tests; L4-001 creates it for
+    the running application. This task must leave `link_shelf.db` non-existent.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    `expire_on_commit=False` means ORM attributes stay readable after `commit()` without a
+    refresh. The tests below rely on this: after `db_session.commit()` the instance's `id` and
+    its `tags` collection can be read directly.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with every
+    table in `Base.metadata` already created.
+
+    Use in a test as:
+        def test_something(db_session: Session) -&gt; None:
+            db_session.add(some_model_instance)
+            db_session.commit()
+
+    Contract this task relies on:
+    - The database is empty at the start of each test and discarded at the end.
+    - Tables are created from `Base.metadata`, which conftest.py populates by running
+      `import app.models`. A model class that is NOT imported in `app/models/__init__.py` gets
+      no table, and every test touching it fails with "no such table: link_tags". This is why
+      requirement 3 below is mandatory, not cosmetic.
+    - Foreign keys are NOT enforced (no `PRAGMA foreign_keys=ON`); the composite primary key
+      IS enforced.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `TestClient` wrapping `app.main.app`, with `get_db` overridden to yield the same
+    Session as `db_session`.
+
+    NOT used by this task. There are no routes to call at this layer; every test below uses
+    `db_session` only. Requesting `client` here would test nothing this task owns.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequence for this task: the test file must be `tests/test_model_link_tag.py`, it is run
+    with `python -m pytest` from the repository root, and `from app.models import Link,
+    LinkTag, Tag` resolves without the project being installed.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Declare the `LinkTag` join table - one row per attachment of one tag to one link, with a
+  composite primary key over (link_id, tag_id) - and add the many-to-many `tags` attribute to
+  the existing `Link` model so a link can be read and written with its tags.
+
+  This task builds the storage that the Layer 2 endpoints satisfy their acceptance criteria
+  through. It satisfies none of tag-links' criteria itself: those are HTTP-level (200, 404,
+  filtered listings) and are met by L2-003 and L2-002 through this table. What this task
+  guarantees is the storage-level property those endpoints lean on - the composite primary key
+  makes a second attachment of the same tag to the same link impossible, which is what makes
+  re-tagging idempotent underneath tag-links criterion 2.
+
+  This task defines no route, no Pydantic schema, and no orphan-tag cleanup policy.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/models/link_tag.py` with exactly this content:
+
+    """The LinkTag join table: the many-to-many association between links and tags."""
+
+    from sqlalchemy import ForeignKey, Integer
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class LinkTag(Base):
+        """One attachment of one tag to one link. The primary key is the pair."""
+
+        __tablename__ = "link_tags"
+
+        link_id: Mapped[int] = mapped_column(
+            Integer, ForeignKey("links.id"), primary_key=True
+        )
+        tag_id: Mapped[int] = mapped_column(
+            Integer, ForeignKey("tags.id"), primary_key=True
+        )
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - `__tablename__ = "link_tags"`. Lower-case plural, matching `links` and `tags`.
+
+    - BOTH columns carry `primary_key=True`. Together they form ONE composite primary key over
+      (link_id, tag_id) - not two separate keys, and not a surrogate `id` column with a
+      separate unique constraint. This is the whole point of the table: SQLite rejects a second
+      row with the same pair, so attaching a tag a link already carries cannot create a
+      duplicate row. Do NOT add an `id` column.
+
+    - `ForeignKey("links.id")` and `ForeignKey("tags.id")` are written as strings naming the
+      tables L1-001 and L1-002 created. Do not import `Link` or `Tag` into this module; the
+      string form is resolved from `Base.metadata` and keeps this module free of imports that
+      would complicate the import order in `app/models/__init__.py`.
+
+    - No `ondelete=` clause and no `cascade`. Orphan-tag policy is the feature's open gap 1 and
+      is deliberately undecided; adding a delete rule here would answer it by accident.
+
+    - No extra column. The join carries no `created_at`, no `position`, no `id`. The feature
+      declares two columns and this table has two columns.
+    </requirement>
+
+    <requirement id="2">
+    MODIFY `app/models/link.py`. It already exists, created by L1-001, and currently contains
+    exactly this:
+
+    """The Link model: one stored URL with an optional title."""
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+    class Link(Base):
+        """A saved link: a URL, an optional title, and when it was stored."""
+
+        __tablename__ = "links"
+
+        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        url: Mapped[str] = mapped_column(Text, nullable=False)
+        title: Mapped[str | None] = mapped_column(Text, nullable=True)
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime, nullable=False, default=utcnow
+        )
+
+    Rewrite it to exactly this - three added imports and one added attribute, everything else
+    byte-for-byte unchanged:
+
+    """The Link model: one stored URL with an optional title, plus its tags."""
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+    from app.database import Base
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+    class Link(Base):
+        """A saved link: a URL, an optional title, when it was stored, and its tags."""
+
+        __tablename__ = "links"
+
+        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        url: Mapped[str] = mapped_column(Text, nullable=False)
+        title: Mapped[str | None] = mapped_column(Text, nullable=True)
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime, nullable=False, default=utcnow
+        )
+
+        tags: Mapped[list[Tag]] = relationship(
+            Tag,
+            secondary=LinkTag.__table__,
+            lazy="selectin",
+            order_by=Tag.id,
+        )
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The four existing columns, the `utcnow` function and `__tablename__` are UNCHANGED.
+      `tests/test_model_link.py` from L1-001 still runs and still asserts all of them,
+      including that `url` is not unique. Changing any of them breaks a passing test.
+
+    - `secondary=LinkTag.__table__` uses the join table declared in requirement 1. The import
+      `from app.models.link_tag import LinkTag` is a real runtime import, not a string
+      reference, so the association is resolved eagerly and cannot fail later with an
+      unresolved-name error. There is no import cycle: `link_tag.py` imports only
+      `app.database`, and `tag.py` imports only `app.database`. Neither imports `link.py`.
+
+    - This is a ONE-WAY relationship. There is no `back_populates` and no `backref`, and
+      `app/models/tag.py` is NOT edited. `Tag` therefore has no `.links` attribute, by design -
+      nothing downstream needs one. L2-002 filters from the tag side with an explicit join:
+          select(Link).join(LinkTag, LinkTag.link_id == Link.id)
+                      .join(Tag, Tag.id == LinkTag.tag_id)
+                      .where(Tag.name == tag)
+
+    - `lazy="selectin"` loads every link's tags in one extra SELECT when a set of links is
+      queried, instead of one SELECT per link. L2-002 returns a whole list of links with their
+      tags, so the default `lazy="select"` would issue N+1 queries there.
+
+    - `order_by=Tag.id` makes `link.tags` come back in a stable order - tag id ascending,
+      which is the order the tags were first created. The feature states no ordering for tags,
+      and an unordered collection would make a response body assertion in L2-003 flaky, so a
+      deterministic order is chosen here and recorded as a decision rather than left to the
+      database.
+
+    - No `cascade` argument. The default for a `secondary` relationship removes only the
+      association rows, never a `Tag` row. Orphan-tag policy is the feature's open gap 1 and
+      stays unanswered.
+    </requirement>
+
+    <requirement id="3">
+    MODIFY `app/models/__init__.py`. It already imports `Link` and `Tag` (added by L1-001 and
+    L1-002). Rewrite it to exactly this:
+
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "LinkTag", "Tag"]
+
+    All three names must be present. `tests/conftest.py` runs `import app.models` before
+    calling `Base.metadata.create_all`, so a model that is not imported here has no table and
+    every test touching it fails with "no such table: link_tags".
+
+    Import order note: `from app.models.link import Link` runs first and `link.py` itself
+    imports `app.models.link_tag` and `app.models.tag`. That is safe - Python already has the
+    partially-initialised `app.models` package in `sys.modules` and loads the two submodules
+    directly - and neither submodule imports `link.py` back. Do not reorder these three lines
+    to try to "fix" an import cycle; there is none.
+    </requirement>
+
+    <requirement id="4">
+    Do NOT create or edit any other file. Specifically: do not touch `app/models/tag.py`,
+    `app/database.py`, `app/main.py`, `tests/conftest.py`, `tests/test_setup.py`,
+    `tests/test_model_link.py`, `tests/test_model_tag.py`, `pytest.ini`, `pyproject.toml`,
+    `requirements.txt` or `.gitignore`. Do not create a Pydantic schema, a router, a route or
+    a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not add `PRAGMA foreign_keys=ON`. Do not run `git init` and do not
+    touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_model_link_tag.py` FIRST, run `python -m pytest
+    tests/test_model_link_tag.py -v` and watch it fail with ImportError on `LinkTag`, then make
+    the three file changes until it passes.
+
+    No test element below carries a `covers` attribute because this task carries no acceptance
+    criterion - see the note in the acceptance-criteria element above. Each test asserts one
+    declared data model instead.
+
+    <test id="1">
+    Create test file: `tests/test_model_link_tag.py`.
+    Header imports:
+      import pytest
+      from sqlalchemy import select
+      from sqlalchemy.exc import IntegrityError
+      from sqlalchemy.orm import Session
+
+      from app.database import Base
+      from app.models import Link, LinkTag, Tag
+    Import all three from the package (`app.models`), so the test also proves requirement 3's
+    exports.
+    </test>
+
+    <test id="2">
+    Test: test_link_tags_table_has_a_composite_primary_key
+    - Requires no fixture
+    - Assert LinkTag.__tablename__ == "link_tags"
+    - Assert "link_tags" in Base.metadata.tables
+    - Assert set(LinkTag.__table__.columns.keys()) == {"link_id", "tag_id"}  (no `id` column)
+    - pk = sorted(c.name for c in LinkTag.__table__.primary_key.columns)
+    - Assert pk == ["link_id", "tag_id"]   (both columns, one composite key)
+    </test>
+
+    <test id="3">
+    Test: test_link_tags_columns_reference_links_and_tags
+    - Requires no fixture
+    - link_fks = {fk.target_fullname for fk in LinkTag.__table__.columns["link_id"].foreign_keys}
+    - Assert link_fks == {"links.id"}
+    - tag_fks = {fk.target_fullname for fk in LinkTag.__table__.columns["tag_id"].foreign_keys}
+    - Assert tag_fks == {"tags.id"}
+    - Note: do NOT add a test that inserting a LinkTag with a non-existent link_id raises.
+      SQLite does not enforce foreign keys without `PRAGMA foreign_keys=ON`, which this project
+      does not set. L2-003 checks link existence in Python and returns 404.
+    </test>
+
+    <test id="4">
+    Test: test_attaching_a_tag_to_a_link_creates_one_join_row
+    - Request the `db_session` fixture
+    - link = Link(url="https://example.com/a"); tag = Tag(name="python")
+    - db_session.add_all([link, tag]); db_session.commit()
+    - link.tags.append(tag); db_session.commit()
+    - rows = db_session.execute(select(LinkTag)).scalars().all()
+    - Assert len(rows) == 1
+    - Assert rows[0].link_id == link.id
+    - Assert rows[0].tag_id == tag.id
+    - Assert [t.name for t in link.tags] == ["python"]
+    </test>
+
+    <test id="5">
+    Test: test_a_duplicate_attachment_violates_the_composite_primary_key
+    - This is the storage-level guarantee that makes re-tagging idempotent for L2-003.
+    - Request the `db_session` fixture
+    - link = Link(url="https://example.com/a"); tag = Tag(name="python")
+    - db_session.add_all([link, tag]); db_session.commit()
+    - db_session.add(LinkTag(link_id=link.id, tag_id=tag.id)); db_session.commit()
+    - db_session.add(LinkTag(link_id=link.id, tag_id=tag.id))
+    - with pytest.raises(IntegrityError): db_session.commit()
+    - db_session.rollback()   (required, or the session stays in a failed transaction)
+    - count = len(db_session.execute(select(LinkTag)).scalars().all())
+    - Assert count == 1   (the pair is stored exactly once)
+    </test>
+
+    <test id="6">
+    Test: test_a_link_carries_many_tags_and_a_tag_is_shared_by_many_links
+    - Request the `db_session` fixture
+    - first = Link(url="https://example.com/1"); second = Link(url="https://example.com/2")
+    - python_tag = Tag(name="python"); web_tag = Tag(name="web")
+    - db_session.add_all([first, second, python_tag, web_tag]); db_session.commit()
+    - first.tags.append(python_tag); first.tags.append(web_tag)
+    - second.tags.append(python_tag)
+    - db_session.commit()
+    - Assert sorted(t.name for t in first.tags) == ["python", "web"]
+    - Assert [t.name for t in second.tags] == ["python"]
+    - Assert len(db_session.execute(select(LinkTag)).scalars().all()) == 3
+    </test>
+
+    <test id="7">
+    Test: test_a_link_with_no_tags_reports_an_empty_list
+    - Request the `db_session` fixture
+    - link = Link(url="https://example.com/bare"); db_session.add(link); db_session.commit()
+    - Assert link.tags == []   (an empty list, not None)
+    - Assert db_session.execute(select(LinkTag)).scalars().all() == []
+    </test>
+
+    <test id="8">
+    Test: test_tags_are_reported_in_a_stable_order
+    - Request the `db_session` fixture
+    - alpha = Tag(name="alpha"); zulu = Tag(name="zulu")
+    - db_session.add_all([alpha, zulu]); db_session.commit()   (alpha gets the lower id)
+    - link = Link(url="https://example.com/ordered"); db_session.add(link); db_session.commit()
+    - link.tags.append(zulu); link.tags.append(alpha)   (appended in the reverse order)
+    - db_session.commit()
+    - db_session.expire(link, ["tags"])   (force a reload from the database)
+    - Assert [t.name for t in link.tags] == ["alpha", "zulu"]   (ordered by Tag.id, not by
+      append order, so a response body assertion downstream cannot flake)
+    </test>
+
+    <test id="9">
+    Test: test_links_can_be_filtered_by_tag_name_through_the_join
+    - This is the exact query shape L2-002's `?tag=` filter uses.
+    - Request the `db_session` fixture
+    - tagged = Link(url="https://example.com/tagged")
+    - untagged = Link(url="https://example.com/untagged")
+    - tag = Tag(name="python")
+    - db_session.add_all([tagged, untagged, tag]); db_session.commit()
+    - tagged.tags.append(tag); db_session.commit()
+    - Define a local helper so each assertion below builds the filter FRESH. Do not reuse one
+      statement and add a second `.where(...)` to it: that ANDs the two names together and the
+      case-sensitivity assertion would pass for the wrong reason.
+
+        def links_tagged(name: str) -&gt; list[str]:
+            stmt = (
+                select(Link)
+                .join(LinkTag, LinkTag.link_id == Link.id)
+                .join(Tag, Tag.id == LinkTag.tag_id)
+                .where(Tag.name == name)
+            )
+            return [row.url for row in db_session.execute(stmt).scalars().all()]
+
+    - Assert links_tagged("python") == ["https://example.com/tagged"]
+      (exactly the tagged link; the untagged one is excluded)
+    - Assert links_tagged("Python") == []
+      (case-sensitive: the capitalised name matches no tag, so the filter returns nothing
+      rather than falling back to every link)
+    - Assert links_tagged("unknown") == []
+    </test>
+
+    <test id="10">
+    Test: test_link_keeps_its_original_columns
+    - Guards the modification made to `app/models/link.py` in requirement 2.
+    - Requires no fixture
+    - Assert set(Link.__table__.columns.keys()) == {"id", "url", "title", "created_at"}
+      (the `tags` attribute is a relationship, not a column - it must add nothing to `links`)
+    - Assert Link.__table__.columns["url"].unique is not True   (duplicate URLs still allowed)
+    - Assert Link.__table__.columns["title"].nullable is True
+    - Assert "tags" not in Link.__table__.columns
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/models/link_tag.py</file>
+    <!-- MODIFIED, not created: app/models/link.py already exists (L1-001, merged into this
+         worktree's base branch) and holds the Link class with its four columns and the utcnow
+         helper. Requirement 2 quotes its current content in full and gives the exact rewritten
+         content. Only three imports and the `tags` relationship are added. -->
+    <file>app/models/link.py</file>
+    <!-- MODIFIED, not created: app/models/__init__.py already imports Link (L1-001) and Tag
+         (L1-002). Requirement 3 adds the LinkTag import and extends __all__ to three names. -->
+    <file>app/models/__init__.py</file>
+    <file>tests/test_model_link_tag.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.models import Link, LinkTag, Tag; print(Link.__tablename__, LinkTag.__tablename__, Tag.__tablename__)"` - prints `links link_tags tags`, proving all three models import through the package exports</step>
+    <step>Run: `python -c "from app.models import LinkTag; cols = LinkTag.__table__.columns; assert set(cols.keys()) == {'link_id', 'tag_id'}, sorted(cols.keys()); pk = sorted(c.name for c in LinkTag.__table__.primary_key.columns); assert pk == ['link_id', 'tag_id'], pk; print('composite pk ok')"` - prints `composite pk ok`; both columns and only those two, forming one composite key with no surrogate id</step>
+    <step>Run: `python -c "from app.models import LinkTag; cols = LinkTag.__table__.columns; assert {fk.target_fullname for fk in cols['link_id'].foreign_keys} == {'links.id'}; assert {fk.target_fullname for fk in cols['tag_id'].foreign_keys} == {'tags.id'}; print('foreign keys ok')"` - prints `foreign keys ok`</step>
+    <step>Run: `python -c "from app.models import Link; from sqlalchemy import inspect; rels = inspect(Link).relationships; assert 'tags' in rels, list(rels.keys()); r = rels['tags']; assert r.secondary.name == 'link_tags', r.secondary.name; assert r.mapper.class_.__name__ == 'Tag'; assert r.uselist is True; print('relationship ok')"` - prints `relationship ok`; the association goes through the join table and yields a collection of Tag</step>
+    <step>Run: `python -c "from app.models import Link, Tag; from sqlalchemy import inspect; assert set(Link.__table__.columns.keys()) == {'id', 'url', 'title', 'created_at'}; assert Link.__table__.columns['url'].unique is not True; assert 'links' not in inspect(Tag).relationships, 'Tag must stay unedited: the association is one-way on Link.tags'; print('unchanged contracts ok')"` - prints `unchanged contracts ok`; L1-001's columns survive the edit and app/models/tag.py was not touched</step>
+    <step>Run: `python -c "import app.models; from app.database import Base; assert {'links', 'tags', 'link_tags'} &lt;= set(Base.metadata.tables), sorted(Base.metadata.tables); print('registered ok')"` - prints `registered ok`, confirming the conftest fixture will create all three tables</step>
+    <step>Run: `python -c "from sqlalchemy.orm import configure_mappers; import app.models; configure_mappers(); print('mappers ok')"` - prints `mappers ok`; this forces SQLAlchemy to resolve every relationship immediately, so an unresolved target would fail here rather than inside a later task's first query</step>
+    <step>Run: `python -m pytest tests/test_model_link_tag.py -v` - exit code 0, all 9 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; L0-003's 5 setup tests, L1-001's 6 Link tests and L1-002's 7 Tag tests all still pass alongside this task's 9, proving the edit to app/models/link.py broke nothing upstream</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="LinkTag" type="sqlalchemy-model">
+    # app/models/link_tag.py
+    from sqlalchemy import ForeignKey, Integer
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class LinkTag(Base):
+        __tablename__ = "link_tags"
+
+        link_id: Mapped[int]   # Integer, FK -&gt; links.id, part of the composite primary key
+        tag_id: Mapped[int]    # Integer, FK -&gt; tags.id,  part of the composite primary key
+
+    Import as: `from app.models import LinkTag`  (also `from app.models.link_tag import LinkTag`)
+
+    Downstream contract:
+    - The primary key is the PAIR (link_id, tag_id). A second row with the same pair raises
+      `sqlalchemy.exc.IntegrityError`. Re-attaching a tag a link already carries is therefore
+      impossible at the storage layer; L2-003 must check membership before appending (e.g.
+      `if tag not in link.tags: link.tags.append(tag)`) rather than relying on the exception.
+    - There is no `id` column and no extra column.
+    - Foreign keys are declared but NOT enforced by SQLite at runtime (no
+      `PRAGMA foreign_keys=ON`). A row pointing at a missing link id inserts silently, so
+      L2-003 must look the link up in Python and return 404 when it is absent - the database
+      will not do it.
+    - No delete rule is declared. Whether a tag with no remaining links is deleted or kept is
+      the tag-links open gap 1 and is still undecided; nothing here answers it.
+    </interface>
+
+    <interface name="Link.tags" type="sqlalchemy-relationship">
+    # app/models/link.py, added to the existing Link class
+    from sqlalchemy.orm import Mapped, relationship
+
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+
+    class Link(Base):
+        # ... id, url, title, created_at unchanged ...
+
+        tags: Mapped[list[Tag]] = relationship(
+            Tag,
+            secondary=LinkTag.__table__,
+            lazy="selectin",
+            order_by=Tag.id,
+        )
+
+    Downstream contract:
+    - `link.tags` is a `list[Tag]`, empty (never None) when nothing is attached.
+    - Attach with `link.tags.append(tag)` then `db.commit()`; that writes one `link_tags` row.
+      Detach with `link.tags.remove(tag)`, which deletes the association row and leaves the
+      `Tag` row alone.
+    - The order is `Tag.id` ascending - stable across reloads, so a response body listing tags
+      may be asserted directly without sorting.
+    - `lazy="selectin"` means listing N links loads their tags in ONE additional query, not N.
+    - The relationship is ONE-WAY. `Tag` has no `.links` attribute. To go from a tag name to
+      its links, join explicitly:
+          select(Link)
+              .join(LinkTag, LinkTag.link_id == Link.id)
+              .join(Tag, Tag.id == LinkTag.tag_id)
+              .where(Tag.name == tag_name)
+      `Tag.name == tag_name` is a case-sensitive comparison and must stay one - never
+      `func.lower()` or `ilike`.
+    - Link's four columns are unchanged: `url` is still not unique, `title` is still nullable,
+      `created_at` is still naive UTC with microsecond resolution and still orders newest-first
+      via `Link.created_at.desc()`.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py after this task
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "LinkTag", "Tag"]
+
+    Downstream contract: `import app.models` registers all three tables - `links`, `tags` and
+    `link_tags` - on `Base.metadata`. That is what makes `Base.metadata.create_all` create the
+    full schema, both in `tests/conftest.py` and in L4-001's application startup. Layer 1 is
+    complete; no later task needs to add a model here.
+    </interface>
+  </exports>
+</task>

@@ -1,0 +1,239 @@
+{
+  "prd_meta": {
+    "name": "Link Shelf",
+    "slug": "link-shelf",
+    "status": "in-progress"
+  },
+  "features": [
+    {
+      "name": "Save a link",
+      "slug": "save-link",
+      "priority": "must-have",
+      "summary": "Accept a URL with an optional title and store it.",
+      "spec_file": "features/save-link.md",
+      "definition": "defined"
+    },
+    {
+      "name": "List saved links",
+      "slug": "list-links",
+      "priority": "must-have",
+      "summary": "Return every saved link, newest first.",
+      "spec_file": "features/list-links.md",
+      "definition": "defined"
+    },
+    {
+      "name": "Tag links",
+      "slug": "tag-links",
+      "priority": "should-have",
+      "summary": "Attach free-text tags to a link and filter the list by tag.",
+      "spec_file": "features/tag-links.md",
+      "definition": "defined"
+    }
+  ],
+  "tech_stack": {
+    "type": "greenfield",
+    "project_path": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app",
+    "technologies": [
+      {"name": "Python", "version": "3.11", "purpose": "Backend language"},
+      {"name": "FastAPI", "version": "0.110+", "purpose": "HTTP API framework"},
+      {"name": "SQLAlchemy", "version": "2.x", "purpose": "ORM and schema definition"},
+      {"name": "SQLite", "version": null, "purpose": "File-backed database, no server process"},
+      {"name": "pytest", "version": "8.x", "purpose": "Test runner"}
+    ],
+    "rationale": "SQLite rather than PostgreSQL so the whole project runs with no external service: a fixture that needs a database server running is a fixture that fails for reasons unrelated to what is being tested. No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.",
+    "notes": "Backend only - no frontend, no container runtime."
+  },
+  "template": {
+    "path": null,
+    "provides": [],
+    "detected_from": "Keyword mapping (Python + FastAPI) would suggest `webapps/backends/python`, but the PRD's <rationale> explicitly states 'No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere'. The author's explicit statement outranks the keyword heuristic. See merge_notes[0]."
+  },
+  "architecture": {
+    "declared": true,
+    "path": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app/architecture.md",
+    "version": "1.0",
+    "layers": [
+      {"id": "0", "name": "setup", "depends_on": []},
+      {"id": "1", "name": "integration", "depends_on": ["0"]},
+      {"id": "2", "name": "frontend", "depends_on": ["1"]},
+      {"id": "3", "name": "backend", "depends_on": ["2"]},
+      {"id": "4", "name": "foundation", "depends_on": ["3"]}
+    ],
+    "testing": null,
+    "task_limits": null,
+    "scaffold": null,
+    "registries": {},
+    "principles": [],
+    "design_track": {"enabled": false, "adr_dir": null}
+  },
+  "repo_structure": "single",
+  "data_models": [
+    {
+      "name": "Link",
+      "fields": [
+        "id integer pk",
+        "url text not null",
+        "title text null",
+        "created_at timestamp not null"
+      ],
+      "relationships": ["has_many: LinkTag (via tag-links)"],
+      "source": "declared",
+      "owner": "save-link",
+      "inferred_from": ["save-link"],
+      "also_referenced_by": [
+        {
+          "feature": "list-links",
+          "access": "read",
+          "adds_columns": [],
+          "declared_text": "Reads Link(id, url, title, created_at) -- owned by save-link. This feature owns no entity of its own and adds no column; the ordering it guarantees is over created_at."
+        },
+        {
+          "feature": "tag-links",
+          "access": "read",
+          "adds_columns": [],
+          "note": "Referenced as the FK target of LinkTag.link_id. Adds no column to Link."
+        }
+      ],
+      "verbatim": "Link(id integer pk, url text not null, title text null, created_at timestamp not null)"
+    },
+    {
+      "name": "Tag",
+      "fields": ["id integer pk", "name text unique not null"],
+      "relationships": ["has_many: LinkTag"],
+      "source": "declared",
+      "owner": "tag-links",
+      "inferred_from": ["tag-links"],
+      "verbatim": "Tag(id integer pk, name text unique not null)"
+    },
+    {
+      "name": "LinkTag",
+      "fields": ["link_id fk Link.id", "tag_id fk Tag.id"],
+      "relationships": ["belongs_to: Link", "belongs_to: Tag"],
+      "primary_key": ["link_id", "tag_id"],
+      "source": "declared",
+      "owner": "tag-links",
+      "inferred_from": ["tag-links"],
+      "verbatim": "LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/links",
+      "purpose": "Accept a url and an optional title, store the link, and return the stored record including its generated id and created_at timestamp.",
+      "feature": "save-link",
+      "inferred_from": ["save-link"],
+      "inference_basis": "The <description> states a POST endpoint accepting a URL and optional title. Method and behaviour are stated; the path string is inferred from the Link entity name. No /api prefix - the PRD never mentions one.",
+      "satisfies_criteria": ["save-link#1", "save-link#2", "save-link#3", "save-link#4"]
+    },
+    {
+      "method": "GET",
+      "path": "/links",
+      "query_params": [
+        {"name": "tag", "required": false, "purpose": "Filter to links carrying this tag", "added_by": "tag-links"}
+      ],
+      "purpose": "Return every saved link as a JSON array, newest first by created_at. No pagination. Optionally filtered to a single tag.",
+      "feature": "list-links",
+      "inferred_from": ["list-links", "tag-links"],
+      "inference_basis": "list-links criterion 1 names 'GET /links' verbatim. tag-links criterion 3 requires a tag filter on 'the list endpoint' without naming path or parameter. Merged into one endpoint - see merge_notes[1].",
+      "satisfies_criteria": ["list-links#1", "list-links#2", "list-links#3", "list-links#4", "tag-links#3"]
+    },
+    {
+      "method": "POST",
+      "path": "/links/{link_id}/tags",
+      "purpose": "Attach one or more tags to an existing link. Idempotent for tags already attached. 404 when the link id does not exist.",
+      "feature": "tag-links",
+      "inferred_from": ["tag-links"],
+      "inference_basis": "Criteria 1, 2 and 4 describe posting tags to an existing link; the path shape is not stated in the feature.",
+      "satisfies_criteria": ["tag-links#1", "tag-links#2", "tag-links#4"]
+    }
+  ],
+  "frontend_components": [],
+  "dependencies": [
+    {"name": "fastapi", "version": "0.110+", "purpose": "HTTP API framework", "source": "prd"},
+    {"name": "sqlalchemy", "version": "2.x", "purpose": "ORM and schema definition", "source": "prd"},
+    {"name": "pytest", "version": "8.x", "purpose": "Test runner used by every task's verification block", "source": "prd"},
+    {"name": "httpx", "version": "*", "purpose": "Required by starlette's TestClient, which every endpoint task's pytest verification uses. Not declared by the PRD or any feature.", "source": "merge", "added_by_merge": true}
+  ],
+  "acceptance_criteria": [
+    {"feature": "save-link", "id": "1", "ref": "save-link#1", "pattern": "event-driven", "priority": "P0", "derived_from": "1", "text": "When a link is posted with a url and a title, the system shall store it and return 201 with an integer id, the submitted url and title, and a created_at timestamp."},
+    {"feature": "save-link", "id": "2", "ref": "save-link#2", "pattern": "event-driven", "priority": "P0", "derived_from": "2", "text": "When a link is posted with a url and no title, the system shall store it with a null title and return 201."},
+    {"feature": "save-link", "id": "3", "ref": "save-link#3", "pattern": "unwanted-behaviour", "priority": "P0", "derived_from": "3", "text": "If a link is posted with no url field, then the system shall return 422 and store nothing."},
+    {"feature": "save-link", "id": "4", "ref": "save-link#4", "pattern": "unwanted-behaviour", "priority": "P1", "derived_from": "4", "text": "If a link is posted with a url that does not parse as an absolute http or https URL, then the system shall return 422 and store nothing."},
+
+    {"feature": "list-links", "id": "1", "ref": "list-links#1", "pattern": "ubiquitous", "priority": "P0", "derived_from": "1", "text": "The system shall return 200 and a JSON array from GET /links, empty when no links are stored."},
+    {"feature": "list-links", "id": "2", "ref": "list-links#2", "pattern": "ubiquitous", "priority": "P0", "derived_from": "2", "text": "The system shall order listed links most recently created first."},
+    {"feature": "list-links", "id": "3", "ref": "list-links#3", "pattern": "ubiquitous", "priority": "P1", "derived_from": "3", "text": "The system shall include every stored link in the listing, reporting a null title rather than omitting an untitled link."},
+    {"feature": "list-links", "id": "4", "ref": "list-links#4", "pattern": "unwanted-behaviour", "priority": "P0", "derived_from": null, "text": "If the stored links cannot be read, then the system shall return 500 and shall not return an empty array, so that a failure to read is never reported as an empty shelf.", "note": "No derived-from attribute in the source file. Recorded as absent, not back-filled."},
+
+    {"feature": "tag-links", "id": "1", "ref": "tag-links#1", "pattern": "event-driven", "priority": "P0", "derived_from": "1", "text": "When tags are posted to an existing link, the system shall attach them and return 200 with the link reporting every attached tag."},
+    {"feature": "tag-links", "id": "2", "ref": "tag-links#2", "pattern": "event-driven", "priority": "P1", "derived_from": "2", "text": "When a tag already attached to a link is posted again, the system shall return 200 and leave the tag attached exactly once."},
+    {"feature": "tag-links", "id": "3", "ref": "tag-links#3", "pattern": "event-driven", "priority": "P0", "derived_from": "3", "text": "When links are listed with a tag filter, the system shall return exactly the links carrying that tag."},
+    {"feature": "tag-links", "id": "4", "ref": "tag-links#4", "pattern": "unwanted-behaviour", "priority": "P0", "derived_from": "4", "text": "If tags are posted to a link id that does not exist, then the system shall return 404 and create no tag rows."}
+  ],
+  "gaps": [
+    {
+      "feature": "tag-links",
+      "id": "1",
+      "kind": "decision",
+      "raised": "2026-08-27",
+      "body": "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot.",
+      "blocking": true,
+      "note": "Carried verbatim. NOT resolved. No detach/cleanup endpoint and no cascade or retention field was emitted, so the orphan-tag decision does not leak into the merged models or API surface."
+    }
+  ],
+  "feature_edges": [
+    {"from": "list-links", "to": "save-link", "kind": "data"},
+    {"from": "tag-links", "to": "save-link", "kind": "data"}
+  ],
+  "feature_signals": [
+    {"feature": "save-link", "scope": "small", "confidence": "high"},
+    {"feature": "list-links", "scope": "small", "confidence": "high"},
+    {"feature": "tag-links", "scope": "medium", "confidence": "medium"}
+  ],
+  "significance_candidates": [
+    {
+      "feature": "save-link",
+      "reason": "cross-cutting: named by 3 other documents; declares no <architecturally-significant>",
+      "source": "check-references.py",
+      "blocking": false
+    }
+  ],
+  "merge_notes": [
+    {
+      "kind": "reconciled",
+      "field": "template.path",
+      "detail": "The index pass's keyword table maps 'Python + FastAPI' to `webapps/backends/python`, and the forked analyser initially emitted that path with provides [api_framework, orm, testing]. The PRD's own <rationale> disclaims it outright: 'No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.' Merged value is null. Had the keyword answer survived, Layer 0 would have been told to copy a tree the PRD says does not exist."
+    },
+    {
+      "kind": "reconciled",
+      "field": "api_endpoints[GET /links]",
+      "detail": "Two feature passes independently produced a listing endpoint: list-links inferred `GET /links` (its criterion 1 names the path verbatim) and tag-links inferred `GET /links?tag={tag}` from its criterion 3, which refers only to 'the list endpoint'. Neither pass could see the other. Merged to ONE endpoint, `GET /links` with an optional `tag` query parameter, attributed to both. Keeping them separate would have produced two tasks writing the same route handler."
+    },
+    {
+      "kind": "unioned",
+      "field": "data_models[Link]",
+      "detail": "Link is declared by save-link (owner), read by list-links (which explicitly declares it owns no entity and adds no column), and referenced by tag-links as LinkTag's FK target. All three attributions kept. Only save-link's task set creates the model; the other two must not re-declare it."
+    },
+    {
+      "kind": "added",
+      "field": "dependencies[httpx]",
+      "detail": "Every endpoint task's verification is pytest against the FastAPI app, which on FastAPI 0.110+/starlette means TestClient, which requires httpx at runtime. No feature declared it and the index's <dependencies> block does not list it. Added here because it is a mechanical consequence of the declared stack plus the declared test policy, not a product decision. Flagged rather than assumed: if the intended test style is ASGI transport via httpx.AsyncClient directly, the dependency is the same one."
+    },
+    {
+      "kind": "reconciled",
+      "field": "frontend_components",
+      "detail": "architecture.md declares a layer named `frontend` (id 2). The index states 'Backend only - no frontend, no container runtime' and no feature pass produced a single component. Merged value is the empty list. The declared layer says the tier EXISTS in this project's graph; it is not evidence that THIS work puts anything in it. Layer derivation drops it - see layer_plan.json."
+    },
+    {
+      "kind": "dropped",
+      "field": "acceptance_criteria (considerations)",
+      "detail": "tag-links' <notes><considerations> states 'Tag names are matched case-sensitively.' That is behaviour an implementer needs, but considerations are unread by design and it is NOT an acceptance criterion. Not promoted to one here. Carried into task context as a constraint attributed to considerations, never as a criterion with an id."
+    },
+    {
+      "kind": "unioned",
+      "field": "gaps",
+      "detail": "One gap across three features: tag-links#1, kind=decision, blocking. Carried verbatim and unanswered."
+    }
+  ]
+}

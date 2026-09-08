@@ -1,0 +1,214 @@
+{
+  "project_type": "greenfield",
+  "degenerate": false,
+  "ordering_conflicts": [
+    {
+      "severity": "critical",
+      "description": "Declared layer graph is not buildable as written",
+      "affected_layers": ["4-foundation", "3-backend"],
+      "issue": "Layer 4 (foundation) contains data models (Link, Tag, LinkTag) that layer 3 (backend) endpoints depend on. The declared depends_on chain places foundation AFTER backend, making it impossible to implement backend tasks before foundation exists.",
+      "declared_order": "0-setup → 1-integration → 2-frontend → 3-backend → 4-foundation",
+      "required_order": "foundation tasks must be completed before backend tasks can depend on the models"
+    }
+  ],
+  "layers_dropped": [
+    {
+      "id": "1-integration",
+      "reason": "No integration work exists. Integration layer requires cross-layer wiring (e.g., API to frontend, setup to data layer). With only backend and no frontend, and with setup and foundation as prerequisites, wiring is deferred until frontend is added."
+    },
+    {
+      "id": "2-frontend",
+      "reason": "No frontend components. PRD states 'Backend only - no frontend, no container runtime.' frontend_components list is empty."
+    }
+  ],
+  "layers": [
+    {
+      "id": "0-setup",
+      "name": "Setup",
+      "description": "Initialize project structure and dependencies",
+      "skip_if_brownfield": true,
+      "tasks": [
+        {
+          "id": "L0-001",
+          "name": "Initialize project structure",
+          "description": "Create package directories, pyproject.toml, requirements, and pytest config for a Python FastAPI + SQLAlchemy project",
+          "files": [
+            "pyproject.toml",
+            "requirements.txt",
+            "pytest.ini",
+            "app/__init__.py",
+            "app/main.py",
+            "app/database.py",
+            "app/models/__init__.py",
+            "tests/__init__.py"
+          ],
+          "depends_on": [],
+          "provides": [
+            "Package structure with FastAPI app skeleton",
+            "Dependency declarations (FastAPI 0.110+, SQLAlchemy 2.x, pytest 8.x)",
+            "SQLite database connection wiring",
+            "Test runner configuration"
+          ]
+        },
+        {
+          "id": "L0-002",
+          "name": "Initialize git and virtual environment",
+          "description": "Create .gitignore, initialize git repo (if not done), create and activate venv, install dependencies",
+          "files": [
+            ".gitignore"
+          ],
+          "depends_on": ["L0-001"],
+          "provides": [
+            "Git repository initialized",
+            "Virtual environment ready",
+            "All dependencies installed"
+          ]
+        },
+        {
+          "id": "L0-003",
+          "name": "Verify development environment",
+          "description": "Run a basic FastAPI startup check and confirm pytest can discover tests",
+          "files": [],
+          "depends_on": ["L0-002"],
+          "provides": [
+            "Confirmed working development environment",
+            "FastAPI server startable",
+            "Test runner ready"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4-foundation",
+      "name": "Foundation",
+      "description": "Database models and schema",
+      "tasks": [
+        {
+          "id": "L4-001",
+          "name": "Create Link model",
+          "description": "SQLAlchemy ORM model for storing URLs with optional titles and timestamps",
+          "files": [
+            "app/models/link.py",
+            "app/schemas/link.py"
+          ],
+          "depends_on": ["L0-003"],
+          "provides": [
+            "Link ORM model (id, url, title, created_at)",
+            "Link schema for request/response validation"
+          ]
+        },
+        {
+          "id": "L4-002",
+          "name": "Create Tag and LinkTag models",
+          "description": "SQLAlchemy models for tags and the many-to-many junction table linking tags to links",
+          "files": [
+            "app/models/tag.py",
+            "app/schemas/tag.py",
+            "app/models/linktag.py"
+          ],
+          "depends_on": ["L4-001"],
+          "provides": [
+            "Tag ORM model (id, name unique)",
+            "LinkTag junction model (link_id, tag_id)",
+            "Tag schema for validation"
+          ]
+        },
+        {
+          "id": "L4-003",
+          "name": "Create database migrations",
+          "description": "Alembic migrations to create links, tags, and linktags tables with foreign keys and indexes",
+          "files": [
+            "alembic/env.py",
+            "alembic/versions/001_create_link_tag_schema.py"
+          ],
+          "depends_on": ["L4-002"],
+          "provides": [
+            "Migration system configured",
+            "links table with url not null, title nullable, created_at timestamp",
+            "tags table with unique name",
+            "linktags junction table with composite primary key"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3-backend",
+      "name": "Backend",
+      "description": "API endpoints and service logic",
+      "tasks": [
+        {
+          "id": "L3-001",
+          "name": "Implement POST /links endpoint",
+          "description": "Accept URL and optional title; validate URL format; store and return 201 with id, url, title, created_at",
+          "files": [
+            "app/api/links.py",
+            "app/services/link_service.py",
+            "tests/test_save_link.py"
+          ],
+          "depends_on": ["L4-003"],
+          "provides": [
+            "POST /links endpoint accepting {url, title?}",
+            "URL validation (http/https absolute URLs only)",
+            "Response 201 with stored link object",
+            "Response 422 for missing or invalid URL"
+          ]
+        },
+        {
+          "id": "L3-002",
+          "name": "Implement GET /links endpoint",
+          "description": "Return all stored links ordered newest first; support optional tag query parameter to filter by tag",
+          "files": [
+            "app/api/links.py",
+            "app/services/link_service.py",
+            "tests/test_list_links.py"
+          ],
+          "depends_on": ["L4-003"],
+          "provides": [
+            "GET /links endpoint returning JSON array",
+            "Default ordering by created_at DESC",
+            "Optional ?tag query parameter for filtering",
+            "Response 200 with empty array when no links",
+            "Response 500 if database read fails"
+          ]
+        },
+        {
+          "id": "L3-003",
+          "name": "Implement POST /links/{id}/tags endpoint",
+          "description": "Attach tags to an existing link; handle duplicate tags idempotently; return link with all tags",
+          "files": [
+            "app/api/links.py",
+            "app/services/link_service.py",
+            "tests/test_tag_links.py"
+          ],
+          "depends_on": ["L4-003"],
+          "provides": [
+            "POST /links/{id}/tags endpoint accepting tag array",
+            "Idempotent tag attachment (duplicate tags attached only once)",
+            "Response 200 with updated link object including tags",
+            "Response 404 if link id does not exist"
+          ]
+        }
+      ]
+    }
+  ],
+  "dependency_graph": {
+    "L0-001": [],
+    "L0-002": ["L0-001"],
+    "L0-003": ["L0-002"],
+    "L4-001": ["L0-003"],
+    "L4-002": ["L4-001"],
+    "L4-003": ["L4-002"],
+    "L3-001": ["L4-003"],
+    "L3-002": ["L4-003"],
+    "L3-003": ["L4-003"]
+  },
+  "summary": {
+    "total_tasks": 9,
+    "by_layer": {
+      "0-setup": 3,
+      "4-foundation": 3,
+      "3-backend": 3
+    },
+    "note": "Layers 1-integration and 2-frontend dropped (no work). Declared graph has a critical ordering conflict: foundation depends on backend in the declared graph, but data models (foundation) must be built before backend endpoints can be implemented. Implementation must follow the buildable order (setup → foundation → backend), not the declared order."
+  }
+}

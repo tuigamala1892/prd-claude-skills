@@ -1,0 +1,318 @@
+<task>
+  <meta>
+    <id>L3-005</id>
+    <name>Define tag attach request and response schemas</name>
+    <layer>3-backend</layer>
+    <priority>5</priority>
+    <estimated-files>1</estimated-files>
+
+    <!--
+      This task asserts NO acceptance criterion, and satisfies-criteria is therefore empty.
+      It creates two Pydantic models in app/schemas/tag.py. Requirement 1 forbids route handlers,
+      database access and any import from app.models or app.db, so no criterion describing
+      runtime behaviour can be satisfied here.
+
+      tag-links#1 ("When tags are posted to an existing link, the system shall attach them and
+      return 200 with the link reporting every attached tag") is event-driven and behavioural in
+      every verb. It is claimed by L3-006 alone, which is what layer_plan.json assigns. Claiming
+      it here as well would let the coverage ledger show it satisfied by a green L3-005 even when
+      L3-006 has not run, and L3-006 is deferred by default, because it is blocked by the
+      unanswered gap tag-links#1 carried below. That would be a false green on the criterion most
+      likely to be skipped.
+
+      requirement-level is omitted rather than guessed: it is defined as the highest among the ids
+      named here, and no id is named. The value reaches the build manifest and the
+      requirement-level filter, so inventing one would misreport this task's obligation.
+
+      tag-links#1, #2 and #4 are carried by L3-006; tag-links#3 is carried by L3-004.
+    -->
+    <source-feature slug="tag-links" moscow="should-have" satisfies-criteria=""/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!--
+      No criterion is carried. See the note on the source-feature element above: this task defines
+      request and response shapes and asserts no behaviour any criterion describes.
+    -->
+    </acceptance-criteria>
+
+    <data-model>
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <gaps>
+      <gap id="1" kind="decision" raised="2026-08-27">
+      Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an
+      autocomplete list easy and lets the list rot.
+      </gap>
+    </gaps>
+
+    <prd-excerpt>
+    Feature "Tag links" (tag-links, should-have):
+    Attach zero or more free-text tags to a link, and filter the list endpoint by tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated
+    string column. This is the one place the fixture deliberately requires a real
+    relationship: a single-table shortcut would make the data-model layer trivial and
+    the fixture would stop exercising the part of layer planning most likely to break.
+
+    User story: As someone collecting links, I want to tag what I save and filter by tag, so that
+    a shelf of two hundred links stays usable.
+
+    Considerations: Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an implementer
+    inventing either behaviour and calling it correct. This is an implementation constraint
+    carried from the feature's notes/considerations block; it is NOT an acceptance criterion and
+    has no id.
+
+    The gap carried in the gaps block above is tag-links gap 1, kind=decision, raised 2026-08-27,
+    blocking=true. It is carried verbatim and UNANSWERED.
+    Consequence for this task: neither schema carries a cascade, retention or orphan field,
+    because the decision has not been made. Do not invent one.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, Pydantic v2 (bundled with FastAPI 0.110+), SQLAlchemy 2.x,
+    SQLite, pytest 8.x.
+    </tech-stack>
+
+    <template-base>none - this project uses no template; directories were created by layer 0-setup</template-base>
+
+    <project-structure>
+    pyproject.toml           (exists - created by L0-003)
+    app/
+      __init__.py            (exists - created by L0-001)
+      main.py                (exists - FastAPI app, created by L3-002)
+      db.py                  (Base, engine, SessionLocal, get_db - created by L4-001)
+      api/
+        __init__.py          (exists - created by L0-002)
+        links.py             (exists - router with POST /links and GET /links)
+      models/
+        __init__.py          (exists - created by L0-002)
+        link.py              (Link model - created by L4-002)
+        tag.py               (Tag model - created by L4-003)
+        link_tag.py          (LinkTag model - created by L4-003)
+      schemas/
+        __init__.py          (exists - created by L0-002)
+        link.py              (exists - LinkCreate, LinkRead, created by L3-001)
+        tag.py               (THIS TASK CREATES THIS FILE)
+    tests/
+      __init__.py            (exists - created by L0-001)
+      conftest.py            (fixtures - created by L4-004)
+      test_app_smoke.py      (exists - created by L3-002)
+      test_save_link.py      (exists - created by L3-003)
+      test_list_links.py     (exists - created by L3-004)
+      test_tag_schemas.py    (THIS TASK CREATES THIS FILE)
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="LinkRead" type="pydantic-model">
+    # from app/schemas/link.py, created by L3-001.
+    # LinkWithTags mirrors these four fields and adds `tags`.
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict
+
+    class LinkRead(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+    </interface>
+
+    <interface name="pydantic" type="library">
+    # Pydantic v2, bundled with FastAPI 0.110+
+    from pydantic import BaseModel, ConfigDict, Field
+    from pydantic import ValidationError   # raised on invalid input; used by the tests
+
+    # Field(min_length=1) applied to a list constrains the number of ITEMS in the list.
+    # model_dump() returns a dict including keys whose value is None, unless
+    # exclude_none=True is passed. Do not pass it.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create app/schemas/tag.py defining the Pydantic request model for attaching one or more
+  free-text tag names to a link, and the Pydantic response model reporting a link together with
+  every tag attached to it.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create the file `app/schemas/tag.py`. It contains schemas only: no SQLAlchemy models, no route
+    handlers, no database access, and no imports from `app.models` or `app.db`.
+    </requirement>
+
+    <requirement id="2">
+    File imports:
+
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict, Field
+    </requirement>
+
+    <requirement id="3">
+    Define the request model `TagAttach`:
+
+    class TagAttach(BaseModel):
+        tags: list[str] = Field(min_length=1)
+
+    - `tags` is required. A request body with no `tags` key is invalid.
+    - `min_length=1` rejects an empty list, because the feature attaches "one or more" tag names.
+    - Tag names are free text and are carried through exactly as submitted. Do NOT lowercase,
+      uppercase, strip whitespace, deduplicate, sort or otherwise normalise them in the schema.
+      Case-sensitive matching is required by the tag-links notes/considerations block, and any
+      folding here would defeat it. Skipping names already attached is task L3-006's job, done
+      against the database, not here.
+    </requirement>
+
+    <requirement id="4">
+    Define the response model `LinkWithTags`:
+
+    class LinkWithTags(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str]
+
+    - The first four fields mirror `LinkRead` exactly, so a tagged link serialises the same way an
+      untagged one does in the listing.
+    - `title` is `str | None` with no default, so the key is always present in the serialised
+      output and an untitled link reports null rather than omitting the field.
+    - `tags` is a list of tag NAMES as plain strings, not Tag objects and not id/name pairs. An
+      empty list is valid: a link may carry no tags.
+    - `from_attributes=True` allows construction from an ORM Link object in task L3-006.
+    </requirement>
+
+    <requirement id="5">
+    Do not define a `Tag` or `LinkTag` schema in this file, and do not re-declare the SQLAlchemy
+    models of those names. `Tag` and `LinkTag` are database models created by task L4-003; the API
+    surface exposes tag names as strings only.
+    </requirement>
+
+    <requirement id="6">
+    Add no cascade, retention, orphan-handling or tag-deletion field to either model. The
+    orphan-tag decision is an open, unanswered gap (tag-links gap 1); inventing a field for it
+    would silently answer it.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Create test file: `tests/test_tag_schemas.py`
+
+    Module imports:
+
+    import pytest
+    from datetime import datetime
+    from pydantic import ValidationError
+    from app.schemas.tag import LinkWithTags, TagAttach
+
+    These tests need no database and no fixtures: they exercise the schemas directly.
+    </test>
+
+    <test id="2">
+    Test: test_tag_schemas_carry_posted_names_and_report_every_attached_tag
+    This test covers NO acceptance criterion and therefore carries no `covers` attribute. It
+    verifies requirements 3 and 4 of this task: the field names, types and validation rules of the
+    two schemas. Every criterion of tag-links describes endpoint behaviour, which this task does
+    not build and this test does not exercise.
+
+    TagAttach:
+    - single = TagAttach(tags=["python"])
+      Assert single.tags == ["python"]
+    - multiple = TagAttach(tags=["python", "web", "reading list"])
+      Assert multiple.tags == ["python", "web", "reading list"]
+      Whitespace inside a name is preserved, because names are free text.
+    - untouched = TagAttach(tags=["  Python  "])
+      Assert untouched.tags == ["  Python  "], proving no stripping and no case folding.
+    - with pytest.raises(ValidationError):
+          TagAttach(tags=[])
+      An empty list is not "one or more".
+    - with pytest.raises(ValidationError):
+          TagAttach()
+      The tags field is required.
+
+    LinkWithTags:
+    - model = LinkWithTags(id=7, url="https://example.com/a", title="A",
+                           created_at=datetime(2026, 1, 1, 12, 0, 0),
+                           tags=["python", "web"])
+      payload = model.model_dump()
+      Assert payload["tags"] == ["python", "web"], every attached tag, in the order supplied,
+      with no folding and no reordering.
+      Assert payload["id"] == 7
+      Assert payload["url"] == "https://example.com/a"
+      Assert payload["title"] == "A"
+      Assert payload["created_at"] == datetime(2026, 1, 1, 12, 0, 0)
+    - untitled = LinkWithTags(id=8, url="https://example.com/b", title=None,
+                              created_at=datetime(2026, 1, 2, 12, 0, 0), tags=[])
+      Assert "title" in untitled.model_dump()
+      Assert untitled.model_dump()["title"] is None
+      Assert untitled.model_dump()["tags"] == []   # a link with no tags is valid
+    - case_sensitive = LinkWithTags(id=9, url="https://example.com/c", title=None,
+                                    created_at=datetime(2026, 1, 3, 12, 0, 0),
+                                    tags=["Python", "python"])
+      Assert case_sensitive.model_dump()["tags"] == ["Python", "python"]
+      This last assertion is for the case-sensitivity constraint carried from the tag-links
+      notes/considerations block, not for the criterion.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/schemas/tag.py</file>
+    <file>tests/test_tag_schemas.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `pytest tests/test_tag_schemas.py -v` - the test passes</step>
+    <step>Run: `pytest tests/ -v` - the whole suite passes, proving the new module did not break the existing schema, endpoint or smoke tests</step>
+    <step>Run: `python -c "from app.schemas.tag import TagAttach, LinkWithTags; print(sorted(TagAttach.model_fields)); print(sorted(LinkWithTags.model_fields))"` - prints ['tags'] then ['created_at', 'id', 'tags', 'title', 'url']</step>
+    <step>Run: `python -c "from app.schemas.tag import LinkWithTags; from app.schemas.link import LinkRead; shared = {'id', 'url', 'title', 'created_at'}; assert shared.issubset(set(LinkWithTags.model_fields)); assert set(LinkRead.model_fields) == shared"` - LinkWithTags mirrors every LinkRead field</step>
+    <step>Run: `python -c "import inspect, app.schemas.tag as m; src = inspect.getsource(m); assert 'app.models' not in src; assert 'app.db' not in src"` - the schema module imports no model and no database code</step>
+  </verification>
+
+  <exports>
+    <interface name="TagAttach" type="pydantic-model">
+    # in app/schemas/tag.py
+    from pydantic import BaseModel, Field
+
+    class TagAttach(BaseModel):
+        """Request body for POST /links/{link_id}/tags."""
+
+        tags: list[str] = Field(min_length=1)
+        # Required. At least one name. Names are free text, carried through exactly as
+        # submitted: not stripped, not case-folded, not deduplicated, not sorted.
+
+    # JSON shape:
+    #   {"tags": ["python", "web"]}
+    # An empty list, or a missing tags key, is a 422.
+    </interface>
+
+    <interface name="LinkWithTags" type="pydantic-model">
+    # in app/schemas/tag.py
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict
+
+    class LinkWithTags(BaseModel):
+        """Response body for POST /links/{link_id}/tags: a link and every tag on it."""
+
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None      # always present in the payload; null when untitled
+        created_at: datetime
+        tags: list[str]        # tag NAMES; an empty list is valid
+
+    # JSON shape:
+    #   {"id": 7, "url": "https://example.com/a", "title": "A",
+    #    "created_at": "2026-01-01T12:00:00", "tags": ["python", "web"]}
+    </interface>
+  </exports>
+</task>

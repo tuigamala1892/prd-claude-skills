@@ -1,0 +1,98 @@
+{
+  "feature": "tag-links",
+  "scope": "medium",
+  "confidence": "medium",
+  "data_models": [
+    {
+      "name": "Tag",
+      "fields": ["id", "name"],
+      "relationships": ["has_many: LinkTag"],
+      "source": "declared",
+      "declared_in": "features/tag-links.md <notes><data-model>",
+      "feature": "tag-links",
+      "verbatim": "Tag(id integer pk, name text unique not null)"
+    },
+    {
+      "name": "LinkTag",
+      "fields": ["link_id", "tag_id"],
+      "relationships": ["belongs_to: Link", "belongs_to: Tag"],
+      "source": "declared",
+      "declared_in": "features/tag-links.md <notes><data-model>",
+      "feature": "tag-links",
+      "verbatim": "LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/links/{link_id}/tags",
+      "purpose": "Attach one or more tags to an existing link; idempotent for tags already attached; 404 when the link id does not exist.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links",
+      "inference_basis": "criteria 1, 2 and 4 describe posting tags to an existing link; the path shape is not stated in the feature"
+    },
+    {
+      "method": "GET",
+      "path": "/links?tag={tag}",
+      "purpose": "List links filtered by tag, returning exactly the links carrying that tag.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links",
+      "inference_basis": "criterion 3 refers to listing links with a tag filter; the feature says 'the list endpoint' without giving its path or parameter name"
+    }
+  ],
+  "components": [],
+  "acceptance_criteria": [
+    {
+      "id": "1",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "1",
+      "text": "When tags are posted to an existing link, the system shall attach them and return 200 with the link reporting every attached tag.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links"
+    },
+    {
+      "id": "2",
+      "pattern": "event-driven",
+      "priority": "P1",
+      "derived_from": "2",
+      "text": "When a tag already attached to a link is posted again, the system shall return 200 and leave the tag attached exactly once.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links"
+    },
+    {
+      "id": "3",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "3",
+      "text": "When links are listed with a tag filter, the system shall return exactly the links carrying that tag.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links"
+    },
+    {
+      "id": "4",
+      "pattern": "unwanted-behaviour",
+      "priority": "P0",
+      "derived_from": "4",
+      "text": "If tags are posted to a link id that does not exist, then the system shall return 404 and create no tag rows.",
+      "feature": "tag-links",
+      "inferred_from": "tag-links"
+    }
+  ],
+  "gaps": [
+    {
+      "feature": "tag-links",
+      "id": "1",
+      "kind": "decision",
+      "raised": "2026-08-27",
+      "body": "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot."
+    }
+  ],
+  "feature_edges": [
+    {
+      "from": "tag-links",
+      "to": "save-link",
+      "kind": "data"
+    }
+  ]
+}

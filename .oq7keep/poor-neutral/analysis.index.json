@@ -1,0 +1,89 @@
+{
+  "prd_meta": {
+    "name": "Link Shelf",
+    "slug": "link-shelf",
+    "status": "in-progress"
+  },
+  "features": [
+    {
+      "name": "Save a link",
+      "priority": "must-have",
+      "summary": "Accept a URL with an optional title and store it.",
+      "spec_file": "features/save-link.md"
+    },
+    {
+      "name": "List saved links",
+      "priority": "must-have",
+      "summary": "Return every saved link, newest first.",
+      "spec_file": "features/list-links.md"
+    },
+    {
+      "name": "Tag links",
+      "priority": "should-have",
+      "summary": "Attach free-text tags to a link and filter the list by tag.",
+      "spec_file": "features/tag-links.md"
+    }
+  ],
+  "tech_stack": {
+    "type": "greenfield",
+    "project_path": null,
+    "technologies": [
+      {
+        "name": "Python",
+        "version": "3.11",
+        "purpose": "Backend language"
+      },
+      {
+        "name": "FastAPI",
+        "version": "0.110+",
+        "purpose": "HTTP API framework"
+      },
+      {
+        "name": "SQLAlchemy",
+        "version": "2.x",
+        "purpose": "ORM and schema definition"
+      },
+      {
+        "name": "SQLite",
+        "version": "file-backed",
+        "purpose": "Database (file-backed, no server)"
+      },
+      {
+        "name": "pytest",
+        "version": "8.x",
+        "purpose": "Test runner"
+      }
+    ],
+    "template": {
+      "path": "webapps/backends/python",
+      "provides": ["API framework", "ORM support", "testing"],
+      "detected_from": "Python + FastAPI in selected technologies"
+    },
+    "rationale": "SQLite rather than PostgreSQL so the whole project runs with no external service: a fixture that needs a database server running is a fixture that fails for reasons unrelated to what is being tested. No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere."
+  },
+  "dependencies": [
+    {
+      "name": "fastapi",
+      "version": "0.110+",
+      "purpose": "HTTP API framework"
+    },
+    {
+      "name": "sqlalchemy",
+      "version": "2.x",
+      "purpose": "ORM and schema definition"
+    },
+    {
+      "name": "pytest",
+      "version": "8.x",
+      "purpose": "Test runner used by every task's verification block"
+    }
+  ],
+  "template": {
+    "path": "webapps/backends/python",
+    "provides": ["API framework", "ORM support", "testing"],
+    "detected_from": "Python + FastAPI in selected technologies"
+  },
+  "architecture": {
+    "declared": false
+  }
+}

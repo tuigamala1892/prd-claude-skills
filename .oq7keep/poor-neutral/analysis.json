@@ -1,0 +1,191 @@
+{
+  "prd_meta": {
+    "name": "Link Shelf",
+    "slug": "link-shelf",
+    "status": "in-progress"
+  },
+  "features": [
+    {
+      "name": "Save a link",
+      "slug": "save-link",
+      "priority": "must-have",
+      "summary": "Accept a URL with an optional title and store it.",
+      "spec_file": "features/save-link.md",
+      "scope": "small",
+      "confidence": "high"
+    },
+    {
+      "name": "List saved links",
+      "slug": "list-links",
+      "priority": "must-have",
+      "summary": "Return every saved link, newest first.",
+      "spec_file": "features/list-links.md",
+      "scope": "small",
+      "confidence": "high"
+    },
+    {
+      "name": "Tag links",
+      "slug": "tag-links",
+      "priority": "should-have",
+      "summary": "Attach free-text tags to a link and filter the list by tag.",
+      "spec_file": "features/tag-links.md",
+      "scope": "medium",
+      "confidence": "high"
+    }
+  ],
+  "tech_stack": {
+    "type": "greenfield",
+    "project_path": "C:/Users/Lee/AppData/Local/Temp/oq7-poor-neutral/poor/app",
+    "technologies": [
+      { "name": "Python", "version": "3.11", "purpose": "Backend language" },
+      { "name": "FastAPI", "version": "0.110+", "purpose": "HTTP API framework" },
+      { "name": "SQLAlchemy", "version": "2.x", "purpose": "ORM and schema definition" },
+      { "name": "SQLite", "version": "file-backed", "purpose": "Database (file-backed, no server)" },
+      { "name": "pytest", "version": "8.x", "purpose": "Test runner" }
+    ],
+    "rationale": "SQLite rather than PostgreSQL so the whole project runs with no external service: a fixture that needs a database server running is a fixture that fails for reasons unrelated to what is being tested. No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.",
+    "frontend": false,
+    "frontend_note": "index.md <selected> states 'Backend only - no frontend, no container runtime.'"
+  },
+  "template": null,
+  "scaffold": {
+    "kind": "create-directories",
+    "template_path": null,
+    "note": "No template tree to copy. The PRD rationale directs Layer 0 to create the project structure (package dirs, pyproject/requirements, pytest config, SQLite engine wiring) from scratch. Target directory is an empty git repository containing only architecture.md."
+  },
+  "dependencies": [
+    { "name": "fastapi", "version": "0.110+", "purpose": "HTTP API framework" },
+    { "name": "sqlalchemy", "version": "2.x", "purpose": "ORM and schema definition" },
+    { "name": "pytest", "version": "8.x", "purpose": "Test runner used by every task's verification block" }
+  ],
+  "data_models": [
+    {
+      "name": "Link",
+      "fields": ["id", "url", "title", "created_at"],
+      "relationships": ["has_many: LinkTag"],
+      "source": "declared",
+      "inferred_from": ["save-link", "list-links"],
+      "notes": "id: integer pk, url: text not null, title: text null, created_at: timestamp not null. Declared by save-link; list-links carries it unchanged and adds no columns. The has_many relationship is contributed by tag-links."
+    },
+    {
+      "name": "Tag",
+      "fields": ["id integer pk", "name text unique not null"],
+      "relationships": ["has_many: LinkTag"],
+      "source": "declared",
+      "inferred_from": ["tag-links"]
+    },
+    {
+      "name": "LinkTag",
+      "fields": ["link_id fk Link.id", "tag_id fk Tag.id", "primary key (link_id, tag_id)"],
+      "relationships": ["belongs_to: Link", "belongs_to: Tag"],
+      "source": "declared",
+      "inferred_from": ["tag-links"]
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/links",
+      "purpose": "Store a URL with optional title",
+      "inferred_from": ["save-link"],
+      "request_fields": ["url", "title"],
+      "response_fields": ["id", "url", "title", "created_at"],
+      "response_status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/links",
+      "purpose": "List all saved links, newest first",
+      "inferred_from": ["list-links", "tag-links"],
+      "response": "JSON array of Link objects, empty when no links stored",
+      "query_params": [
+        { "name": "tag", "purpose": "Filter to links carrying that tag", "inferred_from": "tag-links" }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/links/{id}/tags",
+      "purpose": "Attach tags to an existing link",
+      "inferred_from": ["tag-links"]
+    }
+  ],
+  "frontend_components": [],
+  "gaps": [
+    {
+      "feature": "tag-links",
+      "id": "1",
+      "kind": "decision",
+      "raised": "2026-08-27",
+      "body": "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot."
+    }
+  ],
+  "acceptance_criteria": {
+    "save-link": [
+      { "id": "1", "pattern": "event-driven", "priority": "P0", "text": "When a link is posted with a url and a title, the system shall store it and return 201 with an integer id, the submitted url and title, and a created_at timestamp." },
+      { "id": "2", "pattern": "event-driven", "priority": "P0", "text": "When a link is posted with a url and no title, the system shall store it with a null title and return 201." },
+      { "id": "3", "pattern": "unwanted-behaviour", "priority": "P0", "text": "If a link is posted with no url field, then the system shall return 422 and store nothing." },
+      { "id": "4", "pattern": "unwanted-behaviour", "priority": "P1", "text": "If a link is posted with a url that does not parse as an absolute http or https URL, then the system shall return 422 and store nothing." }
+    ],
+    "list-links": [
+      { "id": "1", "pattern": "ubiquitous", "priority": "P0", "text": "The system shall return 200 and a JSON array from GET /links, empty when no links are stored." },
+      { "id": "2", "pattern": "ubiquitous", "priority": "P0", "text": "The system shall order listed links most recently created first." },
+      { "id": "3", "pattern": "ubiquitous", "priority": "P1", "text": "The system shall include every stored link in the listing, reporting a null title rather than omitting an untitled link." },
+      { "id": "4", "pattern": "unwanted-behaviour", "priority": "P0", "text": "If the stored links cannot be read, then the system shall return 500 and shall not return an empty array, so that a failure to read is never reported as an empty shelf." }
+    ],
+    "tag-links": [
+      { "id": "1", "pattern": "event-driven", "priority": "P0", "text": "When tags are posted to an existing link, the system shall attach them and return 200 with the link reporting every attached tag." },
+      { "id": "2", "pattern": "event-driven", "priority": "P1", "text": "When a tag already attached to a link is posted again, the system shall return 200 and leave the tag attached exactly once." },
+      { "id": "3", "pattern": "event-driven", "priority": "P0", "text": "When links are listed with a tag filter, the system shall return exactly the links carrying that tag." },
+      { "id": "4", "pattern": "unwanted-behaviour", "priority": "P0", "text": "If tags are posted to a link id that does not exist, then the system shall return 404 and create no tag rows." }
+    ]
+  },
+  "architecture": {
+    "declared": true,
+    "path": "C:/Users/Lee/AppData/Local/Temp/oq7-poor-neutral/poor/app/architecture.md",
+    "parsed": "architecture.json",
+    "note": "Project declares its own layer graph and it replaces the default tiers. The declared order is setup -> integration -> frontend -> backend -> foundation, which inverts the conventional dependency direction."
+  },
+  "repo_structure": "single",
+  "merge_notes": [
+    {
+      "kind": "dropped",
+      "field": "frontend_components",
+      "detail": "All three feature passes inferred frontend components (save-link: SaveLinkForm; list-links: LinksList; tag-links: TagFilter, TagInput). index.md <selected> states 'Backend only - no frontend, no container runtime.' A feature pass cannot see the index, so none of them could know. Dropped all four; frontend_components is empty."
+    },
+    {
+      "kind": "dropped",
+      "field": "template",
+      "detail": "Index pass mapped the Python+FastAPI keywords to template path 'webapps/backends/python'. The PRD's own <rationale> in the same element disclaims it: 'No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.' Template set to null and replaced with a scaffold entry of kind create-directories."
+    },
+    {
+      "kind": "reconciled",
+      "field": "api_endpoints[].path",
+      "detail": "Fragments disagreed on the base path: save-link inferred '/api/links', tag-links inferred '/api/links/:id/tags' and '/api/links?tag=', list-links carried '/links'. The only path stated literally anywhere in the PRD is 'GET /links' (list-links criterion 1); the '/api' prefix is inferred in both other fragments and supported by no source text. Normalised all endpoints to the '/links' base."
+    },
+    {
+      "kind": "unioned",
+      "field": "api_endpoints[GET /links]",
+      "detail": "list-links and tag-links both describe GET /links. Merged into one endpoint rather than two, with tag-links' contribution recorded as the optional 'tag' query parameter. Both attributions kept in inferred_from."
+    },
+    {
+      "kind": "unioned",
+      "field": "data_models[Link]",
+      "detail": "Inferred by save-link (declared owner) and carried unchanged by list-links. Kept once with both attributions. The has_many:LinkTag relationship comes from tag-links, which is the only fragment that could see the join table."
+    },
+    {
+      "kind": "added",
+      "field": "tech_stack.project_path",
+      "detail": "index.md declares <type>greenfield</type> and carries no <project-path>, so the index pass emitted null. The invocation supplied --project-path; recorded here so Phase 5 and /execute have the target."
+    },
+    {
+      "kind": "reconciled",
+      "field": "architecture.declared",
+      "detail": "Index pass emitted architecture.declared=false, correctly -- index.md says nothing about a layer graph and the pass was given no other file. The project does declare one, in app/architecture.md, validated in Phase 1. Corrected to true; the parsed graph is in architecture.json."
+    },
+    {
+      "kind": "added",
+      "field": "scaffold",
+      "detail": "No fragment owns this. The target directory is an empty git repository (architecture.md only, no pyproject, no package, no tests), so setup work exists even though no template is named. Recorded so Phase 3 can judge the setup layer on evidence rather than on the absence of a template path."
+    }
+  ]
+}

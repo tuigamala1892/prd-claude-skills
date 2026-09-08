@@ -1,0 +1,801 @@
+<task>
+  <meta>
+    <id>L2-001</id>
+    <name>POST /links -- save a link</name>
+    <layer>2-backend</layer>
+    <priority>1</priority>
+    <estimated-files>3</estimated-files>
+
+    <source-feature slug="save-link" moscow="must-have"
+                    satisfies-criteria="1,2,3,4" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <criterion id="1" pattern="event-driven" priority="P0" derived-from="1">
+      When a link is posted with a url and a title, the system shall store it and return 201
+      with an integer id, the submitted url and title, and a created_at timestamp.
+    </criterion>
+    <criterion id="2" pattern="event-driven" priority="P0" derived-from="2">
+      When a link is posted with a url and no title, the system shall store it with a null title
+      and return 201.
+    </criterion>
+    <criterion id="3" pattern="unwanted-behaviour" priority="P0" derived-from="3">
+      If a link is posted with no url field, then the system shall return 422 and store nothing.
+    </criterion>
+    <criterion id="4" pattern="unwanted-behaviour" priority="P1" derived-from="4">
+      If a link is posted with a url that does not parse as an absolute http or https URL, then
+      the system shall return 422 and store nothing.
+    </criterion>
+    </acceptance-criteria>
+
+    <data-model>
+    Link(id integer pk, url text not null, title text null,
+    created_at timestamp not null)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Save a link (slug: save-link, must-have).
+
+    As someone collecting links, I want to store a URL with an optional title, so that I can
+    come back to it without keeping a browser tab open.
+
+    A POST endpoint that accepts a URL and an optional title, stores it, and returns the
+    stored record including its generated id and creation timestamp.
+
+    The URL is the only required field. If no title is supplied the field is stored as
+    null rather than being derived from the page, because fetching the page would make
+    the endpoint depend on the network.
+
+    Considerations (verbatim from the feature):
+    Duplicate URLs are allowed. Deduplication sounds obviously desirable but needs a
+    rule for what to do with the existing record's tags and timestamp, and that decision
+    is not worth making for a fixture.
+
+    CONSEQUENCES FOR THIS TASK:
+    - The endpoint path is `/links`, UNPREFIXED. Not `/api/links`. Two earlier analysis passes
+      invented an `/api` prefix with nothing in the PRD to read it from; the only path the PRD
+      names verbatim is `GET /links`, and the two write endpoints sit under the same root.
+    - Do NOT deduplicate. Posting the same url twice must create two rows with two different
+      ids and return 201 both times. `Link.url` carries no unique constraint (L1-001), so
+      nothing at the storage layer stops it and nothing in this task may add a check that does.
+    - Do NOT fetch the page to derive a title. The endpoint makes no network call of any kind.
+      A missing title is stored as SQL NULL and reported as JSON `null`.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ -- `APIRouter`, `Depends`, `status`. Request and response bodies are declared
+      with Pydantic v2 models (FastAPI 0.110 and later require Pydantic v2).
+    Pydantic 2.x -- `BaseModel`, `ConfigDict`, `Field`, `field_validator`. Installed as a
+      dependency of FastAPI. Use the v2 spellings: `model_config = ConfigDict(...)`, NOT the
+      legacy `class Config:`; `@field_validator`, NOT the v1 `@validator`.
+    SQLAlchemy 2.x -- `select`, `Session`. Typed declarative models already exist (Layer 1).
+    SQLite, file-backed (database, no external server).
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root.
+    httpx -- imported by `fastapi.testclient.TestClient`; already installed by L0-001.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW are created by this task):
+
+    .gitignore              (exists - L0-001)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; Base, engine, SessionLocal, get_db)
+      main.py               (exists - L0-003; bare FastAPI instance, NO routers included)
+      models/
+        __init__.py         (exists - L1-003; exports Link, LinkTag, Tag)
+        link.py             (exists - L1-001, extended by L1-003; Link with a `tags` relationship)
+        tag.py              (exists - L1-002)
+        link_tag.py         (exists - L1-003)
+      api/                  NEW directory - this task
+        __init__.py         NEW - this task (package marker for the router modules)
+        save_link.py        NEW - this task
+        list_links.py       (created by L2-002, which depends on this task and is NOT visible
+                             in this worktree)
+        tag_links.py        (created by L2-003, likewise not visible)
+      schemas/              NEW directory - this task
+        link.py             NEW - this task
+        tag.py              (created by L2-003)
+    tests/
+      conftest.py           (exists - L0-003; db_session and client fixtures)
+      test_setup.py         (exists - L0-003; 5 tests, must keep passing)
+      test_model_link.py    (exists - L1-001; 6 tests, must keep passing)
+      test_model_tag.py     (exists - L1-002; 7 tests, must keep passing)
+      test_model_link_tag.py (exists - L1-003; 9 tests, must keep passing)
+      test_save_link.py     NEW - this task (the test file, additional to the three above)
+
+    `app/schemas/` deliberately has NO `__init__.py`. It is a PEP 420 implicit namespace
+    package: a directory without `__init__.py` inside the regular package `app` is still
+    importable, and `from app.schemas.link import LinkResponse` resolves under
+    `pythonpath = .`. This is verified by a step in the verification block below. The
+    three-file budget for this task is spent on `app/api/__init__.py`, `app/api/save_link.py`
+    and `app/schemas/link.py`; do not add a fourth file.
+
+    ORDERING NOTE. This task is the first task of Layer 2 and runs alone. L2-002 and L2-003
+    run afterwards, in parallel worktrees, and BOTH import `LinkResponse` from the module this
+    task creates. Renaming `app/schemas/link.py`, renaming `LinkResponse`, or changing its
+    field names breaks two tasks that cannot see this file.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py, created by L1-001 and extended by L1-003 - ALREADY EXISTS
+    from datetime import datetime
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+    from app.database import Base
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+
+    def utcnow() -&gt; datetime:
+        """Return the current UTC time as a naive datetime, to microsecond resolution."""
+        ...
+
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # integer primary key, autoincrement
+        url: Mapped[str]                # Text, NOT NULL, NOT unique
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # DateTime, NOT NULL, default=utcnow (naive UTC)
+
+        tags: Mapped[list[Tag]] = relationship(
+            Tag,
+            secondary=LinkTag.__table__,
+            lazy="selectin",
+            order_by=Tag.id,
+        )
+
+    Import as: `from app.models import Link`
+
+    Contract this task relies on:
+    - `Link(url=..., title=...)` is the whole constructor call this task needs. `id` and
+      `created_at` are assigned automatically - `id` by SQLite autoincrement, `created_at` by
+      the Python-side `default=utcnow` at INSERT, with microsecond resolution.
+    - `url` is deliberately NOT unique. Two rows with the same url are a supported state.
+    - `title` is nullable; omitting it stores SQL NULL, not the empty string.
+    - `link.tags` is a `list[Tag]`, EMPTY (never None) for a link with no tags. A link created
+      by this endpoint always has `tags == []`.
+    - No validation of any kind lives on the model. URL rejection is this task's job, in the
+      Pydantic request schema.
+    </interface>
+
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py, created by L1-002 - ALREADY EXISTS
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # Text, NOT NULL, UNIQUE, default (case-sensitive) collation
+
+    Import as: `from app.models import Tag`
+
+    This task creates no tags and attaches none. `Tag` is listed because `LinkResponse` -
+    the response schema this task owns and L2-003 reuses - must report the NAMES of a link's
+    tags, so the shape of `Tag.name` (a plain `str`) is part of that schema's contract.
+    </interface>
+
+    <interface name="Link.tags" type="sqlalchemy-relationship">
+    # app/models/link.py, added by L1-003
+    tags: Mapped[list[Tag]] = relationship(
+        Tag,
+        secondary=LinkTag.__table__,
+        lazy="selectin",
+        order_by=Tag.id,
+    )
+
+    Contract this task relies on:
+    - `link.tags` is a `list[Tag]`, empty (never None) when nothing is attached.
+    - The order is `Tag.id` ascending and is stable across reloads, so a response body listing
+      tag names may be asserted directly without sorting.
+    - `lazy="selectin"` means the collection is loaded eagerly, so serialising a link to
+      `LinkResponse` does not depend on a lazy load firing at response time.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Use in a route as: `db: Session = Depends(get_db)`
+
+    This is the ONLY way a route in this project may obtain a session. A route that builds its
+    own `SessionLocal()` cannot be overridden by a test and will read a different database
+    from the one the test wrote to.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    Two consequences this task depends on:
+    - `expire_on_commit=False`: after `db.commit()` the instance's `id` and `created_at` are
+      still readable without a refresh.
+    - `autoflush=False`: a pending object is NOT written before the next query runs. This task
+      issues no query after an add, so it is not affected, but do not assume autoflush.
+    </interface>
+
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+    Not subclassed by this task - Layer 1 declared every model. Listed so the implementer knows
+    the schema comes from `Base.metadata` and that this project has NO migration tool.
+    </interface>
+
+    <interface name="app" type="fastapi-application">
+    # app/main.py, created by L0-003
+    from fastapi import FastAPI
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+    )
+
+    NO routers are included. This task must NOT edit `app/main.py` and must NOT call
+    `app.include_router(...)` anywhere. Task L4-001 mounts the save_link, list_links and
+    tag_links routers together; mounting here would collide with L2-002 and L2-003, which
+    would each have to edit the same file.
+
+    Consequence for this task's tests: the `client` fixture from `tests/conftest.py` wraps this
+    bare application and therefore serves NO `/links` route. The test file below builds its own
+    single-router application instead - see test 1.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with every table
+    in `Base.metadata` - `links`, `tags` and `link_tags` - already created.
+
+    Contract this task relies on:
+    - The database is empty at the start of each test and discarded at the end, so
+      "store nothing" can be asserted as "the links table has zero rows".
+    - Rows written through this session are visible to a request served by a route whose
+      `get_db` is overridden to yield this same session, and the reverse.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `TestClient` wrapping `app.main.app` with `get_db` overridden.
+
+    DO NOT USE IT IN THIS TASK. `app.main.app` has no routers included until L4-001, so every
+    request through this fixture returns 404 and would make this task's tests assert nothing.
+    Test 1 below defines a local `api` fixture that mounts THIS task's router on a throwaway
+    FastAPI application. Do not request `client` anywhere in `tests/test_save_link.py`.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequences for this task: the test file must be `tests/test_save_link.py`; tests are run
+    with `python -m pytest` from the repository root; and `pythonpath = .` is what makes
+    `from app.schemas.link import LinkCreate` resolve from the source tree without the project
+    being pip-installed, including for the namespace package `app.schemas`.
+    </interface>
+
+    <interface name="fastapi.testclient.TestClient" type="third-party-class">
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class TestClient:
+        def __init__(self, app: FastAPI) -&gt; None: ...
+        def post(self, url: str, json: object = None, **kwargs) -&gt; "httpx.Response": ...
+        def get(self, url: str, **kwargs) -&gt; "httpx.Response": ...
+
+    `response.status_code` is an int; `response.json()` decodes the body.
+    Usable as a context manager, which runs the application's startup and shutdown events:
+        with TestClient(application) as api:
+            api.post("/links", json={"url": "https://example.com/a"})
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the Pydantic request and response schemas for a link and the `POST /links` route that
+  stores one, so that posting a url with an optional title returns 201 with the stored record,
+  and a request whose url is missing or is not an absolute http or https URL is rejected with
+  422 having written nothing.
+
+  This task also owns `LinkResponse`, the SINGLE response schema every link-returning endpoint
+  in this project uses. L2-002 (`GET /links`) and L2-003 (`POST /links/{id}/tags`) both import
+  it from `app/schemas/link.py` and neither redefines it. It therefore carries the link's tag
+  NAMES as well as its four columns, because tag-links criterion 1 requires the tagging
+  endpoint's response to report every attached tag, and a second response schema for that would
+  make two endpoints disagree about the shape of a link.
+
+  This task mounts nothing. It defines an `APIRouter` and leaves it unmounted; L4-001 includes
+  it on the application.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create the directory `app/api/` and the file `app/api/__init__.py` with exactly this
+    content:
+
+    """HTTP routers for Link Shelf."""
+
+    One docstring line and nothing else. Do NOT import the router modules here: L2-002 and
+    L2-003 add `list_links.py` and `tag_links.py` from parallel worktrees, and an import list in
+    this file would be a third place they both have to edit and would collide in the merge
+    queue. Each router module is imported directly by whoever needs it -
+    `from app.api.save_link import router`.
+    </requirement>
+
+    <requirement id="2">
+    Create the directory `app/schemas/` and the file `app/schemas/link.py` with exactly this
+    content:
+
+    """Pydantic schemas for the link endpoints."""
+
+    from datetime import datetime
+    from urllib.parse import urlparse
+
+    from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+    class LinkCreate(BaseModel):
+        """Request body for POST /links."""
+
+        url: str
+        title: str | None = None
+
+        @field_validator("url")
+        @classmethod
+        def url_must_be_absolute_http(cls, value: str) -&gt; str:
+            """Reject anything that is not an absolute http or https URL."""
+            parsed = urlparse(value)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise ValueError("url must be an absolute http or https URL")
+            return value
+
+
+    class LinkResponse(BaseModel):
+        """One stored link, as returned by every endpoint in this project."""
+
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str] = Field(default_factory=list)
+
+        @field_validator("tags", mode="before")
+        @classmethod
+        def tag_names(cls, value: object) -&gt; object:
+            """Accept a list of Tag rows and report their names."""
+            if isinstance(value, list):
+                return [item if isinstance(item, str) else item.name for item in value]
+            return value
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - `url: str` with an explicit validator, NOT `pydantic.AnyHttpUrl` and NOT
+      `pydantic.HttpUrl`. Those types NORMALISE the value - `https://example.com` comes back
+      as `https://example.com/` with a trailing slash added - and save-link criterion 1
+      requires the response to carry "the submitted url". A plain `str` plus a validator
+      rejects the same inputs without rewriting the accepted ones.
+
+    - Raising `ValueError` inside a `field_validator` is what produces the 422. FastAPI
+      converts a request-body validation failure into `RequestValidationError`, whose default
+      handler responds 422. Do NOT raise `HTTPException` here and do NOT catch the error in the
+      route: the status code comes for free and hand-rolling it would produce 400.
+
+    - The absoluteness test is `parsed.scheme not in ("http", "https") or not parsed.netloc`.
+      Both halves are required. The scheme check alone accepts `http://` with no host; the
+      netloc check alone accepts `ftp://example.com`. Together they reject `example.com`
+      (no scheme), `/links/1` (no scheme), `//example.com/a` (no scheme), `ftp://example.com`
+      (wrong scheme) and `http://` (no host), and accept `http://example.com` and
+      `https://example.com/a?b=c#d`.
+
+    - `title: str | None = None`. Omitting the key entirely and sending `"title": null` are
+      both legal and both store SQL NULL. Do not make it required and do not default it to the
+      empty string or to any value derived from the url.
+
+    - `LinkResponse` sets `model_config = ConfigDict(from_attributes=True)`. That is what lets
+      FastAPI serialise the `Link` ORM instance the route returns. Without it, FastAPI raises
+      a validation error at response time because a `Link` is not a dict.
+
+    - `LinkResponse.tags` is `list[str]` - the tag NAMES, not `Tag` objects and not ids -
+      with `default_factory=list` so a link with no tags reports `[]`. The
+      `mode="before"` validator maps each `Tag` row to `item.name` so
+      `LinkResponse.model_validate(link)` works directly on an ORM instance; the
+      `isinstance(item, str)` branch lets the same schema also validate a plain dict, which
+      is what makes it usable in a test assertion. Do NOT import `app.models` into this
+      module - the duck-typed `item.name` keeps the schema layer free of a model import.
+
+    - `created_at: datetime`. It serialises to an ISO-8601 string in the JSON body. It is a
+      NAIVE datetime holding UTC (L1-001's decision), so the serialised form carries no
+      offset. Do not add a timezone and do not reformat it.
+
+    - Field ORDER in `LinkResponse` is `id, url, title, created_at, tags`. L2-002 and L2-003
+      assert on this schema's field names; adding, removing or renaming one breaks them.
+    </requirement>
+
+    <requirement id="3">
+    Create `app/api/save_link.py` with exactly this content:
+
+    """POST /links - store a link with an optional title."""
+
+    from fastapi import APIRouter, Depends, status
+    from sqlalchemy.orm import Session
+
+    from app.database import get_db
+    from app.models import Link
+    from app.schemas.link import LinkCreate, LinkResponse
+
+    router = APIRouter()
+
+
+    @router.post(
+        "/links",
+        response_model=LinkResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def save_link(payload: LinkCreate, db: Session = Depends(get_db)) -&gt; Link:
+        """Store the posted link and return it with its generated id and timestamp."""
+        link = Link(url=payload.url, title=payload.title)
+        db.add(link)
+        db.commit()
+        db.refresh(link)
+        return link
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The path is `"/links"`, with NO prefix. Do not write `APIRouter(prefix="/api")`, do not
+      write `"/api/links"`, and do not pass `tags=` or `prefix=` to `APIRouter()`. L4-001
+      includes this router with a bare `app.include_router(router)`, so whatever path is
+      written here is the path the application serves.
+
+    - The module-level name is `router`. L4-001 imports it as
+      `from app.api.save_link import router as save_link_router`. Renaming it breaks a task
+      that cannot see this file.
+
+    - `status_code=status.HTTP_201_CREATED`. FastAPI's default for POST is 200; criteria 1 and
+      2 both require 201, so the explicit status code is mandatory.
+
+    - `db: Session = Depends(get_db)`. Do not construct `SessionLocal()` in the route: the test
+      overrides `get_db`, and a route that ignores it reads a different database.
+
+    - `db.refresh(link)` after the commit re-reads the row, which guarantees `id`, `created_at`
+      and the (empty) `tags` collection are populated from storage before the response is
+      serialised. Keep it even though `expire_on_commit=False` makes the attributes readable
+      without it - the refresh is what makes the response provably reflect what was stored.
+
+    - The route returns the `Link` ORM instance and lets `response_model=LinkResponse` do the
+      conversion. Do not build a dict by hand: a hand-built dict would drift from the schema
+      L2-002 and L2-003 also use.
+
+    - No deduplication. Do not query for an existing row with the same url, and do not return
+      an existing link. The feature states verbatim that duplicate URLs are allowed.
+
+    - No network call. Do not fetch the page to derive a title, do not import `httpx`,
+      `requests` or `urllib.request` in this module.
+
+    - Do NOT call `app.include_router(...)` and do NOT import `app.main` here. This module
+      defines a router and nothing else.
+
+    - Do NOT call `Base.metadata.create_all` anywhere. The test fixture creates the schema for
+      tests and L4-001 creates it for the running application.
+    </requirement>
+
+    <requirement id="4">
+    Do NOT create or edit any other file. Specifically: do not touch `app/main.py`,
+    `app/database.py`, `app/models/__init__.py`, `app/models/link.py`, `app/models/tag.py`,
+    `app/models/link_tag.py`, `tests/conftest.py`, `tests/test_setup.py`,
+    `tests/test_model_link.py`, `tests/test_model_tag.py`, `tests/test_model_link_tag.py`,
+    `pytest.ini`, `pyproject.toml`, `requirements.txt` or `.gitignore`.
+
+    Do not create `app/api/list_links.py` or `app/api/tag_links.py` - those are L2-002's and
+    L2-003's files and creating them here would collide in the merge queue. Do not create
+    `app/schemas/tag.py` - that is L2-003's file. Do not create `app/schemas/__init__.py`: it
+    is not needed (see the project-structure note) and the file budget for this task is three.
+
+    Do not create a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not run `git init` and do not touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_save_link.py` FIRST, run `python -m pytest
+    tests/test_save_link.py -v` and watch it fail with ModuleNotFoundError on
+    `app.api.save_link`, then write the three files above until it passes.
+
+    Every test below carries `covers`, naming the save-link acceptance criterion it asserts.
+    This task has one source feature, so no `from-feature` attribute is used.
+
+    <test id="1">
+    Create test file: `tests/test_save_link.py`.
+    Header imports and the local application fixture, exactly:
+
+      import pytest
+      from fastapi import FastAPI
+      from fastapi.testclient import TestClient
+      from sqlalchemy import select
+      from sqlalchemy.orm import Session
+
+      from app.api.save_link import router
+      from app.database import get_db
+      from app.models import Link
+
+
+      @pytest.fixture(name="api")
+      def api_fixture(db_session: Session):
+          """A throwaway application serving ONLY this task's router, on the test session."""
+          application = FastAPI()
+          application.include_router(router)
+          application.dependency_overrides[get_db] = lambda: db_session
+          with TestClient(application) as test_client:
+              yield test_client
+
+    Why the local fixture and not conftest's `client`: `app.main.app` includes no routers until
+    L4-001, so `client.post("/links", ...)` would return 404 here and every assertion below
+    would be vacuous. This fixture mounts this task's router on a fresh `FastAPI()` and points
+    `get_db` at the `db_session` fixture, so a row written by the endpoint is readable through
+    `db_session` in the same test. Do NOT request the `client` fixture anywhere in this file.
+
+    Every test below requests both `api` and `db_session`; they share one session.
+    </test>
+
+    <test id="2" covers="1">
+    Test: test_posting_a_url_and_a_title_stores_it_and_returns_201
+    - Request the `api` and `db_session` fixtures
+    - response = api.post("/links", json={"url": "https://example.com/a", "title": "Example A"})
+    - Assert response.status_code == 201
+    - body = response.json()
+    - Assert isinstance(body["id"], int) and body["id"] &gt; 0
+    - Assert body["url"] == "https://example.com/a"
+    - Assert body["title"] == "Example A"
+    - Assert isinstance(body["created_at"], str) and body["created_at"] != ""
+    - Assert datetime.fromisoformat(body["created_at"]) is a datetime
+      (add `from datetime import datetime` to the header imports for this)
+    - Assert body["tags"] == []   (a new link carries no tags)
+    - Now prove it was STORED, not merely echoed:
+      stored = db_session.execute(select(Link)).scalars().all()
+    - Assert len(stored) == 1
+    - Assert stored[0].id == body["id"]
+    - Assert stored[0].url == "https://example.com/a"
+    - Assert stored[0].title == "Example A"
+    </test>
+
+    <test id="3" covers="2">
+    Test: test_posting_a_url_with_no_title_stores_a_null_title_and_returns_201
+    - Request the `api` and `db_session` fixtures
+    - response = api.post("/links", json={"url": "https://example.com/untitled"})
+      (the `title` key is absent from the request body entirely)
+    - Assert response.status_code == 201
+    - body = response.json()
+    - Assert "title" in body   (the key is present, not dropped)
+    - Assert body["title"] is None   (JSON null)
+    - Assert body["url"] == "https://example.com/untitled"
+    - stored = db_session.execute(select(Link)).scalars().one()
+    - Assert stored.title is None   (SQL NULL, not the empty string)
+    - Post again with an explicit null and assert the same outcome:
+      second = api.post("/links", json={"url": "https://example.com/u2", "title": None})
+    - Assert second.status_code == 201
+    - Assert second.json()["title"] is None
+    </test>
+
+    <test id="4" covers="3">
+    Test: test_posting_without_a_url_field_returns_422_and_stores_nothing
+    - This is the negative case criterion 3 states: no url field, so 422 and nothing stored.
+    - Request the `api` and `db_session` fixtures
+    - response = api.post("/links", json={"title": "No url here"})
+    - Assert response.status_code == 422
+    - Assert db_session.execute(select(Link)).scalars().all() == []   (nothing was written)
+    - Repeat with a completely empty body:
+      empty = api.post("/links", json={})
+    - Assert empty.status_code == 422
+    - Assert db_session.execute(select(Link)).scalars().all() == []
+    </test>
+
+    <test id="5" covers="4">
+    Test: test_posting_a_url_that_is_not_an_absolute_http_url_returns_422_and_stores_nothing
+    - This is the negative case criterion 4 states: a url that does not parse as an absolute
+      http or https URL, so 422 and nothing stored.
+    - Request the `api` and `db_session` fixtures
+    - For each of these six values, post {"url": value} and assert 422:
+        "example.com"            (no scheme)
+        "/links/1"               (a relative path)
+        "//example.com/a"        (protocol-relative, still no scheme)
+        "ftp://example.com/a"    (absolute, but not http or https)
+        "http://"                (http scheme, but no host)
+        ""                       (empty string)
+      Write it as a loop over a list so all six are asserted:
+        for value in [...]:
+            response = api.post("/links", json={"url": value})
+            assert response.status_code == 422, (value, response.status_code)
+    - Assert db_session.execute(select(Link)).scalars().all() == []
+      (after all six rejections the links table is still empty)
+    - Then prove the validator is not rejecting everything: post
+      {"url": "https://example.com/a?b=c#d"} and assert 201, and assert the response's url is
+      "https://example.com/a?b=c#d" byte-for-byte - the accepted value is stored unchanged,
+      with no trailing slash added and no normalisation applied
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/api/__init__.py</file>
+    <file>app/schemas/link.py</file>
+    <file>app/api/save_link.py</file>
+    <file>tests/test_save_link.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.schemas.link import LinkCreate, LinkResponse; print(list(LinkResponse.model_fields))"` - prints `['id', 'url', 'title', 'created_at', 'tags']`, proving the shared response schema imports from the namespace package `app.schemas` and carries the five fields L2-002 and L2-003 rely on</step>
+    <step>Run: `python -c "from app.schemas.link import LinkCreate; assert LinkCreate(url='http://example.com').url == 'http://example.com'; assert LinkCreate(url='https://example.com/a?b=c#d').url == 'https://example.com/a?b=c#d'; assert LinkCreate(url='https://example.com/a').title is None; assert LinkCreate(url='https://example.com/a', title='T').title == 'T'; print('request schema ok')"` - prints `request schema ok`; both absolute forms are accepted, an accepted url comes back byte-for-byte with no trailing slash added, and title defaults to None</step>
+    <step>Run: `python -m pytest "tests/test_save_link.py::test_posting_a_url_that_is_not_an_absolute_http_url_returns_422_and_stores_nothing" -v` - exit code 0; this is criterion 4's negative case, asserting that all six non-absolute forms are answered 422 and leave the links table empty, and that a valid url is still accepted afterwards</step>
+    <step>Run: `python -m pytest "tests/test_save_link.py::test_posting_without_a_url_field_returns_422_and_stores_nothing" -v` - exit code 0; this is criterion 3's negative case, asserting a body with no url field is answered 422 and stores nothing</step>
+    <step>Run: `python -c "from app.schemas.link import LinkResponse; from datetime import datetime; m = LinkResponse.model_validate({'id': 1, 'url': 'https://example.com/a', 'title': None, 'created_at': datetime(2026, 1, 1, 12, 0, 0), 'tags': []}); assert m.tags == []; assert m.title is None; print('response schema ok')"` - prints `response schema ok`</step>
+    <step>Run: `python -c "from app.api.save_link import router; routes = [(r.path, sorted(r.methods), r.status_code) for r in router.routes]; assert routes == [('/links', ['POST'], 201)], routes; print('route ok')"` - prints `route ok`; exactly one route, at the unprefixed path `/links`, answering POST with 201</step>
+    <step>Run: `python -c "from app.main import app; mounted = [getattr(r, 'path', '') for r in app.routes]; assert '/links' not in mounted, mounted; print('router left unmounted ok')"` - prints `router left unmounted ok`; this task defines the router and L4-001 is the task that includes it, so app/main.py must still serve no /links route</step>
+    <step>Run: `python -c "import inspect, app.api.save_link as m; src = inspect.getsource(m); assert 'include_router' not in src; assert 'SessionLocal' not in src; assert 'httpx' not in src and 'requests' not in src and 'urllib.request' not in src; print('scope ok')"` - prints `scope ok`; the router module mounts nothing, builds no session of its own, and makes no network call to derive a title</step>
+    <step>Run: `python -m pytest tests/test_save_link.py -v` - exit code 0, all 4 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; L0-003's 5 setup tests, L1-001's 6, L1-002's 7 and L1-003's 9 all still pass alongside this task's 4, proving the new package directories broke no earlier collection</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="LinkResponse" type="pydantic-schema">
+    # app/schemas/link.py
+    from datetime import datetime
+
+    from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+    class LinkResponse(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str] = Field(default_factory=list)
+
+    Import as: `from app.schemas.link import LinkResponse`
+
+    Downstream contract - THIS IS THE ONE RESPONSE SCHEMA FOR A LINK:
+    - L2-002 (`GET /links`) and L2-003 (`POST /links/{id}/tags`) both import this class. Neither
+      defines its own link response model. A second one would let two endpoints disagree about
+      the shape of a link.
+    - `from_attributes=True` means `response_model=LinkResponse` serialises a `Link` ORM
+      instance directly; a route may `return link` and `return list(links)`.
+    - `tags` is a list of tag NAMES (`list[str]`), never `Tag` objects and never ids. The
+      `mode="before"` validator maps `Tag` rows to `item.name`, so `link.tags` (a `list[Tag]`)
+      converts automatically. The order is whatever `Link.tags` yields - `Tag.id` ascending,
+      which L1-003 made stable - so a test may assert the list without sorting it.
+    - `tags` defaults to `[]`, so a link with nothing attached reports an empty array, never
+      null and never a missing key.
+    - `title` is `str | None`: an untitled link serialises as `"title": null`. The key is always
+      present. L2-002's criterion 3 depends on exactly this.
+    - `created_at` is a naive UTC `datetime` and serialises to an ISO-8601 string with no
+      offset, at microsecond resolution.
+    - Field order is `id, url, title, created_at, tags`. Do not add, remove or rename a field.
+    </interface>
+
+    <interface name="LinkCreate" type="pydantic-schema">
+    # app/schemas/link.py
+    from pydantic import BaseModel, field_validator
+
+
+    class LinkCreate(BaseModel):
+        url: str            # required; must parse as an absolute http or https URL
+        title: str | None = None
+
+        @field_validator("url")
+        @classmethod
+        def url_must_be_absolute_http(cls, value: str) -&gt; str: ...
+
+    Import as: `from app.schemas.link import LinkCreate`
+
+    Downstream contract:
+    - The request body for `POST /links`. Only that endpoint uses it; L2-003 declares its own
+      request schema for the tagging body.
+    - A missing `url`, or one whose scheme is not `http`/`https` or which has no host, fails
+      validation and FastAPI answers 422 before the route body runs, so nothing is stored.
+    - An accepted url is stored and returned BYTE-FOR-BYTE as submitted. No normalisation, no
+      trailing slash. This is why the field is `str` and not `pydantic.AnyHttpUrl`.
+    </interface>
+
+    <interface name="save_link_router" type="fastapi-router">
+    # app/api/save_link.py
+    from fastapi import APIRouter
+
+    router = APIRouter()
+
+    @router.post("/links", response_model=LinkResponse, status_code=201)
+    def save_link(payload: LinkCreate, db: Session = Depends(get_db)) -&gt; Link: ...
+
+    Import as: `from app.api.save_link import router`
+    L4-001 mounts it as:
+        from app.api.save_link import router as save_link_router
+        app.include_router(save_link_router)
+
+    Downstream contract:
+    - The router carries NO prefix. Its single route is `POST /links`, and
+      `app.include_router(router)` with no arguments serves it at exactly that path.
+    - It is NOT mounted by this task. `app/main.py` is untouched and still serves no `/links`
+      route; L4-001 mounts this router together with L2-002's and L2-003's.
+    - Success is 201 with a `LinkResponse` body. Duplicate URLs each create a new row with a
+      new id and each return 201 - deduplication is deliberately not done.
+    - The route takes its session with `Depends(get_db)`, so a test that overrides `get_db`
+      redirects it without touching this module.
+    </interface>
+
+    <interface name="app.api" type="python-package">
+    # app/api/__init__.py
+    """HTTP routers for Link Shelf."""
+
+    A regular package at `app/api/`, holding one module per endpoint task. It deliberately
+    imports nothing: L2-002 adds `list_links.py` and L2-003 adds `tag_links.py` from parallel
+    worktrees, and an import list here would be a shared file both would have to edit.
+    Import each router module directly: `from app.api.list_links import router`.
+    </interface>
+
+    <interface name="app.schemas" type="python-package">
+    # app/schemas/ - a PEP 420 implicit namespace package (no __init__.py)
+
+    `app/schemas/link.py` is importable as `app.schemas.link` because `app` is a regular
+    package and Python resolves `schemas` as a namespace portion inside it. Verified by this
+    task's first verification step under `pythonpath = .`.
+
+    L2-003 adds `app/schemas/tag.py` to this same directory and must NOT add an
+    `__init__.py` - the package works without one, and adding one is not needed for the import
+    to resolve.
+    </interface>
+  </exports>
+</task>

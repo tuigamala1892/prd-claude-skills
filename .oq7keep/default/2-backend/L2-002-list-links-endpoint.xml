@@ -1,0 +1,832 @@
+<task>
+  <meta>
+    <id>L2-002</id>
+    <name>GET /links -- list links, with optional tag filter</name>
+    <layer>2-backend</layer>
+    <priority>2</priority>
+    <estimated-files>1</estimated-files>
+
+    <source-feature slug="list-links" moscow="must-have"
+                    satisfies-criteria="1,2,3,4" requirement-level="P0"/>
+    <source-feature slug="tag-links" moscow="should-have"
+                    satisfies-criteria="3" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- This task descends from TWO features. Criterion ids are per feature, and both features
+         have a criterion 3 - list-links#3 (every stored link is included, untitled ones with a
+         null title) and tag-links#3 (a tag filter returns exactly the links carrying that tag)
+         are two different requirements with the same id. Each feature's criteria are therefore
+         wrapped in <from-feature slug="...">, and every <test> below carries both `covers` and
+         `from-feature`. -->
+    <from-feature slug="list-links">
+    <criterion id="1" pattern="ubiquitous" priority="P0" derived-from="1">
+      The system shall return 200 and a JSON array from GET /links, empty when no links are
+      stored.
+    </criterion>
+    <criterion id="2" pattern="ubiquitous" priority="P0" derived-from="2">
+      The system shall order listed links most recently created first.
+    </criterion>
+    <criterion id="3" pattern="ubiquitous" priority="P1" derived-from="3">
+      The system shall include every stored link in the listing, reporting a null title rather
+      than omitting an untitled link.
+    </criterion>
+    <criterion id="4" pattern="unwanted-behaviour" priority="P0">
+      If the stored links cannot be read, then the system shall return 500 and shall not return
+      an empty array, so that a failure to read is never reported as an empty shelf.
+    </criterion>
+    </from-feature>
+    <from-feature slug="tag-links">
+    <criterion id="3" pattern="event-driven" priority="P0" derived-from="3">
+      When links are listed with a tag filter, the system shall return exactly the links
+      carrying that tag.
+    </criterion>
+    </from-feature>
+    </acceptance-criteria>
+
+    <data-model>
+    <!-- list-links owns no entity. Its data-model note, carried verbatim: -->
+    Reads Link(id, url, title, created_at) -- owned by save-link. This feature owns no
+    entity of its own and adds no column; the ordering it guarantees is over created_at.
+    <!-- tag-links' data-model note, carried verbatim, because this task reads the join: -->
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: List saved links (slug: list-links, must-have).
+
+    As someone collecting links, I want to see what I have saved, newest first, so that I can
+    find the thing I saved this morning without scrolling.
+
+    A GET endpoint returning every saved link as a JSON array, newest first by
+    created_at. No pagination: the fixture's scale does not justify it, and adding it
+    would introduce a second dimension of behaviour to verify.
+
+    Considerations (verbatim from list-links):
+    Ordering is part of the contract, not an incidental detail, so it carries its own
+    acceptance criterion. A test that only checks the count would pass against an
+    implementation that returns rows in insertion order and silently breaks later.
+
+    Feature: Tag links (slug: tag-links, should-have) - the filtering half only.
+
+    Attach zero or more free-text tags to a link, and filter the list endpoint by tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated
+    string column.
+
+    Considerations (verbatim from tag-links):
+    Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an
+    implementer inventing either behaviour and calling it correct.
+
+    CONSEQUENCES FOR THIS TASK:
+    - ONE endpoint, not two. The base listing and the tag-filtered listing are the same
+      `GET /links` route with an OPTIONAL `tag` query parameter. Do not add a second route such
+      as `/links/by-tag/{name}` or `/tags/{name}/links`.
+    - The path is `/links`, UNPREFIXED. Not `/api/links`. `GET /links` is the only endpoint path
+      the PRD names verbatim, in list-links criterion 1.
+    - NO PAGINATION. Do not add `limit`, `offset`, `page` or `per_page` parameters, and do not
+      cap the number of rows returned. The feature rules pagination out by name.
+    - The `?tag=` match is CASE-SENSITIVE. `Tag.name == tag` and nothing else. Never
+      `func.lower()`, never `.ilike()`, never `COLLATE NOCASE`. `?tag=Python` must NOT match a
+      tag stored as `python`; it returns an empty array, not every link.
+    - list-links criterion 4 is the reason this route has a try/except at all. An empty shelf
+      and a failure to read the shelf must never look the same to a caller.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ -- `APIRouter`, `Depends`, `HTTPException`, `Query`, `status`.
+    Pydantic 2.x -- not defined here; this task IMPORTS `LinkResponse` from L2-001.
+    SQLAlchemy 2.x -- `select`, `Session`, and `sqlalchemy.exc.SQLAlchemyError`. Use the 2.0
+      `select(...)` construct with `db.execute(stmt).scalars().all()`, NOT the legacy
+      `db.query(...)` interface.
+    SQLite, file-backed (database, no external server).
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root. The
+      `monkeypatch` built-in fixture is used by one test below.
+    httpx -- imported by `fastapi.testclient.TestClient`; already installed by L0-001.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (the file marked NEW is created by this task):
+
+    .gitignore              (exists - L0-001)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; Base, engine, SessionLocal, get_db)
+      main.py               (exists - L0-003; bare FastAPI instance, NO routers included)
+      models/
+        __init__.py         (exists - L1-003; exports Link, LinkTag, Tag)
+        link.py             (exists - L1-001/L1-003; Link with its `tags` relationship)
+        tag.py              (exists - L1-002)
+        link_tag.py         (exists - L1-003)
+      api/
+        __init__.py         (exists - L2-001)
+        save_link.py        (exists - L2-001)
+        list_links.py       NEW - this task; the ONLY non-test file it writes
+        tag_links.py        (created by L2-003, running in PARALLEL - NOT visible here)
+      schemas/
+        link.py             (exists - L2-001; LinkCreate and the shared LinkResponse)
+        tag.py              (created by L2-003 - NOT visible here)
+    tests/
+      conftest.py           (exists - L0-003; db_session and client fixtures)
+      test_setup.py         (exists - L0-003; 5 tests, must keep passing)
+      test_model_link.py    (exists - L1-001; 6 tests, must keep passing)
+      test_model_tag.py     (exists - L1-002; 7 tests, must keep passing)
+      test_model_link_tag.py (exists - L1-003; 9 tests, must keep passing)
+      test_save_link.py     (exists - L2-001; 4 tests, must keep passing)
+      test_list_links.py    NEW - this task (the test file, additional to the one above)
+
+    ISOLATION NOTE. This task runs in its own git worktree, at the same time as L2-003, which
+    creates `app/api/tag_links.py` and `app/schemas/tag.py`. NEITHER file exists here. Do not
+    import, reference or mention `app.api.tag_links`, `app.schemas.tag` or `TagAttach` in any
+    file this task writes - `from app.api.tag_links import router` fails with
+    ModuleNotFoundError. This task attaches tags in its tests through the ORM
+    (`link.tags.append(tag)`), never through L2-003's endpoint.
+
+    `app/schemas/` has no `__init__.py` and needs none - it is a PEP 420 implicit namespace
+    package inside the regular package `app`, and `from app.schemas.link import LinkResponse`
+    resolves under `pythonpath = .`. Do not add an `__init__.py` to it.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="LinkResponse" type="pydantic-schema">
+    # app/schemas/link.py, created by L2-001 - ALREADY EXISTS, do NOT redefine it
+    from datetime import datetime
+
+    from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+    class LinkResponse(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str] = Field(default_factory=list)
+
+    Import as: `from app.schemas.link import LinkResponse`
+
+    Contract this task relies on:
+    - THIS IS THE ONE RESPONSE SCHEMA FOR A LINK. Do not define a `LinkOut`, `LinkListItem` or
+      any other link response model in this task. Two schemas would let `GET /links` and
+      `POST /links` disagree about the shape of a link.
+    - `from_attributes=True` means `response_model=list[LinkResponse]` serialises a list of
+      `Link` ORM instances directly, so the route may `return list(links)`.
+    - `tags` is a list of tag NAMES (`list[str]`), converted from `link.tags` (a `list[Tag]`) by
+      a `mode="before"` validator. Order is `Tag.id` ascending and stable.
+    - `title` is `str | None`, so an untitled link serialises as `"title": null` with the key
+      PRESENT. list-links criterion 3 is satisfied by this schema, not by route code.
+    - `created_at` is a naive UTC datetime serialised to an ISO-8601 string with no offset.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    # app/models/link.py, created by L1-001 and extended by L1-003 - ALREADY EXISTS
+    from datetime import datetime
+
+    from sqlalchemy import DateTime, Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+    from app.database import Base
+
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                 # integer primary key, autoincrement
+        url: Mapped[str]                # Text, NOT NULL, NOT unique
+        title: Mapped[str | None]       # Text, nullable
+        created_at: Mapped[datetime]    # DateTime, NOT NULL, default=utcnow (naive UTC)
+
+        tags: Mapped[list[Tag]] = relationship(
+            Tag,
+            secondary=LinkTag.__table__,
+            lazy="selectin",
+            order_by=Tag.id,
+        )
+
+    Import as: `from app.models import Link`
+
+    Contract this task relies on:
+    - `created_at` is assigned by PYTHON at INSERT with MICROSECOND resolution. That is what
+      makes `order_by(Link.created_at.desc())` deterministic for two links saved in the same
+      second; a `server_default` of SQLite's `CURRENT_TIMESTAMP` would have one-second
+      resolution and criterion 2 would be a coin flip. Order by this column, never by `id`
+      alone as a proxy for it.
+    - `title` is nullable and an untitled link stores SQL NULL. Do NOT filter untitled links
+      out, do NOT substitute an empty string, and do NOT use `COALESCE`.
+    - `url` is not unique; duplicate urls are a supported state and both rows must be listed.
+    - `link.tags` is a `list[Tag]`, empty (never None) when nothing is attached.
+    - `lazy="selectin"` loads the tags of a whole result set in ONE extra query, so listing N
+      links does not issue N+1 queries.
+    </interface>
+
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py, created by L1-002 - ALREADY EXISTS
+    from sqlalchemy import Integer, Text
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # Text, NOT NULL, UNIQUE, default (case-sensitive) collation
+
+    Import as: `from app.models import Tag`
+
+    Contract this task relies on:
+    - `name` is UNIQUE, so at most one `tags` row matches a given `?tag=` value.
+    - Comparison is CASE-SENSITIVE and values are stored exactly as supplied. "Python" and
+      "python" are two rows. The filter must be `Tag.name == tag` - never `func.lower(...)`,
+      never `.ilike(...)`, never a `COLLATE NOCASE` clause.
+    </interface>
+
+    <interface name="LinkTag" type="sqlalchemy-model">
+    # app/models/link_tag.py, created by L1-003 - ALREADY EXISTS
+    from sqlalchemy import ForeignKey, Integer
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    from app.database import Base
+
+
+    class LinkTag(Base):
+        __tablename__ = "link_tags"
+
+        link_id: Mapped[int]   # Integer, FK -&gt; links.id, part of the composite primary key
+        tag_id: Mapped[int]    # Integer, FK -&gt; tags.id,  part of the composite primary key
+
+    Import as: `from app.models import LinkTag`
+
+    Contract this task relies on:
+    - The primary key is the PAIR (link_id, tag_id), so a given link carries a given tag at
+      most once. Combined with `tags.name` being unique, the tag-filter join below yields AT
+      MOST ONE row per link, which is why the query needs no `.distinct()`.
+    </interface>
+
+    <interface name="Link.tags" type="sqlalchemy-relationship">
+    # app/models/link.py, added by L1-003
+    tags: Mapped[list[Tag]] = relationship(
+        Tag,
+        secondary=LinkTag.__table__,
+        lazy="selectin",
+        order_by=Tag.id,
+    )
+
+    Downstream contract L1-003 states, and the exact query shape this task must use:
+    - The relationship is ONE-WAY. `Tag` has NO `.links` attribute. To go from a tag name to
+      its links, join explicitly:
+          select(Link)
+              .join(LinkTag, LinkTag.link_id == Link.id)
+              .join(Tag, Tag.id == LinkTag.tag_id)
+              .where(Tag.name == tag_name)
+      L1-003's test 9 already proves this exact statement returns only the tagged link, returns
+      nothing for a differently-cased name, and returns nothing for an unknown name.
+    - Attach in a TEST with `link.tags.append(tag)` followed by `db_session.commit()`; that
+      writes one `link_tags` row. This task's tests use that, not L2-003's endpoint.
+    - `link.tags` is ordered by `Tag.id` ascending and is stable across reloads, so a response
+      body listing tag names may be asserted directly without sorting.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Use in a route as: `db: Session = Depends(get_db)`
+
+    This is the ONLY way a route in this project may obtain a session. A route that builds its
+    own `SessionLocal()` cannot be overridden by a test, and the failure-injection test below -
+    which patches the session's `execute` method - would have no effect on it.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    `expire_on_commit=False` means ORM attributes stay readable after `commit()`. Listed so the
+    implementer knows the session plumbing exists and must not be rebuilt in the route.
+    </interface>
+
+    <interface name="app" type="fastapi-application">
+    # app/main.py, created by L0-003
+    from fastapi import FastAPI
+
+    app = FastAPI(title="Link Shelf", version="0.1.0", ...)
+
+    NO routers are included. This task must NOT edit `app/main.py` and must NOT call
+    `app.include_router(...)` anywhere. L2-003 runs in a parallel worktree and would edit the
+    same file; L4-001 mounts all three routers together.
+
+    Consequence for this task's tests: conftest's `client` fixture wraps this bare application
+    and serves NO `/links` route. The test file builds its own single-router application - see
+    test 1.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with `links`,
+    `tags` and `link_tags` already created and EMPTY.
+
+    Contract this task relies on:
+    - The database is empty at the start of each test, so "empty when no links are stored" is
+      assertable by simply not writing anything.
+    - Rows written through this session are visible to a request served by a route whose
+      `get_db` is overridden to yield this same session.
+    - It is a real `Session` OBJECT, so `monkeypatch.setattr(db_session, "execute", ...)`
+      replaces the method the route calls. That is how the failure-to-read case is provoked.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    DO NOT USE IT IN THIS TASK. It wraps `app.main.app`, which includes no routers until
+    L4-001, so every request through it returns 404 and every assertion below would be vacuous.
+    Test 1 defines a local `api` fixture instead. Do not request `client` anywhere in
+    `tests/test_list_links.py`.
+    </interface>
+
+    <interface name="save_link_router" type="fastapi-router">
+    # app/api/save_link.py, created by L2-001 - EXISTS in this worktree
+    from fastapi import APIRouter
+
+    router = APIRouter()
+
+    @router.post("/links", response_model=LinkResponse, status_code=201)
+    def save_link(payload: LinkCreate, db: Session = Depends(get_db)) -&gt; Link: ...
+
+    NOT used by this task and NOT imported by it. It is listed so the implementer knows that
+    the module-level name `router` is the project's convention for a router - this task must
+    also name its router `router`, in its own module `app/api/list_links.py` - and that L2-001
+    already owns `POST /links`. Do not add a POST route here.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequences: the test file must be `tests/test_list_links.py`; tests run with
+    `python -m pytest` from the repository root; and `from app.api.list_links import router`
+    resolves from the source tree without the project being pip-installed.
+    </interface>
+
+    <interface name="fastapi.testclient.TestClient" type="third-party-class">
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class TestClient:
+        def __init__(self, app: FastAPI) -&gt; None: ...
+        def get(self, url: str, params: dict | None = None, **kwargs) -&gt; "httpx.Response": ...
+
+    `response.status_code` is an int; `response.json()` decodes the body.
+    Query parameters may be passed either in the path or via `params`:
+        api.get("/links", params={"tag": "python"})
+    An `HTTPException(status_code=500)` raised inside a route is HANDLED by FastAPI and comes
+    back as a normal 500 response with a JSON body - the TestClient does not re-raise it. Only
+    an UNHANDLED exception would propagate.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the `GET /links` route: it returns every stored link as a JSON array ordered most
+  recently created first, an empty array when nothing is stored, an untitled link reported with
+  a null title rather than omitted, and - when the optional `?tag=` query parameter is given -
+  exactly the links carrying that tag, matched case-sensitively. If the stored links cannot be
+  read, it answers 500 with an error body, never an empty array, so that a failure to read is
+  never reported as an empty shelf.
+
+  This is ONE route serving two features: the base listing (list-links) and the tag filter
+  (tag-links criterion 3), unioned into a single endpoint with an optional query parameter so
+  that the filter is not built as a second route.
+
+  This task imports `LinkResponse` from L2-001 and defines no response schema of its own. It
+  writes exactly one non-test file, `app/api/list_links.py`, and mounts nothing - L4-001
+  includes the router on the application.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/api/list_links.py` with exactly this content:
+
+    """GET /links - list stored links, newest first, optionally filtered by tag."""
+
+    import logging
+
+    from fastapi import APIRouter, Depends, HTTPException, Query, status
+    from sqlalchemy import select
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.orm import Session
+
+    from app.database import get_db
+    from app.models import Link, LinkTag, Tag
+    from app.schemas.link import LinkResponse
+
+    logger = logging.getLogger(__name__)
+
+    router = APIRouter()
+
+
+    @router.get("/links", response_model=list[LinkResponse])
+    def list_links(
+        tag: str | None = Query(default=None),
+        db: Session = Depends(get_db),
+    ) -&gt; list[Link]:
+        """Return every stored link, newest first, narrowed to one tag when asked."""
+        statement = select(Link)
+        if tag is not None:
+            statement = (
+                statement
+                .join(LinkTag, LinkTag.link_id == Link.id)
+                .join(Tag, Tag.id == LinkTag.tag_id)
+                .where(Tag.name == tag)
+            )
+        statement = statement.order_by(Link.created_at.desc(), Link.id.desc())
+        try:
+            links = db.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            logger.exception("failed to read stored links")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="stored links could not be read",
+            ) from error
+        return list(links)
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The path is `"/links"` with NO prefix, and the module-level router name is `router`.
+      L4-001 imports it as `from app.api.list_links import router as list_links_router` and
+      mounts it with a bare `app.include_router(...)`, so the path written here is the path the
+      application serves. Do not pass `prefix=` or `tags=` to `APIRouter()`.
+
+    - ONE route. The tag filter is the optional `tag` query parameter on this same route, not a
+      second route. Do not add `/links/by-tag/{name}` or anything like it.
+
+    - `tag: str | None = Query(default=None)`. Absent means "no filter"; present means "filter
+      to this exact name". `?tag=` with an EMPTY value is a filter on the empty string, which
+      matches no tag (tag names are NOT NULL and no test stores an empty name), so it correctly
+      returns an empty array rather than every link. Do not coerce an empty string to None.
+
+    - The filter is `Tag.name == tag`. CASE-SENSITIVE, exactly as the feature states. Do NOT
+      write `func.lower(Tag.name) == tag.lower()`, `Tag.name.ilike(tag)`, or any `COLLATE
+      NOCASE` clause. `?tag=Python` against a tag stored as `python` must return `[]`.
+
+    - The join is written explicitly through `LinkTag`, because L1-003 declared the association
+      ONE-WAY on `Link.tags` and `Tag` has no `.links` attribute. This is the exact statement
+      L1-003's test 9 already proves.
+
+    - No `.distinct()`. `tags.name` is unique and `link_tags` has a composite primary key over
+      (link_id, tag_id), so the join yields at most one row per link and a link can never be
+      listed twice.
+
+    - `order_by(Link.created_at.desc(), Link.id.desc())`. `created_at` is the ordering the
+      feature guarantees; `Link.id.desc()` is a deterministic tiebreak that only matters if two
+      rows somehow share a timestamp, and it agrees with "most recently created first" because
+      ids ascend with insertion. Do NOT order by `id` alone - that is a proxy for the real
+      contract and would silently break if rows were ever backdated.
+
+    - The `order_by` is applied AFTER the optional join, to one statement. Do not build two
+      separate statements for the filtered and unfiltered cases: the ordering guarantee applies
+      to both, and duplicating it invites the two paths to drift.
+
+    - NO pagination. No `limit`, `offset`, `skip`, `page` or `per_page` parameter, and no
+      `.limit(...)` on the statement. The feature rules pagination out by name.
+
+    - The `try`/`except SQLAlchemyError` around `db.execute(...)` is REQUIRED by list-links
+      criterion 4 and is the only reason it exists. Catch `SQLAlchemyError` - the base class of
+      every SQLAlchemy failure - and re-raise as `HTTPException(500)`. Do NOT return `[]` in the
+      handler, do NOT return `None`, and do NOT let the exception escape unhandled: an
+      unhandled error also produces 500 in production but is re-raised by `TestClient` and
+      cannot be asserted, and the point of the criterion is that a read failure is
+      DISTINGUISHABLE from an empty shelf. A 500 with a `{"detail": ...}` object body is
+      distinguishable; an empty array is not.
+
+    - `raise ... from error` preserves the original exception as the cause, and
+      `logger.exception(...)` records the traceback. Keep both: silently swallowing the cause
+      is what makes a read failure undiagnosable.
+
+    - `response_model=list[LinkResponse]` with the route returning `list[Link]` ORM instances.
+      `LinkResponse` sets `from_attributes=True`, so FastAPI converts them. Do NOT build dicts
+      by hand and do NOT define another response schema - `app/schemas/link.py` already owns it.
+
+    - `db: Session = Depends(get_db)`. Do not construct `SessionLocal()` in the route: the tests
+      override `get_db`, and the failure-injection test patches the yielded session's `execute`.
+
+    - Do NOT call `app.include_router(...)` and do NOT import `app.main` here.
+
+    - Do NOT call `Base.metadata.create_all` anywhere.
+    </requirement>
+
+    <requirement id="2">
+    Do NOT create or edit any other file. Specifically: do not touch `app/main.py`,
+    `app/database.py`, `app/api/__init__.py`, `app/api/save_link.py`, `app/schemas/link.py`,
+    any file under `app/models/`, `tests/conftest.py`, or any existing test file. Do not create
+    `app/api/tag_links.py` or `app/schemas/tag.py` - they are L2-003's files, L2-003 is running
+    right now in a parallel worktree, and creating them here would collide in the merge queue.
+    Do not add `app/schemas/__init__.py`.
+
+    Do not create a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not run `git init` and do not touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_list_links.py` FIRST, run `python -m pytest
+    tests/test_list_links.py -v` and watch it fail with ModuleNotFoundError on
+    `app.api.list_links`, then write `app/api/list_links.py` until it passes.
+
+    Every test below carries `covers` AND `from-feature`, because this task descends from two
+    features whose criterion ids collide. `covers="3" from-feature="list-links"` and
+    `covers="3" from-feature="tag-links"` are two different requirements.
+
+    PATTERN NOTE. list-links criteria 1, 2 and 3 are `ubiquitous`: each asserts an INVARIANT
+    that must hold after EVERY operation, not one outcome after one action. Tests 2, 3 and 4
+    are therefore written as loops that re-check the property after each successive insert.
+    A single "insert two links, list once" assertion would be a state-driven test and would
+    pass against an implementation that only happens to be right for two rows.
+
+    <test id="1">
+    Create test file: `tests/test_list_links.py`.
+    Header imports and the local application fixture, exactly:
+
+      from datetime import datetime
+
+      import pytest
+      from fastapi import FastAPI
+      from fastapi.testclient import TestClient
+      from sqlalchemy import select
+      from sqlalchemy.exc import SQLAlchemyError
+      from sqlalchemy.orm import Session
+
+      from app.api.list_links import router
+      from app.database import get_db
+      from app.models import Link, LinkTag, Tag
+
+
+      @pytest.fixture(name="api")
+      def api_fixture(db_session: Session):
+          """A throwaway application serving ONLY this task's router, on the test session."""
+          application = FastAPI()
+          application.include_router(router)
+          application.dependency_overrides[get_db] = lambda: db_session
+          with TestClient(application) as test_client:
+              yield test_client
+
+    Why the local fixture and not conftest's `client`: `app.main.app` includes no routers until
+    L4-001, so `client.get("/links")` would return 404 here and every assertion below would be
+    vacuous. Do NOT request the `client` fixture anywhere in this file.
+
+    Why the tests write links through `db_session` and not through `POST /links`: L2-001's
+    router is a different module and mounting it here would test two tasks at once; L2-003's
+    tagging endpoint does not exist in this worktree at all. Every fixture row below is created
+    with `Link(...)`, `Tag(...)` and `link.tags.append(tag)` directly on `db_session`.
+    </test>
+
+    <test id="2" covers="1" from-feature="list-links">
+    Test: test_the_listing_is_always_200_and_a_json_array
+    - INVARIANT test: at every point in a link's lifetime, and with or without a filter,
+      GET /links answers 200 and a JSON array.
+    - Request the `api` and `db_session` fixtures
+    - Define a local helper:
+        def listing(**params) -&gt; list:
+            response = api.get("/links", params=params)
+            assert response.status_code == 200, (params, response.status_code)
+            body = response.json()
+            assert isinstance(body, list), (params, type(body))
+            return body
+    - With nothing stored:
+        Assert listing() == []                       (empty array, not null, not an object)
+        Assert listing(tag="python") == []           (a filter on an empty shelf is still [])
+    - Now insert three links one at a time, and after EACH insert re-check the invariant:
+        for index in range(3):
+            db_session.add(Link(url=f"https://example.com/{index}"))
+            db_session.commit()
+            assert len(listing()) == index + 1
+            assert listing(tag="python") == []       (still no tags attached anywhere)
+    - After the loop, delete every link and check the invariant holds on the way back down:
+        for link in db_session.execute(select(Link)).scalars().all():
+            db_session.delete(link)
+        db_session.commit()
+        Assert listing() == []
+    </test>
+
+    <test id="3" covers="2" from-feature="list-links">
+    Test: test_links_are_always_ordered_most_recently_created_first
+    - INVARIANT test: after every insert, the whole listing is in newest-first order - not just
+      after the last one.
+    - Request the `api` and `db_session` fixtures
+    - inserted: list[str] = []
+    - for index in range(4):
+          link = Link(url=f"https://example.com/{index}")
+          db_session.add(link)
+          db_session.commit()
+          inserted.append(link.url)
+          body = api.get("/links").json()
+          # newest first == the reverse of the order they were inserted in
+          assert [item["url"] for item in body] == list(reversed(inserted)), index
+          # and the timestamps themselves are non-increasing down the array
+          stamps = [datetime.fromisoformat(item["created_at"]) for item in body]
+          assert stamps == sorted(stamps, reverse=True), index
+    - After the loop assert len(inserted) == 4, so the loop provably ran.
+    - Note on why this is deterministic: `Link.created_at` is assigned by Python at INSERT with
+      MICROSECOND resolution (L1-001's decision), so four links created inside one second still
+      carry four distinct, increasing timestamps.
+    </test>
+
+    <test id="4" covers="3" from-feature="list-links">
+    Test: test_every_stored_link_is_listed_and_an_untitled_one_reports_a_null_title
+    - INVARIANT test: after every insert, EVERY stored link is present, and an untitled link is
+      present with `"title": null` rather than being omitted or given a substitute.
+    - Request the `api` and `db_session` fixtures
+    - rows = [
+          ("https://example.com/a", "Titled A"),
+          ("https://example.com/b", None),
+          ("https://example.com/c", "Titled C"),
+          ("https://example.com/d", None),
+      ]
+    - for index, (url, title) in enumerate(rows):
+          db_session.add(Link(url=url, title=title))
+          db_session.commit()
+          body = api.get("/links").json()
+          stored = db_session.execute(select(Link)).scalars().all()
+          # nothing is omitted: the listing and the table agree, every time
+          assert len(body) == len(stored) == index + 1, index
+          assert {item["url"] for item in body} == {row.url for row in stored}, index
+          by_url = {item["url"]: item for item in body}
+          for row in stored:
+              item = by_url[row.url]
+              assert "title" in item, (index, row.url)   # the key is never dropped
+              assert item["title"] == row.title, (index, row.url)
+    - After the loop, assert the two untitled links are reported as JSON null specifically:
+        body = api.get("/links").json()
+        by_url = {item["url"]: item for item in body}
+        Assert by_url["https://example.com/b"]["title"] is None
+        Assert by_url["https://example.com/d"]["title"] is None
+        Assert by_url["https://example.com/a"]["title"] == "Titled A"
+    </test>
+
+    <test id="5" covers="4" from-feature="list-links">
+    Test: test_a_failure_to_read_returns_500_and_never_an_empty_array
+    - This is the negative case criterion 4 states: the stored links cannot be read, so 500 and
+      NOT an empty array. Provoke the read failure rather than inventing a different one.
+    - Request the `api`, `db_session` and `monkeypatch` fixtures
+    - First establish that the shelf is NOT empty, so an empty array in the failure case could
+      not be mistaken for a truthful answer:
+        db_session.add(Link(url="https://example.com/a", title="Example A"))
+        db_session.commit()
+        Assert len(api.get("/links").json()) == 1
+    - Now make the read fail. The route calls `db.execute(statement)` on the session the
+      dependency override yields, which is the `db_session` object itself:
+        def boom(*args, **kwargs):
+            raise SQLAlchemyError("the shelf could not be read")
+
+        monkeypatch.setattr(db_session, "execute", boom)
+    - response = api.get("/links")
+    - Assert response.status_code == 500
+    - body = response.json()
+    - Assert body != []            (the whole point: a read failure is not an empty shelf)
+    - Assert isinstance(body, dict)
+    - Assert body["detail"] == "stored links could not be read"
+    - Assert the same holds for the filtered listing, which runs through the same read:
+        filtered = api.get("/links", params={"tag": "python"})
+        Assert filtered.status_code == 500
+        Assert filtered.json() != []
+    - `monkeypatch` restores the real `execute` at teardown, so nothing leaks into another test.
+    </test>
+
+    <test id="6" covers="3" from-feature="tag-links">
+    Test: test_filtering_by_tag_returns_exactly_the_links_carrying_that_tag
+    - EVENT-DRIVEN: one action - listing with a tag filter - produces one observable outcome:
+      exactly the links carrying that tag.
+    - Request the `api` and `db_session` fixtures
+    - Arrange three links and two tags, attached through the ORM:
+        tagged_one = Link(url="https://example.com/1")
+        tagged_two = Link(url="https://example.com/2")
+        untagged = Link(url="https://example.com/3")
+        python_tag = Tag(name="python")
+        web_tag = Tag(name="web")
+        db_session.add_all([tagged_one, tagged_two, untagged, python_tag, web_tag])
+        db_session.commit()
+        tagged_one.tags.append(python_tag)
+        tagged_two.tags.append(python_tag)
+        tagged_two.tags.append(web_tag)
+        db_session.commit()
+    - The action, and its outcome:
+        body = api.get("/links", params={"tag": "python"}).json()
+        Assert [item["url"] for item in body] == [
+            "https://example.com/2", "https://example.com/1"
+        ]
+        (exactly the two links carrying `python`, still newest-first; the untagged link is
+        excluded and no link appears twice)
+    - Narrower filter:
+        Assert [item["url"] for item in api.get("/links", params={"tag": "web"}).json()] == [
+            "https://example.com/2"
+        ]
+    - The filter does not lose the tag names in the response:
+        body = api.get("/links", params={"tag": "web"}).json()
+        Assert body[0]["tags"] == ["python", "web"]   (ordered by Tag.id, which L1-003 fixed)
+    - CASE-SENSITIVE, and it must return nothing rather than falling back to every link:
+        Assert api.get("/links", params={"tag": "Python"}).json() == []
+        Assert api.get("/links", params={"tag": "PYTHON"}).json() == []
+    - An unknown tag returns nothing, not everything:
+        Assert api.get("/links", params={"tag": "unknown"}).json() == []
+    - And with NO filter the untagged link is still listed, proving the filter is what excluded
+      it and not the join:
+        Assert len(api.get("/links").json()) == 3
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/api/list_links.py</file>
+    <file>tests/test_list_links.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.api.list_links import router; routes = [(r.path, sorted(r.methods)) for r in router.routes]; assert routes == [('/links', ['GET'])], routes; print('route ok')"` - prints `route ok`; exactly ONE route, at the unprefixed path `/links`, answering GET - the tag filter is a query parameter on this route and not a second one</step>
+    <step>Run: `python -c "from app.api.list_links import router; from app.schemas.link import LinkResponse; route = router.routes[0]; assert route.response_model == list[LinkResponse], route.response_model; assert route.status_code in (None, 200), route.status_code; print('response model ok')"` - prints `response model ok`; the route serialises through L2-001's shared LinkResponse and answers 200 by default</step>
+    <step>Run: `python -c "import inspect; from app.api.list_links import list_links; params = inspect.signature(list_links).parameters; assert 'tag' in params, list(params); forbidden = {'limit', 'offset', 'skip', 'page', 'per_page'}; assert not (forbidden.intersection(params)), sorted(forbidden.intersection(params)); print('query params ok')"` - prints `query params ok`; the optional `tag` filter is present and no pagination parameter was invented</step>
+    <step>Run: `python -c "import inspect, app.api.list_links as m; src = inspect.getsource(m); assert 'Tag.name == tag' in src, 'the filter must compare tag names directly'; assert 'ilike' not in src.lower(), 'tag matching must stay case-sensitive'; assert 'nocase' not in src.lower(), 'tag matching must stay case-sensitive'; assert 'func.lower' not in src, 'tag matching must stay case-sensitive'; assert '.lower()' not in src, 'tag matching must stay case-sensitive'; print('case-sensitive ok')"` - prints `case-sensitive ok`; the `?tag=` filter compares `Tag.name == tag` and folds no case</step>
+    <step>Run: `python -c "import inspect, app.api.list_links as m; src = inspect.getsource(m); assert 'SQLAlchemyError' in src, 'criterion 4 needs the read wrapped'; assert 'HTTP_500_INTERNAL_SERVER_ERROR' in src, 'the read failure must answer 500'; assert 'include_router' not in src; assert 'SessionLocal' not in src; assert '.limit(' not in src, 'no pagination'; print('scope ok')"` - prints `scope ok`; the read is guarded and answers 500, and the route mounts nothing, builds no session of its own and paginates nothing</step>
+    <step>Run: `python -c "from app.main import app; mounted = [getattr(r, 'path', '') for r in app.routes]; assert '/links' not in mounted, mounted; print('router left unmounted ok')"` - prints `router left unmounted ok`; this task defines the router and L4-001 is the task that includes it, so app/main.py must still serve no /links route</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('app/schemas/__init__.py').exists(), 'app/schemas is a PEP 420 namespace package and must stay one'; print('namespace package ok')"` - prints `namespace package ok`. This asserts a design decision this task depends on, not the absence of a sibling task's work: it holds before the layer merges and after, so re-running verification later gives the same answer</step>
+    <step>Run: `python -m pytest "tests/test_list_links.py::test_a_failure_to_read_returns_500_and_never_an_empty_array" -v` - exit code 0; this is list-links criterion 4's negative case, asserting a forced read failure is answered 500 with a non-empty-array body while the shelf actually holds a link</step>
+    <step>Run: `python -m pytest "tests/test_list_links.py::test_filtering_by_tag_returns_exactly_the_links_carrying_that_tag" -v` - exit code 0; this is tag-links criterion 3, asserting the filter returns exactly the tagged links, matches case-sensitively, and returns an empty array rather than falling back to every link</step>
+    <step>Run: `python -m pytest tests/test_list_links.py -v` - exit code 0, all 5 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0; L0-003's 5 setup tests, L1-001's 6, L1-002's 7, L1-003's 9 and L2-001's 4 all still pass alongside this task's 5</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'this task must not create the file-backed database'; print('no db file ok')"` - prints `no db file ok`</step>
+  </verification>
+
+  <exports>
+    <interface name="list_links_router" type="fastapi-router">
+    # app/api/list_links.py
+    from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+    router = APIRouter()
+
+    @router.get("/links", response_model=list[LinkResponse])
+    def list_links(
+        tag: str | None = Query(default=None),
+        db: Session = Depends(get_db),
+    ) -&gt; list[Link]: ...
+
+    Import as: `from app.api.list_links import router`
+    L4-001 mounts it as:
+        from app.api.list_links import router as list_links_router
+        app.include_router(list_links_router)
+
+    Downstream contract:
+    - The router carries NO prefix. Its single route is `GET /links`, and
+      `app.include_router(router)` with no arguments serves it at exactly that path.
+    - It is NOT mounted by this task. `app/main.py` is untouched and still serves no `/links`
+      route; L4-001 mounts this router together with L2-001's and L2-003's.
+    - Success is 200 with a JSON ARRAY of `LinkResponse` objects, `[]` when nothing matches.
+      The array is never null and the response is never an object on success.
+    - Ordering is `created_at` DESCENDING, tiebroken by `id` descending - most recently created
+      first. It holds for the filtered listing too.
+    - `?tag=NAME` narrows the result to exactly the links carrying a tag whose name equals NAME
+      EXACTLY. The match is case-sensitive: `?tag=Python` does not match a tag stored as
+      `python` and returns `[]`. An unknown name returns `[]`, never every link. Omitting the
+      parameter returns everything.
+    - There is NO pagination. Every matching link is returned.
+    - Failure to read answers 500 with `{"detail": "stored links could not be read"}`. It never
+      answers `[]` on failure, so a caller can always tell an empty shelf from a broken one.
+    - L4-001's end-to-end test may rely on all of the above: save two links through
+      `POST /links`, tag one through `POST /links/{id}/tags`, then assert `GET /links` returns
+      both newest-first and `GET /links?tag=NAME` returns exactly the tagged one.
+    </interface>
+  </exports>
+</task>

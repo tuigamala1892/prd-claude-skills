@@ -3569,7 +3569,7 @@ it is Phase 1, which is eight items, all reversible, all fixing something real.
    vendored in the plugin where no project can change it, and so is the layer graph — both are
    rows for P18's table. Demoting `<scope>` to a cross-check means nothing routes on it, so the
    rubric being wrong for a given project is now a reporting nuisance rather than a wrong build.
-7. **Reframed: is the layer graph load-bearing for quality, or only for convention?**
+7. **Resolved by experiment, 2026-09-08 — LOAD-BEARING.** *(Was: is the layer graph load-bearing for quality, or only for convention?)* The measurement, its three arms and the three defects in the experiment itself are at the foot of this item; the mitigations it mandates are item 73. Everything below is the reasoning as it stood before the run, kept because the decision rule was written in advance and the run has to be readable against it.
    *(Was: is P18 the point at which this stops being a PRD toolchain?)* The identity framing was
    the wrong one, and it made the question unanswerable. `/breakdown` knows three separable things
    and item 28 touches only the first:
@@ -3628,13 +3628,47 @@ it is Phase 1, which is eight items, all reversible, all fixing something real.
    largest gap against the field, the experiment decides what ships **alongside** item 28, and
    Phase 3 does not wait for Phase 2's fixtures to have been run through twice.
 
-   > **Unrun as of 2026-09-08 (V5).** Item 28 shipped in Phase 3 and the mitigations went with it
-   > — the five-tier graph is a default rather than a requirement, a supplied `<layers>` is
-   > validated acyclic and reachable, and `architecture.json` records which graph a run used. **The
-   > experiment that decides what ships alongside them has not been run**, so the third row of the
-   > table above has not been reached for or against, and neither has item 43's third arm. Recorded
-   > here rather than left to be noticed: the decision rule was deliberately written before the
-   > measurement, and a rule with no measurement is the half that does nothing.
+   > **Run 2026-09-08, and the answer is LOAD-BEARING (V5).** Three live `/breakdown` arms on the
+   > `schema-6` link-shelf fixture; harness, metric and decision rule committed at `3035f42`
+   > *before* any arm ran, so "the criteria were fixed in advance" is checkable rather than
+   > asserted.
+   >
+   > | Arm | `architecture.md` | Tasks | Result |
+   > |---|---|---|---|
+   > | **default** | none — shipped graph | 10 | `0-setup → 1-foundation → 2-backend → 4-integration`. **0 forward references.** `3-frontend` correctly dropped: link-shelf is API-only |
+   > | **poor A** | inverted, prose said so | 14 | obeyed the graph. **16 forward references** — `L3-*` backend endpoints importing `Link`, `get_db`, `db_session` from `4-foundation`, which runs after them. `check-coverage.py` **0**, `check-gate.py` **0** |
+   > | **poor B** | inverted, neutral prose | **0** | `plan-layers` silently reordered the declared graph to `0-setup, 4-foundation, 3-backend`; `generate-tasks` then refused — *"structural validity is not buildability… resolving that is not my call"* |
+   >
+   > **Neither poor arm is comparable to the default**, so the first row fires; and the two poor
+   > arms contradict each other, which is the third row's definition of unclear. Both point the
+   > same way. **The graph is load-bearing.**
+   >
+   > **The sharper finding is that the two poor arms differ at all.** The same graph produced a
+   > silently unbuildable task set once and a clean halt once. **The toolchain's protection
+   > against a wrong graph is a model judgement, not a guard** — it fired in one run of two. That
+   > is item 4.13 arriving at open question 7, and it makes the mitigation an exit code rather
+   > than the baseline comparison this item originally specified: a forward reference is
+   > detectable *within* one task set, so nothing has to be compared against a default to find it.
+   >
+   > **Three defects in the experiment itself, recorded because they bound what it proves.**
+   > *(1)* Poor A's `architecture.md` prose said the direction was inverted, and `plan-layers` read
+   > it and wrote back *"the inverted direction is reported rather than corrected"* — **the fixture
+   > explained the experiment to its subject**, which is item 21's lesson repeated one phase after
+   > it was written down. Poor B is the re-run with neutral prose and is the arm that counts.
+   > *(2)* One arm was lost to a workspace inside the checkout: `resolve-output.sh` refused it at
+   > Phase 1 (F4's guard, correctly), the run exited 0 with no tasks, and that reads exactly like a
+   > toolchain finding. The harness now refuses such a path itself. *(3)* The `unresolved`
+   > secondary metric counts external libraries — `python`, `sqlite3`, `pydantic` — as unmet
+   > contracts, so its `9 → 15` is noise. The verdict rests on the forward-reference count alone,
+   > which is categorical and unaffected.
+   >
+   > **And one defect in the toolchain, found by the neutral arm and verified against the
+   > artefacts rather than taken from the run's own report:** `breakdown-plan-layers` **silently
+   > overrode the declared graph.** Declared `0-setup, 1-integration, 2-frontend, 3-backend,
+   > 4-foundation`; emitted `0-setup, 4-foundation, 3-backend`. Its own SKILL.md says a project
+   > that declares a graph gets its own and nothing grafted on. It is P16's shape — an instruction
+   > the model improved on — and it is why poor B halted: the two phases disagreed. Carried as
+   > **P52**.
 
 ---
 

@@ -1,0 +1,206 @@
+<task>
+  <meta>
+    <id>L0-001</id>
+    <name>Create project directory tree</name>
+    <layer>0-setup</layer>
+    <priority>1</priority>
+    <estimated-files>3</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug link-shelf). Project type: greenfield.
+    Project path: C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app
+
+    The PRD's tech-stack rationale states: "No template is referenced, so Layer 0
+    creates directories rather than copying a tree from elsewhere." There is no
+    template to copy. This task CREATES the Python package tree from nothing.
+
+    The repository already exists. Before this task runs, the tree at the project
+    path holds exactly two entries: the git metadata, and architecture.md. Do NOT
+    run `git init` -- the repository is already initialised, and re-initialising it
+    is both unnecessary and destructive to nothing but time. Do NOT delete, move or
+    edit architecture.md.
+
+    Scope note from the PRD: backend only. No frontend directory, no container
+    runtime, no Dockerfile, no docker-compose.yml. Do not create any of them.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x, SQLite (file-backed, no server
+    process), pytest 8.x. Backend only.
+    </tech-stack>
+
+    <project-structure>
+    Before this task (the whole repository):
+      architecture.md   (exists - do not modify)
+
+    After this task:
+      .gitignore        (created by this task)
+      architecture.md   (untouched)
+      app/
+        __init__.py     (created by this task)
+      tests/
+        __init__.py     (created by this task)
+
+    Later layers add, and this task must NOT create:
+      app/main.py, app/db.py, app/api/, app/models/, app/schemas/,
+      pyproject.toml, tests/conftest.py
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="repository_root" type="filesystem">
+    An initialised git repository already exists at the project path.
+    Contents at the start of this task: architecture.md, and git metadata.
+
+    Note for any command you write: this task executes inside a git WORKTREE of
+    that repository. In a worktree the `.git` entry is a FILE (a gitlink pointing
+    back at the primary repository), not a directory. Do not test for `.git` being
+    a directory, and do not create, initialise, or remove any git metadata.
+    </interface>
+
+    <interface name="python_interpreter" type="executable">
+    Python 3.11 is available on PATH as `python`.
+    Used by this task only to confirm the created packages are importable.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the two top-level Python packages (`app` for application code, `tests` for
+  the test suite) and a `.gitignore` covering Python build artefacts, the virtual
+  environment created in L0-004, and the SQLite database file created in L4-001.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create directory `app/` and inside it the file `app/__init__.py` containing
+    exactly this single line (a docstring, so the file is never empty):
+
+    """Link Shelf application package."""
+    </requirement>
+
+    <requirement id="2">
+    Create directory `tests/` and inside it the file `tests/__init__.py` containing
+    exactly this single line:
+
+    """Link Shelf test suite."""
+    </requirement>
+
+    <requirement id="3">
+    Create file `.gitignore` at the repository root with exactly these entries, one
+    per line, in this order:
+
+    __pycache__/
+    *.py[cod]
+    *.egg-info/
+    build/
+    dist/
+    .venv/
+    venv/
+    .pytest_cache/
+    *.db
+    *.db-journal
+
+    Rationale for the last three entries, so they are not dropped as noise:
+    `.pytest_cache/` is written by pytest from L0-004 onward; `*.db` and
+    `*.db-journal` cover the file-backed SQLite database that L4-001 creates and
+    that every test run touches. `.venv/` covers the virtual environment L0-004
+    creates.
+    </requirement>
+
+    <requirement id="4">
+    Do NOT run `git init`, `git add`, `git commit`, or any command that writes git
+    metadata. The repository already exists and the execution harness handles
+    committing.
+    </requirement>
+
+    <requirement id="5">
+    Do NOT create `app/models/`, `app/api/`, `app/schemas/` (those are L0-002),
+    `pyproject.toml` (L0-003), or any virtual environment (L0-004). Creating them
+    here would put two tasks in conflict over the same files.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Verify the app package directory exists and is a directory:
+    `python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('app').is_dir() else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="2">
+    Verify the tests package directory exists and is a directory:
+    `python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('tests').is_dir() else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="3">
+    Verify both package markers exist and are non-empty:
+    `python -c "import pathlib,sys; ps=[pathlib.Path('app/__init__.py'), pathlib.Path('tests/__init__.py')]; sys.exit(0 if all(p.is_file() and p.stat().st_size > 0 for p in ps) else 1)"`
+    Expected: exit code 0.
+    </test>
+
+    <test id="4">
+    Verify both packages import cleanly (this is what makes them packages rather
+    than plain directories):
+    `python -c "import app, tests; print('packages importable')"`
+    Expected: exit code 0, stdout contains `packages importable`.
+    </test>
+
+    <test id="5">
+    Verify .gitignore exists and contains every required entry:
+    `python -c "import pathlib,sys; got=set(pathlib.Path('.gitignore').read_text(encoding='utf-8').split()); want={'__pycache__/','*.py[cod]','*.egg-info/','build/','dist/','.venv/','venv/','.pytest_cache/','*.db','*.db-journal'}; missing=want-got; print('missing:', sorted(missing)); sys.exit(0 if not missing else 1)"`
+    Expected: exit code 0, stdout shows `missing: []`.
+    </test>
+
+    <test id="6">
+    Verify architecture.md was not disturbed:
+    `python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('architecture.md').is_file() else 1)"`
+    Expected: exit code 0.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>.gitignore</file>
+    <file>app/__init__.py</file>
+    <file>tests/__init__.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import app, tests; print('packages importable')"` - must exit 0 and print `packages importable`</step>
+    <step>Run: `python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('app/__init__.py').is_file() and pathlib.Path('tests/__init__.py').is_file() else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import pathlib,sys; got=set(pathlib.Path('.gitignore').read_text(encoding='utf-8').split()); want={'__pycache__/','*.py[cod]','*.egg-info/','build/','dist/','.venv/','venv/','.pytest_cache/','*.db','*.db-journal'}; sys.exit(0 if not (want-got) else 1)"` - must exit 0</step>
+    <step>Run: `python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('architecture.md').is_file() else 1)"` - must exit 0, confirming architecture.md survives</step>
+  </verification>
+
+  <exports>
+    <interface name="app_package" type="python-package">
+    Importable package `app` at the repository root.
+
+    app/__init__.py
+        """Link Shelf application package."""
+
+    Later tasks add modules beneath it: app/db.py (L4-001), app/main.py (L3-002),
+    and the subpackages app/models, app/api, app/schemas (L0-002).
+    </interface>
+
+    <interface name="tests_package" type="python-package">
+    Importable package `tests` at the repository root.
+
+    tests/__init__.py
+        """Link Shelf test suite."""
+
+    Later tasks add tests/conftest.py (L4-004) and per-feature test modules.
+    </interface>
+
+    <interface name="gitignore" type="filesystem">
+    `.gitignore` at the repository root ignoring:
+    __pycache__/, *.py[cod], *.egg-info/, build/, dist/, .venv/, venv/,
+    .pytest_cache/, *.db, *.db-journal
+
+    Consequence for later tasks: the SQLite database file and the .venv directory
+    are already ignored; no later task needs to amend this file.
+    </interface>
+  </exports>
+</task>

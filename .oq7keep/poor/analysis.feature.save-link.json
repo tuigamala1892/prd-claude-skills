@@ -1,0 +1,67 @@
+{
+  "feature": "save-link",
+  "scope": "small",
+  "confidence": "high",
+  "data_models": [
+    {
+      "name": "Link",
+      "fields": [
+        "id integer pk",
+        "url text not null",
+        "title text null",
+        "created_at timestamp not null"
+      ],
+      "relationships": [],
+      "source": "declared",
+      "feature": "save-link",
+      "note": "Copied verbatim from <notes><data-model>. Not inferred."
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/links",
+      "purpose": "Accept a url and an optional title, store the link, and return the stored record including its generated id and created_at timestamp.",
+      "feature": "save-link",
+      "inferred_from": "save-link",
+      "note": "The description states a POST endpoint that accepts a URL and an optional title. The method and behaviour are stated; the path string is not stated in the feature and is inferred from the Link entity name."
+    }
+  ],
+  "components": [],
+  "acceptance_criteria": [
+    {
+      "id": "1",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "1",
+      "text": "When a link is posted with a url and a title, the system shall store it and return 201 with an integer id, the submitted url and title, and a created_at timestamp.",
+      "feature": "save-link"
+    },
+    {
+      "id": "2",
+      "pattern": "event-driven",
+      "priority": "P0",
+      "derived_from": "2",
+      "text": "When a link is posted with a url and no title, the system shall store it with a null title and return 201.",
+      "feature": "save-link"
+    },
+    {
+      "id": "3",
+      "pattern": "unwanted-behaviour",
+      "priority": "P0",
+      "derived_from": "3",
+      "text": "If a link is posted with no url field, then the system shall return 422 and store nothing.",
+      "feature": "save-link"
+    },
+    {
+      "id": "4",
+      "pattern": "unwanted-behaviour",
+      "priority": "P1",
+      "derived_from": "4",
+      "text": "If a link is posted with a url that does not parse as an absolute http or https URL, then the system shall return 422 and store nothing.",
+      "feature": "save-link"
+    }
+  ],
+  "gaps": [],
+  "feature_edges": []
+}

@@ -1,0 +1,916 @@
+<task>
+  <meta>
+    <id>L4-001</id>
+    <name>Mount routers and end-to-end flow test</name>
+    <layer>4-integration</layer>
+    <priority>1</priority>
+    <estimated-files>1</estimated-files>
+
+    <source-feature slug="save-link" moscow="must-have"
+                    satisfies-criteria="" requirement-level="P0"/>
+    <source-feature slug="list-links" moscow="must-have"
+                    satisfies-criteria="" requirement-level="P0"/>
+    <source-feature slug="tag-links" moscow="should-have"
+                    satisfies-criteria="" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!-- This task descends from all THREE features and satisfies NONE of their acceptance
+         criteria individually, so satisfies-criteria is empty on all three source-features and
+         no <criterion> element is carried.
+
+         Every criterion of all three features is already satisfied and tested by Layer 2:
+           save-link  1, 2, 3, 4  -> L2-001 (POST /links)
+           list-links 1, 2, 3, 4  -> L2-002 (GET /links)
+           tag-links  3           -> L2-002 (GET /links?tag=)
+           tag-links  1, 2, 4     -> L2-003 (POST /links/{link_id}/tags)
+
+         This task re-asserts none of them individually. It asserts the COMPOSITION - that the
+         three routers coexist on one application, agree on one LinkResponse shape, and share one
+         database session - which no criterion states on its own and which no single-feature task
+         owns. Layer 2 tested each router against its own throwaway single-router application;
+         none of them proved the three work together.
+
+         Re-claiming a criterion Layer 2 already owns would make the coverage report ambiguous
+         about which task actually proves it, so nothing is claimed here. No <test> below carries
+         a `covers` attribute, and because no criteria are carried there is no <from-feature>
+         wrapper to write either.
+
+         requirement-level is P0 for each feature: P0 is the highest priority among save-link's
+         criteria (1, 2 and 3 are P0; 4 is P1), among list-links' (1, 2 and 4 are P0; 3 is P1),
+         and among tag-links' (1, 3 and 4 are P0; 2 is P1). -->
+    </acceptance-criteria>
+
+    <data-model>
+    <!-- save-link's data-model note, carried verbatim: -->
+    Link(id integer pk, url text not null, title text null,
+    created_at timestamp not null)
+    <!-- list-links' data-model note, carried verbatim: -->
+    Reads Link(id, url, title, created_at) -- owned by save-link. This feature owns no
+    entity of its own and adds no column; the ordering it guarantees is over created_at.
+    <!-- tag-links' data-model note, carried verbatim: -->
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <prd-excerpt>
+    Project: Link Shelf (slug: link-shelf). Greenfield, single repository, backend only.
+    No template, no frontend, no container runtime. The target directory is already an
+    initialised git repository: do NOT run `git init` and do NOT touch `.git`.
+
+    Feature: Save a link (slug: save-link, must-have).
+    As someone collecting links, I want to store a URL with an optional title, so that I can
+    come back to it without keeping a browser tab open. The URL is the only required field.
+    If no title is supplied the field is stored as null rather than being derived from the page.
+    Duplicate URLs are allowed.
+
+    Feature: List saved links (slug: list-links, must-have).
+    As someone collecting links, I want to see what I have saved, newest first, so that I can
+    find the thing I saved this morning without scrolling. A GET endpoint returning every saved
+    link as a JSON array, newest first by created_at. No pagination.
+
+    Feature: Tag links (slug: tag-links, should-have).
+    As someone collecting links, I want to tag what I save and filter by tag, so that a shelf of
+    two hundred links stays usable. Attach zero or more free-text tags to a link, and filter the
+    list endpoint by tag. Tags are a separate table with a many-to-many join to links.
+
+    Considerations (verbatim from tag-links):
+    Tag names are matched case-sensitively. Case folding is a reasonable product
+    decision but it is not free to verify, and leaving it explicit here stops an
+    implementer inventing either behaviour and calling it correct.
+
+    CONSEQUENCES FOR THIS TASK:
+    - This is the LAST task of the run. Layers 0, 1 and 2 are already merged, so every file they
+      created EXISTS in this worktree. Nothing here is running in parallel with anything else.
+    - Endpoint paths are UNPREFIXED: `/links` and `/links/{link_id}/tags`. The routers already
+      carry those paths, so each is mounted with a bare `app.include_router(...)` and NO
+      `prefix=` argument. Adding a prefix here would silently move every endpoint and break
+      every path this task's test uses.
+    - Tag names are CASE-SENSITIVE end to end. `?tag=Reading` must NOT match a tag stored as
+      `reading`; it returns an empty array, not every link.
+    - Do NOT implement orphan-tag cleanup. Whether a tag with no remaining links is deleted or
+      kept is the tag-links OPEN GAP 1 (kind=decision, raised 2026-08-27): "Keeping them makes
+      an autocomplete list easy and lets the list rot." No delete of any kind belongs in this
+      task's output - no `db.delete`, no `cascade=`, no `ondelete=`, no orphan sweep, and no
+      test that asserts either behaviour. Answering an undecided product question by accident is
+      worse than leaving it open, because the accidental answer is invisible to whoever
+      eventually decides it.
+    - This task owns `app/main.py` and `tests/test_integration.py` and NOTHING else. Do not
+      modify any Layer 2 router file, any schema, any model, or `tests/conftest.py`.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ -- `FastAPI`, `app.include_router(...)`, and the `lifespan=` constructor
+      argument (an async context manager). Use `lifespan=`, NOT `@app.on_event("startup")`,
+      which is deprecated in this FastAPI generation and emits a DeprecationWarning.
+    Pydantic 2.x -- nothing is defined here; the schemas already exist (L2-001, L2-003).
+    SQLAlchemy 2.x -- `Base.metadata.create_all(bind=engine)` for the file-backed schema.
+    SQLite, file-backed at `&lt;repository root&gt;/link_shelf.db`, already listed in `.gitignore`.
+    pytest 8.x (test runner), run as `python -m pytest` from the repository root.
+    httpx -- imported by `fastapi.testclient.TestClient`; already installed by L0-001.
+    All distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root. Every file below EXISTS - layers 0, 1 and 2 are merged. This task EDITS one
+    file and CREATES one test file; it creates no new directory.
+
+    .gitignore              (exists - L0-001; already ignores link_shelf.db)
+    pyproject.toml          (exists - L0-001)
+    requirements.txt        (exists - L0-001)
+    pytest.ini              (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py           (exists - L0-002)
+      database.py           (exists - L0-003; Base, engine, SessionLocal, get_db, DATABASE_PATH)
+      main.py               (exists - L0-003; a BARE FastAPI instance, NO routers included)
+                            EDITED BY THIS TASK - see requirement 1. Its current content is
+                            reproduced verbatim in the dependencies block below. EDIT it; do not
+                            delete it and write a different file from memory.
+      models/
+        __init__.py         (exists - L1-003; exports Link, LinkTag, Tag)
+        link.py             (exists - L1-001/L1-003; Link with its `tags` relationship)
+        tag.py              (exists - L1-002)
+        link_tag.py         (exists - L1-003)
+      api/
+        __init__.py         (exists - L2-001; one docstring line, imports nothing)
+        save_link.py        (exists - L2-001; module-level `router`, POST /links)
+        list_links.py       (exists - L2-002; module-level `router`, GET /links)
+        tag_links.py        (exists - L2-003; module-level `router`, POST /links/{link_id}/tags)
+      schemas/
+        link.py             (exists - L2-001; LinkCreate and the shared LinkResponse)
+        tag.py              (exists - L2-003; TagAttach)
+    tests/
+      conftest.py           (exists - L0-003; db_session and client fixtures - DO NOT EDIT)
+      test_setup.py         (exists - L0-003; 5 tests, must keep passing)
+      test_model_link.py    (exists - L1-001; 6 tests, must keep passing)
+      test_model_tag.py     (exists - L1-002; 7 tests, must keep passing)
+      test_model_link_tag.py (exists - L1-003; 9 tests, must keep passing)
+      test_save_link.py     (exists - L2-001; 4 tests, must keep passing)
+      test_list_links.py    (exists - L2-002; 5 tests, must keep passing)
+      test_tag_links.py     (exists - L2-003; 3 tests, must keep passing)
+      test_integration.py   NEW - this task (the test file, additional to the one edited above)
+
+    `app/schemas/` is a PEP 420 implicit namespace package with NO `__init__.py`, deliberately.
+    Do not add one. Nothing in this task imports from it directly anyway.
+
+    NOTE ON EARLIER VERIFICATION STEPS. L0-003, L2-001, L2-002 and L2-003 each verified that
+    `app/main.py` served NO `/links` route, because mounting was reserved for this task. Those
+    steps belong to tasks that have already been verified and merged; they are not re-run. This
+    task is the one that makes `/links` appear on `app.main.app`.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="app" type="fastapi-application">
+    # app/main.py, created by L0-003 - THIS IS THE FILE THIS TASK EDITS.
+    # Its CURRENT content on disk is EXACTLY this, in full, and nothing else:
+
+    """FastAPI application instance for Link Shelf."""
+
+    from fastapi import FastAPI
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+    )
+
+    # end of the current file.
+
+    Contract this task must preserve while editing it:
+    - The module-level name stays `app`. `tests/conftest.py` does
+      `from app.main import app as fastapi_app` and every deployment target names
+      `app.main:app`. Renaming it breaks the test fixtures.
+    - `title="Link Shelf"` and `version="0.1.0"` stay exactly as written.
+      `tests/test_setup.py::test_client_serves_the_application` asserts
+      `response.json()["info"]["title"] == "Link Shelf"` and must keep passing.
+    - The `description` string stays exactly as written.
+    EDIT this file: add imports, add the lifespan handler, add `lifespan=` to the existing
+    constructor call, and add three `include_router` lines. Do not rewrite the three keyword
+    arguments from memory.
+    </interface>
+
+    <interface name="save_link_router" type="fastapi-router">
+    # app/api/save_link.py, created by L2-001 - ALREADY EXISTS
+    from fastapi import APIRouter
+
+    router = APIRouter()
+
+    @router.post("/links", response_model=LinkResponse, status_code=201)
+    def save_link(payload: LinkCreate, db: Session = Depends(get_db)) -&gt; Link: ...
+
+    THE EXACT IMPORT THIS TASK MUST WRITE:
+        from app.api.save_link import router as save_link_router
+    THE EXACT MOUNT:
+        app.include_router(save_link_router)
+
+    Contract this task relies on:
+    - The router carries NO prefix. Its single route is `POST /links`, so
+      `app.include_router(save_link_router)` with no arguments serves exactly that path. Do NOT
+      pass `prefix=`, `tags=` or any other argument to `include_router`.
+    - Success is 201 with a `LinkResponse` body. `url` is required and must be an absolute http
+      or https URL; `title` is optional and stored as SQL NULL when absent, reported as JSON
+      `null` with the key present.
+    - The accepted url is stored and returned BYTE-FOR-BYTE as submitted, with no trailing slash
+      added and no normalisation.
+    - The route takes its session with `Depends(get_db)`, so conftest's override reaches it.
+    </interface>
+
+    <interface name="list_links_router" type="fastapi-router">
+    # app/api/list_links.py, created by L2-002 - ALREADY EXISTS
+    from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+    router = APIRouter()
+
+    @router.get("/links", response_model=list[LinkResponse])
+    def list_links(
+        tag: str | None = Query(default=None),
+        db: Session = Depends(get_db),
+    ) -&gt; list[Link]: ...
+
+    THE EXACT IMPORT THIS TASK MUST WRITE:
+        from app.api.list_links import router as list_links_router
+    THE EXACT MOUNT:
+        app.include_router(list_links_router)
+
+    Contract this task relies on, quoted from L2-002's export:
+    - The router carries NO prefix. Its single route is `GET /links`. It does not conflict with
+      `POST /links` - the two differ by method.
+    - Success is 200 with a JSON ARRAY of `LinkResponse` objects, `[]` when nothing matches.
+    - Ordering is `created_at` DESCENDING, tiebroken by `id` descending - most recently created
+      first. It holds for the filtered listing too.
+    - `?tag=NAME` narrows the result to exactly the links carrying a tag whose name equals NAME
+      EXACTLY. The match is CASE-SENSITIVE: `?tag=Reading` does not match a tag stored as
+      `reading` and returns `[]`. An unknown name returns `[]`, never every link. Omitting the
+      parameter returns everything.
+    - There is NO pagination. Every matching link is returned.
+    - An untitled link is included with `"title": null`, never omitted.
+    - Failure to read answers 500 with `{"detail": "stored links could not be read"}`, never `[]`.
+    - L2-002's export states verbatim that this task's end-to-end test may rely on all of the
+      above: save two links through `POST /links`, tag one through `POST /links/{id}/tags`, then
+      assert `GET /links` returns both newest-first and `GET /links?tag=NAME` returns exactly the
+      tagged one.
+    </interface>
+
+    <interface name="tag_links_router" type="fastapi-router">
+    # app/api/tag_links.py, created by L2-003 - ALREADY EXISTS
+    from fastapi import APIRouter, Depends, HTTPException, status
+
+    router = APIRouter()
+
+    @router.post("/links/{link_id}/tags", response_model=LinkResponse)
+    def attach_tags(
+        link_id: int,
+        payload: TagAttach,
+        db: Session = Depends(get_db),
+    ) -&gt; Link: ...
+
+    THE EXACT IMPORT THIS TASK MUST WRITE:
+        from app.api.tag_links import router as tag_links_router
+    THE EXACT MOUNT:
+        app.include_router(tag_links_router)
+
+    Contract this task relies on, quoted from L2-003's export:
+    - The router carries NO prefix. Its single route is `POST /links/{link_id}/tags` - braces,
+      and the path parameter is named `link_id`. It does not conflict with `POST /links`.
+    - Success is 200 (NOT 201) with a `LinkResponse` body reporting EVERY tag the link now
+      carries, previously attached ones included, ordered by `Tag.id` ascending.
+    - Tags are get-or-create by EXACT name, CASE-SENSITIVE, stored exactly as supplied.
+    - Re-posting a tag the link already carries answers 200 and leaves it attached exactly once.
+    - A `link_id` with no row answers 404 with `{"detail": "link &lt;id&gt; does not exist"}` and
+      creates no `tags` and no `link_tags` rows.
+    - The endpoint NEVER deletes. The orphan-tag question (tag-links gap 1) remains undecided
+      and this task must not answer it either.
+    </interface>
+
+    <interface name="TagAttach" type="pydantic-schema">
+    # app/schemas/tag.py, created by L2-003 - ALREADY EXISTS
+    from pydantic import BaseModel, Field
+
+
+    class TagAttach(BaseModel):
+        tags: list[str] = Field(default_factory=list)
+
+    Contract this task's TEST relies on:
+    - The request body for `POST /links/{link_id}/tags` is an OBJECT with a `tags` key holding a
+      list of names: `{"tags": ["reading"]}`. NOT a bare JSON array - posting `["reading"]`
+      would be answered 422.
+    - `tags` is optional, so `{}` is a legal body meaning "attach nothing".
+    This task does not import this class; it posts the JSON shape above.
+    </interface>
+
+    <interface name="LinkResponse" type="pydantic-schema">
+    # app/schemas/link.py, created by L2-001 - ALREADY EXISTS
+    from datetime import datetime
+
+    from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+    class LinkResponse(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None
+        created_at: datetime
+        tags: list[str] = Field(default_factory=list)
+
+    Contract this task's TEST relies on - this is THE ONE RESPONSE SCHEMA FOR A LINK, shared by
+    all three routers, and proving the three agree on it is the point of this task:
+    - Field order and names are `id, url, title, created_at, tags`, so every link body from every
+      one of the three endpoints has EXACTLY those five keys.
+    - `tags` is a list of tag NAMES (`list[str]`), never `Tag` objects and never ids, ordered by
+      `Tag.id` ascending and stable across reloads - so a response body listing tag names may be
+      asserted directly, without sorting.
+    - `tags` defaults to `[]`: a link with nothing attached reports an empty array, never null
+      and never a missing key.
+    - `title` is `str | None`: an untitled link serialises as `"title": null` and the key is
+      always present.
+    - `created_at` is a NAIVE UTC datetime serialised to an ISO-8601 string with NO offset, at
+      microsecond resolution, so `datetime.fromisoformat(body["created_at"])` parses it and the
+      same stored value serialises identically from the POST and from the GET.
+    This task does not import this class; it asserts the JSON shape above.
+    </interface>
+
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py, created by L0-003
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+
+    Contract this task relies on:
+    - `Base.metadata` holds `links`, `tags` and `link_tags` ONCE the model modules have been
+      imported. This project has NO migration tool: `Base.metadata.create_all(bind=engine)` is
+      the only way the schema comes into existence.
+    - `create_all` is NOT called at import time in `app/database.py`. The test fixtures call it
+      on their own in-memory engine; this task calls it for the running application.
+    - `create_all` issues `CREATE TABLE IF NOT EXISTS`, so calling it against an existing
+      database is a no-op and is safe on every start.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/database.py, created by L0-003
+    from pathlib import Path
+    from sqlalchemy import Engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db
+    DATABASE_URL: str     # "sqlite:///&lt;absolute path to link_shelf.db&gt;"
+    engine: Engine        # created with connect_args={"check_same_thread": False}
+
+    Import as: `from app.database import engine`
+
+    Contract this task relies on:
+    - This is the FILE-BACKED engine. `Base.metadata.create_all(bind=engine)` opens a connection
+      and therefore CREATES `link_shelf.db` on disk if it is absent. That is exactly what the
+      running application needs, and exactly what must NOT happen during the test suite.
+    - The test fixtures never use this engine; `tests/conftest.py` builds its own in-memory
+      engine with `create_engine("sqlite://", poolclass=StaticPool)`.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py, created by L0-003
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+
+    Contract this task relies on:
+    - All three routers take their session with `Depends(get_db)`, so overriding this ONE
+      callable redirects all three at once. That shared dependency is why the three routers see
+      one database, and it is what this task's end-to-end test exercises.
+    - `app.dependency_overrides[get_db]` is set by conftest's `client` fixture BEFORE the
+      TestClient is entered, so a lifespan handler can read `app.dependency_overrides` to tell a
+      test run from a real one. Requirement 2 depends on exactly this ordering.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, final content after L1-003
+    """SQLAlchemy models for Link Shelf."""
+
+    from app.models.link import Link
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "LinkTag", "Tag"]
+
+    Import as: `import app.models`
+
+    Contract this task relies on:
+    - Importing this package registers all three tables - `links`, `tags` and `link_tags` - on
+      `Base.metadata`. Without the import, `Base.metadata.create_all` would create NO tables and
+      the running application would answer every request with "no such table".
+    - Layer 1 is complete; this task adds no model and does not edit this file.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003 - DO NOT EDIT THAT FILE
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]:
+        def override_get_db() -&gt; Generator[Session, None, None]:
+            yield db_session
+
+        fastapi_app.dependency_overrides[get_db] = override_get_db
+        try:
+            with TestClient(fastapi_app) as test_client:
+                yield test_client
+        finally:
+            fastapi_app.dependency_overrides.clear()
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `TestClient` wrapping `app.main.app` - THE REAL APPLICATION - entered as a context
+    manager, so the application's lifespan runs.
+
+    THIS TASK MUST USE THIS FIXTURE, and this is the one place in the project where it is the
+    right one. Every Layer 2 test file deliberately built its own throwaway single-router
+    `FastAPI()` because `app.main.app` served no routes yet. Building a local application here
+    would defeat the entire purpose of this task: the composition being asserted is that the
+    three routers work TOGETHER on the ONE real application. Do NOT define a local `api` fixture
+    in `tests/test_integration.py` and do NOT call `include_router` anywhere in the test file.
+
+    Contract this task relies on:
+    - `get_db` is overridden to yield the `db_session` fixture's Session, so all three routers
+      read and write ONE in-memory database within a test.
+    - The override is installed BEFORE the TestClient is entered, so the lifespan handler sees
+      it and skips creating the file-backed schema.
+    - The database is empty at the start of each test and discarded at the end.
+    - The file-backed `link_shelf.db` is never touched by the fixtures.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py, created by L0-003
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function. Yields a `Session` on a private in-memory
+    SQLite database with `links`, `tags` and `link_tags` created and EMPTY.
+
+    Requesting `client` pulls this fixture in automatically. This task's tests do NOT need to
+    request it: every assertion goes through HTTP, which is the point - a test that reached
+    round the endpoints into the ORM would stop proving the endpoints compose.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini (repository root), created by L0-002
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequences: the test file must be `tests/test_integration.py`; tests are run with
+    `python -m pytest` from the repository root; and `pythonpath = .` is what makes
+    `from app.main import app` resolve from the source tree without the project being
+    pip-installed.
+    </interface>
+
+    <interface name="fastapi.testclient.TestClient" type="third-party-class">
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class TestClient:
+        def __init__(self, app: FastAPI) -&gt; None: ...
+        def get(self, url: str, params: dict | None = None, **kwargs) -&gt; "httpx.Response": ...
+        def post(self, url: str, json: object = None, **kwargs) -&gt; "httpx.Response": ...
+
+    `response.status_code` is an int; `response.json()` decodes the body.
+    Query parameters are passed with `params`: `client.get("/links", params={"tag": "reading"})`.
+    Entering it as a context manager runs the application's lifespan - startup on enter, shutdown
+    on exit. conftest's `client` fixture already does that, so this task's tests receive an
+    application whose startup has already run.
+    </interface>
+
+    <interface name="contextlib.asynccontextmanager" type="third-party-decorator">
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -&gt; AsyncIterator[None]:
+        # startup work happens here
+        yield
+        # shutdown work would happen here
+
+    app = FastAPI(lifespan=lifespan)
+
+    This is FastAPI 0.110's supported startup hook. The decorated function receives the
+    application instance, does its startup work, yields exactly once, and returns. Use it in
+    preference to `@app.on_event("startup")`, which is deprecated in this FastAPI generation.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Mount the three existing routers - `save_link`, `list_links` and `tag_links` - on the existing
+  FastAPI application in `app/main.py`, create the database schema at application startup so the
+  file-backed application works when it is actually run and not only under test, and add
+  `tests/test_integration.py`: an end-to-end test that saves two links, tags one of them, lists
+  them unfiltered and lists them filtered by tag, all through the REAL mounted application.
+
+  That composition is the whole point of this task and no other task owns it. Every acceptance
+  criterion of all three features is already satisfied and tested by Layer 2, and each Layer 2
+  test file proved its router correct against a throwaway application serving ONLY that router.
+  None of them proved the three routers coexist: that they agree on one `LinkResponse` shape,
+  that they share one database session through `get_db`, and that a link saved by one endpoint,
+  tagged by a second, is found by the third.
+
+  This task therefore claims NO acceptance criterion - `satisfies-criteria` is empty on all
+  three `source-feature` elements. Re-claiming a criterion Layer 2 already owns would make the
+  coverage report ambiguous about which task actually proves it.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    EDIT `app/main.py`. Its current content is reproduced verbatim in the `app` dependency
+    interface above - open the file, keep the existing docstring and the existing
+    `FastAPI(title=..., version=..., description=...)` keyword arguments byte-for-byte, and add
+    to it. The file's complete content afterwards must be exactly this:
+
+    """FastAPI application instance for Link Shelf."""
+
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    import app.models  # noqa: F401  - registers every model on Base.metadata
+    from app.api.list_links import router as list_links_router
+    from app.api.save_link import router as save_link_router
+    from app.api.tag_links import router as tag_links_router
+    from app.database import Base, engine, get_db
+
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -&gt; AsyncIterator[None]:
+        """Create the file-backed schema before the application serves its first request."""
+        if get_db not in application.dependency_overrides:
+            Base.metadata.create_all(bind=engine)
+        yield
+
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+        lifespan=lifespan,
+    )
+
+    app.include_router(save_link_router)
+    app.include_router(list_links_router)
+    app.include_router(tag_links_router)
+
+    Decisions embedded above that must be preserved exactly as written:
+
+    - The module-level name is still `app`, and `title`, `version` and `description` are
+      unchanged. `tests/conftest.py` imports `from app.main import app as fastapi_app` and
+      `tests/test_setup.py` asserts the OpenAPI title is `"Link Shelf"`; both must keep passing.
+      The only change to the constructor call is the added `lifespan=lifespan` argument.
+
+    - THE THREE IMPORT LINES AND THE THREE ALIASES ARE EXACT. `save_link_router` from
+      `app.api.save_link`, `list_links_router` from `app.api.list_links`, `tag_links_router`
+      from `app.api.tag_links`. Each of those modules names its router `router` at module level;
+      the alias is applied on import. Do not guess a different module path or a different name.
+
+    - `app.include_router(...)` is called with the router and NOTHING ELSE. Do NOT pass
+      `prefix=`, `tags=`, `dependencies=` or `responses=`. Each router already carries its full
+      unprefixed path - `/links` for two of them and `/links/{link_id}/tags` for the third - so a
+      prefix here would move every endpoint and break every path in this task's test.
+
+    - All three routers are mounted. Mounting two of them and forgetting the third is the single
+      most likely way this task fails silently: the missing endpoint answers 404 and the failure
+      looks like a routing bug in somebody else's file.
+
+    - `POST /links` and `GET /links` share a path and differ by method; they do not conflict.
+      `POST /links/{link_id}/tags` is a different path. Mount order does not affect routing here,
+      but keep the order above so the file reads in the order the flow runs.
+
+    - `import app.models  # noqa: F401` is deliberate and must stay. `Base.metadata.create_all`
+      creates only the tables registered on the metadata, and they are registered by importing
+      the model modules. The router imports happen to pull `app.models` in transitively, but
+      relying on that would make the schema depend on an import three modules away. The `noqa`
+      marks it as an intentionally unused import.
+
+    - `Base.metadata.create_all(bind=engine)` inside the lifespan is what makes the file-backed
+      application work when it is actually run - `uvicorn app.main:app` against a fresh checkout
+      would otherwise answer every request with "no such table: links". `create_all` issues
+      `CREATE TABLE IF NOT EXISTS`, so it is a safe no-op on every subsequent start.
+
+    - `if get_db not in application.dependency_overrides:` is REQUIRED, not an optimisation.
+      conftest's `client` fixture installs the `get_db` override BEFORE entering the TestClient,
+      so during a test run the override is present and this branch is skipped. Without the
+      guard, every test that uses the `client` fixture would open the FILE-BACKED engine and
+      create `link_shelf.db` on disk - a database file that no test ever reads, written as a
+      side effect of a test suite that is supposed to stay in memory. The guard states the rule
+      exactly: if something has redirected `get_db`, this application is not using the
+      file-backed engine and must not create its schema.
+
+    - Use `lifespan=`, NOT `@app.on_event("startup")`. The event decorator is deprecated in
+      FastAPI 0.110 and emits a DeprecationWarning on import.
+
+    - Do NOT call `create_all` at module level. Import time is worse than startup time: merely
+      importing `app.main` - which `tests/conftest.py` does at collection - would create the
+      database file before any fixture had a chance to override anything.
+
+    - Do NOT define any route function in this file. The three routers own every endpoint. Do
+      not add a `/health`, a `/` or a redirect: no criterion asks for one.
+
+    - Do NOT add a shutdown action after the `yield`. There is nothing to close - the engine's
+      connections are pooled and disposed by the interpreter, and dropping tables at shutdown
+      would destroy the caller's data.
+    </requirement>
+
+    <requirement id="2">
+    Do NOT create or edit any other file. This task owns `app/main.py` and
+    `tests/test_integration.py` and nothing else.
+
+    Specifically: do not touch `app/database.py`, `app/api/__init__.py`, `app/api/save_link.py`,
+    `app/api/list_links.py`, `app/api/tag_links.py`, `app/schemas/link.py`, `app/schemas/tag.py`,
+    any file under `app/models/`, `tests/conftest.py`, or any existing test file. If a Layer 2
+    router looks wrong, it is not wrong: it passed its own tests and its own verification, and
+    editing it here would silently rewrite a task that has already been reviewed and merged.
+
+    Do not add `app/schemas/__init__.py` - `app/schemas` is a PEP 420 implicit namespace package
+    and must stay one.
+
+    Do not create a migration - this project has no migration tool, the schema is created from
+    `Base.metadata`. Do not run `git init` and do not touch `.git`.
+
+    Do NOT implement orphan-tag cleanup anywhere: no `db.delete(...)`, no `cascade=`, no
+    `ondelete=`, no sweep of tags with no remaining links, and no test asserting that an orphaned
+    tag is either kept or removed. That is the tag-links open gap 1 (kind=decision, raised
+    2026-08-27) and it must remain undecided.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test-driven: write `tests/test_integration.py` FIRST, run
+    `python -m pytest tests/test_integration.py -v` and watch every test fail with a 404 - the
+    `client` fixture wraps `app.main.app`, which mounts nothing yet - then edit `app/main.py`
+    until they pass.
+
+    NO test below carries a `covers` attribute, and that is deliberate. This task carries no
+    `&lt;criterion&gt;` element because it claims none: every criterion of all three features is
+    already owned and proved by a Layer 2 task, and citing an id here would put a second claimant
+    into the coverage report. What these tests assert is the composition - three routers, one
+    application, one response shape, one session - which no criterion states on its own.
+
+    <test id="1">
+    Create test file: `tests/test_integration.py`.
+    Header, exactly:
+
+      """End-to-end flow across save-link, list-links and tag-links on the mounted application."""
+
+      from datetime import datetime
+
+      from fastapi.testclient import TestClient
+
+    Every test below requests ONLY the `client` fixture from `tests/conftest.py`. That fixture
+    wraps the REAL `app.main.app` with `get_db` overridden to the in-memory test session.
+
+    DO NOT build a local application. Do not write `application = FastAPI()`, do not call
+    `include_router` anywhere in this file, and do not import any router module. Every Layer 2
+    test file did build a local single-router application, because `app.main.app` served no
+    routes at that point; doing it here would test the routers in isolation all over again and
+    prove nothing about them coexisting, which is the only thing this task exists to prove.
+
+    Do not request `db_session` either. Every assertion goes through HTTP on purpose: a test that
+    reached past the endpoints into the ORM would stop proving that the endpoints compose.
+    </test>
+
+    <test id="2">
+    Test: test_the_mounted_application_serves_all_three_link_routes
+    - Request the `client` fixture.
+    - schema = client.get("/openapi.json").json()
+    - Assert sorted(schema["paths"]) == ["/links", "/links/{link_id}/tags"]
+    - Assert sorted(schema["paths"]["/links"]) == ["get", "post"]
+    - Assert list(schema["paths"]["/links/{link_id}/tags"]) == ["post"]
+    - Assert schema["info"]["title"] == "Link Shelf"
+    - This is the mounting itself, asserted through the application's own published contract:
+      all three routes are present, at their UNPREFIXED paths, and no fourth route was invented.
+      A `prefix=` passed to `include_router` would show up here as `/api/links` and fail.
+    </test>
+
+    <test id="3">
+    Test: test_saving_tagging_and_listing_composes_end_to_end
+    - Request the `client` fixture. This is the flow the task exists for; write it as ONE test,
+      because the point is that the steps compose and a step asserted in isolation is a Layer 2
+      test that already exists.
+
+      titled = client.post(
+          "/links",
+          json={"url": "https://example.com/titled", "title": "The Titled One"},
+      )
+      assert titled.status_code == 201
+      titled_id = titled.json()["id"]
+
+      untitled = client.post("/links", json={"url": "https://example.com/untitled"})
+      assert untitled.status_code == 201
+      untitled_id = untitled.json()["id"]
+      assert untitled.json()["title"] is None
+      assert untitled_id != titled_id
+
+      # tag EXACTLY ONE of the two - the OLDER one, so the filter below provably selects by tag
+      # and not by recency
+      tagged = client.post(f"/links/{titled_id}/tags", json={"tags": ["reading"]})
+      assert tagged.status_code == 200
+      assert tagged.json()["id"] == titled_id
+      assert tagged.json()["tags"] == ["reading"]
+
+      # GET /links unfiltered: BOTH links come back, newest first
+      listing = client.get("/links")
+      assert listing.status_code == 200
+      body = listing.json()
+      assert [item["id"] for item in body] == [untitled_id, titled_id]
+      stamps = [datetime.fromisoformat(item["created_at"]) for item in body]
+      assert stamps == sorted(stamps, reverse=True)
+
+      by_id = {item["id"]: item for item in body}
+      # the untitled link is REPORTED with a null title, not omitted from the listing
+      assert "title" in by_id[untitled_id]
+      assert by_id[untitled_id]["title"] is None
+      assert by_id[untitled_id]["tags"] == []
+      assert by_id[titled_id]["title"] == "The Titled One"
+      # the tag attached through the tagging endpoint survives the round trip through the
+      # listing endpoint's response shape
+      assert by_id[titled_id]["tags"] == ["reading"]
+
+      # GET /links?tag=: EXACTLY the tagged link
+      filtered = client.get("/links", params={"tag": "reading"})
+      assert filtered.status_code == 200
+      filtered_body = filtered.json()
+      assert [item["id"] for item in filtered_body] == [titled_id]
+      assert filtered_body[0]["url"] == "https://example.com/titled"
+      assert filtered_body[0]["tags"] == ["reading"]
+
+      # and the match stays case-sensitive end to end: no fallback to every link
+      assert client.get("/links", params={"tag": "Reading"}).json() == []
+
+    Notes:
+    - The two links are saved in a DEFINED order - titled first, untitled second - so
+      "newest first" has a known expected answer: `[untitled_id, titled_id]`. No sleep is
+      needed and none should be added. `Link.created_at` is assigned by Python at INSERT with
+      MICROSECOND resolution (L1-001's decision), and `GET /links` orders by
+      `created_at DESC, id DESC`, so the order is deterministic even for two links saved inside
+      the same second.
+    - Every request goes through the `client` fixture, so all three endpoints resolve `get_db`
+      to the SAME session. A link written by `POST /links` being visible to
+      `POST /links/{id}/tags` and then to `GET /links` is exactly the property being asserted.
+    </test>
+
+    <test id="4">
+    Test: test_the_three_endpoints_report_a_link_in_one_shape
+    - Request the `client` fixture.
+
+      saved = client.post("/links", json={"url": "https://example.com/shape", "title": "Shape"})
+      assert saved.status_code == 201
+      link_id = saved.json()["id"]
+
+      tagged = client.post(f"/links/{link_id}/tags", json={"tags": ["shape"]})
+      assert tagged.status_code == 200
+
+      listed = client.get("/links").json()
+      assert len(listed) == 1
+
+      expected_keys = {"id", "url", "title", "created_at", "tags"}
+      assert set(saved.json()) == expected_keys
+      assert set(tagged.json()) == expected_keys
+      assert set(listed[0]) == expected_keys
+
+      assert listed[0]["id"] == tagged.json()["id"] == link_id
+      assert listed[0]["url"] == saved.json()["url"] == "https://example.com/shape"
+      assert listed[0]["title"] == saved.json()["title"] == "Shape"
+      assert listed[0]["created_at"] == saved.json()["created_at"]
+      assert listed[0]["tags"] == tagged.json()["tags"] == ["shape"]
+
+    Notes:
+    - This is the "one LinkResponse" half of the composition. All three endpoints serialise
+      through the single schema in `app/schemas/link.py`, so all three bodies must carry exactly
+      the same five keys and report the same values for the same link. If a later change gave
+      one endpoint its own response model, this test is what catches it.
+    - `created_at` is compared as the raw ISO-8601 STRING across the POST and the GET. The value
+      is stored and re-read at microsecond resolution, so the two serialisations are identical;
+      comparing the strings also proves neither endpoint reformats the timestamp.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/main.py</file>
+    <file>tests/test_integration.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.main import app; mounted = {(getattr(r, 'path', ''), tuple(sorted(getattr(r, 'methods', [])))) for r in app.routes}; expected = {('/links', ('POST',)), ('/links', ('GET',)), ('/links/{link_id}/tags', ('POST',))}; assert expected.issubset(mounted), sorted(mounted); print('routes mounted ok')"` - prints `routes mounted ok`; all three routes are on the application at their unprefixed paths, POST and GET on /links coexisting</step>
+    <step>Run: `python -c "import inspect, app.main as m; src = inspect.getsource(m); assert 'from app.api.save_link import router as save_link_router' in src; assert 'from app.api.list_links import router as list_links_router' in src; assert 'from app.api.tag_links import router as tag_links_router' in src; assert src.count('include_router') == 3, src.count('include_router'); assert 'prefix=' not in src, 'include_router must be called with the router and nothing else'; print('mounts ok')"` - prints `mounts ok`; exactly three routers, imported from their real module paths under their exact aliases, mounted with no prefix</step>
+    <step>Run: `python -c "from app.main import app; s = app.openapi(); assert sorted(s['paths']) == ['/links', '/links/{link_id}/tags'], sorted(s['paths']); assert sorted(s['paths']['/links']) == ['get', 'post'], sorted(s['paths']['/links']); assert list(s['paths']['/links/{link_id}/tags']) == ['post']; assert s['info']['title'] == 'Link Shelf'; assert s['info']['version'] == '0.1.0'; print('openapi ok')"` - prints `openapi ok`; the published contract shows the three endpoints and no fourth, and the application's title and version are unchanged from L0-003</step>
+    <step>Run: `python -c "import inspect, app.main as m; src = inspect.getsource(m); assert 'Base.metadata.create_all' in src, 'the running application must create its schema at startup'; assert 'dependency_overrides' in src, 'startup schema creation must be skipped when a test overrides get_db'; assert 'lifespan=lifespan' in src, 'use the lifespan argument, not the deprecated on_event decorator'; assert 'on_event' not in src; assert '@router.' not in src and '@app.get' not in src and '@app.post' not in src, 'the routers own every endpoint; main.py defines none'; print('startup guard ok')"` - prints `startup guard ok`</step>
+    <step>Run: `python -c "import inspect, app.main as m; src = inspect.getsource(m).lower(); assert 'delete' not in src, 'tag-links gap 1 is undecided: nothing here may remove a tag'; assert 'cascade' not in src; assert 'ondelete' not in src; assert 'drop_all' not in src, 'shutdown must not destroy the schema'; print('open gap left open ok')"` - prints `open gap left open ok`; the orphan-tag decision (tag-links gap 1, raised 2026-08-27) is still unanswered and startup creates without ever dropping</step>
+    <step>Run: `python -c "import pathlib; from fastapi.testclient import TestClient; from sqlalchemy import inspect; from app.database import engine; from app.main import app; p = pathlib.Path('link_shelf.db'); p.exists() and p.unlink(); c = TestClient(app); c.__enter__(); r = c.get('/links'); c.__exit__(None, None, None); assert r.status_code == 200, r.status_code; assert r.json() == [], r.json(); assert p.exists(), 'startup did not create the file-backed database'; names = set(inspect(engine).get_table_names()); assert names == {'links', 'tags', 'link_tags'}, names; engine.dispose(); p.unlink(); print('startup schema ok')"` - prints `startup schema ok`; entering the real application with NO dependency override runs the lifespan, creates link_shelf.db with all three tables, and serves GET /links against it. The file is removed again at the end of the step so the tree is left as it was found</step>
+    <step>Run: `python -m pytest "tests/test_integration.py::test_saving_tagging_and_listing_composes_end_to_end" -v` - exit code 0; the cross-feature flow: two links saved through POST /links, one tagged through POST /links/{id}/tags, both listed newest-first with the untitled one reporting a null title, and the tag filter returning exactly the tagged link, case-sensitively</step>
+    <step>Run: `python -m pytest "tests/test_integration.py::test_the_three_endpoints_report_a_link_in_one_shape" -v` - exit code 0; all three endpoints report a link with exactly the five LinkResponse keys and the same values, proving they share one response schema</step>
+    <step>Run: `python -m pytest tests/test_integration.py -v` - exit code 0, all 3 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0, 42 tests pass: L0-003's 5, L1-001's 6, L1-002's 7, L1-003's 9, L2-001's 4, L2-002's 5 and L2-003's 3 all still pass alongside this task's 3, proving that mounting the routers broke nothing that already worked</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'the test suite must stay in memory; the lifespan guard skips schema creation when get_db is overridden'; print('tests stayed in memory ok')"` - prints `tests stayed in memory ok`; run this AFTER the full pytest run above, so it asserts that a complete suite through the real mounted application still wrote no database file</step>
+  </verification>
+
+  <exports>
+    <interface name="app" type="fastapi-application">
+    # app/main.py - the mounted application
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    import app.models  # noqa: F401
+    from app.api.list_links import router as list_links_router
+    from app.api.save_link import router as save_link_router
+    from app.api.tag_links import router as tag_links_router
+    from app.database import Base, engine, get_db
+
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -&gt; AsyncIterator[None]:
+        if get_db not in application.dependency_overrides:
+            Base.metadata.create_all(bind=engine)
+        yield
+
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+        lifespan=lifespan,
+    )
+
+    app.include_router(save_link_router)
+    app.include_router(list_links_router)
+    app.include_router(tag_links_router)
+
+    Import as: `from app.main import app`. Run as: `uvicorn app.main:app`.
+
+    Downstream contract:
+    - The application serves exactly three endpoints, all unprefixed:
+        POST /links                  -> 201, a LinkResponse body
+        GET  /links[?tag=NAME]       -> 200, a JSON array of LinkResponse, newest first
+        POST /links/{link_id}/tags   -> 200, a LinkResponse body with every attached tag
+      No other route is defined here; FastAPI's own /docs, /redoc and /openapi.json remain.
+    - All three serialise through the single `LinkResponse` schema in `app/schemas/link.py`, so
+      every link body from every endpoint carries exactly `id, url, title, created_at, tags`.
+    - All three take their session with `Depends(get_db)`, so overriding that one callable
+      redirects the whole application at once. `tests/conftest.py`'s `client` fixture does
+      exactly that, and it is now a fixture that serves real routes.
+    - On startup the application creates the schema on the file-backed engine
+      (`&lt;repository root&gt;/link_shelf.db`) with `CREATE TABLE IF NOT EXISTS`, so a fresh
+      checkout works on first run and an existing database is left alone.
+    - Startup schema creation is SKIPPED when `get_db` is present in
+      `app.dependency_overrides`, which is how the test suite runs entirely in memory and never
+      writes `link_shelf.db`. Any future fixture that wraps this application must install its
+      `get_db` override BEFORE entering the TestClient, or it will create the file.
+    - Nothing is torn down at shutdown. The schema is never dropped.
+    - The orphan-tag question (tag-links open gap 1, kind=decision, raised 2026-08-27) is still
+      undecided. No part of this application deletes a tag or an attachment.
+    </interface>
+
+    <interface name="end_to_end_coverage" type="pytest-module">
+    # tests/test_integration.py
+    from datetime import datetime
+
+    from fastapi.testclient import TestClient
+
+
+    def test_the_mounted_application_serves_all_three_link_routes(client: TestClient) -&gt; None: ...
+    def test_saving_tagging_and_listing_composes_end_to_end(client: TestClient) -&gt; None: ...
+    def test_the_three_endpoints_report_a_link_in_one_shape(client: TestClient) -&gt; None: ...
+
+    Run as: `python -m pytest tests/test_integration.py -v` (3 tests).
+
+    Downstream contract:
+    - These are the ONLY tests in the project that exercise `app.main.app` with routes on it.
+      Every Layer 2 test file mounts its own single router on a throwaway `FastAPI()` and
+      therefore cannot detect a routing, prefix or schema disagreement between the three.
+    - They claim NO acceptance criterion. All twelve criteria across the three features are
+      owned and proved by L2-001, L2-002 and L2-003; these tests assert the composition, which
+      no criterion states on its own.
+    - What they will catch: a router mounted with a prefix, a router not mounted at all, a
+      second link response schema appearing, the three endpoints drifting onto different
+      database sessions, and the tag filter losing case-sensitivity end to end.
+    - A future endpoint that returns a link should be added to
+      `test_the_three_endpoints_report_a_link_in_one_shape`, so the "one shape" property keeps
+      covering the whole surface.
+    </interface>
+  </exports>
+</task>

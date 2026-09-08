@@ -1,0 +1,81 @@
+{
+  "prd_meta": {
+    "name": "Link Shelf",
+    "slug": "link-shelf",
+    "status": "in-progress"
+  },
+  "features": [
+    {
+      "name": "Save a link",
+      "priority": "must-have",
+      "summary": "Accept a URL with an optional title and store it.",
+      "spec_file": "features/save-link.md"
+    },
+    {
+      "name": "List saved links",
+      "priority": "must-have",
+      "summary": "Return every saved link, newest first.",
+      "spec_file": "features/list-links.md"
+    },
+    {
+      "name": "Tag links",
+      "priority": "should-have",
+      "summary": "Attach free-text tags to a link and filter the list by tag.",
+      "spec_file": "features/tag-links.md"
+    }
+  ],
+  "tech_stack": {
+    "type": "greenfield",
+    "project_path": "C:\\Users\\Lee\\AppData\\Local\\Temp\\oq7-qn0r6zml\\poor\\app",
+    "technologies": [
+      {"name": "Python", "version": "3.11", "purpose": "Backend language"},
+      {"name": "FastAPI", "version": "0.110+", "purpose": "HTTP API framework"},
+      {"name": "SQLAlchemy", "version": "2.x", "purpose": "ORM and schema definition"},
+      {"name": "SQLite", "version": null, "purpose": "File-backed database, no server process"},
+      {"name": "pytest", "version": "8.x", "purpose": "Test runner"}
+    ],
+    "rationale": "SQLite rather than PostgreSQL so the whole project runs with no external service: a fixture that needs a database server running is a fixture that fails for reasons unrelated to what is being tested. No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.",
+    "notes": "Backend only - no frontend, no container runtime.",
+    "template": {
+      "path": null,
+      "provides": [],
+      "detected_from": "Keyword mapping (Python + FastAPI) would suggest webapps/backends/python, but the PRD's <rationale> explicitly states \"No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.\" The explicit statement outranks the keyword heuristic, so no template path is recorded."
+    }
+  },
+  "template": {
+    "path": null,
+    "provides": [],
+    "detected_from": "Keyword mapping (Python + FastAPI) would suggest webapps/backends/python, but the PRD's <rationale> explicitly states \"No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.\" The explicit statement outranks the keyword heuristic, so no template path is recorded."
+  },
+  "dependencies": [
+    {
+      "name": "fastapi",
+      "version": "0.110+",
+      "purpose": "HTTP API framework"
+    },
+    {
+      "name": "sqlalchemy",
+      "version": "2.x",
+      "purpose": "ORM and schema definition"
+    },
+    {
+      "name": "pytest",
+      "version": "8.x",
+      "purpose": "Test runner used by every task's verification block"
+    }
+  ],
+  "architecture": {
+    "declared": true,
+    "layers": [
+      {"id": "0", "name": "setup", "depends_on": []},
+      {"id": "1", "name": "integration", "depends_on": ["0"]},
+      {"id": "2", "name": "frontend", "depends_on": ["1"]},
+      {"id": "3", "name": "backend", "depends_on": ["2"]},
+      {"id": "4", "name": "foundation", "depends_on": ["3"]}
+    ],
+    "testing": null,
+    "task_limits": null,
+    "registries": {},
+    "principles": []
+  }
+}

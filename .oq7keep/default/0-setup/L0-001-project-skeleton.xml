@@ -1,0 +1,224 @@
+<task>
+  <meta>
+    <id>L0-001</id>
+    <name>Project skeleton and dependency manifest</name>
+    <layer>0-setup</layer>
+    <priority>1</priority>
+    <estimated-files>3</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug: link-shelf). Project type: greenfield, single repository.
+
+    There is NO template. analysis.tech_stack.template.path is null. The PRD's index.md
+    states verbatim: "No template is referenced, so Layer 0 creates directories rather than
+    copying a tree from elsewhere." This task CREATES files. It does not copy a tree, it
+    does not run rsync, and there is no template source directory.
+
+    The target directory is ALREADY an initialised git repository containing a .git entry
+    and nothing else. Do NOT run `git init`. Do NOT run any command that inspects, moves or
+    removes .git.
+
+    Backend only. No frontend, no container runtime, no external database server.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ (HTTP API framework)
+    SQLAlchemy 2.x (ORM and schema definition)
+    SQLite, file-backed (database, no external server)
+    pytest 8.x (test runner)
+    httpx (required by fastapi.testclient.TestClient; every later task's verification
+    exercises the API through TestClient, so httpx is a hard dependency of this project
+    even though no feature declares it)
+    </tech-stack>
+
+    <project-structure>
+    Repository root (this task creates the three files marked NEW):
+
+    .gitignore          NEW - this task
+    pyproject.toml      NEW - this task
+    requirements.txt    NEW - this task
+    pytest.ini          (created by L0-002)
+    app/
+      __init__.py       (created by L0-002)
+      database.py       (created by L0-003)
+      main.py           (created by L0-003)
+      models/
+        __init__.py     (created by L0-002)
+    tests/
+      conftest.py       (created by L0-003)
+    link_shelf.db       (runtime SQLite file, never committed)
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="python" type="runtime">
+    Python 3.11 is installed and on PATH as `python`.
+    The standard library module `tomllib` is available (Python 3.11+) and is used by this
+    task's verification to parse pyproject.toml.
+    </interface>
+
+    <interface name="pip" type="tool">
+    `pip` is available as `python -m pip` and can install from a requirements file.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the three root-level project files for Link Shelf: a pyproject.toml declaring the
+  project metadata and its four dependencies, a requirements.txt pinning the same set for
+  installation, and a .gitignore that excludes Python bytecode, the pytest cache and the
+  file-backed SQLite database.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `pyproject.toml` at the repository root with exactly this content:
+
+    [build-system]
+    requires = ["setuptools&gt;=68"]
+    build-backend = "setuptools.build_meta"
+
+    [project]
+    name = "link-shelf"
+    version = "0.1.0"
+    description = "Store links with an optional title, list them newest first, and tag them."
+    requires-python = "&gt;=3.11"
+    dependencies = [
+        "fastapi&gt;=0.110",
+        "sqlalchemy&gt;=2.0,&lt;3.0",
+        "httpx&gt;=0.27",
+    ]
+
+    [project.optional-dependencies]
+    test = [
+        "pytest&gt;=8.0,&lt;9.0",
+    ]
+
+    [tool.setuptools]
+    packages = ["app", "app.models"]
+
+    Note on the `[tool.setuptools] packages` list: the `app` and `app.models` packages do
+    not exist yet - L0-002 creates them. This task must NOT attempt to build or install the
+    project itself (no `pip install .`, no `python -m build`); it only declares the metadata.
+    Verification below installs the dependencies from requirements.txt, not the project.
+    </requirement>
+
+    <requirement id="2">
+    Create `requirements.txt` at the repository root with exactly this content:
+
+    fastapi&gt;=0.110
+    sqlalchemy&gt;=2.0,&lt;3.0
+    httpx&gt;=0.27
+    pytest&gt;=8.0,&lt;9.0
+
+    All four lines are required. httpx is not optional: `fastapi.testclient.TestClient`
+    imports it at module import time, and every later task's tests import TestClient. Omitting
+    httpx makes every later verification fail at import with ModuleNotFoundError.
+    </requirement>
+
+    <requirement id="3">
+    Create `.gitignore` at the repository root with exactly this content:
+
+    __pycache__/
+    *.py[cod]
+    *.egg-info/
+    build/
+    dist/
+    .pytest_cache/
+    .coverage
+    .venv/
+    venv/
+    link_shelf.db
+    link_shelf.db-journal
+    link_shelf.db-wal
+    link_shelf.db-shm
+
+    `link_shelf.db` is the file-backed SQLite database that L0-003 configures at the
+    repository root. It is runtime state and must never be committed. The three
+    `link_shelf.db-*` lines cover SQLite's journal, write-ahead log and shared-memory
+    sidecar files.
+    </requirement>
+
+    <requirement id="4">
+    Do NOT create any other file or directory. Do NOT run `git init` - the repository
+    already exists. Do NOT run `git add`, `git commit`, or any command that touches `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Check: pyproject.toml parses as TOML and declares the expected project metadata.
+    Command:
+    python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); p = d['project']; assert p['name'] == 'link-shelf', p['name']; assert p['version'] == '0.1.0', p['version']; assert p['requires-python'] == '&gt;=3.11', p['requires-python']; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="2">
+    Check: pyproject.toml declares fastapi, sqlalchemy and httpx as runtime dependencies and
+    pytest as a test extra.
+    Command:
+    python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); runtime = ' '.join(d['project']['dependencies']); assert 'fastapi' in runtime and 'sqlalchemy' in runtime and 'httpx' in runtime, runtime; extra = ' '.join(d['project']['optional-dependencies']['test']); assert 'pytest' in extra, extra; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="3">
+    Check: requirements.txt names all four distributions, one per line.
+    Command:
+    python -c "import pathlib; lines = [l.strip() for l in pathlib.Path('requirements.txt').read_text(encoding='utf-8').splitlines() if l.strip()]; names = [l.split('&gt;')[0].split('=')[0].split(',')[0].strip() for l in lines]; assert sorted(names) == ['fastapi', 'httpx', 'pytest', 'sqlalchemy'], names; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+
+    <test id="4">
+    Check: .gitignore excludes bytecode, the pytest cache and the SQLite database file.
+    Command:
+    python -c "import pathlib; g = pathlib.Path('.gitignore').read_text(encoding='utf-8').splitlines(); required = ['__pycache__/', '.pytest_cache/', 'link_shelf.db']; missing = [r for r in required if r not in g]; assert not missing, missing; print('ok')"
+    Expected: prints `ok`, exit code 0.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>pyproject.toml</file>
+    <file>requirements.txt</file>
+    <file>.gitignore</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); assert d['project']['name'] == 'link-shelf'; assert d['project']['requires-python'] == '&gt;=3.11'; print('pyproject ok')"` - prints `pyproject ok`</step>
+    <step>Run: `python -c "import pathlib; t = pathlib.Path('requirements.txt').read_text(encoding='utf-8'); assert all(n in t for n in ('fastapi', 'sqlalchemy', 'httpx', 'pytest')); print('requirements ok')"` - prints `requirements ok`</step>
+    <step>Run: `python -c "import pathlib; g = pathlib.Path('.gitignore').read_text(encoding='utf-8'); assert '__pycache__/' in g and '.pytest_cache/' in g and 'link_shelf.db' in g; print('gitignore ok')"` - prints `gitignore ok`</step>
+    <step>Run: `python -m pip install -r requirements.txt` - completes with exit code 0; this proves the manifest is installable and puts fastapi, sqlalchemy, httpx and pytest in the environment that L0-002 and L0-003 verify against</step>
+    <step>Run: `python -c "import fastapi, sqlalchemy, httpx, pytest; print(fastapi.__version__, sqlalchemy.__version__, httpx.__version__, pytest.__version__)"` - prints four version strings, confirming all four declared distributions import</step>
+  </verification>
+
+  <exports>
+    <interface name="pyproject.toml" type="project-metadata">
+    Repository-root file declaring:
+      project.name            = "link-shelf"
+      project.version         = "0.1.0"
+      project.requires-python = "&gt;=3.11"
+      project.dependencies    = fastapi&gt;=0.110, sqlalchemy&gt;=2.0,&lt;3.0, httpx&gt;=0.27
+      project.optional-dependencies.test = pytest&gt;=8.0,&lt;9.0
+      tool.setuptools.packages = ["app", "app.models"]
+    </interface>
+
+    <interface name="requirements.txt" type="dependency-manifest">
+    Repository-root file, four lines:
+      fastapi&gt;=0.110
+      sqlalchemy&gt;=2.0,&lt;3.0
+      httpx&gt;=0.27
+      pytest&gt;=8.0,&lt;9.0
+    Install with: python -m pip install -r requirements.txt
+    </interface>
+
+    <interface name=".gitignore" type="vcs-config">
+    Repository-root file. Ignores __pycache__/, *.py[cod], *.egg-info/, build/, dist/,
+    .pytest_cache/, .coverage, .venv/, venv/ and the runtime SQLite database files
+    link_shelf.db, link_shelf.db-journal, link_shelf.db-wal, link_shelf.db-shm.
+
+    Downstream contract: the file-backed database created by app/database.py lives at
+    repository-root/link_shelf.db and is already ignored. No later task needs to add it.
+    </interface>
+  </exports>
+</task>

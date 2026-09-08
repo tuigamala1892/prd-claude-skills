@@ -1,0 +1,609 @@
+<task>
+  <meta>
+    <id>L4-003</id>
+    <name>Create Tag and LinkTag models</name>
+    <layer>4-foundation</layer>
+    <priority>3</priority>
+    <estimated-files>3</estimated-files>
+
+    <!--
+      One source-feature only. Tag and LinkTag are both owned by tag-links. Link is referenced
+      as LinkTag.link_id's FK target but is neither created nor modified here, so save-link is
+      not a source of this task's work.
+
+      satisfies-criteria cites the STORAGE half of three tag-links criteria. Each is split with
+      L3-006, which owns the HTTP half:
+        tag-links#1  this task: the many-to-many join makes several tags attachable to one link
+                     and every attached tag readable back. L3-006: the 200 response body.
+        tag-links#2  this task: LinkTag's COMPOSITE PRIMARY KEY over (link_id, tag_id) is the
+                     mechanism that makes a tag attachable exactly once. L3-006: the second
+                     POST returning 200 rather than an error.
+        tag-links#4  this task: the FK to links.id, enforced by the PRAGMA L4-001 sets, means a
+                     LinkTag row for a non-existent link cannot be created - the "create no tag
+                     rows" clause at the storage layer. L3-006: the 404.
+      tag-links#3 is NOT cited: the tag filter is a query in L3-004's GET /links handler and no
+      part of it is a model concern beyond the tables existing.
+      requirement-level P0 is the HIGHEST priority among #1 (P0), #2 (P1) and #4 (P0) - not the
+      first cited.
+    -->
+    <source-feature slug="tag-links" moscow="should-have"
+                    satisfies-criteria="1,2,4" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <criterion id="1" pattern="event-driven" priority="P0" derived-from="1">
+      When tags are posted to an existing link, the system shall attach them and return 200 with
+      the link reporting every attached tag.
+    </criterion>
+    <criterion id="2" pattern="event-driven" priority="P1" derived-from="2">
+      When a tag already attached to a link is posted again, the system shall return 200 and
+      leave the tag attached exactly once.
+    </criterion>
+    <criterion id="4" pattern="unwanted-behaviour" priority="P0" derived-from="4">
+      If tags are posted to a link id that does not exist, then the system shall return 404 and
+      create no tag rows.
+    </criterion>
+    </acceptance-criteria>
+
+    <data-model>
+    Tag(id integer pk, name text unique not null)
+    LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key both)
+    </data-model>
+
+    <gaps>
+      <gap id="1" kind="decision" raised="2026-08-27">
+      Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes
+      an autocomplete list easy and lets the list rot.
+      </gap>
+    </gaps>
+
+    <prd-excerpt>
+    Feature "Tag links" (tag-links, should-have).
+
+    User story: As someone collecting links, I want to tag what I save and filter by tag, so that
+    a shelf of two hundred links stays usable.
+
+    Description: Attach zero or more free-text tags to a link, and filter the list endpoint by
+    tag.
+
+    Tags are a separate table with a many-to-many join to links, not a comma-separated string
+    column. This is the one place the fixture deliberately requires a real relationship: a
+    single-table shortcut would make the data-model layer trivial and the fixture would stop
+    exercising the part of layer planning most likely to break.
+
+    tag-links declares &lt;depends-on slug="save-link" kind="data"/&gt;. LinkTag.link_id is the
+    foreign key that edge describes.
+
+    Considerations (tag-links): Tag names are matched case-sensitively. Case folding is a
+    reasonable product decision but it is not free to verify, and leaving it explicit here stops
+    an implementer inventing either behaviour and calling it correct. This is carried from the
+    feature's &lt;notes&gt;&lt;considerations&gt; as an implementation constraint. It is NOT an acceptance
+    criterion, has no criterion id, and must not be given one - the analysis pass recorded that
+    decision explicitly. Its effect on this task: the unique constraint on `Tag.name` is a plain
+    unique constraint over the stored text. Do NOT add a functional index, a COLLATE NOCASE
+    clause, or any lowercasing of the stored value.
+
+    ----------------------------------------------------------------------------------------
+    BLOCKING OPEN GAP - the gap itself is carried verbatim in the &lt;gaps&gt; element above. It is
+    `tag-links#1` in gap numbering, which is NOT the same thing as acceptance criterion 1 above;
+    the two numbering spaces are separate.
+
+    The gap is UNRESOLVED. Do not resolve it, and do not pick a side while implementing.
+
+    The layer plan marks this gap as blocking and records that L4-003 and L3-006 "should not be
+    executed until it is answered". Report that this task carries an unanswered blocking gap
+    before or alongside delivering it.
+
+    What the declared model FORCES, and what the gap leaves OPEN. Forced, because the PRD
+    authors declared it: LinkTag.link_id is a foreign key to Link.id and LinkTag.tag_id is a
+    foreign key to Tag.id - both columns and both references are declared, so spell them.
+    Left open by the gap: what happens to a Tag row when its last LinkTag row goes away. That is
+    a deletion policy, not a reference, and NOTHING in the declared model fixes it. So write the
+    FK reference and stop there - no ON DELETE clause of any kind, no cascade, no orphan-cleanup
+    rule, no retention column.
+
+    What makes this task safe to write despite the gap: the analysis pass recorded that "no
+    detach or cleanup endpoint and no cascade or retention field was emitted, so the decision
+    does not leak into the merged models or API surface". The models below therefore carry NO
+    ondelete clause, NO cascade= argument and NO retention or is_orphan column. Both answers to
+    the gap remain implementable on top of exactly these tables:
+      - "delete orphans" becomes a cleanup step in a future detach endpoint;
+      - "keep them" is what these tables already do by not deleting anything.
+    Adding `ondelete="CASCADE"` or a `cascade="all, delete-orphan"` relationship would silently
+    decide the open question in the schema. Do not.
+    ----------------------------------------------------------------------------------------
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x (declarative style: DeclarativeBase, Mapped,
+    mapped_column), SQLite (file-backed, no server process), pytest 8.x, httpx. Backend only -
+    no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - L0-001)
+      pyproject.toml              (exists - L0-003)
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - L0-001)
+        db.py                     (exists - L4-001; provides Base, engine, SessionLocal, get_db)
+        main.py                   (exists - L3-002; NOT read or modified here)
+        api/
+          links.py                (exists - L3-002 and later; NOT read or modified here)
+        models/
+          __init__.py             (exists, exports Link - L4-002; THIS TASK EXTENDS IT)
+          link.py                 (exists - L4-002; NOT modified by this task)
+          tag.py                  (THIS TASK CREATES THIS FILE)
+          link_tag.py             (THIS TASK CREATES THIS FILE)
+        schemas/
+          link.py                 (exists - L3-001)
+          tag.py                  (exists - L3-005; NOT read or modified here)
+      tests/
+        __init__.py               (exists - L0-001)
+        test_db.py                (exists - L4-001)
+        test_link_model.py        (exists - L4-002)
+        test_tag_models.py        (THIS TASK CREATES THIS FILE)
+
+    This task writes exactly 3 files (app/models/tag.py, app/models/link_tag.py,
+    app/models/__init__.py) plus its test file. It is AT the 3-file limit - do not add a fourth.
+
+    Environment note, carried from L0-004's exports: `.venv/` is gitignored and does NOT travel
+    with the merge into this worktree. If absent, re-create it with `python -m venv .venv`,
+    `.venv\Scripts\python.exe -m pip install --upgrade pip`,
+    `.venv\Scripts\python.exe -m pip install -e .`.
+
+    Ordering note, recorded not repaired: architecture.md declares layer 4 (foundation) as
+    depending on layer 3 (backend), so layer 3 ran first - layer_plan.json OC-001 and OC-004,
+    verdict NOT BUILDABLE AS DECLARED. Layer 3 already consumes this task's exports, so the
+    declared execution order is inverted. tests/test_list_links.py (L3-004) and
+    tests/test_tag_links.py (L3-006) are already in this worktree and were written against the
+    models this task now creates. Running the full suite after this task may turn
+    previously-failing layer-3 tests green. Do NOT edit any layer-3 test either way, and do not
+    reorder anything.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # from app/db.py, created by L4-001
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base for every Link Shelf model."""
+    </interface>
+
+    <interface name="sqlite-foreign-keys" type="engine-configuration">
+    # from app/db.py, created by L4-001
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    @event.listens_for(Engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    # This listener is registered on the Engine CLASS, so ANY engine created after app.db is
+    # imported enforces foreign keys - including the throwaway engine this task's tests build.
+    #
+    # This is what makes LinkTag's foreign keys real. SQLite ignores FOREIGN KEY clauses
+    # entirely unless this pragma is set per connection, so without it test 6 below would
+    # insert a LinkTag pointing at a non-existent link and pass silently.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    # from app/models/link.py, created by L4-002. READ ONLY - do not modify this model.
+    from datetime import datetime
+    from sqlalchemy.orm import Mapped
+    from app.db import Base
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                  # integer primary key - LinkTag.link_id's FK target
+        url: Mapped[str]                 # text NOT NULL, duplicates allowed
+        title: Mapped[str | None]        # text NULL
+        created_at: Mapped[datetime]     # timestamp NOT NULL, naive UTC
+
+    # The table name is exactly "links", so the foreign key string is "links.id".
+    # Link deliberately has NO `tags` relationship attribute; the analysis pass records that
+    # tag-links "adds no column to Link". Do not add one from this task.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py as L4-002 left it
+    from app.models.link import Link
+
+    __all__ = ["Link"]
+
+    # EXTEND this file; do not replace its Link import. app/db.py's init_db() imports this
+    # package and nothing else, so a model missing from here gets no table created for it.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the two models tag-links owns: `Tag` in app/models/tag.py and the `LinkTag` join table
+  in app/models/link_tag.py, with a composite primary key over (link_id, tag_id) that makes a
+  tag attachable to a link exactly once, and export both from app/models/__init__.py.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `app/models/tag.py` defining exactly one model class, `Tag`:
+
+        from sqlalchemy import Integer, Text
+        from sqlalchemy.orm import Mapped, mapped_column
+
+        from app.db import Base
+
+
+        class Tag(Base):
+            """A free-text tag. Owned by the tag-links feature."""
+
+            __tablename__ = "tags"
+
+            id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+            name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+
+    The table name is exactly `tags`. L3-004's join and L3-006's handler are written against
+    that string.
+    </requirement>
+
+    <requirement id="2">
+    `Tag.name` is unique and NOT NULL, matching the declared data model `name text unique not
+    null`. The uniqueness is over the stored text exactly as given: do NOT add
+    `COLLATE NOCASE`, a functional lowercase index, or any normalisation of the value on the way
+    in. tag-links' considerations state that tag names are matched case-sensitively, so `Python`
+    and `python` are two different tags and both must be storable.
+    </requirement>
+
+    <requirement id="3">
+    Create file `app/models/link_tag.py` defining exactly one model class, `LinkTag`:
+
+        from sqlalchemy import ForeignKey, Integer
+        from sqlalchemy.orm import Mapped, mapped_column
+
+        from app.db import Base
+
+
+        class LinkTag(Base):
+            """Join table attaching a Tag to a Link. Owned by the tag-links feature."""
+
+            __tablename__ = "link_tags"
+
+            link_id: Mapped[int] = mapped_column(
+                Integer, ForeignKey("links.id"), primary_key=True
+            )
+            tag_id: Mapped[int] = mapped_column(
+                Integer, ForeignKey("tags.id"), primary_key=True
+            )
+
+    The table name is exactly `link_tags`.
+
+    Both columns carry `primary_key=True`. That is what makes the primary key COMPOSITE over
+    (link_id, tag_id), and the composite key is not a detail - it is the mechanism that
+    satisfies tag-links#2. A second insert of the same pair raises IntegrityError, so a tag
+    cannot be attached to a link twice however many times it is posted. Do NOT add a separate
+    surrogate `id` column: that would let the same pair be inserted repeatedly and would move
+    the idempotency guarantee out of the schema and into handler code that could forget it.
+    </requirement>
+
+    <requirement id="4">
+    The foreign key targets are the strings `"links.id"` and `"tags.id"` - table names, not
+    class names. `ForeignKey("Link.id")` is a common and silent error: SQLAlchemy resolves the
+    string against table names, so it would fail at create_all time with a NoReferencedTableError.
+    </requirement>
+
+    <requirement id="5">
+    Carry NO deletion policy. Specifically, on both foreign keys:
+      - do NOT pass `ondelete=` (no CASCADE, no SET NULL, no RESTRICT)
+      - do NOT pass `onupdate=`
+      - do NOT define a `relationship()` with `cascade=` or `passive_deletes=`
+      - do NOT add a retention, is_orphan, or usage-count column to Tag
+
+    This is the direct consequence of the unresolved blocking gap carried in &lt;prd-excerpt&gt;.
+    Whether an orphaned tag is deleted or kept is undecided, and any of the above would decide
+    it in the schema. The tables as specified take no position: nothing is auto-deleted, and
+    nothing prevents a future cleanup step from deleting.
+    </requirement>
+
+    <requirement id="6">
+    Do NOT define any `relationship()` at all - not on Tag, not on LinkTag, and not on Link.
+    L3-004 joins explicitly:
+
+        select(Link).join(LinkTag, LinkTag.link_id == Link.id)
+                    .join(Tag, Tag.id == LinkTag.tag_id)
+                    .where(Tag.name == tag)
+
+    and needs no ORM relationship attribute to do so. Adding one would also force a decision
+    about its `cascade` argument, which requirement 5 forbids.
+    </requirement>
+
+    <requirement id="7">
+    Extend `app/models/__init__.py` so that it reads exactly:
+
+        """SQLAlchemy models.
+
+        Importing this package registers every model on Base.metadata, which is what makes
+        Base.metadata.create_all create the tables. app/db.py's init_db() imports this package
+        for exactly that reason.
+        """
+
+        from app.models.link import Link
+        from app.models.link_tag import LinkTag
+        from app.models.tag import Tag
+
+        __all__ = ["Link", "LinkTag", "Tag"]
+
+    Keep the existing `Link` import. Removing it would leave the `links` table uncreated and
+    break every model that references it.
+    </requirement>
+
+    <requirement id="8">
+    Do NOT modify app/models/link.py, app/db.py, app/main.py, app/api/links.py or any file under
+    app/schemas/, and do not edit any test file created by layer 3.
+    </requirement>
+
+    <requirement id="9">
+    Do NOT create a migrations directory or introduce a migration tool. Schema creation in this
+    project is `Base.metadata.create_all` and nothing else - the same constraint L4-001 carries.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test policy: TDD, runner pytest. Write tests/test_tag_models.py FIRST, watch it fail on the
+    missing `app.models.tag` module, then create the models until it passes.
+
+    <test id="1">
+    Create test file: `tests/test_tag_models.py`.
+
+    This file must NOT use a `db_session` or `client` fixture - tests/conftest.py is created by
+    L4-004, which depends on this task. Build a per-test engine and session inside this file:
+
+        import pathlib
+
+        import pytest
+        from sqlalchemy import create_engine, func, inspect, select
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import sessionmaker
+
+        import app.db  # noqa: F401 - importing registers the foreign-key PRAGMA listener
+        from app.db import Base
+        from app.models import Link, LinkTag, Tag
+
+
+        @pytest.fixture(name="session")
+        def session_fixture(tmp_path):
+            engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+            Base.metadata.create_all(bind=engine)
+            factory = sessionmaker(bind=engine, expire_on_commit=False)
+            with factory() as session:
+                yield session
+            engine.dispose()
+
+    Import all three models from `app.models` (the package), so this file also proves
+    requirement 7's exports.
+    </test>
+
+    <test id="2" covers="1">
+    Test: test_attaching_several_tags_to_a_link_reports_every_one
+    - Store `link = Link(url="https://example.com/a", title="A")`; commit
+    - Store `Tag(name="python")` and `Tag(name="testing")`; commit
+    - Add `LinkTag(link_id=link.id, tag_id=python_tag.id)` and
+      `LinkTag(link_id=link.id, tag_id=testing_tag.id)`; commit
+    - Read every tag attached to the link:
+      `names = session.scalars(select(Tag.name).join(LinkTag, LinkTag.tag_id == Tag.id)
+                               .where(LinkTag.link_id == link.id)).all()`
+    - Assert `sorted(names) == ["python", "testing"]` - EVERY attached tag is reported, not just
+      the most recent
+    - This is the STORAGE half of tag-links#1 ("shall attach them and return 200 with the link
+      reporting every attached tag"): the many-to-many join makes several tags attachable to one
+      link and all of them readable back. The 200 response half is asserted by L3-006.
+    - Pattern event-driven: one action (attaching two tags) produces one observable outcome
+      (both tags read back).
+    </test>
+
+    <test id="3" covers="2">
+    Test: test_the_same_tag_cannot_be_attached_to_a_link_twice
+    - Store a link and a tag `Tag(name="python")`; commit
+    - Add `LinkTag(link_id=link.id, tag_id=tag.id)`; commit
+    - Add a SECOND `LinkTag(link_id=link.id, tag_id=tag.id)` with the same pair
+    - `with pytest.raises(IntegrityError): session.commit()`
+    - `session.rollback()`
+    - Assert `session.scalar(select(func.count()).select_from(LinkTag)) == 1` - the tag remains
+      attached EXACTLY ONCE
+    - This is the STORAGE half of tag-links#2. The composite primary key of requirement 3 is
+      what enforces it; a surrogate id column would let the second row in. The "return 200"
+      half - L3-006 catching this collision and reporting success rather than an error - is
+      asserted by L3-006.
+    - Pattern event-driven: one action (re-attaching an already-attached tag) produces one
+      observable outcome (still exactly one join row).
+    </test>
+
+    <test id="4" covers="2">
+    Test: test_a_tag_name_is_unique_across_the_table
+    - Store `Tag(name="python")`; commit
+    - Store a second `Tag(name="python")`
+    - `with pytest.raises(IntegrityError): session.commit()`
+    - `session.rollback()`
+    - Assert exactly one row remains in `tags`
+    - Supports tag-links#2 from the other side: "attached exactly once" also requires that
+      posting the same tag NAME twice does not create two Tag rows that a link could each be
+      joined to. Cites criterion 2 for that reason.
+    - Pattern event-driven: one action (storing a duplicate tag name) produces one observable
+      outcome (rejection, one row).
+    </test>
+
+    <test id="5">
+    Test: test_tag_names_are_stored_and_matched_case_sensitively
+    - Store `Tag(name="Python")` and `Tag(name="python")`; commit
+    - Assert both persisted: `session.scalar(select(func.count()).select_from(Tag)) == 2`
+    - Assert `session.scalar(select(Tag).where(Tag.name == "python")).name == "python"` - the
+      exact-case lookup returns the exact-case row
+    - Assert `session.scalar(select(Tag).where(Tag.name == "PYTHON")) is None`
+    - Asserts requirement 2. Cites NO acceptance criterion: case sensitivity comes from
+      tag-links' &lt;notes&gt;&lt;considerations&gt; and the analysis pass explicitly refused to promote it
+      to a criterion. It is asserted here as an implementation constraint.
+    </test>
+
+    <test id="6" covers="4">
+    Test: test_a_link_tag_row_cannot_reference_a_link_that_does_not_exist
+    - Store `Tag(name="python")`; commit. Store NO link.
+    - Assert no link exists: `session.scalar(select(func.count()).select_from(Link)) == 0`
+    - Add `LinkTag(link_id=999, tag_id=tag.id)`
+    - `with pytest.raises(IntegrityError): session.commit()`
+    - `session.rollback()`
+    - Assert `session.scalar(select(func.count()).select_from(LinkTag)) == 0` - NO tag rows were
+      created
+    - This is the STORAGE half of tag-links#4, "and create no tag rows": the foreign key to
+      links.id, enforced by the PRAGMA L4-001 registers, means a join row for a non-existent
+      link cannot be written even if the handler's existence check were bypassed. The "return
+      404" half is asserted by L3-006.
+    - If this test fails by NOT raising, the cause is almost certainly that `import app.db` is
+      missing from the test module's imports, leaving SQLite's foreign-key enforcement off. That
+      import is in test 1's block deliberately.
+    - Pattern unwanted-behaviour: the error path stated by the criterion itself - the thing that
+      must NOT happen (tag rows created for a non-existent link) does not happen. The failure
+      case is read off the criterion, not invented.
+    </test>
+
+    <test id="7">
+    Test: test_link_tags_primary_key_is_composite_over_both_columns
+    - `pk = inspect(session.get_bind()).get_pk_constraint("link_tags")["constrained_columns"]`
+    - Assert `sorted(pk) == ["link_id", "tag_id"]` - both columns, and only those two
+    - Assert `set(c["name"] for c in inspect(session.get_bind()).get_columns("link_tags"))
+      == {"link_id", "tag_id"}` - no surrogate id column was added (requirement 3)
+    - `fks = inspect(session.get_bind()).get_foreign_keys("link_tags")`
+    - Assert one FK has `referred_table == "links"` and `referred_columns == ["id"]`
+    - Assert one FK has `referred_table == "tags"` and `referred_columns == ["id"]`
+    - Asserts the &lt;data-model&gt; block carried above, verbatim from tag-links' notes.
+    </test>
+
+    <test id="8">
+    Test: test_no_deletion_policy_is_declared_anywhere
+    - Read both model sources with `pathlib.Path("app/models/link_tag.py").read_text()` and
+      `pathlib.Path("app/models/tag.py").read_text()`
+    - Assert neither contains `ondelete`, `onupdate`, `cascade`, `passive_deletes` or
+      `relationship`
+    - Assert `set(c["name"] for c in inspect(session.get_bind()).get_columns("tags"))
+      == {"id", "name"}` - no retention, is_orphan or usage-count column was invented
+    - Asserts requirements 5 and 6, which exist because the orphan-tag decision is an UNRESOLVED
+      blocking gap. This test is what stops a future edit from quietly answering it.
+    - Cites no acceptance criterion; an unanswered gap has none.
+    </test>
+
+    <test id="9">
+    Test: test_all_three_models_are_exported_and_registered
+    - `import app.models`
+    - Assert `app.models.Tag is Tag`, `app.models.LinkTag is LinkTag`, `app.models.Link is Link`
+    - Assert `sorted(app.models.__all__) == ["Link", "LinkTag", "Tag"]`
+    - Assert `set(Base.metadata.tables) &gt;= {"links", "tags", "link_tags"}` after importing
+      app.models, proving requirement 7 registers all three on the metadata init_db() relies on
+    - Asserts requirement 7. Cites no acceptance criterion.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/models/tag.py</file>
+    <file>app/models/link_tag.py</file>
+    <file>app/models/__init__.py</file>
+    <file>tests/test_tag_models.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.models import Link, LinkTag, Tag; print(Tag.__tablename__, LinkTag.__tablename__)"` - must print exactly `tags link_tags`</step>
+    <step>Run: `python -c "from app.db import Base; import app.models; t = Base.metadata.tables['link_tags']; print(sorted(c.name for c in t.primary_key.columns)); assert sorted(c.name for c in t.primary_key.columns) == ['link_id', 'tag_id']"` - must print `['link_id', 'tag_id']`, proving the composite primary key</step>
+    <step>Run: `python -c "from app.db import Base; import app.models; t = Base.metadata.tables['link_tags']; assert sorted(c.name for c in t.columns) == ['link_id', 'tag_id']; refs = sorted(str(list(c.foreign_keys)[0].target_fullname) for c in t.columns); print(refs); assert refs == ['links.id', 'tags.id']"` - must print `['links.id', 'tags.id']`, proving requirement 4 and that no surrogate id was added</step>
+    <step>Run: `python -c "from app.db import Base; import app.models; t = Base.metadata.tables['tags']; assert sorted(c.name for c in t.columns) == ['id', 'name']; assert t.c.name.unique is True; assert t.c.name.nullable is False; print('tags shape OK')"` - must print `tags shape OK`</step>
+    <step>Run: `python -c "import pathlib; src = pathlib.Path('app/models/tag.py').read_text() + pathlib.Path('app/models/link_tag.py').read_text(); assert 'ondelete' not in src; assert 'onupdate' not in src; assert 'cascade' not in src; assert 'passive_deletes' not in src; assert 'relationship' not in src; assert 'NOCASE' not in src; print('no deletion policy declared')"` - must print `no deletion policy declared`, proving the unresolved orphan-tag gap was not answered in the schema</step>
+    <step>Run: `python -c "from sqlalchemy import create_engine, inspect; import app.db; from app.db import Base; import app.models; e = create_engine('sqlite://'); Base.metadata.create_all(bind=e); print(sorted(inspect(e).get_table_names())); assert sorted(inspect(e).get_table_names()) == ['link_tags', 'links', 'tags']"` - must print `['link_tags', 'links', 'tags']`</step>
+    <step>Run: `pytest tests/test_tag_models.py -v` - all 8 test functions pass</step>
+    <step>Run: `pytest tests/test_db.py tests/test_link_model.py -v` - L4-001's and L4-002's tests still pass, proving this task did not disturb app/db.py or the Link model</step>
+    <step>Run: `pytest tests/ -v` - report the result. Layer-3 tests that were failing on the missing Tag and LinkTag models may now pass; do not edit any layer-3 test either way</step>
+  </verification>
+
+  <exports>
+    <interface name="Tag" type="sqlalchemy-model">
+    # app/models/tag.py
+    from sqlalchemy.orm import Mapped
+    from app.db import Base
+
+    class Tag(Base):
+        __tablename__ = "tags"
+
+        id: Mapped[int]     # integer primary key, autoincrement
+        name: Mapped[str]   # text NOT NULL, UNIQUE, case-sensitive
+
+    # Import either way:
+    #     from app.models import Tag
+    #     from app.models.tag import Tag
+    #
+    # FOR L3-006: `name` is unique, so "get or create" is the correct pattern for attaching a
+    # tag - SELECT by exact name first, INSERT only if absent. A blind INSERT of an existing
+    # name raises IntegrityError.
+    #
+    # Matching is case-sensitive by decision, carried from tag-links' considerations:
+    # `Tag.name == "python"` and `Tag.name == "Python"` are different tags and both may exist.
+    # Do not apply lower(), ilike() or any case folding in a query or on the way in.
+    </interface>
+
+    <interface name="LinkTag" type="sqlalchemy-model">
+    # app/models/link_tag.py
+    from sqlalchemy.orm import Mapped
+    from app.db import Base
+
+    class LinkTag(Base):
+        __tablename__ = "link_tags"
+
+        link_id: Mapped[int]   # FK links.id, part of the composite primary key
+        tag_id: Mapped[int]    # FK tags.id,  part of the composite primary key
+
+    # The primary key is COMPOSITE over (link_id, tag_id). There is no surrogate id column.
+    #
+    # FOR L3-006, on tag-links#2 (re-posting an attached tag returns 200, attached once):
+    #   inserting a duplicate pair raises sqlalchemy.exc.IntegrityError. Either check for the
+    #   existing row before inserting, or catch IntegrityError and roll back to a savepoint -
+    #   both satisfy the criterion. What must NOT happen is the duplicate landing in the table.
+    #
+    # FOR L3-006, on tag-links#4 (unknown link id returns 404, no tag rows created):
+    #   the FK to links.id is enforced - app/db.py sets PRAGMA foreign_keys=ON for every
+    #   connection - so an insert against a non-existent link raises IntegrityError rather than
+    #   succeeding. The handler must still check the link exists and return 404; the FK is the
+    #   backstop, not the mechanism for the status code.
+    #
+    # NO deletion policy is declared: no ondelete, no cascade, no relationship. This is
+    # deliberate and load-bearing. tag-links' gap 1 - "whether a tag with no remaining links is
+    # deleted or kept" - is UNRESOLVED and blocking. Adding a cascade would answer it silently.
+    # tests/test_tag_models.py asserts the absence.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, after this task - final form for this PRD
+    from app.models.link import Link
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "LinkTag", "Tag"]
+
+    # FOR L4-004: `import app.models` is all a conftest needs to register links, tags and
+    # link_tags on Base.metadata before calling Base.metadata.create_all against a per-test
+    # engine. Importing the three modules individually is unnecessary.
+    </interface>
+
+    <interface name="open-gap" type="unresolved-decision">
+    tag-links gap 1, kind=decision, raised 2026-08-27, blocking=true, STILL UNANSWERED after
+    this task:
+
+        "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them
+        makes an autocomplete list easy and lets the list rot."
+
+    Status after this task: not answered, and deliberately not answered in the schema. The
+    tables carry no cascade, no ondelete and no retention column, so both outcomes remain
+    implementable without a migration. L3-006 carries the same gap.
+    </interface>
+  </exports>
+</task>

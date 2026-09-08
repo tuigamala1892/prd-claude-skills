@@ -1,0 +1,167 @@
+{
+  "project_type": "greenfield",
+  "degenerate": false,
+  "repo_structure": "single",
+  "target_dir": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/default/app",
+  "tasks_dir": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/default/docs/tasks/link-shelf",
+  "layers_dropped": [
+    {
+      "id": "3-frontend",
+      "reason": "analysis.frontend_components is empty. index.md: 'Backend only - no frontend, no container runtime.' The five components the feature passes inferred were dropped at merge; see merge_notes."
+    }
+  ],
+  "layers": [
+    {
+      "id": "0-setup",
+      "name": "Setup",
+      "description": "Create the Python project tree from scratch. No template: index.md's <rationale> disclaims one, so Layer 0 creates directories rather than copying a tree.",
+      "tasks": [
+        {
+          "id": "L0-001",
+          "name": "Project skeleton and dependency manifest",
+          "description": "Create pyproject.toml declaring the project and its four runtime/test dependencies (fastapi 0.110+, sqlalchemy 2.x, pytest 8.x, httpx), a matching requirements.txt, and a .gitignore covering __pycache__, .pytest_cache and the SQLite database file. The target is an existing empty git repository -- do not run `git init`.",
+          "files": ["pyproject.toml", "requirements.txt", ".gitignore"],
+          "depends_on": [],
+          "provides": ["Installable project metadata", "Pinned dependency set including httpx for TestClient"]
+        },
+        {
+          "id": "L0-002",
+          "name": "Package layout and pytest configuration",
+          "description": "Create the app and app.models packages and a pytest configuration that sets the test path and rootdir so `pytest` runs from the repository root.",
+          "files": ["pytest.ini", "app/__init__.py", "app/models/__init__.py"],
+          "depends_on": ["L0-001"],
+          "provides": ["app package", "app.models package", "Runnable pytest with zero tests collected"]
+        },
+        {
+          "id": "L0-003",
+          "name": "SQLAlchemy engine, session, declarative Base and app instance",
+          "description": "Create the file-backed SQLite engine, sessionmaker, declarative Base and a get_db dependency; a bare FastAPI application instance with no routes mounted; and a pytest conftest exposing an isolated per-test database session and a TestClient bound to it.",
+          "files": ["app/database.py", "app/main.py", "tests/conftest.py"],
+          "depends_on": ["L0-002"],
+          "provides": ["Base for all models", "get_db session dependency", "FastAPI app instance", "db_session and client pytest fixtures"]
+        }
+      ]
+    },
+    {
+      "id": "1-foundation",
+      "name": "Foundation",
+      "description": "The three declared data models. Link and Tag are independent of each other and run in parallel; LinkTag joins them.",
+      "tasks": [
+        {
+          "id": "L1-001",
+          "name": "Link model",
+          "description": "Define the Link SQLAlchemy model exactly as save-link declares it: id integer pk, url text not null, title text null, created_at timestamp not null.",
+          "files": ["app/models/link.py", "tests/test_model_link.py"],
+          "depends_on": ["L0-003"],
+          "source_feature": "save-link",
+          "provides": ["Link model", "links table"]
+        },
+        {
+          "id": "L1-002",
+          "name": "Tag model",
+          "description": "Define the Tag SQLAlchemy model exactly as tag-links declares it: id integer pk, name text unique not null. Tag names are matched case-sensitively -- do not fold case.",
+          "files": ["app/models/tag.py", "app/models/__init__.py", "tests/test_model_tag.py"],
+          "depends_on": ["L1-001"],
+          "source_feature": "tag-links",
+          "provides": ["Tag model", "tags table"]
+        },
+        {
+          "id": "L1-003",
+          "name": "LinkTag join table and Link-Tag association",
+          "description": "Define the LinkTag association model (link_id fk Link.id, tag_id fk Tag.id, composite primary key over both) and add the many-to-many relationship attribute to the Link model. A join table is required explicitly by the feature: not a comma-separated string column.",
+          "files": ["app/models/link_tag.py", "app/models/link.py", "tests/test_model_link_tag.py"],
+          "depends_on": ["L1-001", "L1-002"],
+          "source_feature": "tag-links",
+          "provides": ["LinkTag model", "link_tags table with composite pk", "Link.tags relationship"]
+        }
+      ]
+    },
+    {
+      "id": "2-backend",
+      "name": "Backend",
+      "description": "Three endpoints, one router module each so no two tasks write the same file. Paths are unprefixed per merge_notes.",
+      "tasks": [
+        {
+          "id": "L2-001",
+          "name": "POST /links -- save a link",
+          "description": "Pydantic request and response schemas for a link, and a POST /links route returning 201. url is required; title is optional and stored as null when absent, never derived from the page. A url that does not parse as an absolute http or https URL is rejected with 422 and nothing is stored.",
+          "files": ["app/schemas/link.py", "app/api/save_link.py", "tests/test_save_link.py"],
+          "depends_on": ["L1-003"],
+          "source_feature": "save-link",
+          "satisfies_criteria": ["save-link#1", "save-link#2", "save-link#3", "save-link#4"],
+          "provides": ["LinkCreate schema", "LinkResponse schema", "save_link APIRouter"]
+        },
+        {
+          "id": "L2-002",
+          "name": "GET /links -- list links, with optional tag filter",
+          "description": "A GET /links route returning every stored link as a JSON array ordered most recently created first, empty when nothing is stored. An untitled link is reported with a null title rather than omitted. An optional ?tag= query parameter narrows the result to exactly the links carrying that tag. A failure to read the stored links returns 500 and never an empty array.",
+          "files": ["app/api/list_links.py", "tests/test_list_links.py"],
+          "depends_on": ["L2-001"],
+          "source_feature": ["list-links", "tag-links"],
+          "satisfies_criteria": ["list-links#1", "list-links#2", "list-links#3", "list-links#4", "tag-links#3"],
+          "provides": ["list_links APIRouter", "tag filtering on the listing"]
+        },
+        {
+          "id": "L2-003",
+          "name": "POST /links/{id}/tags -- attach tags to a link",
+          "description": "A tag request schema and a POST /links/{id}/tags route returning 200 with the link reporting every attached tag. Re-posting a tag already attached leaves it attached exactly once. A link id that does not exist returns 404 and creates no tag rows. Do NOT implement any cleanup of tags left with no remaining links -- that decision is an open gap (tag-links#1) and inventing a policy for it is out of scope.",
+          "files": ["app/schemas/tag.py", "app/api/tag_links.py", "tests/test_tag_links.py"],
+          "depends_on": ["L2-001"],
+          "source_feature": "tag-links",
+          "satisfies_criteria": ["tag-links#1", "tag-links#2", "tag-links#4"],
+          "provides": ["TagAttach schema", "tag_links APIRouter"]
+        }
+      ]
+    },
+    {
+      "id": "4-integration",
+      "name": "Integration",
+      "description": "Mount the three routers and verify the save -> tag -> filtered-list path that crosses all three features and that no single feature task owns.",
+      "tasks": [
+        {
+          "id": "L4-001",
+          "name": "Mount routers and end-to-end flow test",
+          "description": "Include the save_link, list_links and tag_links routers on the FastAPI application, create the schema at startup, and add an end-to-end test that saves two links, tags one of them, lists unfiltered to assert newest-first ordering across both, and lists filtered by tag to assert exactly the tagged link comes back.",
+          "files": ["app/main.py", "tests/test_integration.py"],
+          "depends_on": ["L2-002", "L2-003"],
+          "source_feature": ["save-link", "list-links", "tag-links"],
+          "provides": ["Mounted application", "Cross-feature end-to-end coverage"]
+        }
+      ]
+    }
+  ],
+  "dependency_graph": {
+    "L0-001": [],
+    "L0-002": ["L0-001"],
+    "L0-003": ["L0-002"],
+    "L1-001": ["L0-003"],
+    "L1-002": ["L1-001"],
+    "L1-003": ["L1-002"],
+    "L2-001": ["L1-003"],
+    "L2-002": ["L2-001"],
+    "L2-003": ["L2-001"],
+    "L4-001": ["L2-002", "L2-003"]
+  },
+  "summary": {
+    "total_tasks": 10,
+    "by_layer": {
+      "0-setup": 3,
+      "1-foundation": 3,
+      "2-backend": 3,
+      "4-integration": 1
+    }
+  },
+  "notes": {
+    "revision": "Revised from the planner's first output. Four defects fixed: L0-001 carried 5 files against a 3-file limit; summary.total_tasks said 11 against 10 tasks; L2-001/002/003 all wrote app/api/links.py, which is a guaranteed collision in the merge queue; and the graph was fully linear, leaving no parallelism for the batch executor.",
+    "parallelism": "L2-002 and L2-003 are independent; one router module per endpoint task is what makes that pair independent. Layer 1 is deliberately sequential -- see shared_init_file.",
+    "shared_init_file": "L1-001, L1-002 and L1-003 each register their model in app/models/__init__.py, because tests/conftest.py runs `import app.models` before Base.metadata.create_all and an unregistered model has no table. That single file makes the three tasks unmergeable in parallel: they edit the same two lines from worktrees branched off the same base. Layer 1 was therefore serialised L1-001 -> L1-002 -> L1-003, and each task's requirement states the exact content it will find on disk and instructs an ADD to the import list rather than a rewrite. The parallelism given up is one round in a three-task layer; the merge conflict avoided would have halted the run.",
+    "no_template": "tech_stack.template.path is null. L0-001 creates the tree; there is no copy-template task and no git init -- the target is already an empty git repository.",
+    "endpoint_paths": "/links, /links/{id}/tags. Unprefixed. Two feature passes invented an /api prefix with nothing to read it from; only list-links#1 names a path in the PRD text, and it says GET /links.",
+    "criteria_coverage": {
+      "save-link#1": "L2-001", "save-link#2": "L2-001", "save-link#3": "L2-001", "save-link#4": "L2-001",
+      "list-links#1": "L2-002", "list-links#2": "L2-002", "list-links#3": "L2-002", "list-links#4": "L2-002",
+      "tag-links#1": "L2-003", "tag-links#2": "L2-003", "tag-links#3": "L2-002", "tag-links#4": "L2-003"
+    },
+    "gap_not_resolved": "tag-links#1 (decision, raised 2026-08-27): whether a tag with no remaining links is deleted or kept. L2-003 is instructed not to invent a policy. This gap blocks execution per core section 6 and is reported at the gate."
+  }
+}

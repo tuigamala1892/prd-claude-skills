@@ -1,0 +1,541 @@
+<task>
+  <meta>
+    <id>L4-001</id>
+    <name>Create SQLAlchemy declarative base and session factory</name>
+    <layer>4-foundation</layer>
+    <priority>1</priority>
+    <estimated-files>1</estimated-files>
+
+    <!--
+      This task asserts NO acceptance criterion, and satisfies-criteria is therefore empty.
+      It creates the declarative base, the SQLite engine, the session factory and the get_db
+      dependency. None of those is a user-visible behaviour, so there is no criterion it could
+      honestly claim: save-link#1..4 are claimed by L3-001, L3-003 and L4-002; list-links#1..4
+      and tag-links#3 by L3-004; tag-links#1,2,4 by L3-006 and L4-003.
+
+      THREE source-features are named, not one. app/db.py is shared infrastructure: the
+      declarative Base carries Link (save-link, via L4-002) AND Tag and LinkTag (tag-links, via
+      L4-003), and the `get_db` dependency is what every endpoint of all three features resolves
+      its session from. Every criterion that requires anything to be persisted or read back
+      depends on this file. Attributing it to save-link alone because save-link happens to own
+      the first entity would be a false claim that this work belongs to that feature - the
+      element is repeatable precisely so that shared infrastructure can be named honestly.
+
+      requirement-level is OMITTED on all three, not set. The spec defines it as the highest
+      among the ids named here, and no id is named, so there is nothing to derive it from.
+      Substituting the feature's own highest criterion priority would be a different rule
+      silently wearing the same attribute name, and unlike an empty satisfies-criteria the
+      value does propagate: it reaches the manifest, feeds the strongest-wins computation and
+      is read by the requirement-level filter, so an invented P0 would misreport this task's
+      obligation. build-manifest.py handles the absence cleanly. Claiming a criterion here to
+      fill the attribute would tell the coverage report that a session-factory round-trip had
+      verified a behaviour it never exercises.
+    -->
+    <source-feature slug="save-link"  moscow="must-have"  satisfies-criteria=""/>
+    <source-feature slug="list-links" moscow="must-have"  satisfies-criteria=""/>
+    <source-feature slug="tag-links"  moscow="should-have" satisfies-criteria=""/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!--
+      No criterion is carried. See the note on &lt;source-feature&gt; above: this task creates the
+      persistence machinery and asserts no behaviour any criterion describes. save-link's
+      criteria are carried by L3-001, L3-003 and L4-002.
+    -->
+    </acceptance-criteria>
+
+    <prd-excerpt>
+    Link Shelf is a local, single-user link store. From the PRD overview: "One endpoint to save
+    a link, one to get them all back, and tags so the list stays navigable past a few dozen
+    entries." No authentication, no multi-tenancy, no sharing.
+
+    From the PRD's tech-stack rationale, which is the direct reason this task exists and why it
+    is shaped the way it is:
+
+      "SQLite rather than PostgreSQL so the whole project runs with no external service: a
+      fixture that needs a database server running is a fixture that fails for reasons unrelated
+      to what is being tested."
+
+    Three models will be defined on the base this task creates - Link (L4-002), Tag and LinkTag
+    (L4-003) - and three endpoints will take a session from the get_db dependency this task
+    creates (L3-003, L3-004, L3-006).
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+, SQLAlchemy 2.x (declarative style: DeclarativeBase, Mapped,
+    mapped_column), SQLite (file-backed, no server process), pytest 8.x, httpx. Backend only -
+    no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - L0-001; already ignores *.db, *.db-journal, .venv/)
+      pyproject.toml              (exists - L0-003)
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - L0-001)
+        db.py                     (THIS TASK CREATES THIS FILE)
+        main.py                   (exists - L3-002, merged before this layer; NOT read here)
+        api/
+          __init__.py             (exists - L0-002)
+          links.py                (exists - L3-002 and later; NOT read here)
+        models/
+          __init__.py             (exists, empty - L0-002; populated by L4-002 and L4-003)
+        schemas/
+          __init__.py             (exists - L0-002)
+          link.py                 (exists - L3-001; NOT read here)
+      tests/
+        __init__.py               (exists - L0-001)
+        test_db.py                (THIS TASK CREATES THIS FILE)
+
+    This task creates app/db.py and tests/test_db.py. It modifies nothing else.
+
+    Environment note, carried from L0-004's exports: `.venv/` is listed in .gitignore, so the
+    virtual environment does NOT travel with the merge into this worktree. If no .venv is
+    present, re-create it with the three commands L0-004 proved succeed:
+        python -m venv .venv
+        .venv\Scripts\python.exe -m pip install --upgrade pip
+        .venv\Scripts\python.exe -m pip install -e .
+    The verification commands below are written as plain `python` / `pytest`, matching the
+    convention used by every layer-3 task; run them with the environment's interpreter.
+
+    Ordering note, recorded not repaired: architecture.md declares layer 4 (foundation) as
+    depending on layer 3 (backend), so the backend tier runs BEFORE this one. The layer plan
+    records this as ordering conflict OC-001, verdict NOT BUILDABLE AS DECLARED, because every
+    layer-3 task needs what this layer creates - layer 3 already consumes this task's exports,
+    so the declared execution order is inverted. THIS task is unaffected: it depends only on
+    L0-004 and imports nothing from layer 3. It builds in the declared position. The conflict is
+    reported here for the reader's benefit, not repaired. Do not reorder anything.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="python-environment" type="toolchain">
+    Provided by L0-004. A virtual environment with the project installed, in which:
+
+        python -c "import fastapi, sqlalchemy, httpx"
+
+    succeeds and `pytest` is on PATH. SQLAlchemy resolves to 2.x, which is what makes
+    `sqlalchemy.orm.DeclarativeBase` importable - it does not exist in 1.4.
+    </interface>
+
+    <interface name="app" type="python-package">
+    Provided by L0-001. A package at app/__init__.py. This task adds app/db.py beside it.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    Provided by L0-002. An EMPTY package at app/models/__init__.py.
+
+        # app/models/__init__.py
+        (empty file)
+
+    `init_db()` below imports this package to register models on Base.metadata. At the time
+    THIS task runs the package is still empty, so `init_db()` legitimately creates zero tables.
+    L4-002 and L4-003 populate it, after which the same call creates links, tags and link_tags.
+    Do not populate it here.
+    </interface>
+
+    <interface name="sqlite3" type="stdlib-module">
+    Ships with CPython 3.11. No database server, driver, container or connection string beyond a
+    file path is needed or permitted.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create app/db.py: the SQLAlchemy 2.x declarative Base that every model in this project
+  subclasses, a file-backed SQLite engine with foreign-key enforcement switched on, a session
+  factory, an explicit init_db() that creates the schema with Base.metadata.create_all, and the
+  get_db FastAPI dependency that yields a session and closes it afterwards.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `app/db.py`. It must define exactly these six module-level names, all of which
+    later tasks import by name: `DATABASE_PATH`, `DATABASE_URL`, `engine`, `SessionLocal`,
+    `Base`, `init_db`, `get_db`.
+    </requirement>
+
+    <requirement id="2">
+    Define the database location relative to the file, not to the process working directory, so
+    that the path is the same whether pytest is invoked from the repository root or elsewhere:
+
+        from pathlib import Path
+
+        DATABASE_PATH = Path(__file__).resolve().parent.parent / "link_shelf.db"
+        DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+    `parent.parent` resolves to the repository root because this file is app/db.py. The file
+    name is exactly `link_shelf.db`. .gitignore already ignores `*.db` and `*.db-journal`
+    (created by L0-001), so this generated file is never committed.
+    </requirement>
+
+    <requirement id="3">
+    Create the engine:
+
+        from sqlalchemy import create_engine
+
+        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+    `check_same_thread=False` is required because FastAPI serves requests on a threadpool while
+    a session created on one thread may be used on another. Do not pass `echo=True`; nothing in
+    the PRD asks for SQL logging and it makes the test output unreadable.
+    </requirement>
+
+    <requirement id="4">
+    Switch on SQLite foreign-key enforcement for every connection. SQLite ignores FOREIGN KEY
+    clauses unless the pragma is set per connection, which would make LinkTag's foreign keys to
+    links.id and tags.id (L4-003) decorative:
+
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        @event.listens_for(Engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    Register the listener on the `Engine` CLASS, not on the `engine` instance. This is
+    deliberate: it means the throwaway engine that L4-004's db_session fixture creates per test
+    also enforces foreign keys, without L4-004 having to duplicate this listener. SQLite is the
+    only dialect in this project, so a class-wide listener issuing a PRAGMA is safe here.
+
+    Use a cursor. `dbapi_connection.execute(...)` is not available on a raw sqlite3 Connection
+    in the way this listener needs; `cursor.execute(...)` followed by `cursor.close()` is the
+    documented SQLAlchemy recipe.
+    </requirement>
+
+    <requirement id="5">
+    Create the session factory:
+
+        from sqlalchemy.orm import sessionmaker
+
+        SessionLocal = sessionmaker(
+            bind=engine,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+        )
+
+    `expire_on_commit=False` is required, not optional: POST /links (L3-003) commits a Link and
+    then returns its attributes in the response body. With the SQLAlchemy default of True, every
+    attribute would be expired at commit and reading `link.id` would emit a second SELECT
+    against a session the request is about to close.
+    </requirement>
+
+    <requirement id="6">
+    Define the declarative base:
+
+        from sqlalchemy.orm import DeclarativeBase
+
+        class Base(DeclarativeBase):
+            """Declarative base for every Link Shelf model."""
+
+    Use `DeclarativeBase` (SQLAlchemy 2.x). Do NOT use `declarative_base()`, the 1.4-era factory
+    function: the project declares SQLAlchemy 2.x and L4-002 and L4-003 are written against the
+    `Mapped` / `mapped_column` annotation style, which requires this base.
+    </requirement>
+
+    <requirement id="7">
+    Define schema creation as an explicit function, never as an import-time side effect:
+
+        def init_db() -> None:
+            """Create every table registered on Base.metadata."""
+            import app.models  # noqa: F401 - importing registers the models on Base.metadata
+
+            Base.metadata.create_all(bind=engine)
+
+    The `import app.models` must be INSIDE the function body. At module level it would be a
+    circular import: app/models/link.py imports Base from this module.
+
+    The import is what makes create_all useful. `Base.metadata.create_all` only creates tables
+    for model classes that have actually been imported; without this line the call would create
+    nothing at all once models exist.
+
+    Do NOT call `init_db()` at module level. Importing app.db must not create a file on disk.
+    </requirement>
+
+    <requirement id="8">
+    Define the FastAPI dependency:
+
+        from collections.abc import Generator
+        from sqlalchemy.orm import Session
+
+        def get_db() -> Generator[Session, None, None]:
+            """Yield a SQLAlchemy session. Closes on request completion."""
+            db = SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+    The `finally` is required: without it a handler that raises leaks the connection back to
+    nothing and the pool is exhausted after enough failed requests.
+
+    Note on the annotation: L3-004's dependency block writes this signature as
+    `from typing import Generator`. `collections.abc.Generator` is the correct spelling for
+    Python 3.11 and is the same type at runtime, so the contract is unchanged. Use
+    `collections.abc`; the difference is recorded here rather than left as a silent divergence.
+
+    Do NOT commit or roll back inside get_db. Whether a unit of work commits is the handler's
+    decision, and a dependency that committed on the way out would make L3-003's "store nothing"
+    requirement impossible to honour.
+    </requirement>
+
+    <requirement id="9">
+    Do NOT create a migrations directory, an alembic.ini, or a versioned migration chain, and do
+    not add alembic to pyproject.toml. Neither the PRD's declared stack nor L0-003's dependency
+    list contains a migration tool. Schema creation in this project is
+    `Base.metadata.create_all` and nothing else.
+    </requirement>
+
+    <requirement id="10">
+    Do NOT define any model class in this file, and do not modify app/models/__init__.py.
+    Link is L4-002's; Tag and LinkTag are L4-003's.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test policy: TDD, runner pytest. Write tests/test_db.py FIRST, watch it fail on the missing
+    `app.db` module, then create app/db.py until it passes.
+
+    <test id="1">
+    Create test file: `tests/test_db.py`.
+
+    This file must NOT use a `db_session` or `client` fixture. tests/conftest.py is created by
+    L4-004, which depends on this task; depending on it here would be circular. Build whatever
+    each test needs from `app.db` directly.
+
+        import pytest
+        from sqlalchemy import inspect, text
+        from sqlalchemy.orm import DeclarativeBase, Session
+
+        from app.db import DATABASE_PATH, DATABASE_URL, Base, SessionLocal, engine, get_db, init_db
+
+    This test cites no acceptance criterion. No criterion in this PRD describes the declarative
+    base, the engine or the session factory - see the note on &lt;source-feature&gt;.
+    </test>
+
+    <test id="2">
+    Test: test_base_is_a_sqlalchemy_2_declarative_base
+    - Assert `issubclass(Base, DeclarativeBase)` is True
+    - Assert `Base is not DeclarativeBase` (a subclass was defined, not re-exported)
+    - Assert `hasattr(Base, "metadata")` is True
+    - Asserts requirement 6. Cites no acceptance criterion.
+    </test>
+
+    <test id="3">
+    Test: test_engine_is_file_backed_sqlite_at_the_repository_root
+    - Assert `engine.url.get_backend_name() == "sqlite"`
+    - Assert `DATABASE_PATH.name == "link_shelf.db"`
+    - Assert `DATABASE_PATH.parent == pathlib.Path("app").resolve().parent`, proving the path is
+      the repository root and is derived from the module location rather than the working
+      directory
+    - Assert `DATABASE_URL == f"sqlite:///{DATABASE_PATH}"`
+    - Asserts requirements 2 and 3. Cites no acceptance criterion.
+    </test>
+
+    <test id="4">
+    Test: test_foreign_key_enforcement_is_on_for_every_connection
+    - Build a throwaway engine on a temp path:
+      `probe = create_engine(f"sqlite:///{tmp_path / 'probe.db'}")`  (pytest's `tmp_path`)
+    - `with probe.connect() as conn: value = conn.execute(text("PRAGMA foreign_keys")).scalar()`
+    - Assert `value == 1`
+    - This proves requirement 4 registered the listener on the Engine CLASS rather than on the
+      single module-level `engine` instance: a listener bound only to `engine` would leave this
+      independently-created engine at SQLite's default of 0, and L4-004's per-test engine would
+      silently not enforce LinkTag's foreign keys.
+    - Also assert `probe.dispose()` runs without error, then `probe.dispose()`
+    - Cites no acceptance criterion.
+    </test>
+
+    <test id="5">
+    Test: test_session_factory_is_configured_for_the_request_lifecycle
+    - `session = SessionLocal()`
+    - Assert `isinstance(session, Session)`
+    - Assert `session.get_bind() is engine`
+    - Assert `session.autoflush is False`
+    - Assert `session.expire_on_commit is False`, the setting L3-003 depends on to read
+      `link.id` after commit
+    - `session.close()`
+    - Asserts requirement 5. Cites no acceptance criterion.
+    </test>
+
+    <test id="6">
+    Test: test_get_db_yields_a_session_and_closes_it
+    - `generator = get_db()`
+    - `session = next(generator)`
+    - Assert `isinstance(session, Session)`
+    - `session.execute(text("SELECT 1"))`
+    - Assert `session.get_transaction() is not None` - executing began a transaction
+    - `with pytest.raises(StopIteration): next(generator)` - exhausting the generator runs the
+      `finally` block
+    - Assert `session.get_transaction() is None` - close() released the transaction, proving the
+      `finally: db.close()` of requirement 8 actually ran
+    - Cites no acceptance criterion.
+    </test>
+
+    <test id="7">
+    Test: test_get_db_closes_the_session_even_when_the_caller_raises
+    - `generator = get_db()`
+    - `session = next(generator)`
+    - `session.execute(text("SELECT 1"))`
+    - `with pytest.raises(RuntimeError): generator.throw(RuntimeError("handler blew up"))`
+    - Assert `session.get_transaction() is None`
+    - This is the reason requirement 8 uses try/finally rather than closing after the yield: a
+      handler that raises must still return its connection to the pool.
+    - Cites no acceptance criterion.
+    </test>
+
+    <test id="8">
+    Test: test_importing_app_db_creates_no_file
+    - Assert `"init_db" in dir(__import__("app.db", fromlist=["init_db"]))`
+    - Assert `callable(init_db)`
+    - Assert that `app/db.py`, read as text with `pathlib.Path("app/db.py").read_text()`,
+      contains no line that is exactly `init_db()` at column 0 - i.e. `init_db()` is defined but
+      never invoked at module level (requirement 7)
+    - Concretely: `assert not any(line.strip() == "init_db()" for line in
+      pathlib.Path("app/db.py").read_text().splitlines())`
+    - Cites no acceptance criterion.
+    </test>
+
+    <test id="9">
+    Test: test_init_db_creates_the_database_and_is_idempotent
+    - `init_db()`
+    - Assert `DATABASE_PATH.exists()` is True
+    - Assert `isinstance(inspect(engine).get_table_names(), list)`
+    - Do NOT assert an exact table list. At the point THIS task runs app/models/__init__.py is
+      still empty, so the correct result is zero tables; after L4-002 and L4-003 the same call
+      returns `["link_tags", "links", "tags"]`. Asserting `== []` here would turn L4-002 into a
+      task that breaks a passing test in a file it does not own. The assertion above is written
+      so that it stays true in both states.
+    - `init_db()` a second time - assert it raises no exception, proving create_all is safe to
+      call repeatedly (create_all passes checkfirst=True by default)
+    - Asserts requirement 7. Cites no acceptance criterion.
+    </test>
+
+    <test id="10">
+    Test: test_no_migration_tool_was_introduced
+    - Assert `not pathlib.Path("migrations").exists()`
+    - Assert `not pathlib.Path("alembic.ini").exists()`
+    - Assert `"alembic" not in pathlib.Path("pyproject.toml").read_text()`
+    - Asserts requirement 9. Cites no acceptance criterion.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/db.py</file>
+    <file>tests/test_db.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.db import Base, engine, SessionLocal, get_db, init_db, DATABASE_PATH, DATABASE_URL; print('all seven names importable')"` - must print `all seven names importable`</step>
+    <step>Run: `python -c "from sqlalchemy.orm import DeclarativeBase; from app.db import Base; assert issubclass(Base, DeclarativeBase) and Base is not DeclarativeBase; print('Base OK')"` - must print `Base OK`</step>
+    <step>Run: `python -c "from app.db import engine, DATABASE_PATH; assert engine.url.get_backend_name() == 'sqlite'; assert DATABASE_PATH.name == 'link_shelf.db'; print(DATABASE_PATH)"` - must print a path ending in `link_shelf.db`</step>
+    <step>Run: `python -c "from sqlalchemy import create_engine, text; from sqlalchemy.orm import Session; import app.db; e = create_engine('sqlite://'); c = e.connect(); assert c.execute(text('PRAGMA foreign_keys')).scalar() == 1; print('foreign keys enforced')"` - must print `foreign keys enforced`, proving the pragma listener is registered on the Engine class</step>
+    <step>Run: `python -c "import pathlib; src = pathlib.Path('app/db.py').read_text(); assert not any(l.strip() == 'init_db()' for l in src.splitlines()); assert 'declarative_base(' not in src; assert 'alembic' not in src; print('module-level cleanliness OK')"` - must print `module-level cleanliness OK`</step>
+    <step>Run: `pytest tests/test_db.py -v` - all 9 test functions pass</step>
+    <step>Run: `pytest tests/ -v` - the whole suite passes, proving app/db.py did not break the layer-3 tests already merged into this worktree</step>
+  </verification>
+
+  <exports>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/db.py
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base for every Link Shelf model."""
+
+    # Every model in this project subclasses this and nothing else:
+    #   app/models/link.py      class Link(Base)      __tablename__ = "links"       (L4-002)
+    #   app/models/tag.py       class Tag(Base)       __tablename__ = "tags"        (L4-003)
+    #   app/models/link_tag.py  class LinkTag(Base)   __tablename__ = "link_tags"   (L4-003)
+    #
+    # A model is registered on Base.metadata only once its module has been imported. That is
+    # what app/models/__init__.py is for.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/db.py
+    from pathlib import Path
+    from sqlalchemy import create_engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db  (gitignored via *.db)
+    DATABASE_URL: str     # f"sqlite:///{DATABASE_PATH}"
+
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+    # Foreign-key enforcement is switched on by an @event.listens_for(Engine, "connect")
+    # listener registered in this module. It is bound to the Engine CLASS, so ANY engine
+    # created anywhere in this process after app.db is imported also enforces foreign keys.
+    #
+    # FOR L4-004: this is why the db_session fixture does NOT need to register its own pragma
+    # listener. Importing app.db (which the fixture does anyway, for Base and get_db) is
+    # sufficient for the per-test engine to enforce LinkTag's FKs to links.id and tags.id.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/db.py
+    from sqlalchemy.orm import sessionmaker
+
+    SessionLocal = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+
+    # expire_on_commit=False is a load-bearing setting, not a preference: handlers read model
+    # attributes AFTER commit to build their response. L4-004's per-test sessionmaker must be
+    # configured identically or L3-003's POST /links tests will pass in production and fail
+    # under test for reasons unrelated to the handler.
+    </interface>
+
+    <interface name="init_db" type="function">
+    # app/db.py
+    def init_db() -> None:
+        """Create every table registered on Base.metadata."""
+        import app.models  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+
+    # KNOWN GAP, recorded rather than silently patched: NOTHING in this plan calls init_db().
+    # L3-002 deliberately excluded any app.db import from app/main.py so that it stayed
+    # buildable in the declared (inverted) layer order - see its own constraints block and
+    # layer_plan.json OC-001. The consequence is that the real link_shelf.db is never
+    # initialised by the running application.
+    #
+    # This does NOT affect the test suite: L4-004's db_session fixture calls
+    # Base.metadata.create_all against its own per-test engine and never touches this one.
+    #
+    # For the operator: the one-line fix, once the layer inversion is resolved, is a startup
+    # hook in app/main.py calling init_db(). It is not applied here because doing so would
+    # reopen a file this task does not own and would contradict L3-002's requirement 3.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/db.py
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -> Generator[Session, None, None]:
+        """Yield a SQLAlchemy session. Closes on request completion."""
+        ...
+
+    # Usage in a handler (L3-003, L3-004, L3-006):
+    #     from fastapi import Depends
+    #     from app.db import get_db
+    #
+    #     @router.get("/links")
+    #     def list_links(db: Session = Depends(get_db)) -> list[Link]: ...
+    #
+    # Does NOT commit and does NOT roll back. Committing is the handler's decision.
+    #
+    # This is the exact object L4-004 overrides:
+    #     app.dependency_overrides[get_db] = ...
+    # so it must be imported from app.db by identity, never redefined.
+    </interface>
+  </exports>
+</task>

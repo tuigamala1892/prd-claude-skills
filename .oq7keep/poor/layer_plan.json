@@ -1,0 +1,303 @@
+{
+  "project_type": "greenfield",
+  "degenerate": false,
+  "layer_graph_source": {
+    "source": "architecture.json",
+    "path": "C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app/architecture.md",
+    "version": "1.0",
+    "declared_layers": [
+      {"id": "0", "name": "setup", "depends_on": []},
+      {"id": "1", "name": "integration", "depends_on": ["0"]},
+      {"id": "2", "name": "frontend", "depends_on": ["1"]},
+      {"id": "3", "name": "backend", "depends_on": ["2"]},
+      {"id": "4", "name": "foundation", "depends_on": ["3"]}
+    ],
+    "shipped_defaults_merged": false,
+    "note": "The declared graph REPLACES the five shipped tiers entirely. Nothing from the default 0-setup/1-foundation/2-backend/3-frontend/4-integration list is grafted on. The declared graph is a chain, not a DAG: every depends_on holds exactly one id, so 0 -> 1 -> 2 -> 3 -> 4 is a total order and there are no sibling layers to run in parallel. architecture.md's own prose states the layer names are the toolchain's own and that the dependency direction is inverted; work is therefore assigned by NAME using the toolchain's meanings for those names, and the inverted direction is reported rather than corrected."
+  },
+  "task_limits": {
+    "max_files_per_task": 3,
+    "source": "default (architecture.json task_limits is null)"
+  },
+  "testing_policy": {
+    "policy": "TDD",
+    "source": "default (no <testing> element in architecture.md; architecture.json testing is null)",
+    "consequence": "Every task that produces behaviour writes a failing pytest first. Backend tasks therefore need the pytest fixtures (test database session, dependency override, TestClient) before they can run at all -- see ordering_conflicts OC-005."
+  },
+  "layers_dropped": [
+    {
+      "id": "1-integration",
+      "reason": "Nothing in this document lands in an integration tier. The stack is a single backend process with no external service, no queue, no third-party API and no container runtime (analysis tech_stack.notes: 'Backend only - no frontend, no container runtime'). The one cross-feature seam that could have been integration work -- tag filtering on the listing endpoint -- was already merged into the single GET /links handler by analysis merge_notes[1], so it is one route handler in the backend tier, not a wiring task. The layer is declared and so exists in the project's graph; this document simply puts no work in it."
+    },
+    {
+      "id": "2-frontend",
+      "reason": "analysis.frontend_components is empty and no feature pass produced a component, screen or route. analysis merge_notes[4] records exactly this reconciliation: the declared layer proves the tier exists in the graph, not that this work fills it."
+    }
+  ],
+  "layers_kept_note": "4-foundation is the declared graph's TERMINAL layer, and the terminal layer is normally emitted only when more than one other layer survived or the requirement is explicitly cross-cutting. Both conditions are met here: two other layers survived (0-setup, 3-backend), and the tier holds the schema every other tier reads. It is kept on its own merits, not by default.",
+  "layers": [
+    {
+      "id": "0-setup",
+      "name": "Setup",
+      "description": "Create the project tree from nothing, declare and install dependencies, and prove the toolchain runs. There is no template to copy.",
+      "skip_if_brownfield": true,
+      "tasks": [
+        {
+          "id": "L0-001",
+          "name": "Create project directory tree",
+          "description": "Create the app/ and tests/ Python packages and a .gitignore in the existing git repo at C:/Users/Lee/AppData/Local/Temp/oq7-qn0r6zml/poor/app, which currently holds only .git/ and architecture.md. Directories are CREATED, not copied: analysis.template.path is null and the PRD rationale states 'No template is referenced, so Layer 0 creates directories rather than copying a tree from elsewhere.' Do not run git init -- the repo already exists.",
+          "files": [".gitignore", "app/__init__.py", "tests/__init__.py"],
+          "depends_on": [],
+          "provides": ["app package", "tests package", ".gitignore"]
+        },
+        {
+          "id": "L0-002",
+          "name": "Create app subpackages",
+          "description": "Create the app/models, app/api and app/schemas subpackages that layers 3 and 4 write into.",
+          "files": ["app/models/__init__.py", "app/api/__init__.py", "app/schemas/__init__.py"],
+          "depends_on": ["L0-001"],
+          "provides": ["app.models package", "app.api package", "app.schemas package"]
+        },
+        {
+          "id": "L0-003",
+          "name": "Declare Python dependencies and pytest config",
+          "description": "Write pyproject.toml targeting Python 3.11 with fastapi>=0.110, sqlalchemy>=2.0,<3, pytest>=8,<9 and httpx. httpx is required by starlette's TestClient, which every endpoint task's verification uses; analysis dependencies[3] flags it as a mechanical consequence of the declared stack plus the default test policy, not a product decision. Include the [tool.pytest.ini_options] testpaths setting in the same file so pytest configuration adds no extra file.",
+          "files": ["pyproject.toml"],
+          "depends_on": ["L0-001"],
+          "provides": ["Dependency manifest", "pytest configuration"]
+        },
+        {
+          "id": "L0-004",
+          "name": "Install dependencies and verify the environment",
+          "description": "Create a virtual environment, install the project, and verify: python -c 'import fastapi, sqlalchemy, httpx' succeeds and pytest exits with 0 or 5 (5 = no tests collected yet, which is correct at this point).",
+          "files": [],
+          "depends_on": ["L0-002", "L0-003"],
+          "provides": ["Virtual environment", "Installed dependencies", "Working development environment"]
+        }
+      ]
+    },
+    {
+      "id": "3-backend",
+      "name": "Backend",
+      "description": "HTTP surface: request/response schemas, route handlers and the FastAPI application. Assigned here because the declared layer named 'backend' carries the toolchain's meaning for that name -- API endpoints, service layer, business logic.",
+      "tasks": [
+        {
+          "id": "L3-001",
+          "name": "Define Link request and response schemas",
+          "description": "Pydantic models for the link payloads. LinkCreate carries url (required, must parse as an absolute http or https URL) and title (optional, may be null). LinkRead carries id, url, title and created_at. The url constraint is what produces 422 for save-link#3 (no url field) and save-link#4 (url that is not an absolute http/https URL); both criteria also require that nothing is stored, so validation must reject before any session write.",
+          "files": ["app/schemas/link.py"],
+          "depends_on": ["L0-004"],
+          "provides": ["LinkCreate schema", "LinkRead schema"],
+          "satisfies_criteria": ["save-link#3", "save-link#4"]
+        },
+        {
+          "id": "L3-002",
+          "name": "Create FastAPI application and links router",
+          "description": "Create the FastAPI app instance in app/main.py, create an empty APIRouter in app/api/links.py, and include it. Add a smoke test asserting the app imports and TestClient starts. Subsequent tasks add handlers to app/api/links.py rather than reopening main.py.",
+          "files": ["app/main.py", "app/api/links.py", "tests/test_app_smoke.py"],
+          "depends_on": ["L0-004"],
+          "provides": ["FastAPI app", "links APIRouter"],
+          "requires_from_later_layer": ["L4-001"]
+        },
+        {
+          "id": "L3-003",
+          "name": "Implement POST /links",
+          "description": "Handler accepting a url and an optional title, storing the link and returning 201 with the generated integer id, the submitted url and title, and a created_at timestamp. A missing title stores and returns null rather than omitting the field. No /api prefix -- the PRD never mentions one (analysis api_endpoints[0].inference_basis).",
+          "files": ["app/api/links.py", "tests/test_save_link.py"],
+          "depends_on": ["L3-001", "L3-002"],
+          "provides": ["POST /links endpoint"],
+          "satisfies_criteria": ["save-link#1", "save-link#2", "save-link#3", "save-link#4"],
+          "requires_from_later_layer": ["L4-001", "L4-002", "L4-004"]
+        },
+        {
+          "id": "L3-004",
+          "name": "Implement GET /links with optional tag filter",
+          "description": "Handler returning 200 and a JSON array of every stored link, ordered most recently created first, empty array when nothing is stored, and reporting a null title rather than omitting an untitled link. No pagination. An optional tag query parameter filters to exactly the links carrying that tag. If the stored links cannot be read, return 500 -- never an empty array, so a read failure is never reported as an empty shelf. The tag parameter is implemented HERE, in the same handler, not as a separate task: analysis merge_notes[1] merged list-links' GET /links and tag-links' tag filter into one endpoint precisely because splitting them produces two tasks writing the same route handler.",
+          "files": ["app/api/links.py", "tests/test_list_links.py"],
+          "depends_on": ["L3-003"],
+          "provides": ["GET /links endpoint", "tag query filter"],
+          "satisfies_criteria": ["list-links#1", "list-links#2", "list-links#3", "list-links#4", "tag-links#3"],
+          "requires_from_later_layer": ["L4-001", "L4-002", "L4-003", "L4-004"]
+        },
+        {
+          "id": "L3-005",
+          "name": "Define tag attach request and response schemas",
+          "description": "Pydantic models for attaching tags: a request carrying one or more free-text tag names, and a response shape reporting the link with every attached tag.",
+          "files": ["app/schemas/tag.py"],
+          "depends_on": ["L3-001"],
+          "provides": ["TagAttach schema", "LinkWithTags schema"]
+        },
+        {
+          "id": "L3-006",
+          "name": "Implement POST /links/{link_id}/tags",
+          "description": "Handler attaching one or more tags to an existing link and returning 200 with the link reporting every attached tag. Posting a tag already attached returns 200 and leaves it attached exactly once. A link id that does not exist returns 404 and creates no tag rows. Tag names are matched case-sensitively -- this comes from tag-links' <notes><considerations> and is carried as an implementation constraint, NOT as an acceptance criterion (analysis merge_notes[5]); do not give it a criterion id.",
+          "files": ["app/api/links.py", "tests/test_tag_links.py"],
+          "depends_on": ["L3-004", "L3-005"],
+          "provides": ["POST /links/{link_id}/tags endpoint"],
+          "satisfies_criteria": ["tag-links#1", "tag-links#2", "tag-links#4"],
+          "requires_from_later_layer": ["L4-001", "L4-002", "L4-003", "L4-004"],
+          "blocked_by_gap": "tag-links#1"
+        }
+      ]
+    },
+    {
+      "id": "4-foundation",
+      "name": "Foundation",
+      "description": "Database models, declarative base, session management and shared test fixtures. Assigned here because the declared layer named 'foundation' carries the toolchain's meaning for that name -- database models and migrations, core configuration, base classes and utilities.",
+      "tasks": [
+        {
+          "id": "L4-001",
+          "name": "Create SQLAlchemy declarative base and session factory",
+          "description": "SQLAlchemy 2.x declarative Base, a file-backed SQLite engine, a session factory and a get_db dependency, plus schema creation via Base.metadata.create_all. SQLite is chosen so the whole project runs with no external service (analysis tech_stack.rationale). No Alembic: no migration tool is in the declared stack or dependency list, so schema creation is create_all rather than a migration chain -- do not introduce one.",
+          "files": ["app/db.py"],
+          "depends_on": ["L0-004"],
+          "provides": ["Declarative Base", "SQLite engine", "Session factory", "get_db dependency"]
+        },
+        {
+          "id": "L4-002",
+          "name": "Create Link model",
+          "description": "SQLAlchemy model Link(id integer pk, url text not null, title text null, created_at timestamp not null). Owned by save-link. list-links reads it and declares it owns no entity and adds no column; tag-links references it only as LinkTag's FK target and adds no column (analysis merge_notes[2]). Neither of those features may re-declare it.",
+          "files": ["app/models/link.py"],
+          "depends_on": ["L4-001"],
+          "provides": ["Link model"]
+        },
+        {
+          "id": "L4-003",
+          "name": "Create Tag and LinkTag models",
+          "description": "SQLAlchemy models Tag(id integer pk, name text unique not null) and LinkTag(link_id fk Link.id, tag_id fk Tag.id, primary key over both). Both owned by tag-links. LinkTag's FK to Link is why this task follows L4-002.",
+          "files": ["app/models/tag.py", "app/models/link_tag.py"],
+          "depends_on": ["L4-002"],
+          "provides": ["Tag model", "LinkTag model"],
+          "blocked_by_gap": "tag-links#1"
+        },
+        {
+          "id": "L4-004",
+          "name": "Create pytest fixtures for database and TestClient",
+          "description": "conftest.py providing a per-test SQLite database, a session fixture, a get_db dependency override so tests never touch the real database file, and a TestClient fixture. Every backend task's verification depends on these.",
+          "files": ["tests/conftest.py"],
+          "depends_on": ["L4-001", "L4-003"],
+          "provides": ["Test database fixture", "Session fixture", "TestClient fixture"]
+        }
+      ]
+    }
+  ],
+  "ordering_conflicts": [
+    {
+      "id": "OC-001",
+      "kind": "layer-order-inversion",
+      "verdict": "NOT BUILDABLE AS DECLARED",
+      "earlier_layer": "3-backend",
+      "later_layer": "4-foundation",
+      "declared_edge": "layer 4 (foundation) depends_on layer 3 (backend), so backend executes first",
+      "summary": "Every task in 3-backend requires code that 4-foundation creates. The declared graph runs the tier that consumes the schema before the tier that defines it.",
+      "task_pairs": [
+        {"needs": "L3-002 (FastAPI app and links router)", "from": "L4-001 (declarative Base, engine, session factory, get_db)", "detail": "main.py must import get_db and trigger schema creation; without app/db.py the module does not import."},
+        {"needs": "L3-003 (POST /links)", "from": "L4-002 (Link model)", "detail": "The handler stores a Link row. Without the model there is nothing to store and no table to store it in."},
+        {"needs": "L3-003 (POST /links)", "from": "L4-001 (session factory, get_db)", "detail": "The handler takes a session as a dependency."},
+        {"needs": "L3-004 (GET /links with tag filter)", "from": "L4-002 (Link model)", "detail": "The handler queries and orders Link rows by created_at."},
+        {"needs": "L3-004 (GET /links with tag filter)", "from": "L4-003 (Tag and LinkTag models)", "detail": "The optional tag parameter joins through LinkTag to Tag. The filter cannot be written against tables that do not exist."},
+        {"needs": "L3-006 (POST /links/{link_id}/tags)", "from": "L4-002 (Link model)", "detail": "The 404 branch requires looking up an existing link id."},
+        {"needs": "L3-006 (POST /links/{link_id}/tags)", "from": "L4-003 (Tag and LinkTag models)", "detail": "The whole endpoint writes Tag and LinkTag rows; idempotency is enforced by LinkTag's composite primary key."}
+      ],
+      "consequence": "Executing the declared order produces a layer 3 whose every module raises ImportError or references undefined tables. Layer 3 cannot reach a green test run, so a gate that requires a layer to pass before the next begins never lets layer 4 start.",
+      "action_taken": "None. Work is assigned to the layer whose declared NAME matches its kind, and the declared graph is left exactly as written. This is reported, not repaired."
+    },
+    {
+      "id": "OC-002",
+      "kind": "layer-order-inversion",
+      "verdict": "NOT BUILDABLE AS DECLARED",
+      "earlier_layer": "3-backend",
+      "later_layer": "4-foundation",
+      "declared_edge": "layer 4 depends_on layer 3",
+      "summary": "The default TDD policy makes the inversion bite a second time, independently of the import problem.",
+      "task_pairs": [
+        {"needs": "L3-002, L3-003, L3-004, L3-006 (every backend task that writes a test)", "from": "L4-004 (pytest fixtures: test database, get_db override, TestClient)", "detail": "With no <testing> element the default TDD policy applies, so each of these tasks must write a failing test before its implementation. Those tests need a database fixture and a TestClient. Both are created in layer 4, which the declared graph runs afterwards."}
+      ],
+      "consequence": "Even a backend task that somehow stubbed its models could not satisfy its own test-first requirement, because the fixtures it would test against do not exist yet.",
+      "action_taken": "None. Reported only."
+    },
+    {
+      "id": "OC-003",
+      "kind": "feature-edge-contradicted-by-layer-graph",
+      "verdict": "EDGE VIOLATED BY THE DECLARED GRAPH",
+      "edge": {"from": "list-links", "to": "save-link", "kind": "data"},
+      "summary": "A data edge means the depended-on feature's MODEL work comes first. save-link's model work is L4-002 (Link) in layer 4; list-links' work is L3-004 in layer 3. The declared graph runs layer 3 before layer 4, so the edge is contradicted.",
+      "action_taken": "Tasks placed by layer, per the rule that a feature edge cannot override the layer graph -- the layer graph is the project's declared rule and the edge is one author's note. The contradiction is recorded, not resolved."
+    },
+    {
+      "id": "OC-004",
+      "kind": "feature-edge-contradicted-by-layer-graph",
+      "verdict": "EDGE VIOLATED BY THE DECLARED GRAPH",
+      "edge": {"from": "tag-links", "to": "save-link", "kind": "data"},
+      "summary": "Same inversion: tag-links' endpoints (L3-006, and the filter in L3-004) sit in layer 3, while the Link model they key off and the Tag/LinkTag models they write sit in layer 4.",
+      "action_taken": "Tasks placed by layer. Contradiction recorded, not resolved."
+    },
+    {
+      "id": "OC-005",
+      "kind": "dropped-layers-do-not-relieve-the-inversion",
+      "verdict": "INFORMATIONAL",
+      "summary": "Dropping 1-integration and 2-frontend does not help. The declared chain 0 -> 1 -> 2 -> 3 -> 4 reduces to 0 -> 3 -> 4 once the empty tiers are removed, and the relative order of backend and foundation is unchanged. The conflict is a property of the declared direction, not of the empty tiers sitting between them.",
+      "action_taken": "None."
+    },
+    {
+      "id": "OC-006",
+      "kind": "hypothetical-inversion-in-a-dropped-layer",
+      "verdict": "INFORMATIONAL",
+      "summary": "1-integration was dropped for having no work, but it is worth recording that had this document contained integration work -- end-to-end flows across the three endpoints, for example -- the inversion would have been worse, not better: layer 1 runs before BOTH backend (3) and foundation (4), so an e2e task would have preceded every endpoint and every model it exercises.",
+      "action_taken": "None. Layer dropped on the no-work test alone; this is not the reason it was dropped."
+    }
+  ],
+  "buildability_assessment": {
+    "declared_order_buildable": false,
+    "layers_buildable_in_isolation": ["0-setup"],
+    "layers_not_buildable_in_declared_position": ["3-backend"],
+    "statement": "The declared execution order is NOT buildable for this work. 0-setup stands alone and completes cleanly. 3-backend, which the graph runs next, cannot execute a single one of its six tasks: all six require the declarative base, session factory, models or test fixtures that 4-foundation creates afterwards. 4-foundation itself is internally consistent and would build in isolation -- it depends on nothing from layer 3. The graph is, in effect, correct with edges 3 and 4 reversed, which matches architecture.md's own prose ('the dependency direction is inverted'). No reordering has been applied: the declared graph is the project's prescriptive artefact and outranks this component's inference. The operator must either amend architecture.md or accept that layer 3 will fail its gate.",
+    "minimal_amendment_if_the_operator_chooses_to_act": "Changing layer 3's depends_on from ['2'] to ['4'] and layer 4's from ['3'] to ['2'] (or, with the empty tiers dropped, running 0 -> 4 -> 3) would make this plan buildable without moving a single task between layers. Stated as an observation for the operator; NOT applied here."
+  },
+  "dependency_graph": {
+    "L0-001": [],
+    "L0-002": ["L0-001"],
+    "L0-003": ["L0-001"],
+    "L0-004": ["L0-002", "L0-003"],
+    "L3-001": ["L0-004"],
+    "L3-002": ["L0-004"],
+    "L3-003": ["L3-001", "L3-002"],
+    "L3-004": ["L3-003"],
+    "L3-005": ["L3-001"],
+    "L3-006": ["L3-004", "L3-005"],
+    "L4-001": ["L0-004"],
+    "L4-002": ["L4-001"],
+    "L4-003": ["L4-002"],
+    "L4-004": ["L4-001", "L4-003"]
+  },
+  "dependency_graph_note": "depends_on records only edges that the declared layer graph can actually satisfy. The layer-3 requirements on layer-4 output are real but are NOT written as depends_on entries, because doing so would encode an order the declared graph forbids and would silently invert it. They are carried per-task as requires_from_later_layer and enumerated in ordering_conflicts OC-001 and OC-002.",
+  "open_gaps": [
+    {
+      "ref": "tag-links#1",
+      "kind": "decision",
+      "blocking": true,
+      "body": "Whether a tag with no remaining links is deleted or kept is undecided. Keeping them makes an autocomplete list easy and lets the list rot.",
+      "affects_tasks": ["L4-003", "L3-006"],
+      "note": "Carried verbatim and unanswered. Analysis records that no detach or cleanup endpoint and no cascade or retention field was emitted, so the decision does not leak into the merged models or API surface -- but it is marked blocking, so L4-003 and L3-006 should not be executed until it is answered."
+    }
+  ],
+  "summary": {
+    "total_tasks": 14,
+    "by_layer": {
+      "0-setup": 4,
+      "3-backend": 6,
+      "4-foundation": 4
+    },
+    "layers_declared": 5,
+    "layers_kept": 3,
+    "layers_dropped": 2
+  },
+  "notes": {
+    "template": "analysis.template.path is null. Layer 0 creates directories; it does not copy a tree. The keyword table would have mapped Python + FastAPI to webapps/backends/python, but the PRD rationale disclaims it outright and analysis merge_notes[0] records the reconciliation. No task in this plan copies or references a template.",
+    "no_migration_tool": "Neither the declared stack nor the dependency list contains Alembic or any other migration tool. Schema creation is Base.metadata.create_all against SQLite. No task should introduce a migrations directory or a versioned migration chain -- that would add an undeclared dependency.",
+    "shared_file_serialisation": "L3-002, L3-003, L3-004 and L3-006 all write app/api/links.py. Their depends_on entries chain them deliberately so they never run concurrently against the same file. This is a within-layer parallelism limit, not a conflict.",
+    "single_listing_endpoint": "GET /links and its tag filter are ONE task (L3-004), not two. Analysis merge_notes[1] merged the two independently-inferred listing endpoints for exactly this reason: keeping them separate produces two tasks writing the same route handler.",
+    "considerations_not_criteria": "'Tag names are matched case-sensitively' comes from tag-links' <notes><considerations>. It is carried into L3-006 as an implementation constraint attributed to considerations, never as an acceptance criterion with an id.",
+    "task_sizing": "Every task writes at most 3 files, the default limit, since architecture.json task_limits is null."
+  }
+}

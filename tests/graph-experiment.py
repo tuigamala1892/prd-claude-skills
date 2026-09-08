@@ -79,10 +79,17 @@ SCRIPTS = os.path.join(REPO, "skills", "breakdown", "scripts")
 
 DEFAULT_GRAPH = None          # no architecture.md -- the shipped default applies
 
+# NEUTRAL PROSE, AND THE FIRST VERSION WAS NOT -- this is the experiment's own contamination,
+# found by reading what the first poor arm produced. That version's prose said "the layer names
+# are the toolchain's own; the dependency direction is inverted", and `plan-layers` read it and
+# wrote back `the inverted direction is reported rather than corrected`. **A fixture that
+# describes the experiment is part of the experiment** -- the same defect item 21 recorded when
+# its PRD explained the tier probe to the model under test, one phase after that was written
+# down. A real user's wrong rule file does not announce that it is wrong, so the stimulus was
+# not the one the question is about. Nothing below hints at intent, at ordering, or at OQ7.
 POOR_GRAPH = """# Architecture
 
-Declared for open question 7's experiment. The layer names are the toolchain's own; the
-dependency direction is inverted.
+The layer graph for this project.
 
 <architecture version="1.0">
   <rules>
@@ -220,7 +227,7 @@ def compare(default, poor):
     return "LOAD-BEARING (via row 3: unclear)", lines
 
 
-def live(keep=False):
+def live(keep=False, arms=("default", "poor"), out_dir=None):
     reg = json.load(open(os.path.join(HERE, "fixture", "prd", "SCHEMAS.json"), encoding="utf-8"))
     # link-shelf, not staff-service: all three of its features are `defined`, so both arms get
     # the same buildable input. staff-service carries a wont-have designed to be REFUSED and an
@@ -228,9 +235,22 @@ def live(keep=False):
     prd_src = os.path.join(HERE, "fixture", "prd", reg["current"], "link-shelf")
 
     results = {}
-    root = tempfile.mkdtemp(prefix="oq7-")
+    root = out_dir or tempfile.mkdtemp(prefix="oq7-")
+    # A workspace inside this checkout is refused by `resolve-output.sh` before a single task is
+    # written -- correctly, since F4 is a run whose entire output landed in the toolchain tree.
+    # It cost one live arm here: the run exited 0, produced nothing, and the grader reported
+    # `no task XML`, which reads exactly like a toolchain finding and was a harness fault.
+    # A negative result whose instrument has not been checked is not a result.
+    if os.path.abspath(root).startswith(os.path.abspath(REPO) + os.sep):
+        raise SystemExit(
+            f"refusing to run inside the checkout: {root}\n"
+            f"resolve-output.sh walks ANCESTORS for a plugin root, so anything under {REPO} is "
+            f"'inside the toolchain' and /breakdown stops in Phase 1. Use a path outside it, or "
+            f"omit --out for a temporary directory.")
+    os.makedirs(root, exist_ok=True)
     try:
-        for arm, graph in (("default", DEFAULT_GRAPH), ("poor", POOR_GRAPH)):
+        for arm, graph in [a for a in (("default", DEFAULT_GRAPH), ("poor", POOR_GRAPH))
+                           if a[0] in arms]:
             base = os.path.join(root, arm)
             project = os.path.join(base, "app")
             os.makedirs(project)
@@ -262,8 +282,16 @@ def live(keep=False):
                                                  "dependency order", "refused", "warning")
                                      if w in blob})
             results[arm] = g
-            print(json.dumps(g, indent=2)[:1500], flush=True)
+            with open(os.path.join(root, f"{arm}.json"), "w", encoding="utf-8",
+                      newline="\n") as fh:
+                fh.write(json.dumps(g, indent=2))
+            print(json.dumps({k: v for k, v in g.items()
+                              if k not in ("forward_references", "unresolved")},
+                             indent=2), flush=True)
 
+        if len(results) < 2:
+            print("\n  one arm only (%s); compare with --compare" % ", ".join(results))
+            return 0
         verdict, lines = compare(results["default"], results["poor"])
         print("\n" + "=" * 78)
         for l in lines:
@@ -289,6 +317,8 @@ def main():
     ap.add_argument("--project", metavar="PATH")
     ap.add_argument("--compare", nargs=2, metavar=("DEFAULT-JSON", "POOR-JSON"))
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--arm", choices=("default", "poor", "both"), default="both")
+    ap.add_argument("--out", metavar="DIR", help="persist workspaces and per-arm JSON here")
     ap.add_argument("--keep", action="store_true")
     args = ap.parse_args()
 
@@ -304,7 +334,8 @@ def main():
         print(f"\n  OQ7 verdict: {verdict}")
         return 0
     if args.run:
-        return live(keep=args.keep)
+        arms = ("default", "poor") if args.arm == "both" else (args.arm,)
+        return live(keep=args.keep, arms=arms, out_dir=args.out)
     ap.print_help()
     return 2
 

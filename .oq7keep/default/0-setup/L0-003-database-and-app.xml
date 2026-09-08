@@ -1,0 +1,514 @@
+<task>
+  <meta>
+    <id>L0-003</id>
+    <name>SQLAlchemy engine, session, declarative Base and app instance</name>
+    <layer>0-setup</layer>
+    <priority>3</priority>
+    <estimated-files>3</estimated-files>
+  </meta>
+
+  <context>
+    <prd-excerpt>
+    Project: Link Shelf (slug: link-shelf). Greenfield, single repository, backend only.
+    No template - Layer 0 creates the tree. The target directory is already an initialised
+    git repository: do NOT run `git init` and do NOT touch `.git`.
+
+    Database: SQLite, file-backed, no external server. The database file lives at the
+    repository root as `link_shelf.db` and is already listed in `.gitignore` by L0-001.
+
+    This is the last Layer 0 task. It creates the database plumbing every model and endpoint
+    uses (engine, session factory, declarative Base, get_db dependency), the FastAPI
+    application instance, and the two pytest fixtures every later test depends on.
+
+    IMPORTANT SCOPE LIMIT: `app/main.py` at this layer is a bare FastAPI instance with NO
+    routers included and NO routes mounted. Task L4-001 mounts the three routers later. Do
+    not create routes, routers, schemas or models here.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11
+    FastAPI 0.110+ (HTTP API framework)
+    SQLAlchemy 2.x - use the 2.0 declarative style: `class Base(DeclarativeBase)`, NOT the
+      legacy `declarative_base()` factory
+    SQLite, file-backed (database, no external server)
+    pytest 8.x (test runner)
+    httpx (imported by fastapi.testclient.TestClient)
+    All four distributions are already installed by L0-001.
+    </tech-stack>
+
+    <project-structure>
+    Repository root (files marked NEW are created by this task):
+
+    .gitignore          (exists - L0-001; already ignores link_shelf.db)
+    pyproject.toml      (exists - L0-001)
+    requirements.txt    (exists - L0-001)
+    pytest.ini          (exists - L0-002; testpaths = tests, pythonpath = .)
+    app/
+      __init__.py       (exists - L0-002)
+      database.py       NEW - this task
+      main.py           NEW - this task
+      models/
+        __init__.py     (exists - L0-002; currently a docstring only)
+    tests/              (exists - L0-002; empty)
+      conftest.py       NEW - this task
+      test_setup.py     NEW - this task (the test file, additional to the three above)
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="app" type="python-package">
+    # app/__init__.py, created by L0-002
+    """Link Shelf application package."""
+
+    __version__ = "0.1.0"
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, created by L0-002
+    """SQLAlchemy models for Link Shelf."""
+
+    Exports nothing yet. Layer 1 tasks add Link, Tag and LinkTag here.
+    </interface>
+
+    <interface name="pytest.ini" type="test-config">
+    # pytest.ini, created by L0-002 (repository root)
+    [pytest]
+    testpaths = tests
+    pythonpath = .
+    python_files = test_*.py
+    python_classes = Test*
+    python_functions = test_*
+    addopts = -q
+
+    Consequence for this task: tests live in `tests/`, are named `tests/test_*.py`, are run
+    with `python -m pytest` from the repository root, and can import from the `app` package
+    because the repository root is on sys.path.
+    </interface>
+
+    <interface name=".gitignore" type="vcs-config">
+    # .gitignore, created by L0-001 (repository root)
+    Already contains `link_shelf.db`, `link_shelf.db-journal`, `link_shelf.db-wal`,
+    `link_shelf.db-shm`, `__pycache__/` and `.pytest_cache/`.
+    This task must therefore name the database file exactly `link_shelf.db` at the
+    repository root. Any other filename would be committed by accident.
+    </interface>
+
+    <interface name="fastapi.testclient.TestClient" type="third-party-class">
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+
+    class TestClient:
+        def __init__(self, app: FastAPI) -&gt; None: ...
+        def get(self, url: str, **kwargs) -&gt; "httpx.Response": ...
+        def post(self, url: str, **kwargs) -&gt; "httpx.Response": ...
+
+    Usable as a context manager, which runs the application's startup and shutdown events:
+        with TestClient(app) as client:
+            client.get("/openapi.json")
+    </interface>
+
+    <interface name="fastapi.FastAPI.dependency_overrides" type="third-party-attribute">
+    from fastapi import FastAPI
+
+    app: FastAPI
+    app.dependency_overrides: dict  # maps a dependency callable to a replacement callable
+
+    Setting `app.dependency_overrides[get_db] = replacement` makes every route that depends
+    on `get_db` receive the replacement instead. Clearing the dict restores the real one.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create the SQLite database plumbing (engine, session factory, declarative Base, get_db
+  dependency), a bare FastAPI application instance with no routes mounted, and a pytest
+  conftest exposing two fixtures - an isolated per-test database session and a TestClient
+  bound to that same session - which every Layer 1, 2 and 4 test will use.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create `app/database.py` with exactly this content:
+
+    """Database engine, session factory, declarative base and request dependency."""
+
+    from collections.abc import Generator
+    from pathlib import Path
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+    DATABASE_PATH = Path(__file__).resolve().parent.parent / "link_shelf.db"
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+
+    SessionLocal = sessionmaker(
+        bind=engine,
+        class_=Session,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    Notes that must be preserved exactly as written above:
+    - `DATABASE_PATH` resolves to `&lt;repository root&gt;/link_shelf.db`, because this module
+      sits at `app/database.py` and `.parent.parent` is the repository root. That filename
+      is the one `.gitignore` already excludes.
+    - `check_same_thread: False` is required because FastAPI serves requests from a
+      threadpool while SQLite's default forbids cross-thread connection use.
+    - `expire_on_commit=False` keeps ORM attributes readable after `commit()`, which every
+      endpoint task needs when it returns the object it just wrote.
+    - Use `class Base(DeclarativeBase)`. Do not use `declarative_base()`; it is the legacy
+      1.x style.
+    - Do NOT call `Base.metadata.create_all` at import time in this module. L4-001 creates
+      the schema for the running application; the test fixtures create it for tests.
+    </requirement>
+
+    <requirement id="2">
+    Create `app/main.py` with exactly this content:
+
+    """FastAPI application instance for Link Shelf."""
+
+    from fastapi import FastAPI
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+    )
+
+    No routers are included and no route functions are defined at this layer. Task L4-001
+    adds `app.include_router(router)` for the save_link, list_links and tag_links routers and
+    creates the schema at startup. Do not anticipate that work here.
+    </requirement>
+
+    <requirement id="3">
+    Create `tests/conftest.py` with exactly this content:
+
+    """Shared pytest fixtures: an isolated database session and a client bound to it."""
+
+    from collections.abc import Generator
+
+    import pytest
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import app.models  # noqa: F401  - registers every model on Base.metadata
+    from app.database import Base, get_db
+    from app.main import app as fastapi_app
+
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]:
+        """Yield a Session on a private in-memory database, empty at the start of each test."""
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        testing_session_local = sessionmaker(
+            bind=engine,
+            class_=Session,
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        session = testing_session_local()
+        try:
+            yield session
+        finally:
+            session.close()
+            engine.dispose()
+
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]:
+        """Yield a TestClient whose routes use the same session as the db_session fixture."""
+
+        def override_get_db() -&gt; Generator[Session, None, None]:
+            yield db_session
+
+        fastapi_app.dependency_overrides[get_db] = override_get_db
+        try:
+            with TestClient(fastapi_app) as test_client:
+                yield test_client
+        finally:
+            fastapi_app.dependency_overrides.clear()
+
+    Notes that must be preserved exactly as written above:
+    - `import app.models` is deliberate and must stay. Layer 1 registers Link, Tag and
+      LinkTag by importing them in `app/models/__init__.py`; without this import,
+      `Base.metadata.create_all` in the fixture would create no tables and every Layer 1
+      and 2 test would fail with "no such table". The `# noqa: F401` marks it as an
+      intentionally unused import.
+    - `sqlite://` with no path is an in-memory database. `StaticPool` makes every connection
+      from this engine reuse the single in-memory connection, so the tables created by
+      `create_all` are visible to the session and to requests made through the client.
+    - A new engine is built per test, so each test starts from an empty database and nothing
+      leaks between tests. `engine.dispose()` discards it afterwards.
+    - The file-backed `link_shelf.db` is never touched by tests. The fixtures use their own
+      in-memory engine, not `app.database.engine`.
+    - `dependency_overrides` is cleared in a `finally` so a failing test cannot leave the
+      override in place for the next one.
+    </requirement>
+
+    <requirement id="4">
+    Create `tests/test_setup.py` with exactly this content:
+
+    """Smoke tests for the Layer 0 fixtures."""
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from app.database import Base, get_db
+    from app.main import app as fastapi_app
+
+
+    def test_db_session_executes_a_query(db_session: Session) -&gt; None:
+        assert db_session.execute(text("SELECT 1")).scalar_one() == 1
+
+
+    def test_db_session_creates_a_leftover_table(db_session: Session) -&gt; None:
+        db_session.execute(text("CREATE TABLE isolation_probe (id INTEGER PRIMARY KEY)"))
+        db_session.commit()
+        names = set(
+            db_session.execute(
+                text("SELECT name FROM sqlite_master WHERE type = 'table'")
+            ).scalars()
+        )
+        assert "isolation_probe" in names
+
+
+    def test_each_test_receives_a_fresh_database(db_session: Session) -&gt; None:
+        names = set(
+            db_session.execute(
+                text("SELECT name FROM sqlite_master WHERE type = 'table'")
+            ).scalars()
+        )
+        assert names == set(Base.metadata.tables)
+
+
+    def test_client_serves_the_application(client: TestClient) -&gt; None:
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+        assert response.json()["info"]["title"] == "Link Shelf"
+
+
+    def test_client_overrides_the_database_dependency(client: TestClient) -&gt; None:
+        assert get_db in fastapi_app.dependency_overrides
+
+    Notes:
+    - `test_db_session_creates_a_leftover_table` deliberately leaves a table behind, and
+      `test_each_test_receives_a_fresh_database` - which pytest runs next, file order being
+      collection order - asserts the next test's database contains only the tables declared
+      on `Base.metadata`. Together they prove the per-test isolation the later layers rely
+      on. At this layer `Base.metadata.tables` is empty, so the assertion is `names == set()`;
+      once Layer 1 registers models the same assertion still holds without editing.
+    - Do not assert anything about which routes are or are not mounted. L4-001 mounts three
+      routers and must not have to edit this file.
+    </requirement>
+
+    <requirement id="5">
+    Do NOT create any model module, schema module, router or route. Do NOT edit
+    `app/models/__init__.py`, `pytest.ini`, `.gitignore`, `pyproject.toml` or
+    `requirements.txt`. Do NOT run `git init` and do NOT touch `.git`.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Create test file: `tests/test_setup.py` (content specified verbatim in requirement 4).
+    </test>
+
+    <test id="2">
+    Test: test_db_session_executes_a_query
+    - Request the `db_session` fixture
+    - Execute `SELECT 1`
+    - Assert the scalar result equals 1
+    </test>
+
+    <test id="3">
+    Test: test_db_session_creates_a_leftover_table
+    - Request the `db_session` fixture
+    - Execute `CREATE TABLE isolation_probe (id INTEGER PRIMARY KEY)` and commit
+    - Read table names from `sqlite_master`
+    - Assert `"isolation_probe"` is among them
+    </test>
+
+    <test id="4">
+    Test: test_each_test_receives_a_fresh_database
+    - Request the `db_session` fixture
+    - Read table names from `sqlite_master`
+    - Assert the set of names equals `set(Base.metadata.tables)` - proving the
+      `isolation_probe` table created by the previous test did not survive into this one
+    </test>
+
+    <test id="5">
+    Test: test_client_serves_the_application
+    - Request the `client` fixture
+    - GET `/openapi.json`
+    - Assert status code 200
+    - Assert `response.json()["info"]["title"] == "Link Shelf"`
+    </test>
+
+    <test id="6">
+    Test: test_client_overrides_the_database_dependency
+    - Request the `client` fixture
+    - Assert `get_db` is a key of `app.main.app.dependency_overrides` while the fixture is
+      active, proving routes resolved through the client use the test session
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/database.py</file>
+    <file>app/main.py</file>
+    <file>tests/conftest.py</file>
+    <file>tests/test_setup.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "from app.database import Base, engine, SessionLocal, get_db, DATABASE_URL; print(DATABASE_URL)"` - prints a `sqlite:///` URL ending in `link_shelf.db`, proving all five names this task exports import cleanly</step>
+    <step>Run: `python -c "from app.database import DATABASE_PATH; import pathlib; assert DATABASE_PATH == pathlib.Path.cwd() / 'link_shelf.db', DATABASE_PATH; print('db path ok')"` - prints `db path ok`, confirming the database file resolves to the repository-root name that .gitignore excludes</step>
+    <step>Run: `python -c "from app.main import app; assert app.title == 'Link Shelf'; assert app.version == '0.1.0'; print('app ok')"` - prints `app ok`</step>
+    <step>Run: `python -c "from app.main import app; mounted = [getattr(r, 'path', '') for r in app.routes]; assert '/links' not in mounted, mounted; print('no routes mounted ok')"` - prints `no routes mounted ok`; this layer's application is bare, and L4-001 is the task that mounts /links</step>
+    <step>Run: `python -m pytest tests/test_setup.py -v` - exit code 0, all 5 tests pass</step>
+    <step>Run: `python -m pytest -v` - exit code 0, the same 5 tests are collected from `tests/` via pytest.ini's testpaths</step>
+    <step>Run: `python -c "import pathlib; assert not pathlib.Path('link_shelf.db').exists(), 'tests wrote to the file-backed database'; print('tests stayed in memory ok')"` - prints `tests stayed in memory ok`, proving the fixtures used their own in-memory engine and not app.database.engine</step>
+  </verification>
+
+  <exports>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # app/database.py
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base class for every Link Shelf model."""
+
+    Import as: `from app.database import Base`
+    Every model class in `app/models/` must subclass this and set `__tablename__`.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # app/database.py
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -&gt; Generator[Session, None, None]:
+        """Yield a database session and close it when the request finishes."""
+        ...
+
+    Import as: `from app.database import get_db`
+    Use in a route as: `db: Session = Depends(get_db)`
+    The `client` test fixture overrides this callable, so any route that takes its session
+    this way is automatically wired to the test database.
+    </interface>
+
+    <interface name="engine" type="sqlalchemy-engine">
+    # app/database.py
+    from sqlalchemy import Engine
+
+    DATABASE_PATH: Path   # &lt;repository root&gt;/link_shelf.db
+    DATABASE_URL: str     # "sqlite:///&lt;absolute path to link_shelf.db&gt;"
+    engine: Engine        # created with connect_args={"check_same_thread": False}
+
+    Import as: `from app.database import engine`
+    `Base.metadata.create_all(bind=engine)` is NOT called at import time. L4-001 calls it
+    for the running application.
+    </interface>
+
+    <interface name="SessionLocal" type="sqlalchemy-sessionmaker">
+    # app/database.py
+    from sqlalchemy.orm import sessionmaker, Session
+
+    SessionLocal: sessionmaker[Session]
+    # bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
+
+    Import as: `from app.database import SessionLocal`
+    `expire_on_commit=False` means ORM attributes stay readable after `commit()`.
+    </interface>
+
+    <interface name="app" type="fastapi-application">
+    # app/main.py
+    from fastapi import FastAPI
+
+    app = FastAPI(
+        title="Link Shelf",
+        version="0.1.0",
+        description="Store links with an optional title, list them newest first, and tag them.",
+    )
+
+    Import as: `from app.main import app`
+    No routers are included at this layer. L4-001 adds `app.include_router(router)` for the
+    save_link, list_links and tag_links routers.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py
+    import pytest
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture() -&gt; Generator[Session, None, None]: ...
+
+    Fixture name: `db_session`. Scope: function (a new engine and database per test).
+    Yields: a `sqlalchemy.orm.Session` on a private in-memory SQLite database with every
+    table in `Base.metadata` already created.
+
+    Use in a test as:
+        def test_something(db_session: Session) -&gt; None:
+            db_session.add(some_model_instance)
+            db_session.commit()
+
+    Contract every later test may rely on:
+    - The database is empty at the start of each test and discarded at the end.
+    - Tables are created from `Base.metadata`, which is populated by
+      `import app.models` in conftest.py. A model that is not imported in
+      `app/models/__init__.py` will have no table.
+    - The file-backed `link_shelf.db` is never touched.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py
+    import pytest
+    from collections.abc import Generator
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -&gt; Generator[TestClient, None, None]: ...
+
+    Fixture name: `client`. Scope: function. Depends on: `db_session`.
+    Yields: a `fastapi.testclient.TestClient` wrapping `app.main.app`, entered as a context
+    manager so startup and shutdown events run.
+
+    Contract every later test may rely on:
+    - `app.dependency_overrides[get_db]` yields the SAME Session object the `db_session`
+      fixture yields, so a row written through `db_session` is visible to a request made
+      through `client`, and the reverse.
+    - Requesting both fixtures in one test is supported and gives one shared session:
+          def test_something(client: TestClient, db_session: Session) -&gt; None: ...
+    - The override is cleared after each test, including when the test fails.
+    </interface>
+  </exports>
+</task>

@@ -1,0 +1,484 @@
+<task>
+  <meta>
+    <id>L3-003</id>
+    <name>Implement POST /links</name>
+    <layer>3-backend</layer>
+    <priority>3</priority>
+    <estimated-files>2</estimated-files>
+
+    <source-feature slug="save-link" moscow="must-have"
+                    satisfies-criteria="1,2,3,4" requirement-level="P0"/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <criterion id="1" pattern="event-driven" priority="P0" derived-from="1">
+      When a link is posted with a url and a title, the system shall store it and return 201
+      with an integer id, the submitted url and title, and a created_at timestamp.
+    </criterion>
+    <criterion id="2" pattern="event-driven" priority="P0" derived-from="2">
+      When a link is posted with a url and no title, the system shall store it with a null title
+      and return 201.
+    </criterion>
+    <criterion id="3" pattern="unwanted-behaviour" priority="P0" derived-from="3">
+      If a link is posted with no url field, then the system shall return 422 and store nothing.
+    </criterion>
+    <criterion id="4" pattern="unwanted-behaviour" priority="P1" derived-from="4">
+      If a link is posted with a url that does not parse as an absolute http or https URL, then
+      the system shall return 422 and store nothing.
+    </criterion>
+    </acceptance-criteria>
+
+    <data-model>
+    Link(id integer pk, url text not null, title text null,
+    created_at timestamp not null)
+    </data-model>
+
+    <prd-excerpt>
+    Feature: Save a link (slug save-link).
+
+    User story: As someone collecting links, I want to store a URL with an optional title, so
+    that I can come back to it without keeping a browser tab open.
+
+    Description: A POST endpoint that accepts a URL and an optional title, stores it, and
+    returns the stored record including its generated id and creation timestamp.
+
+    The URL is the only required field. If no title is supplied the field is stored as null
+    rather than being derived from the page, because fetching the page would make the endpoint
+    depend on the network.
+
+    Considerations (from the feature's notes, NOT an acceptance criterion): duplicate URLs are
+    allowed. Deduplication sounds obviously desirable but needs a rule for what to do with the
+    existing record's tags and timestamp, and that decision is out of scope. This endpoint must
+    therefore accept the same url twice and create two rows - do not add a uniqueness check.
+
+    Path basis, from the analysis pass: "The description states a POST endpoint accepting a URL
+    and optional title. Method and behaviour are stated; the path string is inferred from the
+    Link entity name. No /api prefix - the PRD never mentions one."
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+ (which brings Pydantic v2 and starlette), SQLAlchemy 2.x,
+    SQLite (file-backed, no server process), pytest 8.x, httpx (required by starlette's
+    TestClient). Backend only - no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - created by L0-001)
+      pyproject.toml              (exists - created by L0-003, declares deps and pytest config)
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - created by L0-001)
+        db.py                     (created by L4-001 - SEE THE ORDERING NOTE BELOW)
+        main.py                   (created by L3-002 - not modified by this task)
+        api/
+          __init__.py             (exists - created by L0-002)
+          links.py                (created by L3-002 - MODIFIED by this task)
+        models/
+          __init__.py             (exists - created by L0-002)
+          link.py                 (created by L4-002 - SEE THE ORDERING NOTE BELOW)
+        schemas/
+          __init__.py             (exists - created by L0-002)
+          link.py                 (created by L3-001 - read by this task)
+      tests/
+        __init__.py               (exists - created by L0-001)
+        conftest.py               (created by L4-004 - SEE THE ORDERING NOTE BELOW)
+        test_app_smoke.py         (created by L3-002)
+        test_link_schemas.py      (created by L3-001)
+
+    This task modifies app/api/links.py and creates tests/test_save_link.py.
+    All commands run from the repository root; this task declares no `cwd`.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <!--
+      READ THIS FIRST - THIS TASK IS NOT BUILDABLE IN THE DECLARED LAYER ORDER.
+      Reported, not repaired.
+
+      architecture.md declares layer 4 (foundation) depends-on layer 3 (backend), so the backend
+      tier runs BEFORE the tier that creates the declarative Base, the session factory, the Link
+      model and the pytest fixtures. This task needs all of them. The layer plan records this as
+      ordering conflicts OC-001 and OC-002, both with the verdict NOT BUILDABLE AS DECLARED.
+
+      Three of the six interfaces below come from LAYER 4, which the declared graph runs AFTER
+      this layer. Each is flagged FROM A LATER LAYER at its own definition:
+
+        app/db.py           get_db, the session dependency      L4-001   layer 4
+        app/models/link.py  the Link ORM model and its table    L4-002   layer 4
+        tests/conftest.py   db_session and client fixtures      L4-004   layer 4
+
+      When this task runs in the declared order, THAT CODE DOES NOT EXIST. `app/db.py`,
+      `app/models/link.py` and `tests/conftest.py` are absent from the tree, so the imports in
+      requirement 2 and test 1 raise ImportError and the verification below cannot go green.
+
+      The complete interface contract for each is carried here anyway, so this task can be
+      WRITTEN correctly and reviewed against a fixed contract rather than a guess.
+
+      DO NOT work around this. Do not create app/db.py, app/models/link.py or tests/conftest.py
+      in this task, and do not add a stub, a local Base, an inline model or a fallback session.
+      Those files belong to L4-001, L4-002 and L4-004; creating them here produces a merge
+      collision and two competing definitions of the same table.
+    -->
+
+    <interface name="LinkCreate" type="pydantic-model">
+    <!-- From L3-001, same layer, already merged. -->
+    # app/schemas/link.py
+    from pydantic import BaseModel, field_validator
+
+    class LinkCreate(BaseModel):
+        """Request body for POST /links."""
+        url: str            # required; validated as an absolute http or https URL
+        title: str | None   # optional; defaults to None
+
+        # The url validator raises pydantic.ValidationError during request parsing.
+        # FastAPI converts that into a 422 response BEFORE the route handler is entered,
+        # which is what makes criteria 3 and 4's "store nothing" true by construction:
+        # the handler never runs, so no session is ever opened for a bad payload.
+    </interface>
+
+    <interface name="LinkRead" type="pydantic-model">
+    <!-- From L3-001, same layer, already merged. -->
+    # app/schemas/link.py
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict
+
+    class LinkRead(BaseModel):
+        """Response body for POST /links."""
+        model_config = ConfigDict(from_attributes=True)
+
+        id: int
+        url: str
+        title: str | None   # always present in the output, null when unset
+        created_at: datetime
+
+        # from_attributes=True means this handler may `return link` - the SQLAlchemy
+        # instance - and FastAPI serialises it against this model. Do not build a dict
+        # by hand.
+    </interface>
+
+    <interface name="router" type="fastapi-apirouter">
+    <!-- From L3-002, same layer, already merged. -->
+    # app/api/links.py - the module this task MODIFIES
+    from fastapi import APIRouter
+
+    router = APIRouter(tags=["links"])   # NO prefix; already included by app/main.py
+
+    # Because the router has no prefix, this task's handler declares the full path:
+    #     @router.post("/links", ...)
+    # Because app/main.py already calls app.include_router(links.router), registering the
+    # route here requires NO change to app/main.py. Do not modify main.py.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    <!-- FROM A LATER LAYER: created by L4-001, in layer 4, which the declared graph runs -->
+    <!-- AFTER this layer. app/db.py WILL NOT EXIST when this task runs in the declared   -->
+    <!-- order. This is the contract to code against; do not stub it. See the note at the -->
+    <!-- top of this dependencies section.                                                -->
+    # app/db.py
+    from typing import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -> Generator[Session, None, None]:
+        """Yield a SQLAlchemy Session and close it when the request completes."""
+        ...
+
+    # Use it as a FastAPI dependency:
+    #     db: Session = Depends(get_db)
+    # Also defined in app/db.py by L4-001: `Base` (the DeclarativeBase), `engine` (a
+    # file-backed SQLite engine) and the Base.metadata.create_all call that builds the
+    # schema. This task imports ONLY get_db from that module.
+    </interface>
+
+    <interface name="Link" type="sqlalchemy-model">
+    <!-- FROM A LATER LAYER: created by L4-002, in layer 4, which the declared graph runs      -->
+    <!-- AFTER this layer. app/models/link.py WILL NOT EXIST when this task runs in the        -->
+    <!-- declared order, and neither will the `links` table. This is the contract to code      -->
+    <!-- against; do not declare a local model. See the note at the top of this section.       -->
+    # app/models/link.py
+    from datetime import datetime
+    from sqlalchemy.orm import Mapped
+    from app.db import Base
+
+    class Link(Base):
+        __tablename__ = "links"
+
+        id: Mapped[int]                # integer primary key, autoincrement
+        url: Mapped[str]               # text, NOT NULL
+        title: Mapped[str | None]      # text, NULL allowed
+        created_at: Mapped[datetime]   # timestamp, NOT NULL
+
+    # Construct it with keyword arguments: Link(url=..., title=..., created_at=...).
+    # Pass created_at EXPLICITLY rather than relying on a column default - the contract
+    # above states the column is NOT NULL but does not promise a default, and passing it
+    # explicitly is correct whether or not L4-002 adds one.
+    </interface>
+
+    <interface name="db_session" type="pytest-fixture">
+    <!-- FROM A LATER LAYER: created by L4-004, in layer 4, which the declared graph runs -->
+    <!-- AFTER this layer. tests/conftest.py WILL NOT EXIST when this task runs in the    -->
+    <!-- declared order. Do not define this fixture locally.                              -->
+    # tests/conftest.py
+    import pytest
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture
+    def db_session() -> Session:
+        """A Session bound to a per-test SQLite database whose tables are already created.
+
+        The database is torn down after each test, so every test starts with zero rows.
+        """
+        ...
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    <!-- FROM A LATER LAYER: created by L4-004, in layer 4, which the declared graph runs -->
+    <!-- AFTER this layer. tests/conftest.py WILL NOT EXIST when this task runs in the    -->
+    <!-- declared order. Do not construct a TestClient locally instead - these tests must  -->
+    <!-- query the same database the request wrote to.                                     -->
+    # tests/conftest.py
+    import pytest
+    from fastapi.testclient import TestClient
+
+    @pytest.fixture
+    def client(db_session) -> TestClient:
+        """A TestClient for app.main:app with get_db overridden to yield `db_session`.
+
+        The override is what makes a request issued through this client and a query issued
+        through the `db_session` fixture see the SAME rows - which is what the
+        "store nothing" assertions in tests 4 and 5 below depend on. The real database file
+        is never touched.
+        """
+        ...
+    </interface>
+  </dependencies>
+
+  <objective>
+  Add the POST /links route handler to app/api/links.py. It accepts a url and an optional
+  title, stores one Link row, and returns 201 with the generated integer id, the submitted url,
+  the title (null when none was supplied) and a created_at timestamp. A payload with no url, or
+  with a url that is not an absolute http or https URL, is rejected with 422 by the LinkCreate
+  schema before the handler runs, so nothing is stored.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Modify `app/api/links.py`. Keep the existing `router = APIRouter(tags=["links"])` line
+    exactly as it is - do not add a prefix and do not re-create the router.
+    </requirement>
+
+    <requirement id="2">
+    Add these imports to `app/api/links.py`:
+
+        from datetime import datetime, timezone
+        from fastapi import APIRouter, Depends, status
+        from sqlalchemy.orm import Session
+        from app.db import get_db
+        from app.models.link import Link
+        from app.schemas.link import LinkCreate, LinkRead
+    </requirement>
+
+    <requirement id="3">
+    Add the handler:
+
+        @router.post("/links", response_model=LinkRead,
+                     status_code=status.HTTP_201_CREATED)
+        def create_link(payload: LinkCreate,
+                        db: Session = Depends(get_db)) -> Link:
+            ...
+
+    The path is exactly `/links`. There is NO /api prefix - the PRD never mentions one. The
+    router created by L3-002 carries no prefix either, so the handler declares the full path
+    itself.
+
+    The success status is 201, declared via `status_code` on the decorator so that FastAPI
+    documents it and returns it without the handler constructing a Response. The response_model
+    is `LinkRead`.
+    </requirement>
+
+    <requirement id="4">
+    The handler body must, in this order:
+    1. Build `link = Link(url=payload.url, title=payload.title,
+       created_at=datetime.now(timezone.utc).replace(tzinfo=None))`
+    2. `db.add(link)`
+    3. `db.commit()`
+    4. `db.refresh(link)`   - this is what populates the autoincremented `id`
+    5. `return link`        - return the ORM instance; LinkRead's from_attributes handles it
+
+    Do not build a dict by hand, and do not set `id` yourself.
+
+    The tzinfo is stripped from created_at deliberately. A SQLAlchemy `DateTime` column on SQLite
+    is timezone-naive, and handing it an aware datetime round-trips an offset suffix that the
+    SQLite date processor then fails to parse on read. Storing naive UTC also keeps the value
+    comparable for L3-004's "most recently created first" ordering without mixing aware and naive
+    values.
+    </requirement>
+
+    <requirement id="5">
+    Pass `payload.title` through unchanged. When the client omitted the title, `payload.title`
+    is already `None` and must be stored as SQL NULL and reported as JSON `null` - do not
+    substitute an empty string, and do not derive a title from the url or by fetching the page.
+    </requirement>
+
+    <requirement id="6">
+    Write NO validation code in the handler. Do not check that url is present, non-empty or
+    well-formed - LinkCreate already does all of it, and duplicating the check in the handler
+    would produce a 400 or 500 for a case the criteria require to be a 422.
+    </requirement>
+
+    <requirement id="7">
+    DUPLICATE URLS ARE ALLOWED. Do not query for an existing row with the same url, and do not
+    return 409. Posting the same url twice must create two rows with two different ids. This
+    comes from save-link's notes/considerations block - deduplication needs a rule for what to do
+    with the existing record's tags and timestamp, and that decision is out of scope. It is an
+    implementation constraint, not an acceptance criterion.
+    </requirement>
+
+    <requirement id="8">
+    Add ONLY the POST handler to app/api/links.py. GET /links is L3-004 and
+    POST /links/{link_id}/tags is L3-006; both reopen this same file afterwards. Do not
+    anticipate them. Do not modify app/main.py - the router object is already included there, so
+    a route registered on it is served automatically.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    <test id="1">
+    Test-first. Write every test below into `tests/test_save_link.py` BEFORE adding the handler
+    to app/api/links.py, run `pytest tests/test_save_link.py` and watch all five fail, then add
+    the handler until they pass. Runner: pytest.
+
+    Note the ordering conflict recorded at the top of the dependencies section: in the declared
+    layer order these tests fail on a missing `tests/conftest.py` and a missing
+    `app/models/link.py` rather than on the missing handler, and they cannot go green until
+    layer 4 is merged. Write them against the contracts as given regardless; do not weaken an
+    assertion to make it pass without layer 4.
+
+    Imports for the file:
+
+        from datetime import datetime
+        from sqlalchemy import func, select
+        from app.models.link import Link
+
+    Every test below takes the `client` fixture, and every test also takes the `db_session`
+    fixture. Both come from tests/conftest.py (L4-004) - do not define them in this file and do
+    not construct a TestClient directly here, because these tests must query the same database
+    the request wrote to.
+    </test>
+
+    <test id="2" covers="1">
+    Test: test_post_link_with_url_and_title_returns_201_and_the_stored_record
+    - `response = client.post("/links", json={"url": "https://example.com/article",
+      "title": "An article"})`
+    - Assert `response.status_code == 201`
+    - `body = response.json()`
+    - Assert `isinstance(body["id"], int)` and `body["id"] > 0`
+    - Assert `body["url"] == "https://example.com/article"` (the submitted url, byte for byte -
+      no trailing slash added, no normalisation)
+    - Assert `body["title"] == "An article"`
+    - Assert `body["created_at"] is not None` and that
+      `datetime.fromisoformat(body["created_at"])` parses without raising
+    - Assert the row was really stored:
+      `db_session.execute(select(func.count()).select_from(Link)).scalar_one() == 1`
+    </test>
+
+    <test id="3" covers="2">
+    Test: test_post_link_with_no_title_stores_null_and_returns_201
+    - `response = client.post("/links", json={"url": "https://example.com/untitled"})`
+    - Assert `response.status_code == 201`
+    - `body = response.json()`
+    - Assert `"title" in body` - the key must be PRESENT, not omitted
+    - Assert `body["title"] is None`
+    - Assert `body["url"] == "https://example.com/untitled"`
+    - Assert the stored row's title is SQL NULL:
+      `stored = db_session.execute(select(Link)).scalar_one()`, then
+      `assert stored.title is None`
+    </test>
+
+    <test id="4" covers="3">
+    Test: test_post_link_with_no_url_returns_422_and_stores_nothing
+    - `response = client.post("/links", json={})`
+    - Assert `response.status_code == 422`
+    - `response = client.post("/links", json={"title": "A title but no url"})`
+    - Assert `response.status_code == 422`
+    - Assert nothing was stored by EITHER request:
+      `assert db_session.execute(select(func.count()).select_from(Link)).scalar_one() == 0`
+    - The row count is the load-bearing half of this test. A 422 alone does not satisfy the
+      criterion, which says "return 422 AND store nothing".
+    </test>
+
+    <test id="5" covers="4">
+    Test: test_post_link_with_a_non_absolute_http_url_returns_422_and_stores_nothing
+    - For each of these values, post `{"url": value, "title": "Should not be stored"}` and
+      assert the response status is 422:
+        "not-a-url"
+        "/relative/path"
+        "example.com"
+        "ftp://example.com/file.txt"
+        "javascript:alert(1)"
+        ""
+    - After the loop, assert nothing was stored by any of them:
+      `assert db_session.execute(select(func.count()).select_from(Link)).scalar_one() == 0`
+    - As above, the row count is the load-bearing half: the criterion requires 422 AND that
+      nothing is stored.
+    </test>
+
+    <test id="6">
+    Test: test_posting_the_same_url_twice_creates_two_rows
+    - Post `{"url": "https://example.com/same"}` twice
+    - Assert both responses have status 201
+    - Assert the two response bodies have different `id` values
+    - Assert `db_session.execute(select(func.count()).select_from(Link)).scalar_one() == 2`
+    - This test cites no acceptance criterion. It asserts requirement 7, which comes from
+      save-link's notes/considerations block and is deliberately NOT an acceptance criterion.
+      Recorded here as a requirement test rather than attributed to a criterion it does not
+      come from.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>app/api/links.py</file>
+    <file>tests/test_save_link.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `pytest tests/test_save_link.py -v` - all 5 test functions pass. This requires app/db.py (L4-001), app/models/link.py (L4-002) and tests/conftest.py (L4-004) to be present; in the declared layer order they are not, so this step cannot pass until layer 4 is merged. See the ordering note at the top of the dependencies section, and ordering conflicts OC-001 and OC-002 in the layer plan.</step>
+    <step>Run: `pytest tests/test_app_smoke.py tests/test_link_schemas.py -v` - the L3-001 and L3-002 tests still pass, proving this task did not break the app object or the schemas. BLOCKED IN THE DECLARED ORDER, in half: requirement 2 adds `from app.db import get_db` to app/api/links.py, and app/main.py does `from app.api import links`, so `from app.main import app` in tests/test_app_smoke.py now raises ImportError at COLLECTION time while app/db.py (L4-001) is absent. The tests/test_link_schemas.py half still passes on its own - it imports only app.schemas.link - so until layer 4 is merged this step can only be run as `pytest tests/test_link_schemas.py -v`. Run it whole once L4-001 exists.</step>
+    <step>Run: `python -c "from app.main import app; print(sorted((r.path, tuple(sorted(r.methods))) for r in app.routes if r.path == '/links'))"` - must print exactly `[('/links', ('POST',))]`, proving the route is registered at the un-prefixed path with the POST method only. BLOCKED IN THE DECLARED ORDER, by the same import chain as the step above: app.main imports app.api.links, which now imports app.db, which L4-001 has not yet created, so this command raises ImportError rather than printing. It cannot pass until layer 4 is merged.</step>
+    <step>Verify: `app/api/links.py` contains no occurrence of the string `/api/` and no `prefix=` argument on the APIRouter constructor</step>
+  </verification>
+
+  <exports>
+    <interface name="create_link" type="fastapi-route-handler">
+    # app/api/links.py
+    from datetime import datetime, timezone
+    from fastapi import Depends, status
+    from sqlalchemy.orm import Session
+    from app.db import get_db
+    from app.models.link import Link
+    from app.schemas.link import LinkCreate, LinkRead
+
+    @router.post("/links", response_model=LinkRead,
+                 status_code=status.HTTP_201_CREATED)
+    def create_link(payload: LinkCreate,
+                    db: Session = Depends(get_db)) -> Link: ...
+
+    # POST /links
+    #   201 -> LinkRead {id: int, url: str, title: str | null, created_at: datetime}
+    #   422 -> raised by LinkCreate before the handler runs; nothing is stored
+    #
+    # created_at is stored as NAIVE UTC (tzinfo stripped), so L3-004 can order by it
+    # directly with `order_by(Link.created_at.desc())` without mixing aware and naive
+    # values.
+    #
+    # Duplicate urls are permitted: two POSTs of the same url create two rows.
+    #
+    # For L3-004 and L3-006, which reopen this file: the module now imports
+    # get_db, Link, LinkCreate, LinkRead, Session, Depends, status and datetime/timezone.
+    # Add to those imports rather than replacing them, and leave create_link untouched.
+    </interface>
+  </exports>
+</task>

@@ -1,0 +1,574 @@
+<task>
+  <meta>
+    <id>L4-004</id>
+    <name>Create pytest fixtures for database and TestClient</name>
+    <layer>4-foundation</layer>
+    <priority>4</priority>
+    <estimated-files>1</estimated-files>
+
+    <!--
+      This task asserts NO acceptance criterion, and satisfies-criteria is therefore empty on
+      every source-feature below. It creates tests/conftest.py: a per-test database, a session
+      and a TestClient with get_db overridden. Test infrastructure asserts no product behaviour,
+      so there is no criterion it could honestly claim. Claiming one would tell the coverage
+      report that a fixture had verified a behaviour it never exercises - the same reasoning
+      recorded on L3-002 and L4-001.
+
+      THREE source-features are named, not one. layer_plan.json OC-002 lists L3-002, L3-003,
+      L3-004 and L3-006 as depending on these fixtures, and those tasks belong to all three
+      features. The fixtures serve them equally: no feature owns this task and none is closer to
+      it than the others. Narrowing to a single feature would be a false claim that this work
+      belongs to that feature alone.
+
+      No &lt;from-feature&gt; wrapper appears in &lt;acceptance-criteria&gt; below, and no <test> carries a
+      from-feature attribute, because no criterion is carried and no test cites one. The
+      qualification rule for multi-feature tasks exists to disambiguate criterion ids that
+      repeat across features; with zero criteria carried there is nothing to disambiguate.
+
+      requirement-level is OMITTED on all three, not set. The spec defines it as the highest
+      among the ids named here, and no id is named, so there is nothing to derive it from.
+      Substituting the feature's own highest criterion priority would be a different rule
+      silently wearing the same attribute name, and unlike an empty satisfies-criteria the
+      value does propagate: it reaches the manifest, feeds the strongest-wins computation and
+      is read by the requirement-level filter, so an invented P0 would misreport this task's
+      obligation. build-manifest.py handles the absence cleanly. This matches L3-002, L3-005
+      and L4-001, which carry no criteria and therefore carry no level.
+    -->
+    <source-feature slug="save-link"  moscow="must-have"  satisfies-criteria=""/>
+    <source-feature slug="list-links" moscow="must-have"  satisfies-criteria=""/>
+    <source-feature slug="tag-links"  moscow="should-have" satisfies-criteria=""/>
+  </meta>
+
+  <context>
+    <acceptance-criteria>
+    <!--
+      No criterion is carried. See the note on &lt;source-feature&gt; above: this task builds test
+      infrastructure and asserts no behaviour any criterion describes. The criteria of all three
+      features are carried by the tasks that implement them - L3-001, L3-003 and L4-002
+      (save-link), L3-004 (list-links), L3-004, L3-006 and L4-003 (tag-links).
+    -->
+    </acceptance-criteria>
+
+    <prd-excerpt>
+    Link Shelf is a local, single-user link store: no authentication, no multi-tenancy, no
+    sharing.
+
+    From the PRD's tech-stack rationale, which is the direct reason this task exists and why the
+    fixtures are shaped the way they are:
+
+      "SQLite rather than PostgreSQL so the whole project runs with no external service: a
+      fixture that needs a database server running is a fixture that fails for reasons unrelated
+      to what is being tested."
+
+    Every backend task in this project writes tests against these fixtures. layer_plan.json
+    OC-002 names them: L3-002 (app smoke), L3-003 (POST /links), L3-004 (GET /links and the tag
+    filter) and L3-006 (POST /links/{link_id}/tags). The default test policy is TDD, so each of
+    those tasks writes a failing test BEFORE its implementation, and every one of those tests
+    needs a database and a client.
+
+    The two fixture names below are not free choices. tests/test_list_links.py (L3-004) is
+    already written and requests fixtures called `db_session` and `client` by those exact names.
+    Renaming either breaks tests this task must not edit.
+    </prd-excerpt>
+
+    <tech-stack>
+    Python 3.11, FastAPI 0.110+ (which brings starlette's TestClient), SQLAlchemy 2.x, SQLite
+    (file-backed, no server process), pytest 8.x, httpx (required at runtime by TestClient).
+    Backend only - no frontend, no container runtime.
+    </tech-stack>
+
+    <template-base>none - analysis.template.path is null. No tree is copied from anywhere.</template-base>
+
+    <project-structure>
+    Repository root (this is the worktree root; all commands below run from here):
+      .gitignore                  (exists - L0-001)
+      pyproject.toml              (exists - L0-003; sets testpaths = ["tests"])
+      architecture.md             (exists - pre-existing)
+      app/
+        __init__.py               (exists - L0-001)
+        db.py                     (exists - L4-001; Base, engine, SessionLocal, get_db, init_db)
+        main.py                   (exists - L3-002; provides the FastAPI instance `app`)
+        api/
+          links.py                (exists - L3-002 and later)
+        models/
+          __init__.py             (exists - L4-003; exports Link, LinkTag, Tag)
+          link.py                 (exists - L4-002)
+          tag.py                  (exists - L4-003)
+          link_tag.py             (exists - L4-003)
+        schemas/
+          link.py                 (exists - L3-001)
+          tag.py                  (exists - L3-005)
+      tests/
+        __init__.py               (exists - L0-001)
+        conftest.py               (THIS TASK CREATES THIS FILE)
+        test_fixtures.py          (THIS TASK CREATES THIS FILE)
+        test_db.py                (exists - L4-001; builds its own engine, does not use these fixtures)
+        test_link_model.py        (exists - L4-002; builds its own engine, does not use these fixtures)
+        test_tag_models.py        (exists - L4-003; builds its own engine, does not use these fixtures)
+        test_app_smoke.py         (exists - L3-002)
+        test_save_link.py         (exists - L3-003)
+        test_list_links.py        (exists - L3-004; REQUESTS `db_session` and `client`)
+        test_tag_links.py         (exists - L3-006; REQUESTS `db_session` and `client`)
+
+    conftest.py sits at tests/, not at the repository root, so its fixtures are visible to every
+    module under tests/ and to nothing else.
+
+    Environment note, carried from L0-004's exports: `.venv/` is gitignored and does NOT travel
+    with the merge into this worktree. If absent, re-create it with `python -m venv .venv`,
+    `.venv\Scripts\python.exe -m pip install --upgrade pip`,
+    `.venv\Scripts\python.exe -m pip install -e .`. httpx must be importable, or
+    `from fastapi.testclient import TestClient` fails at import and takes the whole suite with
+    it.
+
+    IMPORT-FAILURE WARNING, specific to this task. tests/conftest.py is imported by pytest
+    before ANY test module in tests/. If it raises at import - a missing app.main, a missing
+    model, a typo - pytest reports a collection error for the ENTIRE suite, not a failure in one
+    file. When debugging this task, run `python -c "import tests.conftest"` first: it isolates
+    an import problem from a fixture problem.
+
+    Ordering note, recorded not repaired: architecture.md declares layer 4 (foundation) as
+    depending on layer 3 (backend), so layer 3 ran first - layer_plan.json OC-001 and OC-002,
+    verdict NOT BUILDABLE AS DECLARED. Layer 3 already consumes this task's exports, so the
+    declared execution order is inverted. Do not reorder anything. Two consequences for this
+    task specifically:
+      1. app/main.py ALREADY EXISTS in this worktree, merged from layer 3. That is what makes
+         `from app.main import app` importable here. See the dependency block below.
+      2. tests/test_list_links.py and tests/test_save_link.py have been failing for want of
+         these fixtures. This is the task that ends OC-002. Running the full suite afterwards
+         may turn a large number of layer-3 tests green at once. Do NOT edit any layer-3 test to
+         help it along - if one still fails, report it.
+    </project-structure>
+  </context>
+
+  <dependencies>
+    <interface name="Base" type="sqlalchemy-declarative-base">
+    # from app/db.py, created by L4-001
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(DeclarativeBase):
+        """Declarative base for every Link Shelf model."""
+
+    # Base.metadata carries links, tags and link_tags once app.models has been imported.
+    # `Base.metadata.create_all(bind=engine)` is how the per-test schema is built.
+    </interface>
+
+    <interface name="get_db" type="fastapi-dependency">
+    # from app/db.py, created by L4-001
+    from collections.abc import Generator
+    from sqlalchemy.orm import Session
+
+    def get_db() -> Generator[Session, None, None]:
+        """Yield a SQLAlchemy session. Closes on request completion."""
+        ...
+
+    # This exact function object is the KEY in app.dependency_overrides. Import it from app.db;
+    # a re-declared copy is a different object and the override silently never applies, leaving
+    # tests writing to the real link_shelf.db.
+    </interface>
+
+    <interface name="sqlite-foreign-keys" type="engine-configuration">
+    # from app/db.py, created by L4-001
+    @event.listens_for(Engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record): ...
+        # cursor.execute("PRAGMA foreign_keys=ON")
+
+    # Registered on the Engine CLASS, so the per-test engine this conftest creates enforces
+    # foreign keys automatically once app.db has been imported - which it is, for Base and
+    # get_db. DO NOT register a second pragma listener in conftest.py; it is already handled.
+    </interface>
+
+    <interface name="app.models" type="python-package">
+    # app/models/__init__.py, created by L4-002 and completed by L4-003
+    from app.models.link import Link
+    from app.models.link_tag import LinkTag
+    from app.models.tag import Tag
+
+    __all__ = ["Link", "LinkTag", "Tag"]
+
+    # `import app.models` registers all three tables on Base.metadata. Without it,
+    # Base.metadata.create_all creates NOTHING and every test fails with "no such table: links".
+    </interface>
+
+    <interface name="app" type="fastapi-application">
+    # from app/main.py, created by L3-002 in the layer the DECLARED graph runs BEFORE this one,
+    # so this module is already present in this worktree.
+    from fastapi import FastAPI
+
+    app: FastAPI   # title="Link Shelf"; the links router is already included
+
+    # Import path: app.main:app
+    #
+    # NOTE ON THIS EDGE: layer_plan.json does not record L4-004 -> L3-002 in depends_on, because
+    # its dependency_graph deliberately records only edges the declared layer graph can satisfy.
+    # This one it CAN satisfy: the declared graph runs 3-backend before 4-foundation, so
+    # app/main.py is on the base branch this worktree was cut from. The edge is real and is
+    # noted here rather than left implicit.
+    #
+    # Import it under an alias - `from app.main import app as fastapi_app` - because this
+    # project also has a package called `app`. Binding the FastAPI instance to the bare name
+    # `app` in conftest.py shadows the package and breaks `app.models` lookups in the same file.
+    </interface>
+
+    <interface name="python-environment" type="toolchain">
+    Provided by L0-004. fastapi, sqlalchemy and httpx all import. httpx is what makes
+    `from fastapi.testclient import TestClient` work; it is already declared in pyproject.toml
+    and must not be added again.
+    </interface>
+  </dependencies>
+
+  <objective>
+  Create tests/conftest.py providing two fixtures - `db_session`, a SQLAlchemy session against a
+  fresh empty SQLite database created per test, and `client`, a TestClient for the FastAPI app
+  with get_db overridden to yield that same session - so that every backend test runs against an
+  isolated database and never touches the real link_shelf.db.
+  </objective>
+
+  <requirements>
+    <requirement id="1">
+    Create file `tests/conftest.py` with exactly these imports:
+
+        from collections.abc import Generator
+
+        import pytest
+        from fastapi.testclient import TestClient
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session, sessionmaker
+
+        import app.models  # noqa: F401 - registers Link, Tag and LinkTag on Base.metadata
+        from app.db import Base, get_db
+        from app.main import app as fastapi_app
+
+    The `import app.models` line is required and is not decoration: without it
+    `Base.metadata.create_all` creates no tables and every test fails with "no such table:
+    links". Keep the `# noqa: F401` comment so a later reader does not delete it as unused.
+
+    The `as fastapi_app` alias is required: the project has a package named `app`, and binding
+    the FastAPI instance to the bare name would shadow it.
+    </requirement>
+
+    <requirement id="2">
+    Define the `db_session` fixture. It MUST be named exactly `db_session` -
+    tests/test_list_links.py and tests/test_tag_links.py request it by that name:
+
+        @pytest.fixture(name="db_session")
+        def db_session_fixture(tmp_path) -> Generator[Session, None, None]:
+            engine = create_engine(
+                f"sqlite:///{tmp_path / 'test.db'}",
+                connect_args={"check_same_thread": False},
+            )
+            Base.metadata.create_all(bind=engine)
+            factory = sessionmaker(
+                bind=engine, autoflush=False, autocommit=False, expire_on_commit=False,
+            )
+            session = factory()
+            try:
+                yield session
+            finally:
+                session.close()
+                engine.dispose()
+
+    Points that are load-bearing rather than stylistic:
+
+    - `tmp_path` is pytest's built-in per-test temporary directory fixture. Using it is what
+      makes each test get its OWN database file, so no test can see another's rows. Do not use a
+      module-scoped or session-scoped path, and do not add `scope=` to this fixture - the
+      default function scope is the isolation.
+    - A file-backed database under tmp_path, NOT `sqlite:///:memory:`. An in-memory SQLite
+      database is per-connection, so the session and the TestClient request could end up looking
+      at two different empty databases. A file avoids that entirely and needs no StaticPool
+      juggling.
+    - `expire_on_commit=False` must match app/db.py's SessionLocal. With the SQLAlchemy default
+      of True, a test that commits a Link via db_session and then reads `link.id` triggers a
+      refresh, and the failure looks like a handler bug rather than a fixture setting.
+    - `connect_args={"check_same_thread": False}` is required because TestClient runs the app on
+      a different thread from the test function, and both use this session.
+    - `engine.dispose()` in the `finally` releases the file handle. Without it, Windows may
+      refuse to remove tmp_path.
+    - Do NOT register a `PRAGMA foreign_keys` listener here. app/db.py registers one on the
+      Engine class, which covers this engine too.
+    </requirement>
+
+    <requirement id="3">
+    Define the `client` fixture. It MUST be named exactly `client`:
+
+        @pytest.fixture(name="client")
+        def client_fixture(db_session: Session) -> Generator[TestClient, None, None]:
+            def override_get_db() -> Generator[Session, None, None]:
+                yield db_session
+
+            fastapi_app.dependency_overrides[get_db] = override_get_db
+            try:
+                with TestClient(fastapi_app) as test_client:
+                    yield test_client
+            finally:
+                fastapi_app.dependency_overrides.pop(get_db, None)
+
+    Points that are load-bearing:
+
+    - It takes `db_session` as an argument. That is what makes the client and the test share ONE
+      session, so rows a test adds through db_session are visible to a request the client makes,
+      and vice versa. Creating a second session here would give the test and the app two
+      different views of the same file.
+    - `override_get_db` must NOT close the session. Closing is db_session's job in its own
+      teardown; closing here would shut the session after the first request and break any test
+      that makes two.
+    - Use `.pop(get_db, None)` in a `finally`, NOT `.clear()`. tests/test_list_links.py installs
+      its own temporary override of `get_db` to exercise the read-failure branch of
+      list-links#4; `.clear()` would also discard overrides a test is managing itself. The
+      `finally` guarantees cleanup even when a test raises, so no override leaks into the next
+      test.
+    - `with TestClient(...)` rather than a bare constructor: the context manager runs the app's
+      startup and shutdown events, which is what a real server does.
+    </requirement>
+
+    <requirement id="4">
+    Define NO other fixture in this file. In particular do not add an `engine` fixture, a
+    `tmp_db_path` fixture, autouse fixtures, or `pytest_configure` / `pytest_collection_modifyitems`
+    hooks. Nothing in this plan asks for them, and an autouse fixture in conftest.py changes the
+    behaviour of every test module in the project including the layer-3 ones this task must not
+    disturb.
+    </requirement>
+
+    <requirement id="5">
+    The fixtures must never touch the real database. `app.db.DATABASE_PATH`
+    (&lt;repository root&gt;/link_shelf.db) must not be read, written, created or deleted by
+    anything in this file. Do not import `engine`, `SessionLocal` or `init_db` from app.db - only
+    `Base` and `get_db` are needed, and importing the others invites accidental use.
+    </requirement>
+
+    <requirement id="6">
+    Do NOT modify any existing file. Not app/db.py, not app/main.py, not any model, and above
+    all not tests/test_list_links.py, tests/test_save_link.py, tests/test_app_smoke.py or
+    tests/test_tag_links.py. If a layer-3 test fails once these fixtures exist, that is a finding
+    to report against that task, not a test to rewrite here.
+    </requirement>
+  </requirements>
+
+  <test-requirements>
+    Test policy: TDD, runner pytest. Write tests/test_fixtures.py first, watch each assertion
+    fail against the absent conftest, then write tests/conftest.py until they pass. The fixtures
+    are the artefact under test here.
+
+    <test id="1">
+    Create test file: `tests/test_fixtures.py`. This file tests the fixtures themselves, so it
+    requests them by name like any other test module:
+
+        import pathlib
+
+        from fastapi.testclient import TestClient
+        from sqlalchemy import func, inspect, select, text
+        from sqlalchemy.orm import Session
+
+        import app.db
+        from app.db import get_db
+        from app.main import app as fastapi_app
+        from app.models import Link, LinkTag, Tag
+
+    Every test below cites NO acceptance criterion. No criterion in this PRD describes test
+    infrastructure - see the note on &lt;source-feature&gt;.
+    </test>
+
+    <test id="2">
+    Test: test_db_session_is_a_session_against_a_schema_with_all_three_tables
+    - Signature: `def test_...(db_session: Session)`
+    - Assert `isinstance(db_session, Session)`
+    - `tables = set(inspect(db_session.get_bind()).get_table_names())`
+    - Assert `tables == {"links", "tags", "link_tags"}` - exactly the three declared tables,
+      proving `import app.models` in requirement 1 registered all of them
+    - Assert `db_session.get_bind().url.database.endswith("test.db")` - a temp file, not the
+      real database
+    - Asserts requirements 1 and 2.
+    </test>
+
+    <test id="3">
+    Test: test_db_session_starts_empty_and_accepts_writes
+    - Signature: `def test_...(db_session: Session)`
+    - Assert `db_session.scalar(select(func.count()).select_from(Link)) == 0`
+    - `db_session.add(Link(url="https://example.com/leak-probe", title="probe"))`
+    - `db_session.commit()`
+    - Assert `db_session.scalar(select(func.count()).select_from(Link)) == 1`
+    - Asserts requirement 2. This test deliberately leaves a row behind; test 4 proves it did
+      not survive.
+    </test>
+
+    <test id="4">
+    Test: test_db_session_is_isolated_from_the_previous_test
+    - Signature: `def test_...(db_session: Session)`
+    - Assert `db_session.scalar(select(func.count()).select_from(Link)) == 0`
+    - Assert `db_session.scalar(select(select(Link.url).where(
+      Link.url == "https://example.com/leak-probe").exists())) is False`
+    - This is the isolation guarantee, and it only means something because test 3 ran first and
+      committed a row. Keep these two tests adjacent and in this order in the file. If this test
+      fails, the `tmp_path` per-test database of requirement 2 has been replaced with a shared
+      one.
+    - Asserts requirement 2.
+    </test>
+
+    <test id="5">
+    Test: test_db_session_enforces_foreign_keys
+    - Signature: `def test_...(db_session: Session)`
+    - Assert `db_session.execute(text("PRAGMA foreign_keys")).scalar() == 1`
+    - Also assert the constraint actually bites: `db_session.add(LinkTag(link_id=999,
+      tag_id=999))`, then `with pytest.raises(IntegrityError): db_session.commit()`, then
+      `db_session.rollback()`
+    - This proves the per-test engine inherited app/db.py's Engine-class pragma listener, which
+      is why requirement 2 forbids registering a second one. Without it, L3-006's tests for
+      tag-links#4 would pass against a database that silently permits orphan join rows.
+    - Add `import pytest` and `from sqlalchemy.exc import IntegrityError` to this module.
+    - Asserts requirement 2.
+    </test>
+
+    <test id="6">
+    Test: test_client_is_a_testclient_that_serves_the_app
+    - Signature: `def test_...(client: TestClient)`
+    - Assert `isinstance(client, TestClient)`
+    - `response = client.get("/openapi.json")`
+    - Assert `response.status_code == 200`
+    - Assert `response.json()["info"]["title"] == "Link Shelf"` - the client is bound to
+      app.main:app and not to some other application
+    - This assertion is deliberately endpoint-agnostic: /openapi.json is served by FastAPI
+      itself, so this test proves the fixture works without depending on L3-003's or L3-004's
+      handlers being correct.
+    - Asserts requirement 3.
+    </test>
+
+    <test id="7">
+    Test: test_client_overrides_get_db_with_the_test_session
+    - Signature: `def test_...(client: TestClient, db_session: Session)`
+    - Assert `get_db in fastapi_app.dependency_overrides`
+    - `override = fastapi_app.dependency_overrides[get_db]`
+    - Assert `next(override()) is db_session` - the override yields the SAME session object the
+      test holds, which is what makes rows added through db_session visible to a request
+    - Asserts requirement 3. This is the assertion that would catch a re-declared `get_db`: the
+      override would be registered under a different key and this lookup would raise KeyError.
+    </test>
+
+    <test id="8">
+    Test: test_client_never_points_at_the_real_database
+    - Signature: `def test_...(client: TestClient, db_session: Session)`
+    - Assert `str(db_session.get_bind().url) != app.db.DATABASE_URL`
+    - Assert `pathlib.Path(db_session.get_bind().url.database).resolve()
+      != app.db.DATABASE_PATH.resolve()`
+    - `src = pathlib.Path("tests/conftest.py").read_text()`
+    - Assert `"DATABASE_PATH" not in src`
+    - Assert `"init_db" not in src`
+    - Assert `"SessionLocal" not in src`
+    - Assert `"from app.db import Base, get_db" in src` - only those two names are imported from
+      app.db, so the module-level engine can never be reached by accident
+    - Asserts requirements 3 and 5.
+    </test>
+
+    <test id="9">
+    Test: test_the_override_is_removed_after_the_client_fixture_tears_down
+    - Signature: `def test_...()` - this test requests NEITHER fixture
+    - Assert `get_db not in fastapi_app.dependency_overrides`
+    - Place this test LAST in the file, after the tests that use `client`. It proves the
+      `finally: dependency_overrides.pop(...)` of requirement 3 ran, so no override leaks into a
+      later test module - which would otherwise make tests/test_list_links.py read from a
+      database belonging to a test that has already finished.
+    - Asserts requirement 3.
+    </test>
+
+    <test id="10">
+    Test: test_conftest_declares_only_the_two_agreed_fixtures
+    - `src = pathlib.Path("tests/conftest.py").read_text()`
+    - Assert `src.count("@pytest.fixture") == 2` - exactly two fixtures
+    - Assert `'name="db_session"' in src` and `'name="client"' in src` - the two names
+      tests/test_list_links.py and tests/test_tag_links.py request
+    - Assert `"autouse" not in src` and `"pytest_configure" not in src` and
+      `"pytest_collection_modifyitems" not in src`
+    - Assert `"memory" not in src` - the fixture uses a tmp_path file, not :memory:
+    - Asserts requirements 2, 3 and 4.
+    </test>
+  </test-requirements>
+
+  <files-to-create>
+    <file>tests/conftest.py</file>
+    <file>tests/test_fixtures.py</file>
+  </files-to-create>
+
+  <verification>
+    <step>Run: `python -c "import tests.conftest; print('conftest imports cleanly')"` - must print `conftest imports cleanly`. Run this FIRST: a conftest that raises at import produces a collection error for the whole suite rather than a single test failure</step>
+    <step>Run: `python -c "import pathlib; src = pathlib.Path('tests/conftest.py').read_text(); assert src.count('@pytest.fixture') == 2; assert 'name=\"db_session\"' in src; assert 'name=\"client\"' in src; print('two fixtures, correct names')"` - must print `two fixtures, correct names`</step>
+    <step>Run: `python -c "import pathlib; src = pathlib.Path('tests/conftest.py').read_text(); assert 'DATABASE_PATH' not in src; assert 'init_db' not in src; assert 'SessionLocal' not in src; assert 'memory' not in src; assert 'autouse' not in src; print('isolation constraints OK')"` - must print `isolation constraints OK`, proving requirements 4 and 5</step>
+    <step>Run: `pytest tests/test_fixtures.py -v` - all 9 test functions pass</step>
+    <step>Run: `pytest tests/test_db.py tests/test_link_model.py tests/test_tag_models.py -v` - L4-001, L4-002 and L4-003 still pass, proving the new conftest did not disturb the layer-4 test modules that build their own engines</step>
+    <step>Run: `pytest tests/ -v` - report the full result. This is the task that resolves layer_plan.json OC-002, so layer-3 modules that were erroring on the missing `db_session` and `client` fixtures should now collect and run. Report any that still fail as a finding against the owning layer-3 task; do NOT edit a layer-3 test</step>
+    <step>Run, AFTER the full suite: `python -c "import app.db, sqlalchemy as sa; i = sa.inspect(app.db.engine); names = i.get_table_names(); rows = {t: app.db.engine.connect().execute(sa.text('SELECT COUNT(*) FROM ' + t)).scalar() for t in names}; print(rows); assert all(n == 0 for n in rows.values()), rows"` - every table in the real link_shelf.db must have ZERO rows, proving no test wrote to it. The tables themselves may exist: L4-001's `test_init_db_creates_the_database_and_is_idempotent` calls `init_db()` against the real engine, and now that app.models exports all three models that call legitimately creates links, tags and link_tags. Empty tables are correct; any row is a fixture bypassing the get_db override</step>
+  </verification>
+
+  <exports>
+    <interface name="db_session" type="pytest-fixture">
+    # tests/conftest.py
+    from sqlalchemy.orm import Session
+
+    @pytest.fixture(name="db_session")
+    def db_session_fixture(tmp_path) -> Generator[Session, None, None]:
+        """Per-test SQLite session against a fresh, empty database."""
+
+    # Function-scoped. Every test gets its own SQLite file under pytest's tmp_path, so no test
+    # can see rows another test wrote.
+    #
+    # Schema: links, tags and link_tags, all created by Base.metadata.create_all.
+    # Foreign keys ARE enforced (app/db.py's Engine-class PRAGMA listener applies).
+    # expire_on_commit=False, matching app/db.py's SessionLocal, so attributes stay readable
+    # after commit.
+    #
+    # Usage:
+    #     def test_something(db_session: Session):
+    #         db_session.add(Link(url="https://example.com/a", title="A",
+    #                             created_at=datetime(2026, 1, 1, 12, 0, 0)))
+    #         db_session.commit()
+    #
+    # created_at is naive (tzinfo None) - pass naive datetimes.
+    </interface>
+
+    <interface name="client" type="pytest-fixture">
+    # tests/conftest.py
+    from fastapi.testclient import TestClient
+
+    @pytest.fixture(name="client")
+    def client_fixture(db_session: Session) -> Generator[TestClient, None, None]:
+        """TestClient for app.main:app, with get_db overridden to use db_session,
+        so tests never touch the real database file. Shares the db_session
+        transaction, so rows added via db_session are visible to requests."""
+
+    # Depends on db_session, so requesting `client` alone still gets an isolated database.
+    # Request BOTH when a test needs to seed rows and then call the API:
+    #     def test_listing(client: TestClient, db_session: Session):
+    #         db_session.add(Link(url="https://example.com/a")); db_session.commit()
+    #         assert client.get("/links").status_code == 200
+    #
+    # The override is installed as app.dependency_overrides[get_db] and REMOVED in a finally
+    # block on teardown, so it never leaks into the next test.
+    #
+    # A test may install its own temporary override on top - tests/test_list_links.py does
+    # exactly this to exercise the read-failure branch of list-links#4:
+    #     fastapi_app.dependency_overrides[get_db] = lambda: _FailingSession()
+    #     ...
+    #     fastapi_app.dependency_overrides.pop(get_db, None)
+    # The fixture uses .pop() rather than .clear() precisely so that pattern keeps working.
+    </interface>
+
+    <interface name="test-suite-state" type="project-state">
+    After this task, the project's full test surface is in place:
+
+        tests/conftest.py           db_session, client                        (L4-004)
+        tests/test_db.py            base, engine, session factory, get_db     (L4-001)
+        tests/test_link_model.py    Link                                      (L4-002)
+        tests/test_tag_models.py    Tag, LinkTag                              (L4-003)
+        tests/test_fixtures.py      the two fixtures above                    (L4-004)
+        tests/test_app_smoke.py     app object and router                     (L3-002)
+        tests/test_save_link.py     POST /links                               (L3-003)
+        tests/test_list_links.py    GET /links and the tag filter             (L3-004)
+        tests/test_tag_links.py     POST /links/{link_id}/tags                (L3-006)
+
+    `pytest tests/ -v` is the whole-project check. Exit code 5 (no tests collected) at this
+    point would indicate a conftest import error, not an empty suite.
+
+    Carried forward unresolved: tag-links gap 1 - "Whether a tag with no remaining links is
+    deleted or kept is undecided" - remains blocking and unanswered. It affects L4-003 and
+    L3-006 and is not resolved by anything in this task.
+    </interface>
+  </exports>
+</task>
