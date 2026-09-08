@@ -343,12 +343,64 @@ def baseline(prd_dir):
     return 0
 
 
+# What a PERSON must supply, with the citation that makes each one a judgement rather than my
+# opinion. Item 21 asks for the authoring time "and where the time goes"; the stopwatch needs a
+# person, and this is the half that does not.
+#
+# A judgement here is something the schema forbids a machine to derive. That is a stricter test
+# than "a field an author fills in": `<slug>` is authored and mechanical, `pattern` is authored
+# and forbidden. Only the second kind predicts how long an interview takes.
+AUTHOR_JUDGEMENTS = [
+    ("pattern=",                    r'<criterion[^>]*\spattern="',
+     "core section 2 -- assigned by a person, never derived"),
+    ("criterion priority=",         r'<criterion[^>]*\spriority="',
+     "core section 2 -- P0|P1|P2, the author's ranking"),
+    ("<user-story>",                r"<user-story>",
+     "prd-format -- required for `defined`; 44 of 64 corpus features named no user"),
+    ("<data-model>",                r"<data-model>",
+     "section 4.2 -- required for `defined`, and read by analyze-prd"),
+    ("<depends-on kind=>",          r'<depends-on[^>]*\skind="',
+     "item 27 -- data|runtime|reference, which a markdown link cannot express"),
+    ("<gap kind=>",                 r'<gap[^>]*\skind="',
+     "core section 6 -- five kinds, three of which stop a run"),
+    ("architecturally-significant", r'<architecturally-significant',
+     "item 35 -- a judgement, declared; screened but never applied by a script"),
+    ("<review by=>",                r'<review[^>]*\sby="',
+     "core section 7 -- nothing writes it automatically; somebody read the file"),
+]
+
+
+def decisions(prd_dir):
+    """Item 21's other half: how many judgements a person must make, not how long it takes.
+
+    THIS IS NOT THE STOPWATCH and does not stand in for it. It counts the decisions a template
+    demands that a machine is forbidden to make for you -- the thing that drives the stopwatch
+    and survives being measured by a script. Whoever takes the timing records it beside this.
+    """
+    features = sorted(glob.glob(os.path.join(prd_dir, "features", "*.md")))
+    texts = [open(f, encoding="utf-8", errors="replace").read() for f in features]
+    print(f"author judgements for {os.path.relpath(prd_dir, REPO)}, "
+          f"across {len(features)} feature(s)")
+    print(f"{'judgement':<30} {'count':>6}   why it is one")
+    total = 0
+    for label, pattern, why in AUTHOR_JUDGEMENTS:
+        n = sum(len(re.findall(pattern, t)) for t in texts)
+        total += n
+        print(f"{label:<30} {n:>6}   {why}")
+    print(f"{'TOTAL':<30} {total:>6}")
+    print("\nNot a timing. The stopwatch is a person authoring the same features under both "
+          "templates, and no script can take it -- see item 21's protocol.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--grade", metavar="TASKS_DIR")
     g.add_argument("--run", action="store_true")
     g.add_argument("--baseline", nargs="?", const=FIXTURE, metavar="PRD_DIR")
+    g.add_argument("--decisions", nargs="?", const=FIXTURE, metavar="PRD_DIR",
+                   help="author judgements per template -- item 21's other half")
     ap.add_argument("--model", default="sonnet")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--quiet", action="store_true")
@@ -361,6 +413,8 @@ def main():
         return grade(args.grade, quiet=args.quiet)
     if args.run:
         return run(args.model, args.timeout)
+    if args.decisions:
+        return decisions(args.decisions)
     return baseline(args.baseline)
 
 
