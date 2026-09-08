@@ -23,13 +23,19 @@ queue, so parallel tasks cannot conflict on merge.
 
 ```
 .claude-plugin/plugin.json   plugin manifest (name, version, author)
-skills/<name>/SKILL.md       14 skills, some with references/ and scripts/
-agents/*.md                  8 subagent definitions
+schema/                      the artefact schema both paths cite, and its scripts
+skills/<name>/SKILL.md       15 skills, most with references/ and scripts/
+agents/*.md                  10 subagent definitions
 commands/*.md                3 slash commands
-docs/skills/                 assessment and remediation notes
+docs/skills/                 the plan, the ledger, the reviews
 docs/skills/probes/          harness that measured the frontmatter behaviour
-tests/                       regression suite
+tests/                       regression suite, mutation harness, versioned fixtures
 ```
+
+`schema/` is the newest of these and the one that is easy to miss. `core.md` is the single
+definition of every element `/prd` and `/crd` share; `checks.md` says which script owns each
+assertion and who calls it; `readers.md` records every element with no reader and why. The
+regression suite reads all three, in both directions.
 
 ## Tests
 
@@ -48,8 +54,12 @@ check becomes a permanent guard. See [`tests/README.md`](tests/README.md).
 During development, load the plugin from a checkout:
 
 ```bash
-claude --plugin-dir /path/to/prd-claude-skills
+claude --plugin-dir /path/to/prd-claude-skills --add-dir /path/to/prd-claude-skills
 ```
+
+**Both flags, and they do different jobs.** `--plugin-dir` loads the plugin; `--add-dir` makes its
+bundled scripts readable. Without the second, `/breakdown` cannot run `resolve-output.sh`,
+`check-references.py` or `build-manifest.py`, and stops in Phase 1 — measured 2026-08-26.
 
 The skills, agents and commands then resolve without copying anything into the
 target project.

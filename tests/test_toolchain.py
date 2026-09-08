@@ -8994,6 +8994,213 @@ def _():
         f"so a lower count means this loop has stopped matching them")
 
 
+@check("the documents that describe the layout describe the one on disk -- by reading both",
+       finding="P50")
+def _():
+    """Item 72, finding V12/V13. Nine phases landed without touching a top-level document.
+
+    `ARCHITECTURE.md`, `README.md` and `CLAUDE.md` each enumerate or count the repository, and
+    each was written before `migrate/`, `prd-criteria-author` and `schema/` existed. The ledger
+    never mentions any of them -- not as done, not as deferred -- which is how a document that
+    onboards somebody ends up describing a smaller project than the one they cloned.
+
+    BOTH DIRECTIONS, for item 69's reason one level up. A document naming something that does not
+    exist sends a reader to a missing file; a document silently omitting something real is worse,
+    because there is nothing to look up and no way to notice. `execute-task` was the first kind
+    for nine phases and `schema/` was the second.
+    """
+    on_disk_skills = {d for d in os.listdir(SKILLS)
+                      if os.path.isfile(os.path.join(SKILLS, d, "SKILL.md"))}
+    on_disk_agents = {f[:-3] for f in os.listdir(AGENTS) if f.endswith(".md")}
+    assert len(on_disk_skills) > 10 and len(on_disk_agents) > 5, (
+        "the disk scan found almost nothing, so this check is measuring itself")
+
+    def enumerated(path, heading):
+        """Names inside the fenced block under `heading`. Scoped: the whole file would let any
+        passing mention satisfy a check about a structural listing."""
+        text = open(path, encoding="utf-8").read()
+        assert heading in text, f"{os.path.basename(path)} has no '{heading}' section"
+        after = text.split(heading, 1)[1]
+        blocks = re.findall(r"```[a-z]*\n(.*?)```", after, re.S)
+        assert blocks, f"{os.path.basename(path)}'s '{heading}' section has no fenced block"
+        return blocks[0]
+
+    for path, heading in ((os.path.join(REPO, "ARCHITECTURE.md"), "## File Structure"),
+                          (os.path.join(REPO, "CLAUDE.md"), "## Key Directories")):
+        name = os.path.basename(path)
+        block = enumerated(path, heading)
+
+        named = set(re.findall(r"\b([a-z0-9]+(?:-[a-z0-9]+)*)/\s", block))
+        ghosts = {n for n in named
+                  if n.endswith(("-prd", "-tasks", "-layers", "-batch", "-verify", "-merge",
+                                 "-layer", "-task", "-update", "-analysis", "-investigate"))
+                  and n not in on_disk_skills}
+        assert not ghosts, (
+            f"{name}'s {heading} lists skill directories that do not exist: {sorted(ghosts)}. "
+            f"A reader following one finds nothing, and `execute-task` was listed for nine "
+            f"phases after item 4.15 removed it")
+
+        missing = sorted(s for s in on_disk_skills if s + "/" not in block)
+        assert not missing, (
+            f"{name}'s {heading} omits skills that exist: {missing}. An omission is worse than a "
+            f"ghost -- there is nothing to look up and no way to notice")
+
+        # A LINE that starts with it, not a mention of it anywhere. `schema/checks.md` inside a
+        # comment about a different directory satisfied the looser form, so the check asserted a
+        # string rather than the shape it cared about -- two sites, and no single edit could
+        # break it. See the site-counting rule this ledger has confirmed five times.
+        assert re.search(r"^schema/", block, re.M), (
+            f"{name}'s {heading} does not list schema/ as a top-level directory. Item 44 made it "
+            f"the single definition of every element both paths share, and it went unlisted in "
+            f"both of these documents for four phases")
+
+        agents_missing = sorted(a for a in on_disk_agents if a not in block)
+        assert not agents_missing, (
+            f"{name}'s {heading} omits agents that exist: {agents_missing}")
+
+    # README states counts rather than enumerating, so the count is what can go wrong.
+    readme = open(os.path.join(REPO, "README.md"), encoding="utf-8").read()
+    for label, actual in (("skills", len(on_disk_skills)),
+                          ("subagent definitions", len(on_disk_agents)),
+                          ("slash commands", len(command_files()))):
+        m = re.search(r"(\d+)\s+" + re.escape(label), readme)
+        assert m, f"README.md no longer states a count of {label}; it did, and it was wrong"
+        assert int(m.group(1)) == actual, (
+            f"README.md says {m.group(1)} {label}; there are {actual}")
+
+
+@check("a documented frontmatter example is one a skill could actually declare",
+       finding="P50")
+def _():
+    """Item 72's second half. `ARCHITECTURE.md` teaches the pattern and taught it wrong.
+
+    Its `What is Context Fork?` section shows a SKILL.md frontmatter example carrying
+    `allowed-tools:` -- the command key that silently stops `context: fork` taking effect (F13),
+    which is the single defect item 4.11 existed to remove and which the suite forbids in every
+    real skill. The example was on a skill that does not exist, so nothing pointed at it, and a
+    reader copying it writes a skill that does not fork and cannot be told why.
+
+    The model table is the same failure in data rather than in syntax: it assigned `sonnet` to
+    almost everything while the files declare a mix of haiku, sonnet and opus, and named a
+    component that has not existed since item 4.15.
+    """
+    arch_path = os.path.join(REPO, "ARCHITECTURE.md")
+    arch = open(arch_path, encoding="utf-8").read()
+
+    for block in re.findall(r"```yaml\n(.*?)```", arch, re.S):
+        assert "allowed-tools" not in block, (
+            "ARCHITECTURE.md shows a skill frontmatter example declaring `allowed-tools`. That "
+            "is a COMMAND key: in a skill it restricts nothing and silently disables "
+            "`context: fork` (F13). The suite forbids it in every real skill, and a document "
+            "teaching it is the same defect with a wider blast radius")
+
+    # The model table, against what the files declare. A table of assignments nobody compares
+    # to the frontmatter is a table of intentions.
+    declared = {}
+    for name, path in skill_files():
+        fm, _ = parse_frontmatter(path)
+        if fm.get("model"):
+            declared[name] = str(fm["model"]).strip()
+    assert declared, "no skill declares a model, so this check has nothing to compare"
+
+    section = arch.split("## Model Selection Strategy", 1)
+    assert len(section) == 2, "ARCHITECTURE.md has no Model Selection Strategy section"
+    table = section[1].split("##", 1)[0]
+
+    rows = {}
+    for line in table.splitlines():
+        if not line.startswith("|") or set(line) <= set("|- "):     # skip the separator row
+            continue
+        m = re.match(r"\|\s*`?/?([a-z0-9-]+)`?[^|]*\|\s*`?([a-z0-9.*()-]+)`?[^|]*\|", line)
+        if m:
+            rows[m.group(1)] = m.group(2)
+    assert len(rows) > 5, f"the model table parsed to {len(rows)} rows, so it is not being read"
+
+    for name, model in sorted(rows.items()):
+        if name in ("component", "prd", "crd", "crd-context"):
+            continue
+        assert name in declared or name in {a for a, _p in agent_files()}, (
+            f"the model table names `{name}`, which is neither a skill nor an agent. "
+            f"`execute-task` sat in this table for nine phases after item 4.15 removed it")
+        if name in declared:
+            assert declared[name].startswith(model) or model in declared[name], (
+                f"the model table says `{name}` runs on {model}; its SKILL.md declares "
+                f"{declared[name]}. A table of assignments nobody compares to the frontmatter "
+                f"is a table of intentions")
+
+
+@check("the documented way to load the plugin is the one that works", finding="P50")
+def _():
+    """Item 72's third half, and the only one a new user meets in their first minute.
+
+    `--plugin-dir` loads the plugin; it does not make the plugin's own scripts readable. Without
+    `--add-dir` on the same checkout, `/breakdown` stops in Phase 1 because `resolve-output.sh`,
+    `check-references.py` and `build-manifest.py` are outside the session's allowed directories.
+    That was MEASURED on 2026-08-26 and written into CLAUDE.md; README.md kept the one-flag form,
+    so the file a new reader opens first is the one that does not work.
+    """
+    # EVERY line that gives the flag, fenced or inline. The first version of this check read
+    # only fenced blocks and a mutant walked straight past it: CLAUDE.md gives the command in
+    # inline backticks inside a block quote, so the one document that had the rule right was
+    # the one the check could not see.
+    seen = 0
+    for name in ("README.md", "CLAUDE.md"):
+        text = open(os.path.join(REPO, name), encoding="utf-8").read()
+        for line in text.splitlines():
+            if "--plugin-dir" not in line:
+                continue
+            seen += 1
+            assert "--add-dir" in line, (
+                f"{name} documents `{line.strip()[:90]}`. `--plugin-dir` loads the plugin and "
+                f"does not make its bundled scripts readable -- measured 2026-08-26, and without "
+                f"`--add-dir` /breakdown stops in Phase 1")
+    assert seen >= 2, (
+        f"only {seen} line(s) documenting --plugin-dir were found across README.md and CLAUDE.md. "
+        f"Both give the command; a check that finds fewer has stopped reading one of them")
+
+
+@check("a document describing a target state says whether it was reached", finding="P50")
+def _():
+    """Item 72's fourth half, and the cheapest of the four to have got wrong.
+
+    `target-state-data-flow.md` opens `Status: Target state. None of this is built.` -- written
+    2026-08-25, true then, and false since Phase 6 closed the plan. Every box in it now exists.
+    A document that announces its own obsolescence and is never revisited is worse than one with
+    no status at all, because the status is the part a reader trusts without checking.
+    """
+    p = os.path.join(REPO, "docs", "skills", "target-state-data-flow.md")
+    text = open(p, encoding="utf-8").read()
+
+    # The document QUOTES the claim it used to make, to explain the correction. A check that
+    # cannot tell an assertion from a quotation of one forbids documenting the history it
+    # enforces -- which this suite did once before, in Phase 2, on the words "full PRD content".
+    # So quoted spans come out before the negative assertion is made.
+    status_line = re.search(r"^\*\*Status:\*\*(.*)$", text, re.M)
+    assert status_line, "target-state-data-flow.md has no **Status:** line at all"
+    unquoted = re.sub(r"[\"“‘’”][^\"“‘’”]*"
+                      r"[\"“‘’”]", " ", status_line.group(1))
+    assert not re.search(r"none of this is built", prose(unquoted), re.I), (
+        "target-state-data-flow.md's status still asserts that none of it is built. Items 1-67 "
+        "landed across nine phases; the plan's own header was corrected at item 68's phase and "
+        "this is the same defect in the document that header points at")
+
+    # THE STATUS FIELD, not the paragraph around it. The first version asked whether any of
+    # `built|landed|reached` appeared in the first twenty lines -- six sites did, so deleting the
+    # verdict changed nothing and the mutant survived. That is the site-counting rule twice in
+    # one phase: a check satisfied by more than one site cannot be broken by one edit.
+    # The verdict must LEAD the field, not appear somewhere in it. Asserting it anywhere in the
+    # line was satisfied by "every box in it was built across Phases 1-9" further along, so
+    # deleting the verdict itself changed nothing -- the site-counting rule a third time in one
+    # phase, and inside a line short enough that it looked scoped already.
+    verdict = prose(status_line.group(1))
+    opening = " ".join(verdict.split()[:6])
+    assert re.search(r"\b(reached|not reached|built|landed|implemented|superseded|abandoned)\b",
+                     opening, re.I), (
+        f"target-state-data-flow.md's status opens {opening!r}, which does not say whether the "
+        f"target state was reached. A status field leads with its value; removing a false status "
+        f"leaves a reader with no status, which is the same problem quieter")
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():

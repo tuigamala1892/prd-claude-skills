@@ -1,20 +1,24 @@
 # Architecture
 
-> **Partly out of date — read with `docs/skills/toolchain-assessment-and-plan.md` alongside it.**
+> **Reconciled with the repository 2026-09-08** (item 72), after nine phases of
+> `docs/skills/plugin-2.0-plan.md` landed without this file being touched. What that cost is
+> recorded as findings V12 and V13 in
+> [`docs/skills/plugin-2.0-verification.md`](docs/skills/plugin-2.0-verification.md), and it is
+> the reason four regression checks now read this file: **an onboarding document that nothing
+> checks describes the project as it was on the day somebody wrote it.**
 >
-> **Layout.** Skills, agents and commands now live at the repository root as a Claude
-> Code plugin, not under `.claude/`. Paths below of the form `.claude/skills/...` are
-> now `skills/...`.
+> **Layout.** Skills, agents and commands live at the repository **root** as a Claude Code
+> plugin, not under `.claude/`. Load a checkout with **both** flags —
+> `claude --plugin-dir <checkout> --add-dir <checkout>` — because `--plugin-dir` loads the plugin
+> and does not make its bundled scripts readable.
 >
-> **Context fork now works** (item 4.11). It did not for the life of this toolchain
-> until then: every skill also declared `allowed-tools`, a *command* frontmatter key
-> that stopped `context: fork` taking effect, so nothing forked, `agent:` never fired
-> and no skill's `model:` applied. Removing that one line fixed all of it. Verified on
-> real skills, not inferred — `toolUseResult.status == "forked"`, with the declared
-> model appearing in `modelUsage`. See finding **F13**.
->
-> The design this document describes was sound throughout; it is the implementation
-> that had not matched it.
+> **Context fork works** (item 4.11). It did not for the life of this toolchain until then:
+> every skill also declared `allowed-tools`, a *command* frontmatter key that stopped
+> `context: fork` taking effect, so nothing forked, `agent:` never fired and no skill's `model:`
+> applied. Removing that one line fixed all of it. Verified on real skills, not inferred —
+> `toolUseResult.status == "forked"`, with the declared model appearing in `modelUsage`. See
+> finding **F13**. **Never put `allowed-tools:` in a SKILL.md**, and note that the example below
+> deliberately does not.
 
 This document describes the system architecture for developers who want to understand, extend, or contribute to the PRD Breakdown Execute workflow.
 
@@ -127,8 +131,10 @@ This document describes the system architecture for developers who want to under
            │                  │                  │
            ▼                  ▼                  ▼
     ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-    │execute-task │    │execute-task │    │execute-task │
-    │context: fork│    │context: fork│    │context: fork│
+    │task-        │    │task-        │    │task-        │
+    │implementer  │    │implementer  │    │implementer  │
+    │agent, in a  │    │agent, in a  │    │agent, in a  │
+    │worktree     │    │worktree     │    │worktree     │
     └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
            │                  │                  │
            ▼                  ▼                  ▼
@@ -156,16 +162,15 @@ Skills can declare `context: fork` in their SKILL.md frontmatter:
 
 ```yaml
 ---
-name: execute-task
+name: execute-batch
 context: fork
-model: sonnet
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
+model: claude-sonnet-5
 ---
 ```
+
+**There is no `allowed-tools:` line, and its absence is the point.** It is a *command* key: in a
+skill it restricts nothing and silently disables `context: fork` (F13). `tests/test_toolchain.py`
+fails if any skill declares it, and — since item 72 — if this document shows one.
 
 When a skill with `context: fork` is invoked:
 1. A new, isolated context is created
@@ -229,23 +234,34 @@ Different components use different models based on their requirements:
 
 | Component | Model | Reasoning |
 |-----------|-------|-----------|
-| `/prd` | sonnet | Complex reasoning for requirements |
-| `/crd` | sonnet | Context management, impact analysis |
-| `crd-investigate` | sonnet | Deep codebase analysis |
-| `crd-context-update` | sonnet | Incremental context updates |
-| `crd-impact-analysis` | sonnet | Change impact analysis |
-| `/breakdown` | sonnet | Architecture decisions |
-| `breakdown-analyze-prd` | sonnet | Feature extraction, inference |
-| `breakdown-plan-layers` | sonnet | Dependency analysis |
-| `breakdown-generate-tasks` | sonnet | Detailed specification |
-| `breakdown-review-tasks` | haiku | Fast quality validation |
-| `/execute` | sonnet | Orchestration logic |
-| `execute-layer` | sonnet | Layer coordination |
-| `execute-batch` | sonnet | Parallel task launch |
-| `execute-task` | sonnet | Code implementation |
-| `execute-verify` | haiku | Fast, focused verification |
-| `execute-merge` | sonnet | Git operations |
-| `project-context-finalizer` | sonnet | Update PROJECT.md after execution |
+| `/prd` · `/crd` · `/crd-context` | *(none declared)* | Commands run in the session's model; the interview is the user's conversation |
+| `breakdown` | `claude-opus-5` | Orchestration, and the phase that refuses |
+| `breakdown-analyze-prd` | `claude-haiku-4-5` | Per-feature after item 18, so the prompt is small |
+| `breakdown-plan-layers` | `claude-haiku-4-5` | Assignment against a validated graph, not invention |
+| `breakdown-generate-tasks` | `claude-opus-5` | The task is the deliverable; this is where fidelity is won or lost |
+| `breakdown-review-tasks` | `claude-haiku-4-5` | Fast quality validation against `review-criteria.md` |
+| `crd` | `claude-sonnet-5` | Context management, impact analysis |
+| `crd-investigate` | `claude-sonnet-5` | Deep codebase analysis |
+| `crd-context-update` | `claude-haiku-4-5` | Incremental, diff-scoped |
+| `crd-impact-analysis` | `claude-haiku-4-5` | Reads registries rather than inferring them |
+| `execute` | `claude-sonnet-5` | Orchestration logic |
+| `execute-layer` | `claude-sonnet-5` | Layer coordination and the sequential merge |
+| `execute-batch` | `claude-sonnet-5` | Worktrees and parallel dispatch |
+| `execute-verify` | `claude-haiku-4-5` | Fast, focused, and a different model from the implementer |
+| `execute-merge` | `claude-sonnet-5` | Git operations |
+| `migrate` | `claude-sonnet-5` | One artefact, one schema version, judgements escalated |
+| `task-implementer` (agent) | `claude-haiku-4-5` | Small context by construction — one task, one worktree |
+| `task-generator` (agent) | `claude-opus-5` | Same reasoning as `breakdown-generate-tasks` |
+| `prd-criteria-author` (agent) | `claude-sonnet-5` | Adversarial: the case the author missed |
+| `schema-migrator` (agent) | `claude-sonnet-5` | The judgement half `migrate.py` is forbidden to guess |
+
+**The table is checked against the frontmatter, since item 72.** It previously said `sonnet` for
+almost every row while the files declared a mix of haiku, sonnet and opus, and named
+`execute-task`, which item 4.15 removed. A table of assignments nobody compares to the files is a
+table of intentions.
+
+**Where a skill and the agent it names disagree, the skill's `model:` wins** — so the agent's is
+the one silently ignored (finding F6).
 
 ### Selection Principles
 
@@ -257,93 +273,85 @@ Different components use different models based on their requirements:
 
 ## File Structure
 
+Everything below is at the **repository root**. There is no `.claude/` directory in this plugin.
+
 ```
-.claude/
-├── commands/
-│   ├── prd.md                    # /prd command (user-invocable)
-│   ├── crd.md                    # /crd command (brownfield)
-│   └── crd-context.md            # /crd-context command
+.claude-plugin/plugin.json        name, version, author
 │
-├── skills/
-│   ├── breakdown/
-│   │   ├── SKILL.md              # Main orchestrator
-│   │   └── references/
-│   │       ├── layer-definitions.md    # 5-layer architecture
-│   │       ├── layer0-templates.md     # Setup task templates
-│   │       ├── review-criteria.md      # Task validation rules
-│   │       └── task-format-spec.md     # XML schema
-│   │
-│   ├── breakdown-analyze-prd/
-│   │   └── SKILL.md              # PRD analysis
-│   │
-│   ├── breakdown-plan-layers/
-│   │   └── SKILL.md              # Layer planning
-│   │
-│   ├── breakdown-generate-tasks/
-│   │   └── SKILL.md              # Task generation
-│   │
-│   ├── breakdown-review-tasks/
-│   │   └── SKILL.md              # Task review
-│   │
-│   ├── execute/
-│   │   ├── SKILL.md              # Main orchestrator
-│   │   └── references/
-│   │       ├── options.md        # CLI arguments
-│   │       └── state-schema.md   # State file format
-│   │
-│   ├── execute-layer/
-│   │   └── SKILL.md              # Layer execution
-│   │
-│   ├── execute-batch/
-│   │   └── SKILL.md              # Batch coordination
-│   │
-│   ├── execute-task/
-│   │   ├── SKILL.md              # Task implementation
-│   │   └── references/
-│   │       ├── commit-format.md  # Git commit conventions
-│   │       └── tdd-workflow.md   # TDD process
-│   │
-│   ├── execute-verify/
-│   │   └── SKILL.md              # Independent verification
-│   │
-│   ├── execute-merge/
-│   │   ├── SKILL.md              # Sequential merge
-│   │   └── references/
-│   │       └── merge-strategy.md # Merge process
-│   │
-│   ├── crd/                      # CRD orchestration
-│   │   ├── SKILL.md
-│   │   └── references/
-│   │       ├── crd-format.md     # CRD document format
-│   │       └── project-format.md # PROJECT.md format
-│   │
-│   ├── crd-investigate/          # Full codebase analysis
-│   │   └── SKILL.md
-│   │
-│   ├── crd-context-update/       # Incremental context update
-│   │   └── SKILL.md
-│   │
-│   └── crd-impact-analysis/      # Change impact analysis
-│       └── SKILL.md
+schema/                           the single definition both paths cite (item 44)
+├── core.md                       every shared element: criteria, gaps, definition, review
+├── prd-format.md                 what /prd writes; cites core.md
+├── decision-record.md            the ADR template and its **Drives:** convention (item 36)
+├── migration.md                  schema-1 .. schema-6, and who may judge what (item 41)
+├── checks.md                     one assertion, one owning script, every caller (item 58)
+├── readers.md                    the elements with no reader, and why (item 23)
+├── parity.md                     where the two paths differ, and whether that is settled
+└── scripts/
+    ├── migrate.py                one artefact, one version forward, or escalate
+    ├── check-artefacts.py        every artefact is the shape its schema describes
+    ├── check-readers.py          every element has a reader, or a recorded reason
+    └── build-what-next.py        what-next.md is derived, never hand-maintained
 │
-└── agents/
-    ├── task-generator.md         # Task XML creation
-    ├── task-implementer.md       # Small-context execution
-    ├── task-reviewer.md          # Quality validation
-    ├── verification-runner.md    # Command execution
-    ├── crd-investigator.md       # Deep codebase analysis
-    ├── crd-context-updater.md    # Incremental updates
-    ├── crd-impact-analyzer.md    # Impact analysis
-    └── project-context-finalizer.md # Post-execute updates
+commands/                         the three user-invocable entry points
+├── prd.md                        /prd -- a nine-phase interview
+├── crd.md                        /crd -- change request against an existing codebase
+└── crd-context.md                /crd-context -- build and maintain PROJECT.md
+│
+skills/
+├── breakdown/                    PRD or CRD -> tasks (orchestrator)
+│   ├── references/               layer-definitions · layer0-templates · review-criteria
+│   │                             task-format-spec · architecture-format
+│   └── scripts/                  18 guards and generators; see schema/checks.md for which
+│                                 assertion each one owns
+├── breakdown-analyze-prd/        per feature after item 18, never per corpus
+├── breakdown-plan-layers/        assigns work to the layer graph it was handed
+├── breakdown-generate-tasks/     the task is the deliverable
+├── breakdown-review-tasks/       PASS/FAIL against review-criteria.md
+│
+├── execute/                      task execution (orchestrator)
+│   ├── references/               options · state-schema
+│   └── scripts/                  preflight · write-state · ledger-status · check-project-md
+│                                 check-compatibility · resolve-layers · task-integrity
+├── execute-layer/                one layer: dispatch batches, then merge sequentially
+├── execute-batch/                one batch: worktrees, then a task-implementer per task
+├── execute-verify/               independent verification
+├── execute-merge/                merges one verified task
+│
+├── crd/                          CRD orchestration
+│   └── references/               crd-format · project-format
+├── crd-investigate/              deep codebase analysis -> PROJECT.md
+├── crd-context-update/           incremental update against a git hash
+├── crd-impact-analysis/          what this change touches, in contracts not just APIs
+└── migrate/                      artefact schema migration (item 41)
+│
+agents/
+├── task-generator.md             task XML creation
+├── task-implementer.md           one task, one worktree, small context
+├── task-reviewer.md              quality validation
+├── verification-runner.md        runs a task's verification commands
+├── prd-criteria-author.md        proposes criteria and reviews a definition (item 8)
+├── crd-investigator.md           deep codebase analysis
+├── crd-context-updater.md        incremental updates
+├── crd-impact-analyzer.md        impact analysis
+├── project-context-finalizer.md  post-execute PROJECT.md updates
+└── schema-migrator.md            one artefact, one schema version forward
+│
+tests/                            regression suite, mutation harness, versioned fixtures
+docs/skills/                      the plan, the ledger, the reviews, the probes
 ```
+
+**Two artefacts live in the *target* project, not here.** `PROJECT.md` describes a codebase as it
+is; `architecture.md` prescribes what it must obey — the layer graph, test policy, task limits,
+banned patterns. Both sit at that project's root, and item 26 is the seeding step between them.
 
 ### Skills vs Commands vs Agents
 
 | Type | Location | Purpose | Invocation |
 |------|----------|---------|------------|
-| Command | `.claude/commands/` | User-invocable entry points | `/command-name` |
-| Skill | `.claude/skills/` | Reusable workflow components | Called by other skills |
-| Agent | `.claude/agents/` | Specialized task executors | Used with Task tool |
+| Command | `commands/` | User-invocable entry points | `/command-name` |
+| Skill | `skills/<name>/SKILL.md` | Reusable workflow components | Called by other skills |
+| Agent | `agents/` | Specialized task executors | Used with the Task tool |
+| Schema | `schema/` | The single definition both paths cite (item 44) | Read, never invoked |
 
 ---
 
@@ -363,10 +371,12 @@ User Input (idea description)
     │  Phase 1: Idea      │
     │  Phase 2: Tech      │
     │  Phase 3: Features  │
-    │  Phase 4: Deps      │
-    │  Phase 5-6: Options │
-    │  Phase 7: Review    │
-    │  Phase 8: Output    │
+    │  Phase 4: Design    │◄── item 51: writes architecture.md
+    │  Phase 5: Deps      │
+    │  Phase 6: Options   │
+    │  Phase 7: Validation│◄── five scripts; exit codes, not questions
+    │  Phase 8: Review    │
+    │  Phase 9: Output    │◄── one feature per write (item 10)
     └─────────┬───────────┘
               │
               ▼
@@ -397,7 +407,9 @@ docs/prd/{slug}/index.md
               │
               ▼
     ┌─────────────────────────────────────────┐
-    │  For each layer (0-4):                  │
+    │  For each layer the plan emitted:       │
+    │  (derived from content -- item 31 --    │
+    │   never a fixed 0-4)                    │
     │                                         │
     │    ┌─────────────────────┐              │
     │    │ breakdown-          │              │
@@ -415,13 +427,18 @@ docs/prd/{slug}/index.md
               │
               ▼
     docs/tasks/{slug}/
-    ├── manifest.json    ◄── Final inventory
-    ├── 0-setup/
-    ├── 1-foundation/
-    ├── 2-backend/
-    ├── 3-frontend/
-    └── 4-integration/
+    ├── analysis.json      ◄── per feature, merged (item 18)
+    ├── layer_plan.json    ◄── the layers that have work in them
+    ├── architecture.json  ◄── only when the project declares architecture.md
+    ├── manifest.json      ◄── final inventory, schema 1.2
+    ├── tasks-summary.md   ◄── the set, reviewable without opening every task (item 32)
+    └── {layer}/           ◄── one directory per surviving layer, named by the graph
 ```
+
+**The layer names are the graph's, not this document's.** A project declaring its own `<layers>`
+in `architecture.md` gets those; everything else gets the five-tier default. `/execute` asks
+`resolve-layers.py` which layers to run rather than reciting a list (item 66) — reciting one is
+what P44 was.
 
 ### CRD Phase (Brownfield)
 
@@ -475,7 +492,9 @@ docs/tasks/{slug}/
     └─────────┬───────────┘
               │
     ┌─────────┴─────────────────────────────────────────┐
-    │  For each layer (0-4):                            │
+    │  For each layer resolve-layers.py returns:        │
+    │  (the plan's order, filtered to layers that have  │
+    │   tasks -- item 66, never a list written here)    │
     │                                                   │
     │    ┌─────────────────────┐                        │
     │    │   execute-layer     │                        │
@@ -493,21 +512,24 @@ docs/tasks/{slug}/
     │    │    │         │         │              │      │
     │    │    ▼         ▼         ▼              │      │
     │    │  ┌───┐     ┌───┐     ┌───┐            │      │
-    │    │  │T1 │     │T2 │     │T3 │            │      │
-    │    │  └─┬─┘     └─┬─┘     └─┬─┘            │      │
-    │    │    │         │         │              │      │
+    │    │  │T1 │     │T2 │     │T3 │  task-     │      │
+    │    │  └─┬─┘     └─┬─┘     └─┬─┘  implementer     │
+    │    │    │         │         │    in a worktree   │
     │    │    ▼         ▼         ▼              │      │
     │    │  ┌───┐     ┌───┐     ┌───┐            │      │
-    │    │  │V1 │     │V2 │     │V3 │            │      │
-    │    │  └───┘     └───┘     └───┘            │      │
-    │    │    │         │         │              │      │
-    │    │    └─────────┼─────────┘              │      │
-    │    │              │                        │      │
-    │    │         (sequential)                  │      │
-    │    │    ┌─────────┴─────────┐              │      │
-    │    │    │   execute-merge   │              │      │
-    │    │    │   (one at a time) │              │      │
-    │    │    └───────────────────┘              │      │
+    │    │  │V1 │     │V2 │     │V3 │  execute-  │      │
+    │    │  └───┘     └───┘     └───┘  verify    │      │
+    │    └───────────────┬───────────────────────┘      │
+    │                    │                              │
+    │      task-integrity.py verify  ◄── item 63: a     │
+    │                    │               task file the  │
+    │                    │               run edited is  │
+    │                    │               a stop         │
+    │               (sequential)                        │
+    │         ┌──────────┴────────┐                     │
+    │         │   execute-merge   │  called by the      │
+    │         │   (one at a time) │  LAYER, not the     │
+    │         └───────────────────┘  batch              │
     │    │                                       │      │
     │    └───────────────────────────────────────┘      │
     │                                                   │
@@ -542,10 +564,17 @@ docs/tasks/{slug}/
 
 ### Adding New Layers
 
-1. Update `layer-definitions.md` with new layer
-2. Adjust layer numbering
-3. Update dependency rules
-4. Add to breakdown planning logic
+**Usually you should not.** Since item 28 the layer graph is a *parameter*: a project declares
+its own `<layers>` in an `architecture.md` at its root, validated acyclic and reachable by
+`check-architecture.py`. The five tiers shipped here are the **default graph**, not the graph.
+
+To change the default itself:
+
+1. Update `layer-definitions.md`
+2. Update dependency rules
+3. Note that the layer *set* is derived from what the document puts work in (item 31) and the
+   set `/execute` runs is `resolve-layers.py`'s (item 66) — neither is a list in prose, and
+   restoring one is what P39 and P44 were
 
 ### Customizing Review Criteria
 
@@ -555,10 +584,14 @@ docs/tasks/{slug}/
 
 ### Adding New Skills
 
-1. Create `SKILL.md` in `.claude/skills/{skill-name}/`
+1. Create `SKILL.md` in `skills/{skill-name}/`
 2. Define context mode (`fork` or default)
-3. Specify model and allowed tools
-4. Add reference files if needed
+3. Specify `model:` — and **never `allowed-tools:`**, which is a command key that silently
+   disables the fork (F13)
+4. Add reference files under `references/` and scripts under `scripts/` if needed
+5. If it decides something and exits non-zero, give it a row in
+   [`schema/checks.md`](schema/checks.md) — the suite checks that table in both directions
+   (item 69), so an unlisted caller or an unrowed assertion fails the build
 
 ---
 
