@@ -4428,17 +4428,30 @@ differently on the same graph.** One obeyed and emitted 16 unsatisfiable edges w
 green; one refused. The protection was a model judgement and it fired in one run of two. That is
 item 4.13 arriving at a question this plan left open since Phase 3.
 
-### P52 is recorded with no item, deliberately
+### P52 is recorded with no item — and both halves of that sentence were wrong
 
-`breakdown-plan-layers` silently overrode the declared graph — declared `0-setup, 1-integration,
-2-frontend, 3-backend, 4-foundation`, emitted `0-setup, 4-foundation, 3-backend`. Its own SKILL.md
-says a declared graph gets nothing grafted on. **Verified against `architecture.json` and
-`layer_plan.json` rather than taken from the run's own report**, because a run describing its own
-behaviour is a claim.
+`breakdown-plan-layers` resequenced the declared graph — declared `0-setup, 1-integration,
+2-frontend, 3-backend, 4-foundation`, emitted `0-setup, 4-foundation, 3-backend`.
 
-It is written down on the day it was found rather than the day somebody remembers it, which is the
-rule `checks.md` states for an ownerless assertion — and it is left ownerless because choosing
-between *obey the graph* and *refuse it* is a design decision, not a defect with one fix.
+**Corrected the same day, and the correction is the more useful entry.** This was written here, in
+the plan and in a commit message as a ***silent*** override, and it was not silent:
+`layer_plan.json` carries an `ordering_conflicts` entry at `severity: critical` naming both layers,
+the declared order and the required one, in the very file that also carries the resequencing.
+
+The word came from the neutral arm's own transcript — *"plan-layers did silently override it"*. I
+verified the **override** against `architecture.json` and `layer_plan.json`, wrote *"rather than
+taken from the run's own report"* in this section, and then carried the run's adjective through
+three documents unchecked. **Half the claim was measured and half was quoted, under a sentence
+asserting the whole of it was measured.** That is the sharper form of *a run describing its own
+behaviour is a claim*: the danger is not believing a report wholesale, it is verifying the part
+that is easy to verify and inheriting the rest.
+
+**It was also wrong that this needed a design decision.** The reason given for leaving it
+ownerless was that choosing between *obey the graph* and *refuse it* is a judgement. The skill had
+already chosen, in its Dependency Ordering section: *"a contradiction, not an ordering. **Report it
+and place the tasks by layer**."* Two obligations, and it discharged the first and not the second.
+The question that dissolved this was not a new measurement — it was *what is this skill for*,
+asked of the file rather than of the run. Item 74.
 
 ### Verification
 
@@ -4454,6 +4467,117 @@ Both directions are broken, because a checker that refuses everything passes any
 bad arm and one that refuses nothing passes any test fed only the good one. The sixth mutant breaks
 the **fixture** rather than the script: a positive control that drifts to zero is a check with
 nothing left to detect, and it would pass in silence.
+
+---
+
+## Phase 13 — The declared order is obeyed.
+
+One item, `74`, on branch `phase-13-the-declared-order-is-obeyed`. **P52**, which Phase 12 recorded
+as ownerless and got wrong in two ways.
+
+| Item | Status | Commit |
+|---|---|---|
+| **74** — a declared layer order is obeyed, not improved on | **Landed** 2026-09-08 | `447e9ea` |
+
+**Suite:** 138 checks at branch point → **139**. `failed 0`, `known 0`. Mutation **6 of 6**, after 5/6 whose survivor was a badly built mutant.
+
+**The phase exists because of a question, not a measurement.** Phase 12 spent two live runs and a
+mutation round on the layer graph and left P52 open, described as a silent override needing a
+design decision. Asked *"what is `breakdown-plan-layers` for?"*, the skill answered both points in
+its own text, and neither answer was the one this ledger had written down.
+
+### What the skill is for, and what it therefore may not do
+
+Three jobs: decide **which** layers exist (item 31 — a tier with no work is not a tier), assign
+work to them, and own the task ordering derived from `feature_edges`. The graph itself is not its
+to choose — a declared one is used *"exactly as declared"*, already validated by the caller, with
+*"nothing"* from the shipped tiers grafted on.
+
+And its Dependency Ordering section rules on precisely the case that arose:
+
+> A `data` or `runtime` edge that would order a later layer before an earlier one is a
+> contradiction, not an ordering. **Report it and place the tasks by layer**; a feature edge cannot
+> override the layer graph, because the layer graph is the project's declared rule and the edge is
+> one author's note.
+
+**Two obligations.** The run discharged the first and not the second.
+
+### Correction 1 — it was not silent, and that word was never checked
+
+Phase 12 recorded P52 as a ***silent*** override, in the plan, in this ledger and in commit
+`93d30b5`. `layer_plan.json` carries an `ordering_conflicts` entry at `severity: critical`, naming
+both layers, the declared order and the required one — in the same file that carries the
+resequencing.
+
+The word came from the neutral arm's own transcript. **The override was verified against
+`architecture.json` and `layer_plan.json`; the adjective was quoted** — under a sentence in this
+ledger asserting the finding was measured *"rather than taken from the run's own report"*.
+
+> That is the sharper form of the rule this repository already had. The danger in an agent's
+> self-report is not believing it wholesale — it is **verifying the half that is easy to verify
+> and inheriting the rest under the same sentence.**
+
+### Correction 2 — there was no design decision to make
+
+P52 was left ownerless because choosing between *obey the graph* and *refuse it* looked like a
+judgement. The skill had chosen: report the conflict, place the tasks by layer, leave
+`architecture.md` for a person to fix. An item with a specified fix had been filed as an open
+question.
+
+### The fix is an instruction with an exit code behind it
+
+`breakdown-plan-layers/SKILL.md` gains the missing half directly under the rule it broke —
+*reporting a contradiction does not license resolving it* — and `check-layer-order.py` refuses a
+plan that comes back resequenced, so the sentence is not standing on its own. The emitted list
+must be a **subsequence** of the declared one: dropping `2-frontend` from `0,1,2,3,4` is item 31
+working; emitting `0,4,3` is not, whatever its merits.
+
+### Why this is a second script and not a widening of item 73
+
+The two are orthogonal, and the fixtures show it rather than the argument doing so.
+
+| Fixture | declared order | `check-layer-order.py` | `check-layering.py` |
+|---|---|---|---|
+| `inverted/` | **obeyed** | pass | **refuses** — 16 unbuildable dependencies |
+| `inverted-halted/` | **violated** | **refuses** | exit 2 — no task files to read |
+
+**P52 happens in `layer_plan.json`, before a single task exists**, which is why a check reading
+task dependencies cannot be the one that catches it. Both controls come from the *same* declared
+graph and differ only in the behaviour under test.
+
+### Verification
+
+`python tests/test_toolchain.py` — **138 → 139**, `failed 0`, `known 0`.
+
+Each of the check's four assertions was watched failing. **The fourth did not fail on the first
+attempt**, and that is the entry worth keeping: it asserted the word *"declared"* appeared in the
+refusal, which the refusal's own opening sentence — *"the emitted layer order is not the declared
+one"* — already satisfied. Two sites, so deleting the line that prints the declared sequence
+changed nothing. It now asserts `1-integration` and `2-frontend`, layers that were **dropped** and
+can therefore only have come from that line.
+
+**That is the site-counting rule for the fourth time in three phases**, three of them in Phase 11
+and this one here. It is the most reliably recurring mistake in this work and it always presents
+as a passing check.
+
+`python tests/mutate.py tests/mutants/layer-order.py` — **6 of 6**, after 5/6 whose survivor was a badly built mutant.
+
+Both directions, plus the equality-instead-of-subsequence mutant that would turn item 31's dropped
+layers into violations, plus one that repairs the **fixture** rather than the script: a positive
+control that stops being positive is a check with nothing left to detect.
+
+**The first pass was 5/6, and the survivor was that last mutant being wrong rather than the check
+having a hole.** It renamed the control's layer to `1-foundation` — a name no declared graph
+contains — so the fixture stayed illegal by a *different* route, the check went on refusing it
+correctly, and the mutant could never be caught. `1-integration` *is* declared, which makes the
+emitted list a legal subsequence and the control genuinely stop being positive.
+
+**That is a third distinct meaning for `MISSED`**, after a stale anchor and collateral from another
+mutant: **a mutant that does not remove the thing it claims to remove.** All three read identically
+in the report, and all three are the same shape as the site-counting rule — one property changed
+while a second quietly went on satisfying the assertion. The diagnosis is recorded in the mutants
+file beside the corrected substitution, because the next person to touch that fixture meets the
+same trap.
 
 ---
 

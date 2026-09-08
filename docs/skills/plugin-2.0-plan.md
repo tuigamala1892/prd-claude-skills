@@ -3266,16 +3266,31 @@ wrong graph was a model judgement, and it fired in one run of two.** OQ7 predict
 would be *"silent and hard to attribute"*; it is worse than predicted, because it is silent
 *sometimes*, which is the case no amount of reading the output can be relied on to catch.
 
-**P52 — `breakdown-plan-layers` silently overrode the declared graph.**
-*Verification: measured, and checked against the artefacts rather than the run's own report.*
+**P52 — `breakdown-plan-layers` resequenced the declared graph, which its own spec forbids.**
+*Verification: measured, and checked against the artefacts.*
 Given a graph declaring `0-setup, 1-integration, 2-frontend, 3-backend, 4-foundation`, it emitted
 `0-setup, 4-foundation, 3-backend` — foundation moved ahead of backend, reversing the declared
-direction. Its own SKILL.md says a project that declares a graph gets its own and nothing grafted
-on, and that the caller has already validated it. **The correction was an improvement and it was
-silent**, which is P16's shape: the operator believes the declared rule is in force. It is also
-why the second arm halted — two phases disagreed about the graph and generation would not choose.
-**No item yet.** Recorded on the day it was found rather than the day somebody remembers it, which
-is the rule `checks.md` states for an ownerless assertion.
+direction into the buildable one.
+
+**The skill rules on exactly this case and it did half of what the rule says.** Its Dependency
+Ordering section: *"A `data` or `runtime` edge that would order a later layer before an earlier one
+is a contradiction, not an ordering. **Report it and place the tasks by layer**; a feature edge
+cannot override the layer graph, because the layer graph is the project's declared rule and the
+edge is one author's note."* Two obligations. It discharged the first — `layer_plan.json` carries
+an `ordering_conflicts` entry at `severity: critical`, naming both layers, the declared order and
+the required one — and not the second.
+
+> **Corrected 2026-09-08, and the correction matters more than the finding.** This was first
+> written up here, in the ledger and in a commit message as a *silent* override. **It was not
+> silent**; the conflict is reported prominently in the same file that carries the resequencing.
+> The word came from the neutral arm's own transcript — *"plan-layers did silently override it"* —
+> and was carried through three documents while only the *override* had been checked against the
+> artefacts. **A run describing its own behaviour is a claim, and half of this one was verified
+> and half was quoted.**
+
+**It also dissolves the reason this was left ownerless.** The open question was said to be whether
+the toolchain should obey a bad graph or refuse it; the spec had already answered — report the
+conflict, place by layer, and leave `architecture.md` for a person to fix. Item 74.
 
 **73. No task may depend on an interface a later layer exports.**
 *Addresses P51. Depends on nothing.*
@@ -3306,6 +3321,31 @@ would have caught the silent arm on the run that produced it.
 as the negative control, the inverted one as the positive. **Neither was hand-built**: a fixture
 written to match the checker validates the code against itself, which is the defect item 21 hit
 from the other direction.
+
+**74. A declared layer order is obeyed, not improved on.**
+*Addresses P52. Depends on nothing.*
+
+`plan-layers` may decide **which** layers exist — item 31, and a tier with no work in it is not a
+tier — and may not decide **what order they run in** when the project has declared one. Its own
+Dependency Ordering section already says so, in two obligations; the run met the first.
+
+- **The emitted list must be a *subsequence* of the declared one.** Dropping `2-frontend` from
+  `0,1,2,3,4` to give `0,1,3,4` is item 31 working. Emitting `0,4,3` is not, whatever its merits.
+- **The instruction gains its missing half, and an exit code behind it.** `check-layer-order.py`
+  refuses a resequenced plan, so *reporting a contradiction does not license resolving it* is not
+  a sentence standing on its own — which is the whole argument of item 4.13 and F15.
+- **No declared graph means nothing to check.** The shipped default promises nothing about order
+  beyond its own definition, and refusing there would fire on every ordinary run.
+- **It is a second script rather than a widening of item 73, and the fixtures decide that rather
+  than the argument.** `inverted/` obeys the declared order and carries 16 unbuildable
+  dependencies; `inverted-halted/` violates the order and has no task files at all, so
+  `check-layering.py` exits 2 for want of a subject. **P52 happens in `layer_plan.json`, before a
+  single task exists.**
+
+**What it does not do is judge whether the declared graph is good.** Item 73 answers that from the
+consequences. This one answers only whether the project's rule was obeyed — and where it cannot
+be, the fix belongs in `architecture.md` and to a person, with `ordering_conflicts` as the thing
+that makes it cheap.
 
 ---
 
@@ -3386,6 +3426,7 @@ from the other direction.
 | 71 | No shipped artefact describes a state the toolchain has left | **P49** | Consistency |
 | 72 | The documents that describe the repository are checked against it | **P50** | Consistency |
 | 73 | No task may depend on an interface a later layer exports | **P51** | **Correctness** |
+| 74 | A declared layer order is obeyed, not improved on | **P52** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first

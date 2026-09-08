@@ -641,6 +641,23 @@ For each layer in order:
    libraries declared as interfaces, and counting them made a first version of this report 9
    findings against a task set that was sound.
 
+4b. **The emitted layer order is the declared graph's** (item 74):
+
+   ```bash
+   python {skill_dir}/scripts/check-layer-order.py {tasks_dir}
+   ```
+
+   Only meaningful when the project declared an `architecture.md`; with no declared graph it says
+   so and exits 0.
+
+   **Dropping a layer with no work in it is expected (item 31); resequencing is not.** The emitted
+   list must be a *subsequence* of the declared one. A run against an inverted graph reported the
+   contradiction correctly and then emitted the layers in the buildable order instead of the
+   declared one — which tells the operator their rule file is in force while a different order is
+   (**P52**). If the declared graph cannot be built in its own order, that is a defect in
+   `architecture.md` for a person to fix, and `plan-layers`' `ordering_conflicts` entry is what
+   makes fixing it cheap.
+
 5. **The gate between here and `/execute`** (item 38):
 
    ```bash

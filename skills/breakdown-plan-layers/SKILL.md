@@ -332,6 +332,23 @@ contradiction, not an ordering.** Report it and place the tasks by layer; a feat
 override the layer graph, because the layer graph is the project's declared rule and the edge is
 one author's note.
 
+**Both halves of that, and the second is the one a run got wrong (P52).** Against an inverted
+declared graph, a live run wrote the conflict correctly — `ordering_conflicts`, `severity:
+critical`, both layers named — and then **emitted the layers resequenced into the buildable
+order.** Reporting a contradiction does not license resolving it.
+
+**Emit the layers in the declared graph's own order, minus the ones you dropped.** The result must
+be a *subsequence* of the declared sequence: dropping `2-frontend` from `0,1,2,3,4` to give
+`0,1,3,4` is item 31 doing its job; emitting `0,4,3` is not, whatever its merits. `/breakdown`
+checks this with `check-layer-order.py` and **refuses the run** if it does not hold, so a
+resequenced plan stops the pipeline rather than reaching `/execute`.
+
+**Why the weaker behaviour is the right one even when your ordering is better.** The declared
+graph is the project's rule; an unbuildable one is a defect in `architecture.md` that a person
+must fix, and fixing it silently leaves the operator believing their file is in force when it is
+not. Your diagnosis is what makes that fix cheap — write it fully in `ordering_conflicts` and
+stop there.
+
 ### Task Naming Convention
 - Use verb + noun: "Create X", "Implement X", "Wire X"
 - Be specific: "Create Project model" not "Create models"
