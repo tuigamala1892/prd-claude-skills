@@ -4363,6 +4363,100 @@ is the failure this harness exists to prevent**, one level up from the checks it
 
 ---
 
+## Phase 12 — The graph is load-bearing.
+
+One item, `73`, on branch `phase-12-the-graph-is-load-bearing`. **V5 of
+[`plugin-2.0-verification.md`](plugin-2.0-verification.md)**: open question 7's experiment, which
+the plan specified with a decision rule written in advance and then did not run for six phases.
+
+| Item | Status | Commit |
+|---|---|---|
+| **OQ7's experiment** — designed and committed before it ran | **Run** 2026-09-08 | `3035f42`, `00196b4` |
+| **73** — no task may depend on an interface a later layer exports | **Landed** 2026-09-08 | `93d30b5` |
+
+**Suite:** 137 checks at branch point → **138**. `failed 0`, `known 0`. Mutation **6/6**.
+
+**The answer is LOAD-BEARING**, and the three arms are in the plan at open question 7. What
+belongs here is what the experiment cost and what it got wrong.
+
+### The design was committed before the measurement, and that was the point
+
+`3035f42` holds the harness, the poor graph, the metric and the decision rule, and it precedes
+either arm. The plan writes OQ7's decision table before the run for R15's reason — an experiment
+with no decision attached is a measurement nobody has to act on — and committing the design first
+is the other half: **"the criteria were chosen in advance" becomes checkable rather than
+asserted.**
+
+The metric was made **categorical on purpose**. One run per arm cannot separate a graph effect
+from sampling noise if the metric is a matter of degree, so the primary one is a forward
+reference — unbuildable rather than worse, and one is material. Everything else was demoted to a
+report.
+
+### Three defects in the experiment, and the first is one this ledger already recorded
+
+**The fixture explained the experiment to its subject.** The first poor arm's `architecture.md`
+prose said *"the dependency direction is inverted"*, and `plan-layers` read it and wrote back
+*"the inverted direction is reported rather than corrected"*. That is item 21's finding exactly —
+its probe PRD described the tier experiment to the model under test — **repeated one phase after
+being written down in this file.** The arm was re-run with prose saying only *"The layer graph for
+this project."*
+
+The re-run is the arm that counts, and it behaved completely differently: it produced **no tasks
+at all**, because `generate-tasks` diagnosed the graph and refused. So the two poor arms
+contradict each other, and that contradiction is the phase's real finding.
+
+**An arm was lost to a workspace inside the checkout.** `resolve-output.sh` refused it at Phase 1,
+correctly — F4 is a run whose entire output landed in the toolchain tree. The run exited **0**,
+produced nothing, and the grader reported `no task XML`, which is indistinguishable from a
+toolchain finding until the transcript is read. *A negative result whose instrument has not been
+checked is not a result.* The harness now refuses such a path itself, with the reason.
+
+**A secondary metric was measuring nothing.** `unresolved` counted dependencies on `python`,
+`pip`, `sqlite3` and `fastapi.testclient.TestClient` — external libraries declared as interfaces —
+as unmet contracts, and reported nine of them against a task set that was sound. It was discounted
+from the verdict, and the same mistake is now a mutant.
+
+### The finding that changed the mitigation
+
+OQ7 asked `/breakdown` to *report when a supplied graph decomposes materially differently from
+the shipped default*, which needs a baseline, a second decomposition and a threshold. **The
+measurement showed the defect is visible inside a single task set**, so item 73 checks that
+instead — no baseline, no threshold, and it catches the case on the run that produces it.
+
+And the reason it is an exit code rather than better instructions: **the two poor arms behaved
+differently on the same graph.** One obeyed and emitted 16 unsatisfiable edges with every check
+green; one refused. The protection was a model judgement and it fired in one run of two. That is
+item 4.13 arriving at a question this plan left open since Phase 3.
+
+### P52 is recorded with no item, deliberately
+
+`breakdown-plan-layers` silently overrode the declared graph — declared `0-setup, 1-integration,
+2-frontend, 3-backend, 4-foundation`, emitted `0-setup, 4-foundation, 3-backend`. Its own SKILL.md
+says a declared graph gets nothing grafted on. **Verified against `architecture.json` and
+`layer_plan.json` rather than taken from the run's own report**, because a run describing its own
+behaviour is a claim.
+
+It is written down on the day it was found rather than the day somebody remembers it, which is the
+rule `checks.md` states for an ownerless assertion — and it is left ownerless because choosing
+between *obey the graph* and *refuse it* is a design decision, not a defect with one fix.
+
+### Verification
+
+`python tests/test_toolchain.py` — **137 → 138**, `failed 0`, `known 0`.
+
+The check's three halves were each watched failing before the fix, by breaking the rank
+comparison, the external-library exclusion and the order source in turn.
+
+`python tests/mutate.py tests/mutants/layering.py` — **6 of 6 caught**, baseline green, no orphans,
+anchors pre-verified.
+
+Both directions are broken, because a checker that refuses everything passes any test fed only the
+bad arm and one that refuses nothing passes any test fed only the good one. The sixth mutant breaks
+the **fixture** rather than the script: a positive control that drifts to zero is a check with
+nothing left to detect, and it would pass in silence.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
