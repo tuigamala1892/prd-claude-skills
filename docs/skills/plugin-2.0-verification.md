@@ -21,6 +21,17 @@ elements out — and what doubled the prose is the content the bar asks for, not
 **timing half remains genuinely outstanding** and cannot be scripted: it is a stopwatch against a
 person authoring the same features under both templates.
 
+**Its second clause is taken, and it inverts the first result.** Item 21 asks for the time *"and
+where the time goes"*. Where it goes is now measured — `probe-p1.py --decisions` counts the
+judgements a template demands that a machine is **forbidden** to make, and it goes **0 → 32**
+across four features. `schema-3`, the version that made features *smaller*, introduces half of
+every judgement the author now owes: item 33 is at once the largest saving in bytes and the joint
+largest cost in decisions, which the size table alone scored as a clear win.
+
+**The stopwatch is still a person's**, but it is no longer undefined: item 21 carries a five-step
+protocol, so the reason it sat undone through thirteen phases — *"time the authoring"* does not
+say what to do — no longer holds.
+
 **V7's three `open` parity rows** are unchanged and correctly recorded.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
