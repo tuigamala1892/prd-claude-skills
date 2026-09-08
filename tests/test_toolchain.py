@@ -9375,6 +9375,30 @@ def _():
             f"stopped describing the fixture it was taken on -- re-take it, or the plan is "
             f"carrying a number nobody has re-run")
 
+    # The judgement table, the same way. It is the half of item 21 that a script CAN take, and a
+    # figure in prose is exactly what went stale in readers.md.
+    # Scoped to the judgement table's own section. Splitting only on its END matched the SIZE
+    # table above it, so every row compared a word count against a judgement count and the check
+    # failed for the wrong reason -- a region without a start is not a region.
+    jsplit = section[1].split("The other half of the sentence", 1)
+    assert len(jsplit) == 2, "item 21 no longer records the author-judgement measurement"
+    jtable = jsplit[1].split("This inverts", 1)[0]
+    jrows = re.findall(r"\|\s*`(schema-\d)`[^|]*\|\s*\*{0,2}(\d+)\*{0,2}\s*\|", jtable)
+    assert len(jrows) >= 3, (
+        f"only {len(jrows)} rows parsed from item 21's author-judgement table -- a check reading "
+        f"fewer rows than the table holds is passing over its own subject")
+    for version, expected in jrows:
+        fixture = os.path.join(REPO, "tests", "fixture", "prd", version, "staff-service")
+        p2 = subprocess.run([sys.executable, probe, "--decisions", fixture],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert p2.returncode == 0, f"--decisions failed on {version}: {p2.stderr[:300]}"
+        m2 = re.search(r"^TOTAL\s+(\d+)", p2.stdout, re.M)
+        assert m2, f"no TOTAL line from --decisions for {version}: {p2.stdout[-300:]}"
+        assert m2.group(1) == expected, (
+            f"item 21's judgement table says {version} demands {expected} author judgements; "
+            f"the probe counts {m2.group(1)}. The measurement has stopped describing the schema "
+            f"it was taken on")
+
 # ------------------------------------------------------------------------ runner
 
 def main():

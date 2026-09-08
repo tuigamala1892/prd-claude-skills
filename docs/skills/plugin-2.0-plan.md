@@ -1537,6 +1537,59 @@ nothing before it was added to them.
 > above are what it would be recorded beside. One caveat for whoever takes it: `schema-6`'s
 > increase includes the fixture's own content work — four features that failed the bar and were
 > fixed — so part of that 237 words is a debt being paid, not a per-feature cost.
+>
+> ---
+>
+> **The other half of the sentence, taken 2026-09-08.** Item 21 asks for the time *"and where the
+> time goes"*. The stopwatch needs a person; **where it goes does not**, and measuring it changes
+> how the size table above reads.
+>
+> `probe-p1.py --decisions` counts the judgements a template demands that **a machine is forbidden
+> to make** — a stricter test than *a field an author fills in*, because `<slug>` is authored and
+> mechanical while `pattern` is authored and forbidden. Only the second kind drives an interview.
+>
+> | Fixture | Author judgements | What was added |
+> |---|---:|---|
+> | `schema-1` · `schema-2` | **0** | — |
+> | `schema-3` | **16** | `pattern` 8, criterion `priority` 8 (items 33, 34) |
+> | `schema-4` · `schema-5` | **26** | `<user-story>` 4, `<depends-on kind>` 2, `<gap kind>` 2, `<architecturally-significant>` 2 |
+> | `schema-6` | **32** | `<review by>` 3, `<data-model>` 3 |
+>
+> **This inverts the comfortable reading of the size table.** `schema-3` is the version that made
+> features *smaller* — 8 words and 24 elements out — and it introduces **half of every judgement
+> the author now owes**. Item 33 is simultaneously the largest saving in bytes and the joint
+> largest cost in decisions. A byte count alone would have scored it a clear win; it is a trade.
+>
+> **Nought to thirty-two across four features is the honest headline** — eight per feature, from a
+> template that demanded none. That is why the prose doubled: each judgement produces sentences.
+>
+> **What this is not.** It is not a timing and does not stand in for one. It is the quantity a
+> stopwatch would be explaining.
+>
+> ---
+>
+> **The protocol for the timing half, written so it can be taken cheaply rather than left open.**
+> The reason this has sat undone through thirteen phases is that *"time the authoring"* does not
+> say what to do. It does now:
+>
+> 1. **Author `staff-service`'s four features from the same brief**, twice: once against
+>    `schema/prd-format.md` as it stood at `schema-1` (`git show` the frozen fixture's templates),
+>    once against it as it stands now. Use the brief, not the existing files — copying is not
+>    authoring.
+> 2. **Record wall-clock per feature**, not per session, so a single interruption does not spoil
+>    the run.
+> 3. **Record where it went**, against the eight judgements in the table above. *Which decision
+>    took longest* is the number that changes anything — if it is `pattern`, item 33 needs better
+>    guidance; if it is `<data-model>`, that is §4.2 doing its job and costing what it should.
+> 4. **Second author, or say it is n=1.** One person's timing is a sample of one and this plan has
+>    twice recorded a figure that was true of one snapshot and not of the thing it named (P9, R6).
+> 5. **Record it beside the two tables above**, which is what item 21 asks for and why they are
+>    kept here rather than in the ledger.
+>
+> **What would change the answer.** If the after-timing is within noise of the before, the schema
+> changes were free and this is closed. If it is materially longer, the question is *which* of the
+> 32 judgements bought it — and item 8's `prd-criteria-author` agent already exists to propose
+> exactly those, which makes the finding actionable rather than a complaint.
 
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
