@@ -5,12 +5,15 @@ down. **V1–V4 graduated to [`plugin-2.0-plan.md`](plugin-2.0-plan.md) as P46�
 V5–V13 are recorded here and remediated without new items, because each is either a measurement
 the plan already specifies or a document that has gone stale.
 
-**B1–B6 landed 2026-09-08 as Phase 10** (`de812a2`), suite 129 → 133, `failed 0`, `known 0`,
-mutation 14/14. **B7 has not been done**: `ARCHITECTURE.md`, `README.md`,
-`target-state-data-flow.md` and `CLAUDE.md`'s tree are still as V12 and V13 describe them, and
-they are a phase of their own. This line is here rather than left to be inferred — a status header
-that has stopped being true is V8, and writing this document without one would have been the
-finding arriving in the document that reported it.
+**All of B1–B7 landed 2026-09-08.** B1–B6 as **Phase 10** (`de812a2`), suite 129 → 133, mutation
+14/14; B7 as **Phase 11** (`d603c74`), suite 133 → **137**, mutation 15/15 after 12/15. `failed 0`,
+`known 0` throughout. This line is here rather than left to be inferred — a status header that has
+stopped being true is V8, and writing this document without one would have been the finding
+arriving in the document that reported it.
+
+**V5 and V6 remain outstanding by decision**, not by omission: open question 7's graph experiment
+is unrun and item 21's authoring after-measurement is half-taken, and both now say so in the plan
+where a reader meets them. **V7's three `open` parity rows** are unchanged and correctly recorded.
 **Date:** 2026-09-08
 **Subject:** the repository at `2652266`, read against `plugin-2.0-plan.md` — 67 items, findings
 P1–P45, nine phases, all recorded as landed in
