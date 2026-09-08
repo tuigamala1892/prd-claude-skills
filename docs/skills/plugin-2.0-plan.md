@@ -1502,12 +1502,41 @@ the must-have, exits `INVALID` rather than clean: *"no won't-have tasks"* is vac
 was generated at all. That guard is not hypothetical — two checks in Phase 1 passed against
 nothing before it was added to them.
 
-> **Half-taken as of 2026-09-08 (V6).** The *before* baseline was recorded in Phase 1 — 394 words,
-> 8 criteria and 64 elements across four features — on what is now the `schema-1` fixture. Items
-> 33, 34, 1, 2, 27, 29 and 35 then changed exactly what it measures, and **the after-measurement
-> has not been taken.** The size half is one command against the current fixture; the timing half
-> is still a stopwatch against a person and still cannot be scripted. *One number beats none*, and
-> there is still one number.
+> **Taken 2026-09-08 — the size half, and the answer is the opposite of the worry (V6).**
+> Item 21's *before* was recorded in Phase 1 as 394 words, 8 criteria and 64 elements across the
+> four `staff-service` features. Rather than trust that figure, it was **recomputed from the
+> frozen `schema-1` fixture with today's script**, so both ends of the comparison come off one
+> ruler: it returns 394 / 8 / 64 exactly. Every version between was measured too, because two
+> points hide the shape.
+>
+> | Fixture | Words | Criteria | Elements | What landed in it |
+> |---|---:|---:|---:|---|
+> | `schema-1` | 394 | 8 | 64 | the baseline |
+> | `schema-2` | 394 | 8 | 64 | item 45's renames — no size change, by design |
+> | `schema-3` | **386** | 8 | **40** | items 33, 34 — EARS replaces Given/When/Then |
+> | `schema-4` | 526 | 8 | 47 | items 1, 2, 5, 27, 29, 35 — the rest of the template |
+> | `schema-5` | 526 | 8 | 47 | the CRD path only; PRD features unchanged, as declared |
+> | `schema-6` | **763** | 8 | 59 | item 40's `<review>`, and the content the bar had been failing |
+>
+> **The format change this plan worried most about made features smaller.** Item 33 was graded a
+> likely failure point and priced as the migration's hardest step; at `schema-3` it takes 8 words
+> and **24 elements** out. One EARS sentence carrying two attributes is cheaper to write than a
+> three-element Given/When/Then triple, and the criteria count never moves — 8 throughout, 2 per
+> feature — so that is a per-criterion saving rather than a smaller sample.
+>
+> **What roughly doubled the prose is content, not syntax.** `schema-4` adds `<user-story>`,
+> `<gaps>` and `<data-model>`; `schema-6` adds a recorded review and the data models four features
+> were missing. Those are things the bar now asks an author to *know*, and the growth is uniform
+> across all four features rather than concentrated in one. Elements went **down**, 64 → 59.
+>
+> So the size half answers: **the tagging got cheaper and the thinking got dearer.** That is the
+> trade item 40 exists to make, and it is now measured rather than assumed.
+>
+> **The timing half is still owed and still cannot be scripted.** *Is this tolerable to write?* is
+> a stopwatch against a person authoring the same four features under both templates. The numbers
+> above are what it would be recorded beside. One caveat for whoever takes it: `schema-6`'s
+> increase includes the fixture's own content work — four features that failed the bar and were
+> fixed — so part of that 237 words is a debt being paid, not a per-feature cost.
 
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for

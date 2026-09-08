@@ -9329,6 +9329,52 @@ def _():
     assert not m.is_subsequence(["2-c", "1-b"], declared)[0], "a swapped pair must not be legal"
     assert not m.is_subsequence(["0-a", "9-z"], declared)[0], "an undeclared layer must not be legal"
 
+@check("item 21's authoring trajectory is what the probe still measures -- by running it",
+       finding="P28")
+def _():
+    """V6. The after-measurement, asserted against its producer rather than written down.
+
+    Item 21 owes a before-and-after on authoring size, and the plan now carries the whole
+    trajectory as a table: six fixture versions, words, criteria and elements. **A figure in prose
+    is exactly what went stale in `readers.md`** -- it claimed six candidates against a script
+    printing seven -- so this one is compared to `probe-p1.py --baseline` on every row.
+
+    Five of the six fixtures are frozen and cannot move. `schema-6` is current and can, which is
+    the drift this catches: change the reference fixture and the recorded measurement stops being
+    a measurement of it.
+
+    IT DOES NOT ASSERT THE NUMBERS THEMSELVES. Pinning 394 or 763 here would make the check a
+    second copy of the table, wrong in the same way at the same time. It asserts that the table
+    and the script agree, whatever they say.
+    """
+    plan = open(os.path.join(REPO, "docs", "skills", "plugin-2.0-plan.md"),
+                encoding="utf-8").read()
+    section = plan.split("Taken 2026-09-08", 1)
+    assert len(section) == 2, "the plan no longer records item 21's after-measurement"
+    table = section[1].split("**The format change", 1)[0]
+
+    rows = re.findall(r"\|\s*`(schema-\d)`\s*\|\s*\*{0,2}(\d+)\*{0,2}\s*\|"
+                      r"\s*\*{0,2}(\d+)\*{0,2}\s*\|\s*\*{0,2}(\d+)\*{0,2}\s*\|", table)
+    assert len(rows) >= 5, (
+        f"only {len(rows)} rows parsed from item 21's trajectory table; it records six. A check "
+        f"that reads fewer rows than the table holds is passing over its own subject")
+
+    probe = os.path.join(REPO, "tests", "probe-p1.py")
+    for version, words, criteria, elements in rows:
+        fixture = os.path.join(REPO, "tests", "fixture", "prd", version, "staff-service")
+        assert os.path.isdir(fixture), f"the plan cites {version}, which has no fixture"
+        p = subprocess.run([sys.executable, probe, "--baseline", fixture],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert p.returncode == 0, f"probe-p1.py --baseline failed on {version}:\n{p.stderr[:300]}"
+        m = re.search(r"^TOTAL\s+(\d+)\s+(\d+)\s+(\d+)", p.stdout, re.M)
+        assert m, f"no TOTAL line for {version}:\n{p.stdout[-300:]}"
+        actual = m.groups()
+        assert actual == (words, criteria, elements), (
+            f"item 21's table says {version} is {words}/{criteria}/{elements} words/criteria/"
+            f"elements; the probe measures {'/'.join(actual)}. The recorded after-measurement has "
+            f"stopped describing the fixture it was taken on -- re-take it, or the plan is "
+            f"carrying a number nobody has re-run")
+
 # ------------------------------------------------------------------------ runner
 
 def main():
