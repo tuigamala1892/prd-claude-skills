@@ -48,8 +48,13 @@ All three live at the **repository root**, not under `.claude/` — see the note
 schema/                       # Artefact schema owned by neither path (item 44)
 ├── core.md                   # The single definition of every shared element
 ├── prd-format.md             # What /prd writes; cites core.md
+├── decision-record.md        # The ADR template and its **Drives:** convention (item 36)
 ├── migration.md              # How artefacts move between schema versions (item 41)
-└── scripts/migrate.py        # Its mechanical half; the judgements are schema-migrator's
+├── checks.md                 # One assertion, one owning script, every caller (item 58)
+├── readers.md                # Elements with no reader, and why (item 23)
+├── parity.md                 # Where the two paths differ, and whether that is settled
+└── scripts/                  # migrate.py, check-artefacts.py, check-readers.py,
+                              # build-what-next.py
 
 commands/                     # User-invocable commands (all three entry points)
 ├── prd.md                    # /prd
@@ -58,15 +63,18 @@ commands/                     # User-invocable commands (all three entry points)
 
 skills/                       # Skills, each a directory holding SKILL.md
 ├── breakdown/                # PRD or CRD → tasks (orchestrator)
-│   ├── references/           # layer-definitions, task-format-spec, review-criteria, layer0-templates
-│   └── scripts/              # resolve-output.sh, build-manifest.py
+│   ├── references/           # layer-definitions, task-format-spec, review-criteria,
+│   │                         # layer0-templates, architecture-format
+│   └── scripts/              # 18 of them; schema/checks.md says which assertion each owns
 ├── breakdown-analyze-prd/    # ┐
 ├── breakdown-plan-layers/    # ├ breakdown sub-skills, in phase order
 ├── breakdown-generate-tasks/ # │
 ├── breakdown-review-tasks/   # ┘
 ├── execute/                  # Task execution (orchestrator)
 │   ├── references/           # options, state-schema
-│   └── scripts/              # preflight.sh, write-state.py, ledger-status.sh, check-project-md.py
+│   └── scripts/              # preflight.sh, write-state.py, ledger-status.sh,
+│                             # check-project-md.py, check-compatibility.py,
+│                             # resolve-layers.py (item 66), task-integrity.py (63, 67)
 ├── execute-layer/            # One layer: dispatches batches, then merges
 ├── execute-batch/            # One batch: worktrees + task agents
 ├── execute-verify/           # Independent verification
@@ -79,6 +87,7 @@ skills/                       # Skills, each a directory holding SKILL.md
 
 agents/                       # Agent definitions for the Task tool
 ├── task-implementer.md       # Implements one task inside its worktree
+├── prd-criteria-author.md    # Proposes criteria; reviews a definition (items 8, 40)
 ├── task-generator.md
 ├── task-reviewer.md
 ├── verification-runner.md
@@ -90,12 +99,20 @@ agents/                       # Agent definitions for the Task tool
 
 docs/skills/                  # The only docs directory that exists
 ├── toolchain-assessment-and-plan.md
-├── plugin-2.0-plan.md
+├── plugin-2.0-plan.md        # The specification: 71 items
+├── plugin-2.0-progress.md    # The ledger: what landed, and where it departed
+├── plugin-2.0-plan-review.md # R1-R17, on the plan's executability
+├── plugin-2.0-verification.md# V1-V13, on the implementation's fidelity
+├── target-state-data-flow.md
 ├── sdd-comparison.md
 ├── resumable-execution-proposal.md
 └── probes/                   # Phase 0 measurement harness
 
 tests/                        # Regression suite; run before and after any skill change
+├── test_toolchain.py         # 137 checks
+├── mutate.py                 # Break one thing, confirm the NAMED check fails, restore
+├── mutants/                  # One file per phase
+└── fixture/prd/              # schema-1 .. schema-6; SCHEMAS.json says which is current
 ```
 
 ---

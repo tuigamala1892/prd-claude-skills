@@ -1,10 +1,17 @@
 # Target State — Data Flow
 
-**Status:** Target state. **None of this is built.** It is the shape the toolchain takes if
-[`plugin-2.0-plan.md`](plugin-2.0-plan.md) is implemented in full.
+**Status:** **Reached.** Written 2026-08-25 as a target — *"none of this is built"* — and every box
+in it was **built across Phases 1-9 and merged**; see
+[`plugin-2.0-progress.md`](plugin-2.0-progress.md) for what landed and where it departed. The
+document is kept as written rather than rewritten in the present tense, because its value now is
+the *before and after*: the left column of §0 is what the toolchain was, and everything below it
+is what the plan changed. Item numbers in `(n)` are all landed.
+**Status corrected:** 2026-09-08, item 72 — the original line survived the plan's completion by
+three phases, which is finding V12.
 **Date:** 2026-08-25
-**Companion to:** [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §Data Flow, which describes what
-exists today. Read that first; this document is the delta.
+**Companion to:** [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §Data Flow, which describes the
+toolchain as built and was reconciled with the repository in the same pass. Read that first; this
+document is the delta it has now absorbed.
 
 Item numbers in `(n)` refer to the plan. Where a box is new or changed, the marker says which item
 puts it there.
@@ -13,7 +20,7 @@ puts it there.
 
 ## 0. What changed, in one table
 
-| Today (ARCHITECTURE.md) | Target state |
+| Before the plan | After it, and this is now what runs |
 |---|---|
 | Two schemas defined independently, PRD templates inside a command file | One **shared core** both paths cite (44) |
 | `analyze-prd` receives the whole PRD in one prompt | **Per-feature** analysis, with a size refusal (18) |

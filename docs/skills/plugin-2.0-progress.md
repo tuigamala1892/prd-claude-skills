@@ -4210,6 +4210,159 @@ for a real breakage.
 
 ---
 
+## Phase 11 — The documents catch up.
+
+One item, `72`, on branch `phase-11-the-documents-catch-up`. **B7 of
+[`plugin-2.0-verification.md`](plugin-2.0-verification.md)**, which named it and deferred it: 643
+lines of `ARCHITECTURE.md` describing a toolchain six schema versions ago is not a footnote to
+another phase.
+
+| Item | Status | Commit |
+|---|---|---|
+| **72** — the documents that describe the repository are checked against it | **Landed** 2026-09-08 | `d603c74` |
+
+**Suite:** 133 checks at branch point → **137**. `failed 0`, `known 0`.
+
+**The content was the easy half and is not why the phase exists.** Every check in the suite reads
+`skills/`, `commands/`, `agents/`, `schema/` or `tests/`. **Nothing read the four documents at the
+repository root** — so the artefacts with no automated reader at all were the ones a human reads
+first, and they were free to drift for nine phases. Four checks now read them.
+
+---
+
+## 72 — the only artefacts with no reader were the ones a human reads first
+
+**Commit:** `d603c74` · **Addresses:** P50 (findings V12, V13) · **Files:**
+`ARCHITECTURE.md`, `README.md`, `CLAUDE.md`, `docs/skills/target-state-data-flow.md`,
+`tests/mutants/documents.py` (new), `tests/test_toolchain.py`
+
+### Two of the four were worse than staleness
+
+Most of what was fixed is ordinary drift — counts, a file tree, a directory that did not exist
+when the tree was written. Two were not.
+
+**`ARCHITECTURE.md` taught `allowed-tools:` in its fork example.** That is the *command* key which
+silently stops `context: fork` taking effect — the single defect item 4.11 existed to remove, and
+the one the suite forbids in every real skill. It sat in the section that *explains what a fork
+is*, on `execute-task`, a skill removed at item 4.15. A reader copying it writes a skill that does
+not fork and cannot be told why, and F13's guard scans `skills/` rather than the document that
+teaches the pattern.
+
+**`README.md` gave the one-flag load command.** `--plugin-dir` loads the plugin and does not make
+its bundled scripts readable; without `--add-dir`, `/breakdown` stops in Phase 1. That was measured
+on 2026-08-26 and written into `CLAUDE.md` — and `README.md`, which is what a new reader opens
+first, kept the form that does not work.
+
+### The model table was wrong in every row that mattered
+
+It assigned `sonnet` to almost everything. The files declare a mix: `claude-opus-5` for
+`breakdown` and `breakdown-generate-tasks`, `claude-haiku-4-5` for `analyze-prd`, `plan-layers`,
+`review-tasks`, `execute-verify` and the CRD's two incremental skills, `claude-sonnet-5` for the
+rest. Commands declare no model at all, which the table gave as `sonnet` for three rows.
+
+**So the check compares the table to the frontmatter rather than asserting its shape.** A table of
+assignments nobody compares to the files is a table of intentions, and this one had been one since
+before the models in it were renamed.
+
+### Both directions again, and the omission is the worse one
+
+The layout check walks the trees in `ARCHITECTURE.md` and `CLAUDE.md` against the disk **in both
+directions**, for the reason item 69 gave one level down. A document naming something that does
+not exist sends a reader to a missing file. **A document silently omitting something real is
+worse: there is nothing to look up and no way to notice.** `execute-task` was the first kind for
+nine phases; `schema/` — item 44's whole artefact, and the single definition of every element both
+paths share — was the second, appearing **zero** times in 643 lines.
+
+### `target-state-data-flow.md` is corrected, not rewritten
+
+It opened *"Status: Target state. None of this is built."* — true when written on 2026-08-25,
+false since Phase 6 closed the plan. The temptation is to rewrite it in the present tense; that
+would delete the only record of the starting state. Its value now is the **before and after**: the
+left column of its §0 table is what the toolchain was, and everything below it is what the plan
+changed. `ARCHITECTURE.md` describes what runs. So the status says *Reached*, says when it was
+corrected and why, and the table's first column is relabelled.
+
+The check asserts both halves: the false claim is gone **and** the header says something either
+way. Removing a wrong status leaves a reader with no status, which is the same problem quieter.
+
+### Two of my own, and both are rules this ledger already carries
+
+**A `git checkout` discarded the work.** Proving the model check fires meant breaking the table,
+and restoring it with `git checkout ARCHITECTURE.md` reverted to `HEAD` — deleting every Phase 11
+edit in the file, which were all uncommitted. `mutate.py`'s own docstring warns about exactly this
+("never with `git checkout`... copy aside, copy back"), and it was written after the same mistake
+cost an afternoon in item 54. Recovered from the copy-aside backup, which is the reason the rule
+says to make one.
+
+**A check asserted a string where it wanted a shape.** *The tree mentions `schema/`* was satisfied
+by two sites: the top-level entry and an incidental `schema/checks.md` inside a comment about a
+different directory. **Two sites, so no single mutant could break it** — the site-counting rule's
+sixth confirmation. Tightened to a line that *starts* with `schema/`, which is the claim the check
+was actually making, and then watched failing.
+
+**And a third, smaller:** the checks used `skill_files()` and `agent_files()` as if they returned
+paths. They return `(name, path)` pairs, and the check raised `TypeError` rather than failing —
+which the harness reports as a failure, correctly, but it is a broken check rather than a caught
+defect. The suite distinguishes those two; I did not, for one run.
+
+### Verification
+
+`python tests/test_toolchain.py` — **133 → 137**, `failed 0`, `known 0`.
+
+Each of the four checks was watched failing before its fix, and the two that were later
+*tightened* were watched failing again afterwards.
+
+`python tests/mutate.py tests/mutants/documents.py` — **12 of 15 caught on the first pass**, and
+the three survivors are the most useful thing this phase produced. **15 of 15**, baseline green, no orphans, every file restored by hash after the
+fixes below.
+
+**Every mutant restores a real historical state rather than inventing a plausible one**:
+`execute-task` in the model table and the file tree, `allowed-tools` in the frontmatter example,
+the one-flag load command, the stale counts, and *"None of this is built"*. These are checks over
+prose, which is the class this repository has watched pass while doing nothing more often than any
+other, so a mutant that merely looked wrong would prove less than one that was wrong here.
+
+### Three survivors, and two were real holes in checks I had already watched failing
+
+This is the round's actual finding, and it is a correction to something this ledger has repeatedly
+claimed: **watching a check fail proves it fires for the case you had in mind, and nothing else.**
+All four checks had been watched failing. Two of them still could not see a whole class of the
+thing they existed to guard.
+
+**1. The load-command check read only fenced blocks.** `CLAUDE.md` gives the command in inline
+backticks inside a block quote — so the one document that had the rule *right*, and had had it
+right since it was measured, was the document the check could not see. It now reads every line
+carrying `--plugin-dir`, fenced or not, and asserts it found at least two: a check that finds
+fewer has stopped reading one of them.
+
+**2. The status check was satisfied by six sites.** It asked whether any of
+`built|landed|implemented|reached` appeared in the first twenty lines. Six did. Deleting the
+verdict itself changed nothing. Scoping it to the `**Status:**` line was not enough either — that
+line still contains *"every box in it was built across Phases 1-9"* — so the assertion is now that
+the verdict **leads** the field, which is what a status field means. **That is the site-counting
+rule three times in one phase**, once in the `schema/` assertion before the round and twice here.
+
+**Fixing it exposed a second defect in the fix.** Making the negative assertion case-insensitive
+made it fire on the document's own *quotation* of the claim it had corrected. A check that cannot
+tell an assertion from a quotation of one **forbids documenting the history it enforces** — which
+this suite did once before, in Phase 2, on the words *"full PRD content"*. Quoted spans are now
+stripped before the negative assertion is made.
+
+### The third survivor is not a hole, and it is recorded rather than deleted
+
+The mutant that unscoped the layout check — `return blocks[0]` → `return text` — **survives, and
+should.** Read against the whole of `ARCHITECTURE.md` rather than its fenced tree, every assertion
+still holds, because nothing outside the tree happens to look like a directory entry. The scoping
+is **defensive rather than load-bearing on today's content**, and a mutant that cannot fail proves
+nothing about it.
+
+Deleting it quietly would have bought a 15/15 that meant less than the 12/15 did. It is replaced
+by a control that *can* fire — breaking the heading lookup, so the check has no subject at all —
+and the reason sits in the mutants file beside it. **A round that reports a number it did not earn
+is the failure this harness exists to prevent**, one level up from the checks it tests.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
