@@ -5892,7 +5892,13 @@ def _():
 
 
 def _checks_table():
-    """schema/checks.md's table, as (assertion, owner, callers, item) tuples."""
+    """schema/checks.md's table, as (assertion, owner, callers, item) tuples.
+
+    Item 79 added `Paths` and `Why, where they differ` between the callers and the item. This
+    returns the four this check has always been about and drops the two it does not read, so
+    that adding a seventh column later fails HERE -- in one parser -- rather than in each
+    consumer. `check-enforcement.py` owns the new pair and reads the row in full.
+    """
     path = os.path.join(SCHEMA, "checks.md")
     assert os.path.isfile(path), (
         "schema/checks.md does not exist. Item 6 had accumulated eleven assertions and four "
@@ -5905,8 +5911,9 @@ def _checks_table():
     out = []
     for row in rows[2:]:
         cells = [c.strip() for c in row.strip("|").split("|")]
-        assert len(cells) == 4, f"malformed checks row ({len(cells)} cells): {row[:60]}"
-        out.append(tuple(cells))
+        assert len(cells) == 6, f"malformed checks row ({len(cells)} cells): {row[:60]}"
+        assertion, owner, callers, _paths, _why, item = cells
+        out.append((assertion, owner, callers, item))
     return path, text, out
 
 
@@ -9717,6 +9724,310 @@ def _():
             f"against its snapshot:\n{p.stderr[:300]}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+@check("a CRD's <gaps> are validated by the script that owns the assertion -- by running it",
+       finding="P58")
+def _():
+    """The `<gaps>` half of `check-status.py`, which had never reached a change request.
+
+    `checks.md` gives that script one assertion -- *declared `<definition>` <= the ceiling its
+    content supports; `<gaps>` well-formed, and aged* -- and one caller, `commands/prd.md`. The
+    first half is a PRD feature's ladder and is PRD-only for a reason core section 3 gives: a
+    CRD carries `<workflow>`, which is a process position and not a degree of definition. The
+    SECOND half is about `<gaps>`, and `parity.md` records gaps as a capability BOTH paths have
+    since item 48.
+
+    So the element was on both paths and the assertion reached one. A CRD could carry
+    `kind="decsion"` and `raised="not-a-date"` and nothing in the toolchain would say so.
+
+    GENERALISED, NOT DUPLICATED. `check_gaps()` was already path-agnostic -- it takes rows and a
+    label -- so this is a dispatch in `main()`, not a second copy of core section 6's enum. A
+    second copy is what `checks.md` exists to prevent.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="p58-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+
+        def run(path, *extra):
+            return subprocess.run(
+                [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-status.py"),
+                 path, *extra],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+        # The negative control FIRST: a well-formed CRD must pass, or every assertion below
+        # would be satisfied by a script that refuses everything.
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+            "    <workflow>ready</workflow>\n    <priority>must-have</priority>\n  </meta>\n"
+            "  <gaps>\n"
+            "    <gap id=\"1\" kind=\"decision\" raised=\"2026-09-01\">Undecided</gap>\n"
+            "  </gaps>\n</crd>\n")
+        p = run(crd, "--today", "2026-09-09")
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, (
+            f"a well-formed CRD was refused, so the checks below would pass against a script "
+            f"that rejects everything:\n{out[:400]}")
+        assert "8 days ago" in out, (
+            f"the CRD's gap was not aged. `aged` is half the assertion, and a gap with no age "
+            f"is one nobody can tell from a fresh one:\n{out[:400]}")
+
+        # And the defect the fifth crossing's shape predicts: a kind one letter wrong.
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+            "    <workflow>ready</workflow>\n    <priority>must-have</priority>\n  </meta>\n"
+            "  <gaps>\n"
+            "    <gap id=\"1\" kind=\"decsion\" raised=\"not-a-date\">Undecided</gap>\n"
+            "  </gaps>\n</crd>\n")
+        p = run(crd)
+        out = p.stdout + p.stderr
+        assert p.returncode == 1, (
+            f"a CRD carrying kind=\"decsion\" and raised=\"not-a-date\" was accepted. Core "
+            f"section 6's enum is what `check-gate.py` dispatches on, so a typo here makes "
+            f"item 29's execution stop unreachable:\n{out[:400]}")
+        assert "decsion" in out, (
+            f"the refusal does not name the unrecognised kind, so an operator cannot act on "
+            f"it:\n{out[:400]}")
+        assert "not-a-date" in out, (
+            f"the refusal does not name the bad date. Without one, an open item and a stale "
+            f"one look identical, which is why the date is required:\n{out[:400]}")
+
+        # A file that is not a CRD must be REFUSED, never silently reported as `0 gaps`. That
+        # silence is the failure this whole class is made of.
+        other = os.path.join(root, "notes.md")
+        open(other, "w", encoding="utf-8", newline="\n").write("# just some notes\n")
+        p = run(other)
+        assert p.returncode == 2, (
+            f"a file that is not a CRD was accepted and checked, so `0 gaps` is reported for "
+            f"any file at all:\n{(p.stdout + p.stderr)[:300]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the gate never reports `blocked OK` for an assertion it could not make -- by running it",
+       finding="P59")
+def _():
+    """Two ways `check-gate.py` printed OK without having decided anything.
+
+    Item 77 made assertion 3 REACH a CRD. Neither of these is about reach: both are about the
+    gate reporting a pass it did not establish, and both survived that item.
+
+      1  an UNRECOGNISED `kind`. `blocking_gaps()` intersects with BLOCKING_GAPS, so a gap
+         spelt `decsion` is not blocking, not reported, and not invalid anywhere -- item 29's
+         stop defeated by one letter. On BOTH paths: `/breakdown` never runs check-status.py.
+
+      2  an assertion that ERRORED. `gap_err` is appended to `findings` and the printed line
+         keys on `gaps` alone, so an unreadable document prints `3 blocked OK` while `--json`
+         carries `could not read the document`. The comment directly below this in the source
+         records the identical defect being fixed for assertion 4 -- *counted in findings from
+         the start and printed nowhere* -- and left it standing for assertion 3.
+
+    ASSERTED BY RUNNING, and on both controls: the misspelt kind must be reported and a correct
+    one must still block, or a gate that flags every gap would satisfy this.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="p59-")
+    try:
+        crd_dir = os.path.join(root, "docs", "crd")
+        tasks = os.path.join(root, "tasks", "2-backend")
+        for d in (crd_dir, tasks):
+            os.makedirs(d)
+        crd = os.path.join(crd_dir, "swap-store.md")
+        open(os.path.join(tasks, "L2-001-swap.xml"), "w", encoding="utf-8", newline="\n").write(
+            "<task><meta><id>L2-001</id>\n"
+            "<source-feature slug=\"swap-store\" moscow=\"must-have\" satisfies-criteria=\"1\" "
+            "requirement-level=\"P0\"/>\n</meta></task>\n")
+        json.dump({"total_tasks": 1, "task_inventory": [{"id": "L2-001", "layer": "2-backend"}]},
+                  open(os.path.join(root, "tasks", "manifest.json"), "w", encoding="utf-8"))
+
+        def gate(document):
+            p = subprocess.run(
+                [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+                 document, os.path.join(root, "tasks")],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            return p.stdout + p.stderr
+
+        def write(kind):
+            open(crd, "w", encoding="utf-8", newline="\n").write(
+                "<crd>\n  <meta>\n    <slug>swap-store</slug>\n"
+                "    <priority>must-have</priority>\n  </meta>\n  <gaps>\n"
+                "    <gap id=\"1\" kind=\"" + kind + "\" raised=\"2026-09-09\">Undecided</gap>\n"
+                "  </gaps>\n</crd>\n")
+
+        # Control: a correctly spelt blocking kind still blocks. Without this, a gate that
+        # reported every gap would pass the assertion below.
+        write("decision")
+        out = gate(crd)
+        assert "blocking gap" in out, (
+            f"the control failed: a correctly spelt <gap kind=\"decision\"> no longer blocks, "
+            f"so nothing below measures the misspelling:\n{out[:400]}")
+
+        write("decsion")
+        out = gate(crd)
+        assert "3 blocked       OK" not in out, (
+            f"the gate reported `blocked OK` over a gap whose kind it could not classify. Item "
+            f"29's stop is then defeated by a typo, which is what item 77 fixed the REACH of "
+            f"and not the VALUE:\n{out[:600]}")
+        assert "decsion" in out, (
+            f"the gate did not name the unrecognised kind, so an operator cannot see which gap "
+            f"it could not classify:\n{out[:600]}")
+
+        # 2 -- an assertion that could not run must never print OK. A directory takes the PRD
+        # branch, finds no index.md, and errors inside blocking_gaps().
+        out = gate(crd_dir)
+        assert "3 blocked       OK" not in out, (
+            f"the gate printed `blocked OK` for an assertion that errored. The finding is in "
+            f"`findings` and in --json and reaches the operator nowhere:\n{out[:600]}")
+        assert "could not read the document" in out, (
+            f"the error is counted and not printed, so the count is the only evidence and an "
+            f"operator reading it cannot act on it:\n{out[:600]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("the significance-candidate screen reaches a CRD, not only a PRD -- by running it",
+       finding="P60")
+def _():
+    """Item 35's third direction, which had a PRD-shaped guard around it.
+
+    `check-references.py` screens for a document nobody has FLAGGED that the heuristics say is a
+    candidate -- reported, never applied, because significance cannot be derived. The screen sits
+    behind `if os.path.isdir(features_dir)`, so it has never run on a change request.
+
+    Item 76 gave the CRD branch the assertions about a DECLARED flag. This is the other
+    direction, and the asymmetry is the one this class is made of: the capability is on both
+    paths -- `parity.md` records it as `both` -- and one of its two screens reached one path.
+
+    THE CROSS-CUTTING HALF IS NOT PORTED LITERALLY, and that is a decision rather than an
+    omission. The PRD counts other documents naming the slug; a CRD is one document, so that
+    count is structurally zero. `<impact-analysis><affected-features>` is the same claim in the
+    CRD's own vocabulary -- *this change reaches N features* -- and the threshold is the one
+    constant, not a second one.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="p60-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+
+        def run():
+            p = subprocess.run(
+                [sys.executable,
+                 os.path.join(SKILLS, "breakdown", "scripts", "check-references.py"), crd],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            return p.stdout + p.stderr
+
+        head = ("<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+                "    <priority>must-have</priority>\n  </meta>\n"
+                "  <context>\n    <project-ref>PROJECT.md</project-ref>\n"
+                "    <related-features>\n"
+                "      <feature-ref id=\"save-link\">x</feature-ref>\n"
+                "    </related-features>\n  </context>\n")
+        open(os.path.join(root, "PROJECT.md"), "w", encoding="utf-8", newline="\n").write(
+            "<project-context>\n  <feature-registry>\n"
+            "    <feature id=\"save-link\" built=\"complete\">x</feature>\n"
+            "  </feature-registry>\n</project-context>\n")
+
+        # 1 -- the quality-attribute reason, which ports directly.
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            head + "  <change-request>\n    <summary>Archiving must be idempotent and the "
+                   "endpoint requires authentication.</summary>\n  </change-request>\n</crd>\n")
+        out = run()
+        assert "CANDIDATE" in out, (
+            f"a CRD naming a quality attribute and declaring no <architecturally-significant> "
+            f"produced no candidate line. On the PRD path this is item 35's third direction; "
+            f"here the screen is behind an isdir guard and never ran:\n{out[:500]}")
+
+        # 2 -- the cross-cutting reason, in the CRD's own vocabulary.
+        affected = "".join(
+            "      <feature id=\"f" + str(i) + "\">x</feature>\n" for i in range(4))
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            head + "  <change-request>\n    <summary>Nothing notable.</summary>\n"
+                   "  </change-request>\n  <impact-analysis>\n    <affected-features>\n"
+            + affected + "    </affected-features>\n  </impact-analysis>\n</crd>\n")
+        out = run()
+        assert "CANDIDATE" in out and "cross-cutting" in out, (
+            f"a CRD whose own impact analysis names four affected features was not screened as "
+            f"cross-cutting. The PRD counts documents; a CRD is one document, and its "
+            f"<affected-features> is the same claim:\n{out[:500]}")
+
+        # 3 -- the controls. A CRD that DECLARES the flag is not a candidate, and one that trips
+        # no heuristic is not either. Without both, a screen that flags everything passes.
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            head.replace("</meta>", "    <architecturally-significant because=\"cross-cutting\"/>"
+                                    "\n  </meta>")
+            + "  <change-request>\n    <summary>Archiving must be idempotent.</summary>\n"
+              "  </change-request>\n</crd>\n")
+        out = run()
+        assert "CANDIDATE" not in out, (
+            f"a CRD that already DECLARES <architecturally-significant> was still offered as a "
+            f"candidate, so the screen ignores the flag it exists to ask for:\n{out[:500]}")
+
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            head + "  <change-request>\n    <summary>Rename a button.</summary>\n"
+                   "  </change-request>\n</crd>\n")
+        out = run()
+        assert "CANDIDATE" not in out, (
+            f"a CRD tripping neither heuristic was offered as a candidate, so the screen flags "
+            f"every unflagged document and measures nothing:\n{out[:500]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+@check("every assertion says which paths it reaches, and each `both` is probed by running it",
+       finding="P61")
+def _():
+    """Item 79. The registry that could not express the defect six live runs kept finding.
+
+    `parity.md` measures CAPABILITY parity -- is the element documented on both paths -- with a
+    substring probe against a format reference. `checks.md` measured owner and caller, in both
+    directions since item 69. Neither could say *this assertion runs on the CRD path*, and four
+    of the six defects were capabilities `parity.md` already recorded as `both`: the element was
+    on two paths and its check on one.
+
+    NOT A LINT ON `isdir`, and that is the measured half. 43 `isdir`/`is_dir` calls across 28
+    files; 22 on a tasks directory or a repo root, and of the 21 on a document, seven are
+    PRD-only scripts that refuse a CRD with exit 2 and ten dispatch correctly. A syntactic check
+    would flag `select-features.py` -- the canonical dispatch -- and would have found none of
+    P58, P59 or P60, which are about a value, a caller and a printed line rather than a branch.
+
+    THE PROBES ARE THE ASSERTION. A declared column is a documentation ratchet: it catches the
+    asymmetry nobody wrote down and nothing about whether the code reaches. So every `both` row
+    runs its owner twice, against a well-formed CRD and one carrying the defect that assertion
+    exists to catch, and the good run must stay silent -- which is what caught two probes of my
+    own whose markers appeared in both runs.
+    """
+    script = os.path.join(SCHEMA, "scripts", "check-enforcement.py")
+    assert os.path.isfile(script), "schema/scripts/check-enforcement.py does not exist"
+
+    p = subprocess.run([sys.executable, script, "--json"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert p.returncode in (0, 1), (
+        f"check-enforcement.py could not run at all (exit {p.returncode}):\n{p.stderr[:400]}")
+    try:
+        result = json.loads(p.stdout)
+    except ValueError:
+        raise AssertionError(f"--json did not emit JSON:\n{p.stdout[:400]}")
+
+    assert not result["findings"], (
+        "an assertion does not reach the path its row claims:\n    "
+        + "\n    ".join(result["findings"]))
+
+    # The instrument must be doing work. A run that probes nothing reports zero findings, which
+    # is the shape of every false pass this suite has recorded.
+    assert result["probed"] >= 9, (
+        f"only {result['probed']} row(s) were probed by running. The column is then a "
+        f"declaration, and a declaration cannot see a check that stopped reaching")
+    assert result["paths"]["both"] == result["probed"], (
+        f"{result['paths']['both']} rows say `both` and {result['probed']} were probed. Every "
+        f"one must be, or the unprobed row is an unchecked claim")
+    assert result["paths"]["n/a"] >= 1 and result["paths"]["prd-only"] >= 1, (
+        "the column reports only one kind of answer, so it is not classifying anything")
+    assert result["rows"] >= 28, f"checks.md parsed to only {result['rows']} rows"
 
 # ------------------------------------------------------------------------ runner
 

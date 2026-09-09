@@ -68,6 +68,14 @@ _spec = importlib.util.spec_from_file_location(
 _sel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_sel)
 
+# Core 6's enum has ONE owner -- `check-status.py`, per checks.md -- and this reads it rather
+# than restating it. The gate must be able to tell `a kind that does not block` from `a kind I
+# do not recognise`, and with a local copy of the set those two are the same answer.
+_sspec = importlib.util.spec_from_file_location(
+    "check_status", os.path.join(_HERE, "check-status.py"))
+_status = importlib.util.module_from_spec(_sspec)
+_sspec.loader.exec_module(_status)
+
 # Core 6. Three kinds stop an overnight run; two are worth saying and not worth stopping for.
 BLOCKING_GAPS = {"specification", "dependency", "decision"}
 
@@ -152,6 +160,16 @@ def blocking_gaps(document, built):
         for kind in sorted(set(row["gaps"]) & BLOCKING_GAPS):
             findings.append(f"{row['slug']}: carries a <gap kind=\"{kind}\"> and has tasks. "
                             f"An undecided question built anyway is an invented one")
+
+        # A kind outside core 6's enum is NOT `does not block` -- it is a kind nothing can
+        # classify, and treating the two alike is item 29's stop defeated by one letter. Item 77
+        # made this assertion REACH a CRD; the value it dispatches on was still unchecked, and
+        # `/breakdown` runs check-status.py on neither path, so this is the only place that sees
+        # it before tasks are handed to a run.
+        for kind in sorted(set(row["gaps"]) - _status.GAP_KINDS):
+            findings.append(f"{row['slug']}: carries a <gap kind=\"{kind}\">, which is not one "
+                            f"of {'|'.join(sorted(_status.GAP_KINDS))} (core 6). Nothing can say "
+                            f"whether it blocks, so it is treated as though it does")
     return findings, None
 
 
@@ -242,7 +260,15 @@ def main():
         print(f"  2 significance  {'OK' if not undriven else str(len(undriven)) + ' undriven'}")
         for line in undriven:
             print(f"      {line}")
-        print(f"  3 blocked       {'OK' if not gaps else str(len(gaps)) + ' blocking gap(s)'}")
+        # `OK` means the assertion was made and passed. When it could not be made at all,
+        # saying OK is the same failure recorded three lines below for assertion 4 -- counted
+        # in `findings`, printed nowhere, and the count the only evidence. Fixed there and left
+        # standing here, which is why the state is named rather than defaulted.
+        if gap_err:
+            print("  3 blocked       COULD NOT CHECK")
+            print(f"      could not read the document: {gap_err}")
+        else:
+            print(f"  3 blocked       {'OK' if not gaps else str(len(gaps)) + ' blocking gap(s)'}")
         for line in gaps:
             print(f"      {line}")
         # 4 exists only on the CRD path, where the document carries references of its own.
