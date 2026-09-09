@@ -10352,8 +10352,11 @@ def _():
 
         # ---- the legacy spelling must still be a WARNING, not an error. Item 45 accepts it on
         # read, and turning it into a refusal here would break every pre-rename PROJECT.md.
+        # `<files>` is here because item 84 made it required. A fixture must be spec-shaped
+        # except for the ONE thing under test, or it fails for a reason the check is not about
+        # -- which is how a legitimate new rule reads as a regression in an older check.
         write('<feature id="save-link" status="complete">\n      <name>Save a link</name>\n'
-              '    </feature>')
+              '      <files>app/api/links.py</files>\n    </feature>')
         code, out = run()
         # The SUBSTANCE, not the sentence: it must name the legacy spelling and say which item
         # accepts it. Pinning phrasing is what broke three unrelated checks at item 79, and it
@@ -10367,7 +10370,7 @@ def _():
 
         # ---- and a bad VALUE is still caught, which is the assertion that already existed.
         write('<feature id="save-link" built="banana">\n      <name>Save a link</name>\n'
-              '    </feature>')
+              '      <files>app/api/links.py</files>\n    </feature>')
         code, out = run()
         assert code == 1 and "banana" in out, (
             f"a `built=` outside core section 3's enum stopped being refused:\n{out[:400]}")
@@ -10596,6 +10599,119 @@ def _():
             f"analysis and means nothing:\n{out[:400]}")
         assert "nothing to compare" in out, (
             f"the legitimately-empty case stopped being reported as such:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+@check("a PROJECT.md feature carries the elements the format marks required -- by running it",
+       finding="P67")
+def _():
+    """Item 84. Item 81's residue, and the spec ambiguity that explains the producers.
+
+    `project-format.md` marks four things Required on a `<feature>`. Item 81 asserted `id` and
+    `built` and **deliberately left `name` and `files`**, on the grounds that there was live
+    evidence for one and none for the others. Reading the crossing's artefact properly supplies
+    it: across 7 features, `<files>` is a child element on all 7 -- correct -- and `name` is an
+    ATTRIBUTE on all 7, where the format's example puts a child element.
+
+    THE ROOT CAUSE IS IN THE FORMAT, NOT THE PRODUCERS
+
+    That table's first column is headed `Attribute/Element` and **never says which is which**.
+    `id` and `built` are attributes, `name` and `files` are elements, and the only place that is
+    stated is an example further up the page. Two independent models read the normative-looking
+    table and put `name` where the two attributes go. The column is split now.
+
+    WHY NOTHING BROKE, WHICH IS WHY IT WAS INVISIBLE
+
+    Nothing parses either form mechanically. `<files>` is read by INSTRUCTION -- a model reading
+    the XML in `crd-impact-analysis` -- and a model finds a name whichever way it is written. So
+    a required element went missing on every feature of a live artefact and no consumer noticed,
+    which is precisely the condition `readers.md` and this check exist to make visible.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SCHEMA, "scripts", "check-artefacts.py")
+
+    # The format must say WHICH, not only show it. A reader who follows the table alone has to
+    # be able to get this right.
+    fmt = open(os.path.join(SKILLS, "crd", "references", "project-format.md"),
+               encoding="utf-8").read()
+    table = fmt.split("### Features Section", 1)
+    assert len(table) == 2, "project-format.md has no Features Section"
+    region = table[1].split("###", 1)[0]
+    for field, shape in (("id", "Attribute"), ("built", "Attribute"),
+                         ("name", "Element"), ("files", "Element")):
+        row = re.search(r"^\|\s*`" + field + r"`\s*\|([^|]*)\|", region, re.M)
+        assert row, f"project-format.md's feature table has no `{field}` row"
+        assert shape.lower() in row.group(1).lower(), (
+            f"the feature table does not say whether `{field}` is an attribute or an element. "
+            f"That column was headed `Attribute/Element` and said neither, and two producers "
+            f"put `name` where the attributes go: {row.group(0)[:80]}")
+
+    root = tempfile.mkdtemp(prefix="p67-")
+    try:
+        path = os.path.join(root, "PROJECT.md")
+
+        def write(feature):
+            open(path, "w", encoding="utf-8", newline="\n").write(
+                "<project-context>\n  <meta><name>x</name>\n"
+                "  <last-context-hash>abc123</last-context-hash></meta>\n"
+                f"  <features>\n{feature}\n  </features>\n"
+                "  <api-registry>\n"
+                "    <endpoint method=\"GET\" path=\"/x\" request=\"none\" response=\"X\"/>\n"
+                "  </api-registry>\n</project-context>\n")
+
+        def run():
+            p = subprocess.run([sys.executable, script, path], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        GOOD = ('    <feature id="save-link" built="complete">\n'
+                '      <name>Save a link</name>\n'
+                '      <files>app/api/links.py</files>\n'
+                '    </feature>')
+
+        # Control first: the spec's own shape must pass.
+        write(GOOD)
+        code, out = run()
+        assert code == 0, f"the format's own example shape was refused:\n{out[:400]}"
+
+        # The crossing's shape: `name` as an attribute, no <name> child.
+        write('    <feature id="save-link" built="complete" name="Save a link">\n'
+              '      <files>app/api/links.py</files>\n    </feature>')
+        code, out = run()
+        assert code == 1, f"a feature with no <name> element was accepted (exit {code})"
+        assert "save-link" in out and "name" in out, (
+            f"the refusal does not name the feature and the element:\n{out[:400]}")
+        # What the message must NOT say, which is the claim. Asserting that the word
+        # `attribute` appears was satisfied by the rationale tail -- *identity and state are
+        # attributes* -- so the branch could be replaced by the absence message and the check
+        # stayed green. Two places in one sentence carrying the word; the site-counting rule.
+        assert "has no <name>" not in out, (
+            f"a feature that HAS the value, written as an attribute, is reported as though the "
+            f"element were missing. That sends an author to add one beside what they already "
+            f"wrote; naming the mistake is what makes it a single edit:\n{out[:400]}")
+
+        # And <files>, which the crossing got right -- so this half has no live evidence and is
+        # asserted from the format alone. Said out loud rather than blended in.
+        write('    <feature id="save-link" built="complete">\n'
+              '      <name>Save a link</name>\n    </feature>')
+        code, out = run()
+        assert code == 1 and "files" in out, (
+            f"a feature with no <files> element was accepted:\n{out[:400]}")
+
+        # A feature carrying EXTRA children is not refused. `<description>` and `<tests>` are
+        # what the crossing's producer invented; they are undefined and harmless, and refusing
+        # unknown content is a policy this item was not given evidence for.
+        write('    <feature id="save-link" built="complete">\n'
+              '      <name>Save a link</name>\n      <files>app/api/links.py</files>\n'
+              '      <description>Anything</description>\n'
+              '      <tests>tests/test_links.py</tests>\n    </feature>')
+        code, out = run()
+        assert code == 0, (
+            f"a feature carrying undefined extra children was REFUSED. Nothing measured says "
+            f"unknown content is a defect, and inventing that rule here would refuse the "
+            f"crossing's artefact for a reason nobody has justified:\n{out[:400]}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
