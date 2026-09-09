@@ -3568,6 +3568,50 @@ as the general case and lets a CRD fall through to a default. Four sites now:
 - **Without records it says it could not look**, rather than reporting that nothing drives the
   flag. The PRD branch has always drawn that distinction and the CRD branch now does too.
 
+**P57 — a live run wrote scratch files into the toolchain checkout.**
+*Verification: measured. The files are in the run's own timestamp range and no instruction names
+them.*
+Step 4 of the fifth crossing left `skills/execute/preflight_err.txt` and
+`skills/execute/resolve_err.txt` in the plugin, timestamped inside the `/execute` run. The first
+holds `preflight.sh`'s NOTE, captured by a stderr redirect.
+
+**Nothing instructs it.** No `SKILL.md` in the execute tree contains a `2>` redirect and no
+instruction names `_err.txt`: the model invented the capture, wrote it to a *relative* path, and
+the path resolved inside the checkout.
+
+**This is F4's class**, which item 4.6 resolved — *"a previous run's entire output landed in
+`skills/breakdown-generate-tasks/output/` and the caller was never told"*. What 4.6 built guards
+the **declared** output paths: `resolve-output.sh` refuses a tasks directory inside a plugin and
+`preflight.sh` refuses a plugin as a target. **Neither constrains a path a model invents
+mid-run**, and there is no rule saying where scratch may go.
+
+Three things make 82 bytes worth an item:
+
+- **It is silent.** Nothing reports it, and the operator learns of it from `git status` or not at
+  all.
+- **It is in the plugin**, which is shared by every project that loads it — unlike a stray file in
+  a target, which belongs to one run.
+- **No live harness checks.** `boundary-test.py`, `graph-experiment.py` and `run_5_3.py` all
+  verify the *target* and none looks at the checkout. `dirty-guard.sh` guards `git checkout --`
+  during a mutation round, which is a different moment entirely.
+
+**78. A run writes nothing into the toolchain, and the harness proves it.**
+*Addresses P57. Depends on nothing.*
+
+Two halves, because the rule and the evidence are different jobs — the split this plan has made
+since item 4.13.
+
+- **`/execute` says where scratch goes:** `{project_path}/.execute/{prd_slug}/`, never a relative
+  path. That directory already exists, already holds the ledger and the task-file snapshot, and is
+  already under a self-ignoring `.gitignore`. **A redirect with no directory in it is the defect**
+  — the cwd of a skill is not a thing the skill may assume.
+- **Every live harness checks the checkout afterwards** and fails if it is dirty. That is the half
+  that would have caught this: the rule above is prose, and P16 is this plan's finding about
+  prose. A run that dirties the toolchain must end red rather than end quietly.
+
+**It reports rather than deletes.** The files are evidence of what a run did, and a harness that
+tidied them away would leave the next person with the same surprise and no trace.
+
 ---
 
 ## 6. Summary
@@ -3651,6 +3695,7 @@ as the general case and lets a CRD fall through to a default. Four sites now:
 | 75 | The CRD's schema contracts reach the task that implements them | **P53** | **Correctness** |
 | 76 | `<architecturally-significant>` on a CRD | **P54** | **Correctness** |
 | 77 | The gate's assertions reach a CRD | **P55**, **P56** | **Correctness** |
+| 78 | A run writes nothing into the toolchain, and the harness proves it | **P57** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
