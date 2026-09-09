@@ -113,6 +113,39 @@ def script(name, *args):
     raise SystemExit(f"no such script: {name}")
 
 
+def crd_prompt(request, app):
+    """/crd is an INTERVIEW, and one non-interactive turn is not one.
+
+    The sixth crossing's first attempt ran the bare invocation and got back four clarifying
+    questions and no document -- which is `/crd` behaving correctly, not failing. It asks what
+    only a person can answer: whether archive and restore are dedicated endpoints, whether
+    `include archived` is one shared parameter or one per endpoint, and what tier the change
+    is. It then stops rather than inventing them, which is the rule it is built on.
+
+    So the stakeholder's answers are supplied up front, exactly as a hand-driven session
+    supplied them by typing.
+
+    THE LINE THIS MUST NOT CROSS is item 21 run 2's finding: a fixture that explains the
+    experiment to its subject produces a clean result that measures nothing. Everything below
+    is a product decision a person owns. Nothing here says what SHAPE to write, which elements
+    to fill, what to do about anything it is not told, or that an undecided question belongs
+    in `<gaps>` -- if the run invents an answer instead of recording a gap, that is a finding,
+    and this prompt has to leave room for it to be one.
+    """
+    return (
+        f"/{P}:crd {request} --project-path {app}\n\n"
+        "This is a non-interactive session, so here are the stakeholder's answers to the "
+        "questions this interview normally asks, given up front:\n"
+        "- Archive and restore are dedicated endpoints, not a flag on an update.\n"
+        "- Seeing what is archived is a parameter on the existing list endpoint, not a "
+        "separate view.\n"
+        "- One shared parameter includes archived items across list, search and tag "
+        "filtering.\n"
+        "- This is must-have.\n"
+        "- Hard delete stays exactly as it is, and stays available.\n"
+        "Anything not covered above has not been decided.")
+
+
 def build_steps(ws):
     app = os.path.join(ws, "app")
     tasks = os.path.join(app, "docs", "tasks", SLUG)
@@ -304,8 +337,7 @@ def build_steps(ws):
              cwd=ws, timeout=1800, check=s1,
              prompt=f"/{P}:crd-context {app}"),
         dict(id=2, name="crd", desc="/crd turns the stakeholder prose into a CRD",
-             cwd=ws, timeout=1800, check=s2,
-             prompt=f"/{P}:crd {request} --project-path {app}"),
+             cwd=ws, timeout=1800, check=s2, prompt=crd_prompt(request, app)),
         dict(id=3, name="breakdown", desc="/breakdown turns the CRD into tasks",
              cwd=ws, timeout=3600, check=s3,
              prompt=lambda: f"/{P}:breakdown {find_crd()} --project-path {app}"),

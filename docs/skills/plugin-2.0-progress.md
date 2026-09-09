@@ -4941,6 +4941,115 @@ script dropping its dual `metavar`.
 
 ---
 
+## Phase 16 — The sixth crossing, and the first driven end to end by a program.
+
+**Run 2026-09-09** against a fixture rebuilt with `--clean`: 5 commits, 17 files, 8 passing
+tests, no `PROJECT.md`. **All four steps pass.** Suite unchanged at 149 — every finding below is
+one no static check can see, which is the sixth time that sentence has been written here.
+
+| Step | Result | Cost |
+|---|---|---|
+| 1 `/crd-context` | PROJECT.md written, 5 features, 2 registries | 98s, $0.76 |
+| 2 `/crd` | 7 EARS criteria, 1 gap, aged by the check item 79 added | 154s, $0.90 |
+| 3 `/breakdown` | 5 tasks in 3 layers, coverage OK, gate names the gap | 1114s, $10.25 |
+| 4 `/execute` | 5/5 verified, 5 merges, 25 tests from a baseline of 8 | 1654s, $6.40 |
+
+**Verified against git and pytest rather than against the runs' own summaries**: `ledger-status.sh`
+derives 5 verified with no missing commits, 5 merge commits exist, 0 worktrees are left, the
+`test_delete_is_permanent` trap held, and `checkout-clean.py` reports the run added nothing to the
+toolchain.
+
+### What this crossing was for, and both changes worked
+
+**Item 79's `check-status.py` invocation in `commands/crd.md` had never been executed.** It ran,
+and aged a real gap: `gap 1 (decision) raised 2026-09-09, 0 days ago`.
+
+**And `/crd` recorded that gap rather than inventing an answer** — *"Whether archiving an
+already-archived link, or restoring one that is not archived… is undecided. Not covered by the
+stakeholder's answers."* Nothing in the prompt told it to do that; the prompt supplied product
+decisions and said only *"anything not covered above has not been decided."* The rule held on
+its own.
+
+**P62's `{document}` reached a live run.** `/breakdown` was handed the CRD file, the run's text
+carries no `no index.md`, and `check-coverage.py` attributed 5 of 5 tasks.
+
+**P60's candidate screen ran and correctly stayed silent** — no quality word, one affected
+feature against a threshold of three, no declared flag. The `0 significance candidate(s)` count
+is what proves the screen executed, which is why it is in the summary line rather than only in
+the findings.
+
+### The instrument was wrong first, and the run said so
+
+The first attempt at step 2 got four clarifying questions and no document. **That is `/crd`
+behaving correctly**: it is an interview, one non-interactive turn is not one, and it asks what
+only a person can answer before it stops rather than inventing. *A refused run is not a failed
+measurement* — this repository's own rule, and the second time it has been the first result of a
+crossing.
+
+The harness now supplies the stakeholder's answers up front, exactly as a hand-driven session
+supplied them by typing. **The line it must not cross is item 21 run 2's**: nothing in the prompt
+says what shape to write, which elements to fill, what to do about anything it is not told, or
+that an undecided question belongs in `<gaps>`. Had it said the last of those, the finding above
+would have measured the prompt.
+
+### Four findings, each reproduced before it was recorded
+
+**P63 — both `PROJECT.md` producers omit a required attribute, and the validator has no branch
+for it.** `crd-investigator` and `project-context-finalizer` each wrote
+`<feature id="save-link" name="Save a link">`. `built=` is **Required: Yes** in
+`project-format.md` and appears in the investigator's own template; `name=` is not defined
+anywhere. Two independent producers, the same substitution.
+
+> `check_project_context()` validates `built` **if present** and warns about the pre-item-45
+> `status` **if present**. There is no branch for neither — **the else-branch shape item 79 is
+> about, in a validator rather than a dispatch.** The refusal that does happen comes from version
+> detection: *"matches no known schema version. `migrate.py --detect` escalates rather than
+> guessing"* — and `migrate.py` then correctly answers `ESCALATE … no migration can be selected`.
+> The message names a remedy that cannot apply, because R3's precondition needs the `status=`
+> that is also absent.
+
+**P64 — nothing asserts a task file is well-formed XML, and three readers hide it in turn.**
+Reproduced from scratch: one well-formed task and one with `<contract kind="schema">` unescaped
+in prose.
+
+| Reader | What it said |
+|---|---|
+| `build-manifest.py` | `2 task(s)`, exit 0 — it parses with `ElementTree` behind `except Exception` |
+| `check-coverage.py` | `1 of 2 task(s) attributed`, exit 0 |
+| `breakdown-review-tasks` | PASSED, *"all required sections present"* — it reads the file as text |
+
+The number points at **attribution**; the cause is a **broken file**. `checks.md` has no row for
+*a task file parses*, and this is the ownerless row it should have had.
+
+**P65 — `check-scope.py` no-ops silently on a key it does not know.** Given an `analysis.json`
+carrying `scope_declared` instead of `scope` it prints *"nothing to compare: the analysis carried
+no scope or confidence"* and exits 0. The key names are documented nowhere; `/breakdown` Phase 2
+names the elements to extract and not the fields to write.
+
+**P66 — a first `build-manifest.py` build writes none of the fields `/execute` documents
+reading.** Its output carries `schema_version`, `summary`, `task_inventory`, `toolchain_version`
+and nothing else; `/execute` Step 2 says to extract `prd.slug`, `prd.project_path` and `layers`.
+The second of those is the fallback for a run given no `--project-path`, so the fallback can
+never fire.
+
+### And one the run got right about itself
+
+`task-generator` **refused an instruction from its own orchestrator.** The run had told it
+`requirement-level` was the lowest level among carried criteria; the format spec says the
+highest, and the agent flagged the contradiction with the spec's rationale rather than complying.
+It was right. That is the shape item 63 and item 3 were both built to protect, working without
+being asked.
+
+### `run_5_3.py` drives all four steps, which its docstring always claimed
+
+`build_steps()` returned only `/execute`; steps 1-3 lived in a terminal history and their pass
+criteria in someone's head — the exact thing the file was written to stop. Each new step asserts
+by **running the script that owns the assertion**, never by reading the run's summary of itself.
+The CRD path is **discovered**, because the slug is `/crd`'s decision and hardcoding it would turn
+*it chose a different name* into *it wrote nothing*.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
