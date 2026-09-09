@@ -277,10 +277,41 @@ PROJECT_REF = re.compile(r"<project-ref>\s*(.*?)\s*</project-ref>", re.S)
 PRD_REF = re.compile(r"<prd-ref>\s*(.*?)\s*</prd-ref>", re.S)
 FEATURE_REF = re.compile(r'<feature-ref\b[^>]*\bid="([^"]+)"')
 PROJECT_FEATURE = re.compile(r'<feature\b[^>]*\bid="([^"]+)"')
+AFFECTED_FEATURES = re.compile(r"<affected-features>(.*?)</affected-features>", re.S)
+
+
+def crd_candidate(text, rel):
+    """Item 35's third direction, in the CRD's own vocabulary. Returns a line or None.
+
+    The screen below iterates a PRD *directory*, so a change request has never reached it: an
+    unflagged CRD naming a quality attribute was offered to nobody. Same rule, same threshold,
+    reported and never applied -- significance cannot be derived, which is why it is a declared
+    flag and why this stops at a conversation.
+
+    THE CROSS-CUTTING REASON IS NOT PORTED LITERALLY, and that is a decision. The PRD counts
+    OTHER DOCUMENTS naming the slug; a CRD is one document, so that count is structurally zero
+    and porting it verbatim would give this screen one working half and one that can never fire.
+    `<impact-analysis><affected-features>` is the same claim in the vocabulary this document
+    has -- *this change reaches N features* -- and it reuses CROSS_CUTTING_AT rather than
+    introducing a second threshold.
+    """
+    if SIGNIFICANT.search(text):
+        return None
+    reasons = []
+    hit = QUALITY_WORDS.search(text)
+    if hit:
+        reasons.append(f"quality-attribute (names `{hit.group(1).lower()}`)")
+    block = AFFECTED_FEATURES.search(text)
+    reach = len(PROJECT_FEATURE.findall(block.group(1))) if block else 0
+    if reach >= CROSS_CUTTING_AT:
+        reasons.append(f"cross-cutting (its impact analysis names {reach} affected features)")
+    if not reasons:
+        return None
+    return f"{rel}: {', '.join(reasons)} -- and it declares no <architecturally-significant>"
 
 
 def check_crd(crd_path, project_path, records=None, driven=None):
-    """Resolve a CRD's own references. Returns (errors, warnings, stale, counted).
+    """Resolve a CRD's own references. Returns (errors, warnings, stale, candidates, counted).
 
     `stale` is separate from `warnings` because the two print under different prefixes and
     `check-gate.py` reads one of them. Item 76 put the significance screen here and left
@@ -375,7 +406,8 @@ def check_crd(crd_path, project_path, records=None, driven=None):
         else:
             warnings.append(f"{rel}: is architecturally significant ({because.group(1)}), and a "
                             f"decision record names it")
-    return errors, warnings, stale, counted
+    candidates = [c for c in [crd_candidate(text, rel)] if c]
+    return errors, warnings, stale, candidates, counted
 
 
 def main():
@@ -415,8 +447,8 @@ def main():
                 for target in rec["drives"]:
                     crd_driven.add(os.path.basename(target.split("#")[0]))
 
-        errors, warnings, stale, counted = check_crd(prd_dir, project_path,
-                                                     crd_records, crd_driven)
+        errors, warnings, stale, candidates, counted = check_crd(prd_dir, project_path,
+                                                                 crd_records, crd_driven)
         if not args.quiet:
             for line in errors:
                 print(f"  DANGLING  {line}", file=sys.stderr)
@@ -424,8 +456,14 @@ def main():
                 print(f"  STALE     {line}")
             for line in warnings:
                 print(f"  NOTE      {line}")
+            # Item 35's third direction, on this path since it was measured to be missing. A
+            # candidate never touches the exit code on either path: the heuristics screen for a
+            # conversation, and one that can fail a run has been promoted to a rule in silence.
+            for line in candidates:
+                print(f"  CANDIDATE {line}")
             print(f"{counted} reference(s) checked in {os.path.basename(prd_dir)}: "
-                  f"{len(errors)} dangling, {len(stale)} stale, {len(warnings)} note(s)")
+                  f"{len(errors)} dangling, {len(stale)} stale, {len(warnings)} note(s), "
+                  f"{len(candidates)} significance candidate(s)")
         if not args.project_path:
             print("  NOTE      no --project-path, so <project-ref> was resolved and not "
                   "compared against the project this run is for")

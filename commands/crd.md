@@ -291,7 +291,24 @@ After writing the CRD file:
 1. Confirm file path
 2. **Name every open `<gap>`, by id and kind** — not "some requirements are TBD". A gap reported
    vaguely is one nobody goes back to, and `specification` gaps are the reason the document is
-   still `draft`
+   still `draft`.
+
+   **Do not do this by reading the file.** The kinds and the ages come from the script that owns
+   the assertion, and it validates them on the way past:
+
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {project_path}/docs/crd/{slug}.md
+   ```
+
+   - **Exit 0**: report the `AGE` lines — id, kind and how long each has been open.
+   - **Exit 1**: `CONTRADICTION` names a `kind` outside [core §6](../schema/core.md)'s enum, a
+     repeated id, or a missing or unreal `raised` date. **Report it and fix the document.** A
+     `kind` one letter wrong is not a gap that does not block — it is a gap nothing can
+     classify, and `/breakdown`'s gate dispatches on exactly that value.
+
+   This is the same assertion `/prd` runs over a PRD's features. It reached this path only when
+   somebody measured that it did not: `<gaps>` has been a capability of both documents since
+   item 48, and its check had a PRD directory's shape until it was generalised.
 3. Explain next steps
 
 *"Your CRD has been saved to `{project_path}/docs/crd/{slug}.md`.*

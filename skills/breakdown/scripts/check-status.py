@@ -98,6 +98,15 @@ GAP = re.compile(r"<gap\b([^>]*)>", re.S)
 ATTR = re.compile(r'(\w[\w-]*)="([^"]*)"')
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# *What document is this* has ONE answer in this toolchain, and it is `migrate.py`'s ROOTS --
+# the same table `check-artefacts.py` reads. A second root regex here would be a second answer,
+# which is the defect `checks.md` exists to prevent and the reason this dispatch is safe at all.
+_mspec = importlib.util.spec_from_file_location(
+    "migrate", os.path.join(_HERE, os.pardir, os.pardir, os.pardir,
+                            "schema", "scripts", "migrate.py"))
+_mig = importlib.util.module_from_spec(_mspec)
+_mspec.loader.exec_module(_mig)
+
 
 def read(path):
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -212,9 +221,32 @@ def check_gaps(rel, rows, today, bad, ages):
         ages.append((max((today - d).days, 0), rel, gid or "?", kind or "?", raised))
 
 
+def report(bad, soft, ages, counted, noun, as_json, quiet, strict):
+    """One reporting path for both document shapes, so the two cannot drift apart."""
+    if as_json:
+        print(json.dumps({noun: counted, "contradictions": bad, "escalations": soft,
+                          "gaps": [{"days": d, "file": f, "id": i, "kind": k, "raised": r}
+                                   for d, f, i, k, r in ages]}, indent=2))
+    elif not quiet:
+        for line in bad:
+            print(f"  CONTRADICTION  {line}")
+        for line in soft:
+            print(f"  ESCALATE       {line}")
+        for days, rel, gid, kind, raised in sorted(ages, reverse=True):
+            print(f"  AGE            {rel}: gap {gid} ({kind}) raised {raised}, {days} days ago")
+
+    oldest = f", oldest gap {max(a[0] for a in ages)} days" if ages else ""
+    print(f"{counted} {noun} checked: {len(bad)} contradictions, "
+          f"{len(soft)} escalated, {len(ages)} gaps open{oldest}")
+
+    if bad:
+        return 1
+    return 1 if (strict and soft) else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("prd_dir", metavar="prd-dir")
+    ap.add_argument("prd_dir", metavar="prd-dir|crd-file")
     ap.add_argument("--today", default=None,
                     help="date gap ages are measured from (YYYY-MM-DD)")
     ap.add_argument("--strict", action="store_true")
@@ -223,8 +255,14 @@ def main():
     args = ap.parse_args()
 
     prd_dir = args.prd_dir
-    if not os.path.isdir(prd_dir):
-        print(f"REFUSED  not a directory: {prd_dir}", file=sys.stderr)
+    if not os.path.exists(prd_dir):
+        print(f"REFUSED  no such path: {prd_dir}", file=sys.stderr)
+        return 2
+    if not os.path.isdir(prd_dir) and _mig.kind_of(read(prd_dir)) != "crd":
+        # A file that is not a CRD is REFUSED rather than checked and found to have no gaps.
+        # `0 gaps open` over an arbitrary file is the silence this whole class is made of: it
+        # reads as an assertion that passed and is an assertion that never ran.
+        print(f"REFUSED  not a PRD directory, and not a CRD: {prd_dir}", file=sys.stderr)
         return 2
 
     if args.today:
@@ -234,6 +272,16 @@ def main():
         today = datetime.date.fromisoformat(args.today)
     else:
         today = datetime.date.today()
+
+    # A CRD is one file and carries no <definition>, so the ladder above has nothing to compare
+    # -- core section 3 makes <workflow> a process position rather than a degree of definition.
+    # The `<gaps>` half is the same assertion on both paths, and `check_gaps()` was already
+    # path-agnostic, so this is a dispatch rather than a second copy of core section 6's enum.
+    if not os.path.isdir(prd_dir):
+        bad, ages = [], []
+        check_gaps(os.path.basename(prd_dir), gap_rows(read(prd_dir)), today, bad, ages)
+        return report(bad, [], ages, 1, "change request(s)",
+                      args.json, args.quiet, args.strict)
 
     rows, err = _sel.features_of_prd(prd_dir)
     if err:
@@ -265,25 +313,8 @@ def main():
         if not row["missing"]:
             check_gaps(row["file"], gaps, today, bad, ages)
 
-    if args.json:
-        print(json.dumps({"features": len(rows), "contradictions": bad, "escalations": soft,
-                          "gaps": [{"days": d, "file": f, "id": i, "kind": k, "raised": r}
-                                   for d, f, i, k, r in ages]}, indent=2))
-    elif not args.quiet:
-        for line in bad:
-            print(f"  CONTRADICTION  {line}")
-        for line in soft:
-            print(f"  ESCALATE       {line}")
-        for days, rel, gid, kind, raised in sorted(ages, reverse=True):
-            print(f"  AGE            {rel}: gap {gid} ({kind}) raised {raised}, {days} days ago")
-
-    oldest = f", oldest gap {max(a[0] for a in ages)} days" if ages else ""
-    print(f"{len(rows)} features checked: {len(bad)} contradictions, "
-          f"{len(soft)} escalated, {len(ages)} gaps open{oldest}")
-
-    if bad:
-        return 1
-    return 1 if (args.strict and soft) else 0
+    return report(bad, soft, ages, len(rows), "features",
+                  args.json, args.quiet, args.strict)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ somebody remembers it.
 | The emitted layer order is the declared graph's, minus what was dropped | `check-layer-order.py` | `skills/breakdown/SKILL.md` | 74 |
 | Coverage, significance and blocking gaps, before `/execute` may run | `check-gate.py` | `skills/breakdown/SKILL.md` | 38 |
 | This toolchain can read this manifest, or refuses to guess | `check-compatibility.py` | `skills/execute/SKILL.md` | 24 |
-| Declared `<definition>` ≤ the ceiling its content supports; `<gaps>` well-formed, and aged | `check-status.py` | `commands/prd.md` | 3 |
+| Declared `<definition>` ≤ the ceiling its content supports; `<gaps>` well-formed, and aged | `check-status.py` | `commands/prd.md` · `commands/crd.md` | 3 |
 | Index ↔ `features/` reconcile; no reference to a slug that has no file | `check-rename.py` | `commands/prd.md` | 6, 42 |
 | The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/prd.md` · `schema/migration.md` | 40, 34 |
 | A rename finishes across every reference, or rolls back | `rename-feature.py` | `commands/prd.md` | 42 |
