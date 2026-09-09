@@ -10162,6 +10162,112 @@ def _():
                 f"{rel}: `{placeholder}`'s definition does not say what it is on BOTH paths, so "
                 f"one of them is left to inference:\n      {definition[:300]}")
 
+@check("a task file parses, and every reader that cannot read one says so -- by running it",
+       finding="P64")
+def _():
+    """The sixth crossing's sharpest finding: three readers hid one broken file in turn.
+
+    A generated `L4-001` carried `<contract kind="schema" ref="Link">` unescaped in prose, so it
+    was not well-formed XML. Nothing said so:
+
+      build-manifest.py        `2 task(s)`, exit 0 -- it parses with ElementTree behind a bare
+                               `except Exception` whose comment reads *"a malformed task file is
+                               item 4.x's problem, not this script's"*. The deferral was
+                               deliberate and the owner it deferred to was never assigned.
+      check-coverage.py        `1 of 2 task(s) attributed` -- it imports `edges_of` from
+                               build-manifest, correctly, and inherits the silence. The number
+                               points at ATTRIBUTION; the cause is a BROKEN FILE.
+      breakdown-review-tasks   PASSED, *"all required sections present"* -- it reads text.
+
+    The toolchain already had the right idiom in three other places: `check-architecture.py`,
+    `check-rules.py` and `check-project-md.py` all catch `ET.ParseError` by name and report it.
+    `build-manifest.py` is the one that departed.
+
+    ASSERTED BY RUNNING, on both controls: a well-formed set must still pass, or a checker that
+    refuses everything satisfies this.
+    """
+    import shutil
+    import tempfile
+
+    owner = os.path.join(SKILLS, "breakdown", "scripts", "check-task-xml.py")
+    assert os.path.isfile(owner), (
+        "skills/breakdown/scripts/check-task-xml.py does not exist. `a task file parses` had no "
+        "owner at all, which is what let three readers each defer to another")
+
+    root = tempfile.mkdtemp(prefix="p64-")
+    try:
+        layer = os.path.join(root, "tasks", "2-backend")
+        os.makedirs(layer)
+        good = ('<task><meta><id>L2-001</id>\n'
+                '<source-feature slug="x" moscow="must-have" satisfies-criteria="1" '
+                'requirement-level="P0"/>\n</meta><objective>plain prose</objective></task>\n')
+        bad = good.replace("L2-001", "L2-002").replace(
+            "plain prose", 'see <contract kind="schema"> for details')
+
+        def write(*names):
+            for f in os.listdir(layer):
+                os.remove(os.path.join(layer, f))
+            for name in names:
+                body = bad if "bad" in name else good
+                open(os.path.join(layer, name), "w", encoding="utf-8",
+                     newline="\n").write(body)
+
+        def run(script, *args):
+            p = subprocess.run([sys.executable, script, os.path.join(root, "tasks"), *args],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        # ---- the control FIRST. A well-formed set must pass both scripts.
+        write("L2-001-good.xml")
+        code, out = run(owner)
+        assert code == 0, (
+            f"the owner refused a well-formed task set, so every assertion below would pass "
+            f"against a script that refuses everything:\n{out[:400]}")
+        bm = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+        code, out = run(bm)
+        assert code == 0, f"build-manifest refused a well-formed task set:\n{out[:400]}"
+
+        # ---- and the defect, on the owner.
+        write("L2-001-good.xml", "L2-002-bad.xml")
+        code, out = run(owner)
+        assert code == 1, (
+            f"the owner accepted a task file that is not well-formed XML (exit {code}):"
+            f"\n{out[:400]}")
+        assert "L2-002-bad.xml" in out, (
+            f"the refusal does not name the file, so an operator cannot act on it:\n{out[:400]}")
+        assert re.search(r"line \d+", out), (
+            f"the refusal names no line. `not well-formed` without a position is a file to "
+            f"re-read from the top:\n{out[:400]}")
+
+        # ---- build-manifest must stop reporting success over a file it could not read. It does
+        # NOT re-implement the check: it names the owner, the way check-status.py names
+        # check-rename.py for a dangling index entry.
+        code, out = run(bm)
+        assert code != 0, (
+            f"build-manifest.py still reports success over a task file it could not parse. "
+            f"`the manifest matches the files on disk` is its own assertion, and a manifest "
+            f"that silently omits an unreadable file does not match them:\n{out[:400]}")
+        assert "check-task-xml.py" in out, (
+            f"build-manifest refuses without naming the script that owns the assertion, so the "
+            f"operator is told there is a problem and not which check decides it:\n{out[:400]}")
+
+        # ---- and the mechanism that made this invisible: `edges_of` returning {} for an
+        # unreadable file, which check-coverage reads as `unattributed`.
+        body = open(bm, encoding="utf-8").read()
+        assert "except Exception:\n        pass  # a malformed task file is item 4.x's problem" \
+               not in body, (
+            "the bare `except Exception` that deferred to an unassigned owner is still there")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # The assertion has a row, an owner and callers -- the registry is how the next reader finds
+    # it instead of deferring to a fourth place.
+    checks = open(os.path.join(SCHEMA, "checks.md"), encoding="utf-8").read()
+    assert "check-task-xml.py" in checks, (
+        "checks.md has no row for `a task file parses`. An assertion three scripts each deferred "
+        "to somebody else is exactly the row this table exists to hold")
+
 # ------------------------------------------------------------------------ runner
 
 def main():

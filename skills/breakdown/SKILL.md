@@ -547,7 +547,25 @@ For each layer in order:
 
 ### Phase 5: Finalize
 
-1. **Build `manifest.json` from the task files that exist**, using the bundled script:
+1. **First, does every task file parse?** (item 80, **P64**)
+
+   ```bash
+   python {skill_dir}/scripts/check-task-xml.py {tasks_dir}
+   ```
+
+   - **Exit 0**: continue.
+   - **Exit 1**: `MALFORMED` names each file and the line it fails on. **Fix the file and
+     re-run.** The usual cause is an unescaped `<` in prose — `&lt;`, or fence it.
+
+   **This runs before everything below because a parse failure makes every later number mean
+   something else.** The sixth crossing generated a task with `<contract kind="schema">`
+   unescaped, and three readers each reported a different symptom: `build-manifest.py` said
+   `2 task(s)` and exit 0, `check-coverage.py` said `1 of 2 attributed` and named a criterion
+   nobody covered, and `breakdown-review-tasks` **passed** it — *"all required sections
+   present"* — because it reads the file as text. Every one of those points somewhere other
+   than the broken file.
+
+2. **Build `manifest.json` from the task files that exist**, using the bundled script:
 
    ```bash
    python {skill_dir}/scripts/build-manifest.py {tasks_dir} --project-path {target_dir}
@@ -575,7 +593,7 @@ For each layer in order:
    a run that had done everything there was to do, and the six file paths it named did not
    exist.
 
-2. **Verify before reporting anything:**
+3. **Verify before reporting anything:**
 
    ```bash
    python {skill_dir}/scripts/build-manifest.py {tasks_dir} --verify
@@ -585,7 +603,7 @@ For each layer in order:
    that as a generation failure, not a formatting nit: every downstream consumer sizes the work
    from this file.
 
-3. **Hold the analysis's predictions against what generation actually produced:**
+4. **Hold the analysis's predictions against what generation actually produced:**
 
    ```bash
    python {skill_dir}/scripts/check-scope.py {tasks_dir}
@@ -610,7 +628,7 @@ For each layer in order:
    **`confidence` is reported, never compared** — there is nothing to hold it against. It says
    where the analyser was guessing, which is the one thing its output cannot otherwise recover.
 
-4. **Check the task set against the document it came from:**
+5. **Check the task set against the document it came from:**
 
    ```bash
    python {skill_dir}/scripts/check-coverage.py {document} {tasks_dir}      --priority {threshold} --requirement-level {level}
@@ -680,7 +698,7 @@ For each layer in order:
    `architecture.md` for a person to fix, and `plan-layers`' `ordering_conflicts` entry is what
    makes fixing it cheap.
 
-5. **The gate between here and `/execute`** (item 38):
+6. **The gate between here and `/execute`** (item 38):
 
    ```bash
    python {skill_dir}/scripts/check-gate.py {document} {tasks_dir} --project-path {target_dir}      --priority {threshold} --requirement-level {level}
