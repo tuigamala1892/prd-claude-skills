@@ -10497,6 +10497,108 @@ def _():
         "the manifest has never carried that key -- a documented read of a field that does not "
         "exist is the shape P66 is about")
 
+@check("the analysis fields a check reads are named where the analysis is written -- by running it",
+       finding="P65")
+def _():
+    """Item 83. Item 49's reader could not see its input, and said nothing about it.
+
+    `check-scope.py` reads `analysis["scope"]` and `analysis["confidence"]`. Item 49 made
+    `<scope>` and `<confidence>` REQUIRED fields on a CRD whose only consumer anywhere in the
+    toolchain is that script. And `/breakdown` Phase 2's `**For CRD:**` block -- the instruction
+    that writes `analysis.json` -- **named neither field**: it lists eight things to extract, and
+    those two are not among them.
+
+    So the destination key was a model's guess. The sixth crossing guessed `scope_declared`, and
+    the reader printed:
+
+        nothing to compare: the analysis carried no scope or confidence
+
+    exit 0. **The same sentence a correct run prints when a document genuinely declares
+    neither** -- which is the whole defect: the script could not tell *nobody predicted anything*
+    from *the prediction is here under a name I do not read*, and reported the reassuring one.
+
+    THE CONVENTION ALREADY EXISTED IN THAT LIST. Item 75's line says *"Schema contracts from
+    `<impact-analysis><affected-contracts>`, **into `data_models`**"* -- source AND destination.
+    It was applied to one field and not to these two.
+
+    Both halves are asserted here: the instruction names the fields, and the reader stops
+    reporting a silence it cannot distinguish from agreement.
+    """
+    import shutil
+    import tempfile
+
+    # ---- half one: the producer instruction names the destination keys.
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    parts = skill.split("**For CRD:**", 1)
+    assert len(parts) == 2, "/breakdown no longer has a `**For CRD:**` analysis block"
+    block = parts[1].split("Save the analysis", 1)[0]
+    for field in ("scope", "confidence"):
+        assert re.search(r"`" + field + r"`", block), (
+            f"/breakdown's CRD analysis block never names `{field}` as a field to write. "
+            f"`check-scope.py` reads it by that exact key, and item 49 made it a required CRD "
+            f"element whose only reader is that script -- so with the name unstated the "
+            f"destination is a guess, and the crossing guessed `{field}_declared`")
+
+    # ---- half two: the reader, by running it.
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-scope.py")
+    root = tempfile.mkdtemp(prefix="p65-")
+    try:
+        tasks = os.path.join(root, "tasks")
+        os.makedirs(os.path.join(tasks, "2-backend"))
+        open(os.path.join(tasks, "2-backend", "L2-001-x.xml"), "w", encoding="utf-8",
+             newline="\n").write(
+            '<task><meta><id>L2-001</id><name>T</name>\n'
+            '<source-feature slug="x" moscow="must-have" satisfies-criteria="1" '
+            'requirement-level="P0"/>\n</meta><objective>o</objective></task>\n')
+        json.dump({"total_tasks": 1,
+                   "task_inventory": [{"id": "L2-001", "layer": "2-backend",
+                                       "source_feature": "x"}]},
+                  open(os.path.join(tasks, "manifest.json"), "w", encoding="utf-8"))
+
+        def run(analysis):
+            json.dump(analysis, open(os.path.join(tasks, "analysis.json"), "w",
+                                     encoding="utf-8"))
+            p = subprocess.run([sys.executable, script, tasks], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        # The control FIRST: a correctly-keyed analysis is compared, and says so.
+        code, out = run({"scope": "small", "confidence": "high"})
+        assert code == 0 and "analysis said small" in out, (
+            f"a correctly-keyed analysis was not compared, so nothing below is measuring the "
+            f"near-miss:\n{out[:400]}")
+
+        # The crossing's actual file: the prediction is present under a name nothing reads.
+        code, out = run({"scope_declared": "medium", "confidence_declared": "high"})
+        assert "scope_declared" in out, (
+            f"the reader found nothing and never said what the file DOES carry, so a key one "
+            f"letter out is indistinguishable from a document that predicted nothing:"
+            f"\n{out[:400]}")
+        # Keyed on a KEY NAME, not on the word `read`. The first version accepted any output
+        # containing "read", which the NEAR line satisfies on its own ("read by the names
+        # above") -- two sites satisfying one assertion, so no single edit could break it.
+        # `feature_signals` appears only where the read keys are listed.
+        assert "feature_signals" in out, (
+            f"the reader does not list the keys it read, so an operator cannot tell what to "
+            f"rename the field to:\n{out[:400]}")
+
+        # And the genuinely-empty case must NOT claim a near-miss. A PRD whose analyser emitted
+        # no signals legitimately has nothing to compare, and reporting a near-miss there would
+        # be the same defect pointing the other way.
+        code, out = run({"tech_stack": ["python"], "api_endpoints": []})
+        assert code == 0, f"an analysis with no prediction became a failure (exit {code})"
+        # `NEAR` itself, not one example of a near-miss. Asserting the absence of the literal
+        # `scope_declared` passed a screen that flagged EVERY unread key, which is the same
+        # defect aimed the other way: a report nobody can act on because it names everything.
+        assert "NEAR" not in out, (
+            f"a near-miss was reported where there is none. The screen matches on `scope` and "
+            f"`confidence` appearing in a key name; a wider one flags every field in the "
+            f"analysis and means nothing:\n{out[:400]}")
+        assert "nothing to compare" in out, (
+            f"the legitimately-empty case stopped being reported as such:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
 # ------------------------------------------------------------------------ runner
 
 def main():
