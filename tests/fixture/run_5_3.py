@@ -25,6 +25,7 @@ reason and the failure was misattributed to the toolchain (F14, withdrawn).
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -58,7 +59,7 @@ def claude(prompt, cwd, results_dir, name, timeout):
     sid = str(uuid.uuid5(NS, f"5.3/{name}/{time.strftime('%Y%m%d-%H%M%S')}"))
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--session-id", sid,
            "--model", "sonnet", "--permission-mode", PERMISSION_MODE,
-           "--plugin-dir", REPO]
+           "--plugin-dir", REPO, "--add-dir", REPO, "--add-dir", cwd]
     started = time.time()
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
@@ -93,10 +94,141 @@ def claude(prompt, cwd, results_dir, name, timeout):
             "timed_out": timed_out, "sid": sid}
 
 
+def script(name, *args):
+    """Run one of the toolchain's own validators and return (exit code, combined output).
+
+    Every criterion below is asserted by RUNNING the script that owns the assertion, never by
+    reading the run's own summary of itself. A step that grades its own homework is what the
+    third crossing's `14/14` turned out to be until `ledger-status.sh` derived the number from
+    git instead.
+    """
+    for d in (os.path.join(REPO, "skills", "breakdown", "scripts"),
+              os.path.join(REPO, "schema", "scripts"),
+              os.path.join(REPO, "skills", "execute", "scripts")):
+        path = os.path.join(d, name)
+        if os.path.isfile(path):
+            p = subprocess.run([sys.executable, path, *args], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+    raise SystemExit(f"no such script: {name}")
+
+
 def build_steps(ws):
     app = os.path.join(ws, "app")
     tasks = os.path.join(app, "docs", "tasks", SLUG)
     worktrees = os.path.join(ws, ".worktrees")
+    crd_dir = os.path.join(app, "docs", "crd")
+
+    def find_crd():
+        """Whatever /crd actually wrote. The slug is ITS decision, derived from the prose.
+
+        Assuming SLUG here would turn `it chose a different name` into `it wrote nothing`,
+        which is a different finding and the wrong one.
+        """
+        if not os.path.isdir(crd_dir):
+            return os.path.join(crd_dir, f"{SLUG}.md")
+        found = sorted(f for f in os.listdir(crd_dir) if f.endswith(".md"))
+        return os.path.join(crd_dir, found[0] if found else f"{SLUG}.md")
+
+    crd = find_crd()
+    project_md = os.path.join(app, "PROJECT.md")
+    request = os.path.join(ws, "change-request.md")
+
+    def s1(r):
+        """Step 1: /crd-context builds PROJECT.md from a codebase that has none."""
+        if not os.path.isfile(project_md):
+            return False, "no PROJECT.md was written"
+        code, out = script("check-project-md.py", app, "--status")
+        if code == 1:
+            return False, "PROJECT.md is unusable:\n" + out[-300:]
+        acode, aout = script("check-artefacts.py", project_md)
+        if acode != 0:
+            return False, "PROJECT.md is not the shape its schema describes:\n" + aout[-300:]
+        stale = "stale=yes" in out
+        feats = len(re.findall(r"<feature\b[^>]*\bid=", open(project_md, encoding="utf-8",
+                                                             errors="replace").read()))
+        # It must have written PROJECT.md and nothing else. A context step that also edits the
+        # application has done more than it was asked to, and nothing downstream would say so.
+        dirty = [ln[3:] for ln in git(["status", "--porcelain"], app).splitlines()
+                 if "PROJECT.md" not in ln]
+        if dirty:
+            return False, f"the context step also changed {dirty}"
+        return True, (f"PROJECT.md valid, {feats} feature(s), "
+                      f"{'stale=yes' if stale else 'stale=no'}, nothing else touched")
+
+    def s2(r):
+        """Step 2: /crd turns stakeholder prose into a CRD.
+
+        This is where item 79's `commands/crd.md` invocation of `check-status.py` first runs
+        against a document a model wrote rather than one a fixture supplied.
+        """
+        crd = find_crd()
+        if not os.path.isfile(crd):
+            return False, f"no CRD at {os.path.relpath(crd, ws)}"
+        text = open(crd, encoding="utf-8", errors="replace").read()
+
+        acode, aout = script("check-artefacts.py", crd)
+        if acode != 0:
+            return False, "the CRD is not the shape schema-6 describes:\n" + aout[-300:]
+
+        # P58's assertion, on this path, against a real document for the first time.
+        scode, sout = script("check-status.py", crd)
+        if scode != 0:
+            return False, "its <gaps> do not survive the check /crd now runs:\n" + sout[-300:]
+
+        rcode, rout = script("check-references.py", crd, "--project-path", app)
+        if rcode != 0:
+            return False, "its references do not resolve:\n" + rout[-400:]
+
+        fcode, fout = script("select-features.py", crd)
+        if fcode != 0:
+            return False, "the selector refuses it:\n" + fout[-300:]
+
+        crit = re.findall(r'<criterion\b[^>]*\bpattern="([a-z-]+)"[^>]*\bpriority="(P[012])"',
+                          text)
+        if not crit:
+            return False, "no <criterion> carries both `pattern` and `priority` (items 33, 46)"
+        gaps = re.findall(r'<gap\b[^>]*\bkind="([a-z]+)"', text)
+        sig = re.search(r'architecturally-significant[^>]*because="([a-z-]+)"', text)
+        ages = len([ln for ln in sout.splitlines() if "AGE" in ln])
+        return True, (f"{len(crit)} EARS criteria, {len(gaps)} gap(s) ({ages} aged by the new "
+                      f"check), significance {sig.group(1) if sig else 'not declared'}")
+
+    def s3(r):
+        """Step 3: /breakdown turns the CRD into tasks.
+
+        This is where P62's `{document}` first reaches a live run. Handed the CRD's DIRECTORY
+        instead of the file, `check-coverage.py` exits 2 with `no index.md` and
+        `check-references.py` reports `0 references checked` -- so the run's own text is checked
+        for that signature as well as the artefacts being checked for correctness.
+        """
+        crd = find_crd()
+        manifest = os.path.join(tasks, "manifest.json")
+        if not os.path.isfile(manifest):
+            return False, f"no manifest at {os.path.relpath(manifest, ws)}"
+        n = len([f for _r, _d, fs in os.walk(tasks) for f in fs if f.endswith(".xml")])
+        if not n:
+            return False, "a manifest with no task files"
+
+        if "no index.md" in r["text"]:
+            return False, ("the run was handed the CRD's DIRECTORY, not the file -- P62's "
+                           "failure, live")
+
+        ccode, cout = script("check-coverage.py", crd, tasks)
+        if ccode != 0:
+            return False, "the tasks do not cover the CRD:\n" + cout[-400:]
+
+        gcode, gout = script("check-gate.py", crd, tasks, "--project-path", app)
+        if "COULD NOT CHECK" in gout:
+            return False, "the gate could not make an assertion:\n" + gout[-400:]
+
+        layers = sorted({d for d in os.listdir(tasks)
+                         if os.path.isdir(os.path.join(tasks, d))})
+        if "0-setup" in layers:
+            return False, "a brownfield run produced 0-setup, which scaffolds nothing"
+        findings = [ln for ln in gout.splitlines() if ln.strip().startswith(("1 ", "2 ", "3 "))]
+        return True, (f"{n} task(s) in {layers}, coverage OK, gate: "
+                      + "; ".join(f.strip() for f in findings))
 
     def ledger_status(expected):
         script = os.path.join(REPO, "skills", "execute", "scripts", "ledger-status.sh")
@@ -168,6 +300,15 @@ def build_steps(ws):
                       f"{passed}, trap held{note}")
 
     return [
+        dict(id=1, name="crd-context", desc="/crd-context builds PROJECT.md from the codebase",
+             cwd=ws, timeout=1800, check=s1,
+             prompt=f"/{P}:crd-context {app}"),
+        dict(id=2, name="crd", desc="/crd turns the stakeholder prose into a CRD",
+             cwd=ws, timeout=1800, check=s2,
+             prompt=f"/{P}:crd {request} --project-path {app}"),
+        dict(id=3, name="breakdown", desc="/breakdown turns the CRD into tasks",
+             cwd=ws, timeout=3600, check=s3,
+             prompt=lambda: f"/{P}:breakdown {find_crd()} --project-path {app}"),
         dict(id=4, name="execute", desc="/execute the CRD tasks into the brownfield app",
              cwd=ws, timeout=5400, check=s4,
              prompt=f"/{P}:execute {tasks} --project-path {app} "
@@ -231,8 +372,10 @@ def main():
         if want and s["id"] not in want:
             continue
         print(f"\n{'=' * 78}\n  STEP {s['id']}: {s['desc']}\n{'=' * 78}")
-        print(f"  $ {s['prompt']}\n", flush=True)
-        r = claude(s["prompt"], s["cwd"], os.path.join(results, f"step-{s['id']}"),
+        shown = s["prompt"]() if callable(s["prompt"]) else s["prompt"]
+        print(f"  $ {shown}\n", flush=True)
+        prompt = s["prompt"]() if callable(s["prompt"]) else s["prompt"]
+        r = claude(prompt, s["cwd"], os.path.join(results, f"step-{s['id']}"),
                    s["name"], s["timeout"])
         ok, why = s["check"](r)
         status = "PASS" if ok else ("TIMEOUT" if r["timed_out"] else "FAIL")
