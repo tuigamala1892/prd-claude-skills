@@ -221,11 +221,24 @@ Execute these phases in order:
 11. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
-   python {skill_dir}/scripts/check-references.py {prd_dir} [--adr-dir DIR] [--questions FILE]
+   python {skill_dir}/scripts/check-references.py {document} [--adr-dir DIR] [--questions FILE]
    ```
 
-   `{prd_dir}` is the directory holding `index.md` and `features/` — the input file's directory,
-   not the input file.
+   `{document}` is what this run was given, **in the shape the input actually has**: on the PRD
+   path the *directory* holding `index.md` and `features/` — the input file's directory, not the
+   input file — and on the CRD path the *file itself*. Every script below whose usage line reads
+   `prd-dir|crd-file` takes either and decides which by looking; hand it the wrong shape and it
+   does not fail, it answers about the wrong thing.
+
+   > **This placeholder used to be `{prd_dir}`, defined only as the directory, and passed to
+   > four scripts that accept both.** Followed literally on the CRD path it resolves to
+   > `docs/crd/` — a directory, so the PRD branch accepts it and reads it as empty:
+   > `check-references.py` returns `0 references checked` where the file form finds six on the
+   > same document. Item 77 fixed the scripts to dispatch on shape and left the instruction
+   > naming one of them (**F2, P62**).
+
+   `{prd_dir}` still appears below, and only where the script takes a PRD directory and nothing
+   else — `check-prd-size.py`. The two names are different because the two arguments are.
 
    - **Exit 0**: continue. Any `STALE` lines are reported to the operator and do not stop the
      run — a superseded decision record still exists, and a feature citing one is a judgement
@@ -280,7 +293,7 @@ It writes `{tasks_dir}/analysis.index.json`.
 **Step 2a — decide which features are in scope, before analysing any of them.**
 
 ```bash
-python {skill_dir}/scripts/select-features.py {prd_dir} --priority {threshold}
+python {skill_dir}/scripts/select-features.py {document} --priority {threshold}
 ```
 
 Items 13, 14 and 15. **`/breakdown` used to filter nothing** — every feature named in the index
@@ -600,7 +613,7 @@ For each layer in order:
 4. **Check the task set against the document it came from:**
 
    ```bash
-   python {skill_dir}/scripts/check-coverage.py {prd_dir} {tasks_dir}      --priority {threshold} --requirement-level {level}
+   python {skill_dir}/scripts/check-coverage.py {document} {tasks_dir}      --priority {threshold} --requirement-level {level}
    ```
 
    Item 30. The previous step asked *do the files match the manifest*; this asks the same
@@ -670,7 +683,7 @@ For each layer in order:
 5. **The gate between here and `/execute`** (item 38):
 
    ```bash
-   python {skill_dir}/scripts/check-gate.py {prd_dir} {tasks_dir} --project-path {target_dir}      --priority {threshold} --requirement-level {level}
+   python {skill_dir}/scripts/check-gate.py {document} {tasks_dir} --project-path {target_dir}      --priority {threshold} --requirement-level {level}
    ```
 
    Three assertions, each reported **by name**: every in-scope feature has a task (item 30);

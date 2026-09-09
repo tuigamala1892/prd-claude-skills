@@ -4729,8 +4729,9 @@ after establishing that the sentence was true about something other than what it
 |---|---|---|
 | **P58 / P59 / P60** — three assertions with a PRD directory's shape | **Landed** 2026-09-09 | `a49112a` |
 | **79** — every assertion says which paths it reaches, probed by running | **Landed** 2026-09-09 | — |
+| **F2 / P62** — the placeholder names the shape, on a skill that takes either | **Landed** 2026-09-09 | — |
 
-**Suite:** 144 checks at branch point → **148**. `failed 0`, `known 0`.
+**Suite:** 144 checks at branch point → **149**. `failed 0`, `known 0`.
 
 ### The measurement said the class was not `isdir`, and that changed what got built
 
@@ -4869,6 +4870,74 @@ believing a green result*, which is Phase 1's first lesson.
 **A separator row left at four columns** while the header went to six, because the rewrite keyed
 on `startswith("| ")` and a markdown separator starts `|---`. Caught by asserting the column
 count per row rather than by reading the diff.
+
+### F2 — the fix reached the script and the instruction kept the old name
+
+**Landed 2026-09-09, finding P62.** Suite **148 → 149**.
+
+Item 77 taught four scripts to dispatch on document shape. `/breakdown` went on passing them
+`{prd_dir}`, defined exactly once, at the only place the skill says what the placeholder is:
+
+> *"the directory holding `index.md` and `features/` — the input file's directory, not the input
+> file."*
+
+That one definition governed five invocations, four of which take **either** shape — including
+`check-coverage.py` and the gate. Followed literally on the CRD path, `{prd_dir}` is `docs/crd/`,
+which is a directory, so the PRD branch **accepts it** and reads it as empty:
+
+| Invocation | Given the CRD's directory | Given the CRD file |
+|---|---|---|
+| `check-references.py` | exit 0, `0 references checked` | 6 references, findings by name |
+| `check-coverage.py` | exit 2, `no index.md in docs/crd` | `4 of 4 attributed` |
+
+**The fifth crossing passed the file and got the right answer, contradicting its own
+instructions.** That is P16 exactly — a prose guard that had held by luck — and it is the reason
+this is a defect rather than a tidy-up.
+
+`{document}` now names the four dual invocations and says what it is on **both** paths.
+`{prd_dir}` survives at `check-prd-size.py`, the one script that takes a PRD directory and
+nothing else. **The two names are different because the two arguments are**, which is the whole
+content of the fix.
+
+#### Item 79's check is structurally blind to this, and that is worth stating
+
+`check-enforcement.py` builds its own argv and always passes a CRD in its CRD shape. It probes
+whether the **script** reaches the CRD path and can say nothing about whether the **skill** hands
+it the right thing. Two adjacent questions, two checks — and the second was found by asking what
+the first could not see, a day after building it.
+
+#### The population is derived, not named
+
+A document that dispatches on root element takes both shapes. **Exactly one file does**, and the
+check fails if that stops being true rather than quietly measuring an empty set. `/prd` passing
+`{prd_dir}` to the same dual scripts is **correct and must stay** — a single-shape placeholder in
+a single-shape command — so the rule is scoped to documents that take both, not to the scripts.
+
+#### The round found two defects in the check itself, and one is a rule already written down
+
+**A negative control satisfied by a second site.** The rule *"renaming every placeholder must
+fail"* was a count — *at least one PRD-only script still gets a PRD-shaped name* — and its mutant
+**survived**: renaming `check-prd-size.py`'s placeholder left `check-artefacts.py
+{input_path_or_prd_dir}` keeping the total above zero. That is the site-counting rule, in this
+project's own memory, hit while writing the check that enforces a different one. It is now
+per-script — a script whose first positional is named for a PRD must be handed a PRD-shaped
+placeholder — so each site is individually load-bearing.
+
+**No converse direction.** A placeholder promising either shape handed to a script that accepts
+one would have passed. Item 69's lesson, and the mutant that removed a `metavar` failed on a
+downstream count rather than on the thing that broke. Both directions now.
+
+#### And three unrelated checks broke, which is the second lesson arriving on schedule
+
+`select-features`, `check-coverage` and `check-gate` each asserted the literal string
+`scripts/X.py {prd_dir} ...`. **The prose improved and three checks failed** — Phase 1's second
+lesson, and the same rule as item 6: one assertion stated in four places gets changed in one of
+them. Each now asserts the *runnable shape*, `python …/X.py {placeholder}`, which is what they
+were always about; **the placeholder's name is P62's assertion and belongs to it alone.**
+
+**Verification.** 5 mutants, 5 caught, baseline green either side: the gate's invocation reverted,
+the definition losing its CRD half, every placeholder renamed, the definition deleted, and a
+script dropping its dual `metavar`.
 
 ---
 
