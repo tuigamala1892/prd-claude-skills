@@ -76,6 +76,26 @@ Failure on ANY critical criterion means the task FAILS.
 - All public interfaces exported
 - Usable by downstream tasks
 
+### 7b. The file parses at all (Critical, and it must run FIRST)
+
+```bash
+python {skill_dir}/../breakdown/scripts/check-task-xml.py {tasks_dir}
+```
+
+- **Exit 0** — continue with the criteria above and below.
+- **Exit 1** — every `MALFORMED` line is a **critical issue**, and the review stops there.
+  Report the file and the line; do not go on to judge sections in a file that does not parse.
+
+**This exists because this skill passed one.** The sixth crossing produced a task carrying
+`<contract kind="schema" ref="Link">` unescaped in prose, and the review reported *"all
+required sections present"* — because **every criterion above reads the file as text**, and a
+substring search finds `<objective>` whether or not the document around it is well-formed. The
+verdict was the most confident wrong answer in the chain: `build-manifest.py` at least dropped
+the task, and `check-coverage.py` at least reported a number that was off.
+
+A malformed task is not a quality problem to weigh against the others. It is the one defect
+that makes every other judgement here meaningless, so it is settled before them (**P64**).
+
 ### 8. Project Rules (Critical, and mechanical)
 
 **Run the enforcer; do not judge these by eye.** When the caller passed `architecture.json`,

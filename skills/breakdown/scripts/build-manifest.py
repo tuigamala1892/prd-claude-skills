@@ -35,11 +35,25 @@ Usage:
     build-manifest.py <tasks-path> --verify                  # report drift, exit 1 if any
 """
 
+import importlib.util
 import json
 import os
 import re
 import sys
 import xml.etree.ElementTree as ET
+
+# One place decides what `a task file parses` means. Importing the owner's helpers is the same
+# choice check-coverage.py made about `edges_of`, for the same reason: two answers to one
+# question is how the interesting failures happen.
+_tx_spec = importlib.util.spec_from_file_location(
+    "check_task_xml", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "check-task-xml.py"))
+_tx = importlib.util.module_from_spec(_tx_spec)
+_tx_spec.loader.exec_module(_tx)
+# ONLY the failure reader. This module already has a `task_files`, and it means something
+# narrower -- the files matching TASK_RE, not every *.xml -- so importing over the name would
+# silently hand a 4-tuple to a function expecting a path.
+parse_failures = _tx.parse_failures
 
 TASK_RE = re.compile(r"^(L\d+-\d+)-(.+)\.xml$", re.I)
 
@@ -67,7 +81,10 @@ def task_name(path, fallback):
             if el is not None and (el.text or "").strip():
                 return " ".join((el.text or "").split())
     except Exception:
-        pass  # a malformed task file is item 4.x's problem, not this script's
+        # Still tolerant HERE, deliberately: by the time this runs, main() has already refused
+        # an unparseable set. This branch is now only reachable when a caller imports the
+        # helper directly, and a name is not worth a second refusal (P64).
+        pass
     return fallback.replace("-", " ").capitalize()
 
 
@@ -370,6 +387,21 @@ def main():
             existing = json.load(open(manifest_path, encoding="utf-8"))
         except Exception as e:
             print(f"existing manifest.json does not parse ({e}); rebuilding", file=sys.stderr)
+
+    # P64. This script's assertion is *the manifest matches the files on disk*, and a manifest
+    # that silently omits a file it could not read does not match them. It does NOT re-implement
+    # the check -- it names the script that owns it, the way `check-status.py` names
+    # `check-rename.py` for a dangling index entry. Every reader below this one reports a
+    # different symptom for the same cause, so the run stops here instead.
+    unparseable = parse_failures([t[3] for t in task_files(tasks_path)],
+                                 tasks_path)
+    if unparseable:
+        for rel, msg in unparseable:
+            print(f"  MALFORMED  {rel}: {msg}", file=sys.stderr)
+        print(f"REFUSED: {len(unparseable)} task file(s) do not parse, so a manifest built now "
+              f"would omit them silently.\n         `check-task-xml.py {args[0]}` owns this "
+              f"assertion and prints the position of each.", file=sys.stderr)
+        return 1
 
     inventory = build_inventory(tasks_path)
     by_layer = {}

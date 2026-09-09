@@ -5009,6 +5009,7 @@ anywhere. Two independent producers, the same substitution.
 > that is also absent.
 
 **P64 — nothing asserts a task file is well-formed XML, and three readers hide it in turn.**
+**Closed by item 80, below.**
 Reproduced from scratch: one well-formed task and one with `<contract kind="schema">` unescaped
 in prose.
 
@@ -5047,6 +5048,94 @@ criteria in someone's head — the exact thing the file was written to stop. Eac
 by **running the script that owns the assertion**, never by reading the run's summary of itself.
 The CRD path is **discovered**, because the slug is `/crd`'s decision and hardcoding it would turn
 *it chose a different name* into *it wrote nothing*.
+
+---
+
+## Phase 17 — Item 80: a task file parses, and three readers stop deferring.
+
+**P64, from the sixth crossing.** Suite **149 → 150**. The first of that crossing's four findings
+to be closed, chosen because it is the only one where **three readers each reported a different
+symptom for one cause**.
+
+### What the crossing produced, and what each reader said about it
+
+A generated `L4-001` carried `<contract kind="schema" ref="Link">` unescaped in prose. It was not
+well-formed XML.
+
+| Reader | Verdict | What it points at |
+|---|---|---|
+| `build-manifest.py` | `2 task(s)`, exit 0 | nothing |
+| `check-coverage.py` | `1 of 2 attributed`, `criterion 7 named by no task` | **attribution** |
+| `breakdown-review-tasks` | PASSED — *"all required sections present"* | **the file is fine** |
+
+**Not one of those points at a broken file.** The coverage line is the one an operator would act
+on, and it sends them to look at criteria. The reviewer's verdict is the most confident wrong
+answer in the chain — `build-manifest` at least dropped the task and coverage at least reported a
+number that was off.
+
+### Why it was nobody's job, which is the finding rather than the bug
+
+`build-manifest.py` parsed with `ElementTree` behind a bare `except Exception` whose comment read:
+
+> `pass  # a malformed task file is item 4.x's problem, not this script's`
+
+**The deferral was deliberate, and the owner it deferred to was never assigned.** `checks.md` had
+no row for *a task file parses*. `check-coverage.py` then imported `edges_of` from that script —
+correctly, because the rules for reading a task live in one place — and inherited the silence: a
+file that cannot be parsed has no `<source-feature>` edges, and no edges reads as *attributed to
+nothing*.
+
+**The idiom was already in the repository three times over.** `check-architecture.py`,
+`check-rules.py` and `check-project-md.py` all catch `ET.ParseError` by name and report its
+position. `build-manifest.py` is the one that departed from it.
+
+### What landed
+
+`check-task-xml.py` is the owner, with a row and three callers. It asserts that a task file is
+well-formed XML **and nothing else** — sections are `review-criteria.md`'s, rules are
+`check-rules.py`'s, coverage is `check-coverage.py`'s — because a parse failure has to be settled
+before any of those three can mean anything, which is also why it runs first in all three places.
+
+| Caller | Where, and why there |
+|---|---|
+| `skills/breakdown/SKILL.md` | Phase 5 step 1, **before** the manifest is built |
+| `skills/breakdown-review-tasks/SKILL.md` | criterion 7b, before every criterion that reads text |
+| `skills/execute/SKILL.md` | after compatibility — **the consumer side, and the one that must refuse** |
+
+`/execute` earns its caller on item 22's argument, one artefact further down: nothing on that path
+parses a task. `task-integrity.py` hashes it and `execute-batch` hands it to an implementer to
+*read*, so a malformed task arrives at a model as text and what it does with the region it cannot
+delimit is unspecified — a plausible implementation of a subset nobody chose.
+
+**`build-manifest.py` does not re-implement the check; it names the owner.** *The manifest matches
+the files on disk* is its own assertion, and a manifest that silently omits a file it could not
+read does not match them — so it now refuses, and points at the script that decides. That is the
+pattern `check-status.py` already uses for a dangling index entry (*"check-rename.py owns that"*).
+
+### Two defects in my own edit, both caught before the check ran
+
+**A shadowed function.** Importing `task_files` from the new owner overwrote `build-manifest`'s
+own `task_files()`, which means something narrower — the files matching `TASK_RE`, not every
+`*.xml` — and the later `def` won anyway, so a 4-tuple would have reached a function expecting a
+path. Only `parse_failures` is imported now, and the name collision is recorded where it happened.
+
+**A missing `import importlib.util`**, in the same edit that added an `importlib` call.
+
+Both are the ordinary cost of editing by patch script rather than by hand, and both surfaced
+immediately because the file was run rather than read.
+
+### Verification
+
+`python tests/test_toolchain.py` — **149 → 150**, `failed 0`, `known 0`.
+
+**7 mutants, 7 caught**, baseline green either side: the owner not refusing, the owner refusing
+everything, the position dropped from the message, `build-manifest` reporting success again,
+`build-manifest` refusing without naming the owner, the original `except Exception` restored, and
+the registry row renamed away.
+
+**And against the artefact that produced the finding**: the crossing's own five-task set passes,
+and the same `L4-001` with the same unescaped `<` put back is refused by name at
+`line 41, column 61`. That is the strongest control available for a check written after the fact.
 
 ---
 

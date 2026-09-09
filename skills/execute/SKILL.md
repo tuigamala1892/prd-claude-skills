@@ -98,6 +98,23 @@ is what the refusal is based on; `toolchain_version` says *what produced* it and
 never decided on. A patch release moves the second and not the first, so a provenance stamp cannot
 answer a compatibility question — which is why the manifest carries both (**P28**).
 
+**And then whether the tasks themselves parse** (item 80, **P64**):
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-task-xml.py {tasks_path}
+```
+
+- **Exit 0** — proceed to the preflight.
+- **Exit 1** — `MALFORMED` names each file and its line. **Stop and report it.** Fix the task
+  and re-run; do not dispatch it.
+
+**This is the consumer side, and it is the one that must refuse.** Nothing on this path parses
+a task file — `task-integrity.py` hashes it, and `execute-batch` hands it to an implementer to
+*read*. So a task that is not well-formed XML arrives at a model as text, and what it does with
+the malformed region is unspecified: it may silently skip a `<requirements>` block it could not
+delimit, and the run then produces a plausible implementation of a subset nobody chose. The same
+argument as item 22 makes for the input document, one artefact further down.
+
 Both stamps have been written since item 4.5 and **nothing read either of them** until this
 check existed. A stamp nobody reads makes an artefact look checked while the incompatibility it
 exists to catch goes through in silence.
