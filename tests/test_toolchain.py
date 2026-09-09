@@ -9554,6 +9554,93 @@ def _():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+@check("the gate's assertions reach a CRD, not only a PRD directory -- by running it",
+       finding="P55")
+def _():
+    """Item 77. Two assertions that ran on one path and silently skipped the other.
+
+    Found by the fifth live crossing -- the first CRD run since the fidelity plan began. Both
+    have the same shape: `os.path.isdir(args.document)` treats *PRD directory* as the general
+    case and lets a CRD, which is a FILE, fall through to a default.
+
+      P55  blocking_gaps() was guarded by isdir AND read features_of_prd() unconditionally, so
+           item 29's execution stop was unreachable on the CRD path. A change request carrying
+           two <gap kind="decision"> -- which core section 6 makes a stop -- got `3 blocked OK`.
+
+      P56  the CRD significance branch reported every finding under NOTE while check-gate.py
+           filters for STALE, and it never resolved **Drives:** at all. A CRD declaring itself
+           architecturally significant with nothing recording the decision got `2 significance
+           OK`. That branch was added the previous day by item 76, which makes it the sharper
+           of the two: the screen fired and nothing downstream acted on it.
+
+    ASSERTED BY RUNNING THE GATE, because both defects were invisible to source inspection --
+    the code was present and correct, and unreachable.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="item77-")
+    try:
+        crd_dir = os.path.join(root, "docs", "crd")
+        adr = os.path.join(root, "docs", "architecture", "decisions")
+        tasks = os.path.join(root, "tasks", "2-backend")
+        for d in (crd_dir, adr, tasks):
+            os.makedirs(d)
+
+        crd = os.path.join(crd_dir, "swap-store.md")
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            "<crd>\n  <meta>\n    <slug>swap-store</slug>\n"
+            "    <priority>must-have</priority>\n"
+            "    <architecturally-significant because=\"cross-cutting\" criteria=\"1\"/>\n"
+            "  </meta>\n  <gaps>\n"
+            "    <gap id=\"1\" kind=\"decision\" raised=\"2026-09-09\">Undecided</gap>\n"
+            "  </gaps>\n</crd>\n")
+        # A record that drives something ELSE. `**Drives:**` takes a markdown link, not a bare
+        # filename -- a first version of this fixture used a bare name, index_records parsed no
+        # drives at all, and the undriven case then passed for the wrong reason.
+        open(os.path.join(adr, "ADR-001-other.md"), "w", encoding="utf-8", newline="\n").write(
+            "# ADR-001: Other\n**Status:** Accepted\n"
+            "**Drives:** [Other](../../crd/other-thing.md)\n")
+        open(os.path.join(tasks, "L2-001-swap.xml"), "w", encoding="utf-8", newline="\n").write(
+            "<task><meta><id>L2-001</id>\n"
+            "<source-feature slug=\"swap-store\" moscow=\"must-have\" satisfies-criteria=\"1\" "
+            "requirement-level=\"P0\"/>\n</meta></task>\n")
+        json.dump({"total_tasks": 1, "task_inventory": [{"id": "L2-001", "layer": "2-backend"}]},
+                  open(os.path.join(root, "tasks", "manifest.json"), "w", encoding="utf-8"))
+
+        p = subprocess.run(
+            [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+             crd, os.path.join(root, "tasks")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        out = p.stdout + p.stderr
+
+        assert "blocking gap" in out, (
+            f"the gate reported no blocking gap for a CRD carrying <gap kind=\"decision\">. "
+            f"Core section 6 makes that a stop, and item 29's refusal was unreachable here "
+            f"because blocking_gaps() was guarded on isdir:\n{out[:600]}")
+        assert "swap-store" in out, (
+            f"the blocking gap is not attributed by slug, so an operator cannot act on it:"
+            f"\n{out[:400]}")
+        assert "undriven" in out or "no decision record names it" in out, (
+            f"the gate reported no undriven significance for a CRD that declares itself "
+            f"significant with nothing driving it. The CRD branch printed under NOTE and the "
+            f"gate filters for STALE:\n{out[:600]}")
+
+        # And the driven case must NOT be reported, or the assertion is satisfied by a checker
+        # that flags everything.
+        open(os.path.join(adr, "ADR-002-store.md"), "w", encoding="utf-8", newline="\n").write(
+            "# ADR-002: Store\n**Status:** Accepted\n"
+            "**Drives:** [Swap](../../crd/swap-store.md)\n")
+        p = subprocess.run(
+            [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
+             crd, os.path.join(root, "tasks")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert "no decision record names it" not in (p.stdout + p.stderr), (
+            "a CRD whose significance IS driven by a decision record was still reported as "
+            "undriven, so the check flags every flagged document and measures nothing")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
 # ------------------------------------------------------------------------ runner
 
 def main():
