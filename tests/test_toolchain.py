@@ -10268,6 +10268,106 @@ def _():
         "checks.md has no row for `a task file parses`. An assertion three scripts each deferred "
         "to somebody else is exactly the row this table exists to hold")
 
+@check("a feature declares its build state, and an unplaceable file still says why -- by running it",
+       finding="P63")
+def _():
+    """Item 81. The sixth crossing's `PROJECT.md`, and the escalation that swallowed the reason.
+
+    Both producers -- `crd-investigator` and `project-context-finalizer`, independently -- wrote
+    `<feature id="save-link" name="Save a link">`: no `built=`, and `name` as an attribute where
+    `project-format.md` puts a child element. **Both templates are correct**; the runs departed
+    from them, which is why the lever is the validator rather than the prose.
+
+    TWO HOLES, AND THE SECOND IS THE ONE THAT MATTERS
+
+      1  `check_project_context()` had a branch for `built`, a branch for the pre-item-45
+         `status`, and NONE for neither -- item 79's else-branch shape, in a validator.
+
+      2  and it would not have fired anyway. `main()` reads
+         `if version is None: escalate; else: CHECKERS[kind](...)`, so **a file whose version
+         cannot be detected is never content-checked at all**. R3's `done` predicate requires
+         every feature entry to carry `built=`, so *missing required attribute* and *unknown
+         schema version* are the same observation -- and the operator is told the second,
+         pointed at `migrate.py`, which then correctly answers that no migration can be
+         selected. A remedy that cannot apply, named by the only message they get.
+
+    The escalation is NOT routed around -- that was a deliberate decision and it stands. The
+    diagnosis is added beside it, so an unplaceable file says what is unplaceable about it.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SCHEMA, "scripts", "check-artefacts.py")
+    root = tempfile.mkdtemp(prefix="p63-")
+    try:
+        path = os.path.join(root, "PROJECT.md")
+
+        def write(feature):
+            open(path, "w", encoding="utf-8", newline="\n").write(
+                "<project-context>\n  <meta><name>x</name>\n"
+                "  <last-context-hash>abc123</last-context-hash></meta>\n"
+                f"  <features>\n    {feature}\n  </features>\n"
+                "  <api-registry>\n"
+                "    <endpoint method=\"GET\" path=\"/x\" request=\"none\" response=\"X\"/>\n"
+                "  </api-registry>\n</project-context>\n")
+
+        def run():
+            p = subprocess.run([sys.executable, script, path], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        # ---- the control FIRST: a spec-shaped feature must pass, or everything below is
+        # satisfied by a checker that refuses every PROJECT.md.
+        write('<feature id="save-link" built="complete">\n'
+              '      <name>Save a link</name>\n      <files>app/api/links.py</files>\n'
+              '    </feature>')
+        code, out = run()
+        assert code == 0, (
+            f"a spec-shaped PROJECT.md was refused, so the assertions below prove nothing:"
+            f"\n{out[:400]}")
+
+        # ---- the crossing's actual output: no `built=`, `name` as an attribute.
+        write('<feature id="save-link" name="Save a link"></feature>')
+        code, out = run()
+        assert code == 1, f"a <feature> with no build state was accepted (exit {code}):\n{out[:400]}"
+        assert "save-link" in out, (
+            f"the refusal does not name the offending feature, so an operator with forty of "
+            f"them cannot act on it:\n{out[:500]}")
+        assert "built" in out, (
+            f"the refusal never names `built`, which is the required attribute that is absent. "
+            f"`matches no known schema version` was the whole message before this, and it sends "
+            f"the reader to /migrate:\n{out[:500]}")
+
+        # ---- and the half that makes it reach anybody: an unplaceable file must still be
+        # diagnosed. Before this, `version is None` skipped the content checker entirely.
+        assert "no known schema version" not in out or "built" in out, (
+            "the file escalated as unplaceable and said nothing about WHY, which is the "
+            "message the crossing actually received")
+
+        # ---- the legacy spelling must still be a WARNING, not an error. Item 45 accepts it on
+        # read, and turning it into a refusal here would break every pre-rename PROJECT.md.
+        write('<feature id="save-link" status="complete">\n      <name>Save a link</name>\n'
+              '    </feature>')
+        code, out = run()
+        # The SUBSTANCE, not the sentence: it must name the legacy spelling and say which item
+        # accepts it. Pinning phrasing is what broke three unrelated checks at item 79, and it
+        # broke this one on its first run against its own improved message.
+        assert "status" in out and "item 45" in out, (
+            f"the pre-item-45 spelling stopped being reported:\n{out[:400]}")
+        assert code == 0, (
+            f"the pre-item-45 `status=` spelling became a REFUSAL (exit {code}). Item 45's rule "
+            f"is `accepted on read, never written`, and refusing it here breaks every "
+            f"PROJECT.md written before the rename:\n{out[:400]}")
+
+        # ---- and a bad VALUE is still caught, which is the assertion that already existed.
+        write('<feature id="save-link" built="banana">\n      <name>Save a link</name>\n'
+              '    </feature>')
+        code, out = run()
+        assert code == 1 and "banana" in out, (
+            f"a `built=` outside core section 3's enum stopped being refused:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
 # ------------------------------------------------------------------------ runner
 
 def main():

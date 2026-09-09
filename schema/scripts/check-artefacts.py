@@ -297,12 +297,28 @@ def check_project_context(text, version, problems, warnings):
         problems.append("no <*-registry> element -- a PROJECT.md with no registry describes "
                         "nothing a consumer can look anything up in")
     for f in tags(text, "feature"):
+        # `id` first, because every message below names the feature with it. The old message
+        # reached for `f.get('name')` -- an ATTRIBUTE that project-format.md does not define;
+        # `name` is a child element there. A validator modelling the wrong shape in its own
+        # error text is how the wrong shape looks reasonable to the next producer (P63).
+        where = f"<feature id=\"{f.get('id', '?')}\">"
+        if "id" not in f:
+            problems.append("a <feature> has no `id`, so nothing can refer to it")
         if "built" in f:
-            enum(problems, f"<feature name=\"{f.get('name', '?')}\">", f.get("built"),
-                 {"complete", "partial", "planned"}, "built")
+            enum(problems, where, f.get("built"), {"complete", "partial", "planned"}, "built")
         elif "status" in f:
-            warnings.append(f"<feature status=\"{f['status']}\"> still spells it `status`; "
-                            f"`built=` is the name since item 45. Accepted on read")
+            warnings.append(f"{where} still spells it `status={f['status']}`; `built=` is the "
+                            f"name since item 45. Accepted on read")
+        else:
+            # The branch that was missing. Two spellings were handled and `neither` was not,
+            # so a feature with no build state at all passed every reader: `check-project-md.py`
+            # calls the file valid, and only version detection objects -- with a message about
+            # schemas rather than about this.
+            # One line per feature, and the rationale is NOT repeated: a PROJECT.md describing
+            # forty features would otherwise print forty copies of the same paragraph, which is
+            # the other way to make a finding unreadable.
+            problems.append(f"{where} declares neither `built=` nor the pre-item-45 `status=` "
+                            f"-- required by project-format.md, values in core section 3")
 
 
 CHECKERS = {
@@ -372,6 +388,21 @@ def main():
             problems.append("matches no known schema version. `migrate.py --detect` escalates "
                             "rather than guessing, and so does this")
             version = VERSIONS[-1]
+            # BUT the escalation is not the whole answer, and on its own it is a wrong one.
+            # `Unplaceable` and `missing a required field` are frequently the same file: a
+            # version is detected from shape, so an artefact that has lost a required element
+            # loses its version with it. The operator then reads *no known schema version*, runs
+            # `/migrate`, and is correctly told no migration can be selected -- a remedy named
+            # by the only message they got, which cannot apply (P63).
+            #
+            # So: escalate AND diagnose. Judged against the current schema, said out loud,
+            # because judging it against a version nobody could determine is the guess this
+            # script refuses to make.
+            before = len(problems)
+            CHECKERS[kind](text, current, problems, warnings)
+            if len(problems) > before:
+                problems.insert(before, f"judged against {current} to say why, since no version "
+                                        f"could be determined:")
         else:
             CHECKERS[kind](text, version, problems, warnings)
             # An artefact BELOW the current schema is not invalid -- it is old, and it is judged
