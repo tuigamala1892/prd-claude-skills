@@ -296,7 +296,12 @@ def check_project_context(text, version, problems, warnings):
     if not re.search(r"<[a-z-]+-registry\b", text):
         problems.append("no <*-registry> element -- a PROJECT.md with no registry describes "
                         "nothing a consumer can look anything up in")
-    for f in tags(text, "feature"):
+    # The attribute dicts do not carry children, so the blocks are matched separately and zipped
+    # by position. A `<feature>` that is self-closing or empty still yields a block, so the two
+    # lists stay in step.
+    blocks = re.findall(r"<feature\b[^>]*(?:/>|>(.*?)</feature>)", text, re.S)
+
+    for i, f in enumerate(tags(text, "feature")):
         # `id` first, because every message below names the feature with it. The old message
         # reached for `f.get('name')` -- an ATTRIBUTE that project-format.md does not define;
         # `name` is a child element there. A validator modelling the wrong shape in its own
@@ -319,6 +324,24 @@ def check_project_context(text, version, problems, warnings):
             # the other way to make a finding unreadable.
             problems.append(f"{where} declares neither `built=` nor the pre-item-45 `status=` "
                             f"-- required by project-format.md, values in core section 3")
+
+        # P67, item 81's residue. `name` and `files` are Required and are ELEMENTS -- identity
+        # and state are attributes, content is a child. The crossing wrote `name` as an
+        # attribute on 7 features out of 7, and nothing noticed because nothing parses either
+        # form mechanically: `<files>` is read by an instruction, and a model reading the XML
+        # finds a name written either way.
+        inner = blocks[i] if i < len(blocks) else ""
+        for tag in ("name", "files"):
+            if el(inner or "", tag) is not None:
+                continue
+            if tag in f:
+                # Naming the mistake rather than the absence. `<name> is missing` sends an
+                # author to add one beside the attribute they already wrote; this is one edit.
+                problems.append(f"{where} writes `{tag}` as an ATTRIBUTE. project-format.md "
+                                f"marks it required and written as an ELEMENT -- identity and "
+                                f"state are attributes, content is a child")
+            else:
+                problems.append(f"{where} has no <{tag}> -- required by project-format.md")
 
 
 CHECKERS = {

@@ -5197,6 +5197,9 @@ a feature and the attribute it lacks.
 
 ### What is NOT built, and why it is written down instead
 
+> **`name` and `files` landed at item 84**, once the crossing's artefact was read properly: `files` was correct on all seven features and `name` was an attribute on all seven. The deferral was half right, and the half that was wrong was the assumption that there was no evidence.
+
+
 `project-format.md` marks four things Required on a `<feature>`: `id`, `built`, `name`, `files`.
 This asserts the first two. **`name` and `files` are unchecked and stay that way** — there is
 evidence of the `built` failure from a live run and none for the other two, and building checks
@@ -5390,6 +5393,92 @@ protect and watching nothing happen.
 `python tests/test_toolchain.py` — **152 → 153**, `failed 0`, `known 0`. **6 mutants, 6 caught**,
 baseline green either side: each half of the instruction, the near-miss report, the list of keys
 read, the screen widened to flag everything, and a correctly-keyed analysis no longer compared.
+
+---
+
+## Phase 21 — Item 84: item 81's residue, and the table that could be followed to the wrong answer.
+
+**Suite 153 → 154.** Item 81 asserted `id` and `built` on a `PROJECT.md` feature and deliberately
+left `name` and `files`, on the stated grounds that there was live evidence for one and none for
+the others. **Reading the crossing's artefact properly supplies it**, and the evidence is not what
+the deferral assumed.
+
+### What the live artefact actually shows
+
+Across the crossing's seven features:
+
+| Field | Written as | Verdict |
+|---|---|---|
+| `files` | child element, 7 of 7 | **correct** |
+| `name` | **attribute**, 7 of 7 | the format's example puts a child element |
+
+Plus two children the format does not define at all — `<description>` and `<tests>`.
+
+So the deferral was half right: `files` needed no fix, and `name` had exactly the same defect as
+`built=`, on every feature, in an artefact that had already been read by a live `/breakdown` and
+a live `/execute`.
+
+### The root cause is in the format, and it is the reason to fix the format rather than the agents
+
+`project-format.md`'s feature table had one column headed **`Attribute/Element`**, and it never
+said which was which. `id` and `built` are attributes; `name`, `files` and `crd-ref` are
+elements; **the only statement of that lived in an example further up the page.**
+
+**Both producer templates are entirely correct** — `crd-investigator.md` and
+`project-context-finalizer.md` each show `<feature id="…" built="…">` with `<name>` and `<files>`
+as children. So the shape that was written matched neither template, and matched a permitted
+reading of the table. That is as far as the evidence goes — it does not prove which artefact
+either model was looking at — but it is enough to say the defect is a reference a careful reader
+can follow to the wrong answer. **The column is split now**: *Field*, *Written as*, *Required*.
+
+### Why nothing broke, which is why it was invisible for a whole crossing
+
+**Nothing parses either form mechanically.** `<files>` is read by *instruction* — a model reading
+the XML inside `crd-impact-analysis` — and a model finds a name whichever way it is written.
+`check-project-md.py` never looks at either. So a required element was absent on every feature of
+a live artefact, downstream consumed it happily, and the only thing that ever objected was version
+detection, with a message about schemas.
+
+### What is deliberately NOT built, again
+
+**Undefined extra children are accepted.** `<description>` and `<tests>` are not in the format and
+are not refused, and the check asserts that they are not: nothing measured says unknown content is
+a defect, `<crd-ref>` is already optional, and inventing a strictness policy here would refuse the
+crossing's artefact for a reason nobody has justified. Written down rather than quietly added — the
+same rule item 81 followed, applied to what item 84 found in turn.
+
+### One assertion of mine, and two stale mutants
+
+**The fourth site-counting failure this session.** *"the refusal says `name` was found as an
+attribute"* was checked as `"attribute" in out.lower()` — and the message's own rationale tail
+reads *"identity and state are attributes, content is a child"*. So replacing the whole branch
+with the plain *absence* message left the check green: **two places in one sentence carried the
+word.** It asserts the claim now — the message must **not** say `has no <name>` when the value is
+present in the wrong place, because that sends an author to add a second one beside what they
+already wrote.
+
+**And two of item 81's mutants went stale**, which is worth recording because a mutation spec is
+itself an artefact:
+
+- the loop it anchored on became `for i, f in enumerate(...)`, so the mutant did not apply and
+  reported `ANCHOR 0 times` rather than a survival — *MISSED has two meanings, and only one is
+  about the check*;
+- and the *missing else-branch* mutant now fails one assertion later, because the new `name`/
+  `files` checks name the feature even when the build-state branch is gone. Still caught, and by
+  a better assertion than before.
+
+**A new required field also rippled into two older fixtures.** Item 81's `status=` and
+`built="banana"` cases were written minimally and had no `<files>`, so item 84's rule refused them
+for a reason those checks are not about. The fixtures gained the field: **a fixture must be
+spec-shaped except for the one thing under test**, or a legitimate new rule reads as a regression.
+
+### Verification
+
+`python tests/test_toolchain.py` — **153 → 154**, `failed 0`, `known 0`. **6 mutants, 6 caught**
+for item 84, and item 81's round restored to **6/6** after its two stale entries were refreshed.
+
+On the crossing's own `PROJECT.md`, both defects are now named per feature — the absent `built=`
+and the misplaced `name` — while `<files>`, which the producer got right, is correctly silent.
 
 ---
 

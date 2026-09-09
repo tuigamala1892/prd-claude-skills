@@ -124,13 +124,21 @@ seeding a subtree **copy** rather than a transform.
 </features>
 ```
 
-| Attribute/Element | Required | Description |
-|-------------------|----------|-------------|
-| `id` | Yes | Unique slug identifier — core [§1](../../../schema/core.md#1-identity) |
-| `built` | Yes | `complete`, `partial`, `planned` — core [§3](../../../schema/core.md#3-status), fourth row |
-| `name` | Yes | Human-readable feature name |
-| `files` | Yes | Comma-separated list of primary files |
-| `crd-ref` | No | Reference to CRD that created/modified this feature |
+| Field | Written as | Required | Description |
+|-------|-----------|----------|-------------|
+| `id` | **Attribute** | Yes | Unique slug identifier — core [§1](../../../schema/core.md#1-identity) |
+| `built` | **Attribute** | Yes | `complete`, `partial`, `planned` — core [§3](../../../schema/core.md#3-status), fourth row |
+| `name` | **Element** | Yes | Human-readable feature name |
+| `files` | **Element** | Yes | Comma-separated list of primary files |
+| `crd-ref` | **Element** | No | Reference to CRD that created/modified this feature |
+
+**The middle column exists because it was missing.** This table's first column was headed
+`Attribute/Element` and said neither, so the only statement of which was which lived in the
+example above. Two producers — `crd-investigator` and `project-context-finalizer`, independently
+— read the normative-looking table and wrote `<feature id="…" built="…" name="…">`, putting
+`name` where the two attributes go. **Identity and state are attributes; content is an element**,
+and a table a reader can follow to the wrong answer is the defect rather than the reader
+(**P67**).
 
 **`built=` records how much of the feature exists in code, and it is the only one of core §3's
 four that does.** A PRD feature file's `<definition>` says how completely the feature is
