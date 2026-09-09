@@ -4718,6 +4718,160 @@ control — the gate went from `3 blocked OK` to `1 blocking gap(s)` attributed 
 
 ---
 
+## Phase 15 — The else branch, measured before it was believed.
+
+Three fixes and one item, on branch `enforcement-parity-f1-f3`. **Specified by a measurement
+rather than by the plan**: Phase 14 ended by saying *"the CRD path is the `else` branch
+everywhere… that is worth a check of its own and does not have one"*, and this is that check —
+after establishing that the sentence was true about something other than what it named.
+
+| Item | Status | Commit |
+|---|---|---|
+| **P58 / P59 / P60** — three assertions with a PRD directory's shape | **Landed** 2026-09-09 | `a49112a` |
+| **79** — every assertion says which paths it reaches, probed by running | **Landed** 2026-09-09 | — |
+
+**Suite:** 144 checks at branch point → **148**. `failed 0`, `known 0`.
+
+### The measurement said the class was not `isdir`, and that changed what got built
+
+The plan for this work was a lint. The count killed it:
+
+| `isdir` / `is_dir` calls | 43, across 28 files |
+|---|---|
+| on a tasks directory, repo root, worktree or discovery candidate | 22 |
+| on a document, PRD-only and refusing a CRD with `exit 2` and a reason | 7 |
+| on a document, dispatching correctly | 10 |
+| on a document, defective | 2 |
+
+**A syntactic check would flag `select-features.py`**, which this ledger names the canonical
+dispatch, and would have found none of the three defects below — they are about a *value*, a
+*caller* and a *printed line*, not a branch. The four known sites were the visible members of a
+class whose defining property is not the call.
+
+What the class actually is: **`parity.md` measures whether an element is on both paths;
+nothing measured whether the check over it *runs* on both.** Four of the six known sites are
+capabilities that file already records as `both`. The element was on two paths and its
+assertion on one, and no file in the repository could express the difference.
+
+### Three more sites, each with a PRD positive control
+
+**P58 — a CRD's `<gaps>` were never validated.** `check-status.py` owns *`<gaps>` well-formed,
+and aged* and had one caller. Misspelling both blocking kinds in the fifth crossing's own CRD:
+the PRD control exits 1 with two named contradictions; the CRD got `exit 0` from every script
+that reads it, and the gate printed `3 blocked OK`. **Item 29's execution stop, defeated by one
+letter.** Generalised rather than duplicated — `check_gaps()` was already path-agnostic, so this
+is a dispatch in `main()`, and *what document is this* still has one answer because it reads
+`migrate.py`'s `ROOTS` instead of growing a second root regex.
+
+**P59 — the gate reported a pass it had not established, twice.** An unrecognised `kind` was
+`does not block` rather than `cannot be classified`. And `gap_err` was appended to `findings`
+while the printed line keyed on `gaps` alone, so an assertion that could not run at all printed
+`3 blocked OK` while `--json` carried `could not read the document`.
+
+> **The comment three lines below records that identical defect being fixed for assertion 4** —
+> *"counted in findings from the start and printed nowhere, which made the count the only
+> evidence"* — and left it standing for assertion 3. A fix applied at the site of discovery
+> rather than at the level of the problem, which is this repository's most repeated shape, here
+> inside a single function.
+
+**P60 — the significance-candidate screen had never seen a CRD**, sitting behind
+`if os.path.isdir(features_dir)`. Item 76 gave the CRD branch the assertions about a *declared*
+flag; this is the other direction. The cross-cutting half is **not ported literally**: a CRD is
+one document, so counting documents that name it is structurally zero, and
+`<impact-analysis><affected-features>` is the same claim in the vocabulary this document has.
+One threshold, not a second.
+
+All three verified against the fifth crossing's own artefacts, which is the strongest control
+available.
+
+### Item 79 — the column, and why it is four-valued rather than three
+
+`Paths` in `checks.md`: `both`, `prd-only`, `crd-only`, `n/a`, with a reason required for
+everything except `both`.
+
+**`n/a` is not a hedge and it is the largest group — 12 of 30.** Classifying every row is what
+produced it: `check-layering.py` reads task XML, `check-architecture.py` reads the project's
+rule file, `task-integrity.py` reads a task against a ledger. Forcing a PRD/CRD answer onto
+those invents an asymmetry on an axis that does not exist there — `parity.md`'s own warning
+about reading the spelling, one level up.
+
+The split: **9 `both`, 7 `prd-only`, 2 `crd-only`, 12 `n/a`.**
+
+### The finding: filling in the column produced an ownerless row
+
+Two `prd-only` rows had no written reason, and one of them would not settle by argument.
+`check-prd-size.py` asks *does each prompt fit the model's context* — a question about a
+document, and a CRD is a document — and it refuses one with `exit 2`. Deciding it needed a
+measurement, which is the route that was chosen over settling it by assertion.
+
+**No CRD corpus exists to measure.** The sample data is 67 features and one index, no CRDs and
+no `PROJECT.md`. So the question was answered structurally instead, and the answer moved:
+
+> The unbounded input on the CRD path is **not the CRD**. A CRD is one document authored by a
+> person in an interview. `PROJECT.md` is generated from an existing codebase — one `<feature>`
+> per feature, one entry per registry item — and **it scales with the codebase, not with an
+> author.** The format spec sets no ceiling; the investigator's checklist sets only a floor
+> (*at least 5 features cataloged*). On the reference fixture it is ~1,382 chars per feature, so
+> **~156 features crosses the 60k budget and ~521 exhausts a 200k window.** Nothing measures it.
+
+P5 is the same failure — a silently truncated read that everything downstream is built from —
+and it is now an ownerless row, written on the day it was found. `check-prd-size.py`'s cell is
+`prd-only` on a decided basis rather than an assumed one, and the risk it does not cover has
+somewhere to live.
+
+**That is the column paying for itself before a single probe ran.**
+
+### The probes, and the two that were wrong
+
+Nine `both` rows, nine probes, each running its owner twice — a well-formed CRD and one mutated
+to carry the defect that assertion exists to catch. Seven key on the mutated **value**
+(`decsion`, `wont-have`, `nope.md`, `banana`); a marker that is a *sentence* fails the next time
+somebody improves a message, which is this plan's second recorded lesson.
+
+**Two could not, and are recorded rather than bent into the shape.** `check-writable.py`'s
+assertion is about a file that already exists, so no document carries a bad value and the two
+states are `absent` and `present`; it keys on `REFUSED`, the token every script here prints to
+refuse — a contract, not a phrasing. `migrate.py` keys on `R2`, a rule id from `migration.md`'s
+registry.
+
+**Both of those are second attempts.** The first pair — the filename, and `schema-` — appeared
+in the *good* run as well as the broken one, so those probes distinguished nothing and reported
+green. The good-run assertion caught them. **That is the first false pass in this project caught
+by an instrument rather than by a person**, and it is the argument for asserting the negative
+control inside the check rather than trusting the author to have run one.
+
+### Verification
+
+`python tests/test_toolchain.py` — **144 → 148**, `failed 0`, `known 0`, runner exit 0.
+
+Every assertion of P58, P59 and P60 watched failing first, with both controls each: a well-formed
+CRD must still pass, a correctly spelt blocking kind must still block, and a CRD that already
+declares the flag must not be offered as a candidate.
+
+**Item 79's own round: 7 mutants, 7 caught, baseline green before and after.** Three of the seven
+are real historical regressions rather than invented ones — undoing P58, undoing item 77's
+dispatch, and undoing group 8b's CRD branch. **The instrument catches the defects that took five
+live crossings to find**, which is the only evidence that matters for a check written after the
+fact.
+
+### Three of my own, and one is a rule already written down
+
+**A `\b` that became byte `0x08`.** A regex added through a heredoc arrived as `<\s*crd\x08`,
+which matches nothing — so the new CRD branch would have refused every CRD, in the direction
+that looks like a working refusal. `grep` renders the byte invisibly and the line read correctly;
+`od -c` is what showed it. **This is a memory in this repository already** — *heredocs eat
+backslash escapes* — broken by the person carrying it, one command after choosing the tool.
+
+**Two probe markers that appeared in both runs**, described above. Worth separating from the
+first: that one was a tool defect, this one was *not running my own negative control before
+believing a green result*, which is Phase 1's first lesson.
+
+**A separator row left at four columns** while the header went to six, because the rewrite keyed
+on `startswith("| ")` and a markdown separator starts `|---`. Caught by asserting the column
+count per row rather than by reading the diff.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

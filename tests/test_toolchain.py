@@ -5892,7 +5892,13 @@ def _():
 
 
 def _checks_table():
-    """schema/checks.md's table, as (assertion, owner, callers, item) tuples."""
+    """schema/checks.md's table, as (assertion, owner, callers, item) tuples.
+
+    Item 79 added `Paths` and `Why, where they differ` between the callers and the item. This
+    returns the four this check has always been about and drops the two it does not read, so
+    that adding a seventh column later fails HERE -- in one parser -- rather than in each
+    consumer. `check-enforcement.py` owns the new pair and reads the row in full.
+    """
     path = os.path.join(SCHEMA, "checks.md")
     assert os.path.isfile(path), (
         "schema/checks.md does not exist. Item 6 had accumulated eleven assertions and four "
@@ -5905,8 +5911,9 @@ def _checks_table():
     out = []
     for row in rows[2:]:
         cells = [c.strip() for c in row.strip("|").split("|")]
-        assert len(cells) == 4, f"malformed checks row ({len(cells)} cells): {row[:60]}"
-        out.append(tuple(cells))
+        assert len(cells) == 6, f"malformed checks row ({len(cells)} cells): {row[:60]}"
+        assertion, owner, callers, _paths, _why, item = cells
+        out.append((assertion, owner, callers, item))
     return path, text, out
 
 
@@ -9970,6 +9977,57 @@ def _():
             f"every unflagged document and measures nothing:\n{out[:500]}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+@check("every assertion says which paths it reaches, and each `both` is probed by running it",
+       finding="P61")
+def _():
+    """Item 79. The registry that could not express the defect six live runs kept finding.
+
+    `parity.md` measures CAPABILITY parity -- is the element documented on both paths -- with a
+    substring probe against a format reference. `checks.md` measured owner and caller, in both
+    directions since item 69. Neither could say *this assertion runs on the CRD path*, and four
+    of the six defects were capabilities `parity.md` already recorded as `both`: the element was
+    on two paths and its check on one.
+
+    NOT A LINT ON `isdir`, and that is the measured half. 43 `isdir`/`is_dir` calls across 28
+    files; 22 on a tasks directory or a repo root, and of the 21 on a document, seven are
+    PRD-only scripts that refuse a CRD with exit 2 and ten dispatch correctly. A syntactic check
+    would flag `select-features.py` -- the canonical dispatch -- and would have found none of
+    P58, P59 or P60, which are about a value, a caller and a printed line rather than a branch.
+
+    THE PROBES ARE THE ASSERTION. A declared column is a documentation ratchet: it catches the
+    asymmetry nobody wrote down and nothing about whether the code reaches. So every `both` row
+    runs its owner twice, against a well-formed CRD and one carrying the defect that assertion
+    exists to catch, and the good run must stay silent -- which is what caught two probes of my
+    own whose markers appeared in both runs.
+    """
+    script = os.path.join(SCHEMA, "scripts", "check-enforcement.py")
+    assert os.path.isfile(script), "schema/scripts/check-enforcement.py does not exist"
+
+    p = subprocess.run([sys.executable, script, "--json"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert p.returncode in (0, 1), (
+        f"check-enforcement.py could not run at all (exit {p.returncode}):\n{p.stderr[:400]}")
+    try:
+        result = json.loads(p.stdout)
+    except ValueError:
+        raise AssertionError(f"--json did not emit JSON:\n{p.stdout[:400]}")
+
+    assert not result["findings"], (
+        "an assertion does not reach the path its row claims:\n    "
+        + "\n    ".join(result["findings"]))
+
+    # The instrument must be doing work. A run that probes nothing reports zero findings, which
+    # is the shape of every false pass this suite has recorded.
+    assert result["probed"] >= 9, (
+        f"only {result['probed']} row(s) were probed by running. The column is then a "
+        f"declaration, and a declaration cannot see a check that stopped reaching")
+    assert result["paths"]["both"] == result["probed"], (
+        f"{result['paths']['both']} rows say `both` and {result['probed']} were probed. Every "
+        f"one must be, or the unprobed row is an unchecked claim")
+    assert result["paths"]["n/a"] >= 1 and result["paths"]["prd-only"] >= 1, (
+        "the column reports only one kind of answer, so it is not classifying anything")
+    assert result["rows"] >= 28, f"checks.md parsed to only {result['rows']} rows"
 
 # ------------------------------------------------------------------------ runner
 
