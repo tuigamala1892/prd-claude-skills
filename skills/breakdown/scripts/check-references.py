@@ -279,9 +279,15 @@ FEATURE_REF = re.compile(r'<feature-ref\b[^>]*\bid="([^"]+)"')
 PROJECT_FEATURE = re.compile(r'<feature\b[^>]*\bid="([^"]+)"')
 
 
-def check_crd(crd_path, project_path):
-    """Resolve a CRD's own references. Returns (errors, warnings, counted)."""
-    errors, warnings, counted = [], [], 0
+def check_crd(crd_path, project_path, records=None, driven=None):
+    """Resolve a CRD's own references. Returns (errors, warnings, stale, counted).
+
+    `stale` is separate from `warnings` because the two print under different prefixes and
+    `check-gate.py` reads one of them. Item 76 put the significance screen here and left
+    every finding under NOTE; the gate filters for STALE, so a CRD's undriven significance
+    was invisible to it (P56). One list per prefix is what stops that recurring.
+    """
+    errors, warnings, stale, counted = [], [], [], 0
     text = read(crd_path)
     rel = os.path.basename(crd_path)
     here = os.path.dirname(os.path.abspath(crd_path))
@@ -357,10 +363,19 @@ def check_crd(crd_path, project_path):
         elif because.group(1) not in SIGNIFICANCE_KINDS:
             errors.append(f"{rel}: <architecturally-significant because=\"{because.group(1)}\"> "
                           f"is not one of {'|'.join(sorted(SIGNIFICANCE_KINDS))} (core section 8)")
+        elif records is None:
+            warnings.append(f"{rel}: is architecturally significant ({because.group(1)}) and no "
+                            f"decision directory was found -- pass --adr-dir")
+        elif os.path.basename(crd_path) not in (driven or set()):
+            # STALE, not NOTE: this is the finding `check-gate.py` reads, and the PRD branch has
+            # always reported it under that prefix. A change request declaring itself
+            # significant with nothing recording the decision is the case item 35 exists for.
+            stale.append(f"{rel}: is architecturally significant ({because.group(1)}) and no "
+                         f"decision record names it in **Drives:**")
         else:
-            warnings.append(f"{rel}: is architecturally significant ({because.group(1)}). A "
-                            f"change of this shape is what a design step is for")
-    return errors, warnings, counted
+            warnings.append(f"{rel}: is architecturally significant ({because.group(1)}), and a "
+                            f"decision record names it")
+    return errors, warnings, stale, counted
 
 
 def main():
@@ -381,14 +396,36 @@ def main():
     # the same rule.
     if os.path.isfile(prd_dir):
         project_path = os.path.abspath(args.project_path) if args.project_path else None
-        errors, warnings, counted = check_crd(prd_dir, project_path)
+        # Item 77: a CRD gets its decision records too. Discovery starts from the CRD's own
+        # directory -- `docs/crd/x.md` sits the same distance from `docs/architecture/decisions`
+        # as a PRD does -- and falls back to the project when one was named. Without records,
+        # `check_crd` says it could not look rather than reporting that nothing drives the flag.
+        crd_adr = (os.path.abspath(args.adr_dir) if args.adr_dir
+                   else discover_adr_dir(os.path.dirname(os.path.abspath(prd_dir))))
+        if not crd_adr and project_path:
+            for rel in ("docs/architecture/decisions", "architecture/decisions"):
+                cand = os.path.join(project_path, rel.replace("/", os.sep))
+                if os.path.isdir(cand):
+                    crd_adr = cand
+                    break
+        crd_records = index_records(crd_adr) if crd_adr and os.path.isdir(crd_adr) else None
+        crd_driven = set()
+        if crd_records:
+            for rec in crd_records.values():
+                for target in rec["drives"]:
+                    crd_driven.add(os.path.basename(target.split("#")[0]))
+
+        errors, warnings, stale, counted = check_crd(prd_dir, project_path,
+                                                     crd_records, crd_driven)
         if not args.quiet:
             for line in errors:
                 print(f"  DANGLING  {line}", file=sys.stderr)
+            for line in stale:
+                print(f"  STALE     {line}")
             for line in warnings:
                 print(f"  NOTE      {line}")
             print(f"{counted} reference(s) checked in {os.path.basename(prd_dir)}: "
-                  f"{len(errors)} dangling, {len(warnings)} note(s)")
+                  f"{len(errors)} dangling, {len(stale)} stale, {len(warnings)} note(s)")
         if not args.project_path:
             print("  NOTE      no --project-path, so <project-ref> was resolved and not "
                   "compared against the project this run is for")

@@ -124,14 +124,30 @@ def built_features(tasks_dir):
     return slugs
 
 
-def blocking_gaps(prd_dir, built):
-    """Assertion 3: a gap that blocks execution, in a feature that produced tasks."""
+def blocking_gaps(document, built):
+    """Assertion 3: a gap that blocks execution, in an item that produced tasks.
+
+    BOTH PATHS, and it reached only one of them until item 77. This read
+    `features_of_prd()` unconditionally and its caller guarded on `os.path.isdir()`, so for a
+    CRD -- which is a FILE -- the assertion was skipped entirely and the gate printed
+    `3 blocked OK` over two `<gap kind="decision">`. Core section 6 makes `decision` a stop, so
+    item 29's whole refusal was unreachable on this path: any change request could carry an
+    undecided question into `/execute` and be waved through.
+
+    `select-features.main()` already dispatches on file-versus-directory. This is the same
+    dispatch, in the component that was assuming one shape (P55).
+    """
     findings = []
-    rows, err = _sel.features_of_prd(prd_dir)
+    if os.path.isdir(document):
+        rows, err = _sel.features_of_prd(document)
+    else:
+        rows, err = _sel.features_of_crd(document)
     if err:
         return findings, err
     for row in rows:
-        if row["slug"] not in built:
+        # A CRD is one item and `built` is a set of feature slugs from the PRD path, so there is
+        # nothing to scope against: if the document produced tasks at all, its gaps are in scope.
+        if os.path.isdir(document) and row["slug"] not in built:
             continue
         for kind in sorted(set(row["gaps"]) & BLOCKING_GAPS):
             findings.append(f"{row['slug']}: carries a <gap kind=\"{kind}\"> and has tasks. "
@@ -195,9 +211,9 @@ def main():
         undriven = [ln for ln in undriven if any(f"{slug}.md" in ln for slug in built)]
 
     # ---- 3. the gaps that block execution, in features that produced tasks
-    gaps, gap_err = [], None
-    if os.path.isdir(args.document):
-        gaps, gap_err = blocking_gaps(args.document, built)
+    # No `isdir` guard: a CRD is a file and its gaps stop a run exactly as a feature's do
+    # (item 77, P55). The guard here was the reason item 29's refusal never reached this path.
+    gaps, gap_err = blocking_gaps(args.document, built)
 
     findings = []
     if cov_code != 0:

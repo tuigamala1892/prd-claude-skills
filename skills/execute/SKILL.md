@@ -144,6 +144,27 @@ rewording fixes a guard that can be reasoned with. An exit code cannot be reason
 Note the script never creates anything — in particular it will not `git init` a target that
 is not a repository. `/execute` does not create repositories.
 
+### Where scratch goes, and it is never a relative path (item 78)
+
+**Anything you write that is not a deliverable goes under `{project_path}/.execute/{prd_slug}/`.**
+Captured stderr, a diff you want to re-read, a note to yourself between steps — all of it, named
+absolutely. That directory already exists, already holds the ledger and the task-file snapshot,
+and is already under a self-ignoring `.gitignore`.
+
+**A redirect with no directory in it is the defect**, because the working directory of a skill is
+not something the skill may assume. The fifth live crossing invented
+`2> preflight_err.txt` and the relative path resolved **inside the plugin checkout**, leaving
+`skills/execute/preflight_err.txt` behind (**P57**). Nothing instructed it and nothing reported
+it; it was found in `git status` afterwards.
+
+**That is F4's class.** `resolve-output.sh` refuses a *tasks directory* inside a plugin and
+`preflight.sh` refuses a plugin as a *target* — both guard the paths somebody declared. Neither
+can guard a path you invent, and the plugin is shared by every project that loads it, so a file
+left there outlives this run and belongs to no project.
+
+**If you need a file and cannot place it there, do not write one.** Read the output instead: a
+step whose stderr you cannot keep is a step you report verbatim.
+
 ### Step 3b: Record the Task Files, Before Anything Is Dispatched
 
 **A task file is the acceptance criteria this run is judged against, and the run may not edit

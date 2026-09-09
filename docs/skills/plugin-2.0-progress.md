@@ -4626,6 +4626,98 @@ features that failed the bar and were fixed — so part of that is not a per-fea
 
 ---
 
+## Phase 14 — What the fifth crossing found.
+
+Two items, `77` and `78`, on branch `item-78-a-run-writes-nothing-into-the-toolchain` (77 landed
+on its own branch first). **Specified by the fifth live crossing** — the first CRD run since the
+fidelity plan began.
+
+| Item | Status | Commit |
+|---|---|---|
+| **77** — the gate's assertions reach a CRD | **Landed** 2026-09-09 | `d141a66` |
+| **78** — a run writes nothing into the toolchain | **Landed** 2026-09-09 | `eadd0d8` |
+
+**Suite:** 142 checks at branch point → **144**. `failed 0`, `known 0`.
+
+### The crossing, and why it was worth running at all
+
+§5.3 ran end to end on **2026-08-14** and passed. Everything numbered 44 upward landed *after* it,
+so this was a regression question — what did six schema versions do to a sequence that worked —
+and the answer is that **the sequence still works and three of its guards had stopped reaching
+it.**
+
+All four steps passed, verified against git and pytest rather than the runs' own summaries:
+`PROJECT.md` valid with `stale=no`; a CRD with 7 EARS criteria, 2 gaps and a correct significance
+flag; 4 tasks with layers derived; **4/4 verified, 4 merge commits, 27 tests from a baseline of 8,
+0 worktrees left, and the delete trap held.**
+
+**Items 75 and 76 both worked on their first live run, hours after landing.** Every task carried
+`<data-model>` sourced from `<affected-contracts>` under the *touches* rule, and `/crd` wrote
+`because="cross-cutting"` from unstructured prose — which was the open question when 76 shipped.
+
+### Three findings, and the third came from `git status`
+
+**P55 and P56** are in the plan at §R. Both are `os.path.isdir(...)` treating *PRD directory* as
+the general case and letting a CRD fall through — item 29's execution stop unreachable, and a
+CRD's significance never reaching the gate.
+
+**P57 arrived differently and is the one worth dwelling on.** It was not found by a check, a run
+report or a review. It was two untracked files in `git status` after the item-77 commit, noticed
+because the tree should have been clean and was not. `skills/execute/preflight_err.txt` — a stderr
+capture the model invented, written to a relative path that resolved inside the plugin.
+
+> **Nothing in the toolchain could have caught it.** `resolve-output.sh` and `preflight.sh` guard
+> the paths somebody *declared*. There was no rule about paths a model *invents*, and every live
+> harness verified the target while none looked at the checkout. F4 is the same finding, resolved
+> at item 4.6 for declared paths and open ever since for undeclared ones.
+
+### The shape all three share
+
+`check-references.py` at group 8b, `check-gate.py` twice, `check_crd()` at item 76 — and now a
+skill with no rule about where it may write. **The CRD path is not under-tested by accident: it
+is the `else` branch everywhere**, and the toolchain's guards were written from the PRD path
+outward. That is worth a check of its own and does not have one.
+
+### P56 is mine, and it is the third instance of one mistake
+
+Item 76 added the CRD significance branch **the previous day**. I verified the screen *fired* and
+not that anything downstream *acted* on what it emitted — which is the question item 76 existed to
+answer.
+
+> That is three times in two days: P52's *silent*, P54's *live reader*, and this. Every time, **an
+> adjacent fact was measured and the load-bearing one inferred from it** — and this instance was
+> introduced while fixing the second. The pattern is not carelessness about evidence; it is
+> stopping one question short of the one that matters.
+
+### Three defects in my own work on these two items
+
+**A hand-built ADR fixture that did not match the producer.** `**Drives:**` takes a markdown link
+and I wrote a bare filename, so `index_records()` parsed no drives at all — the undriven case
+passed for the wrong reason and the driven case failed for the wrong one. Found by dumping what
+the parser returned rather than reading the output. That is *a fixture must not agree with the
+reader* inverted: one that does not match the **producer's** format tests nothing and fails in the
+direction that looks like success.
+
+**A helper nobody called.** Item 78's first pass added `checkout_guard()` to three harnesses and
+called it in none; a failed edit in a loop then left three of six call sites missing — two
+snapshotting without checking, one checking without a snapshot. Either half alone is decoration.
+The check asserts both per harness, which is what caught it.
+
+**A teardown that raised over a mutant's work.** The *guard deletes the evidence* mutant was
+caught, and the cleanup then failed on the file the mutant had removed, turning a clean catch into
+a traceback. Tolerant now, and re-verified failing cleanly.
+
+### Verification
+
+`python tests/test_toolchain.py` — **142 → 144**, `failed 0`, `known 0`. Every assertion of both
+items watched failing: four for 77, four for 78.
+
+**Item 77's fixes were verified against the crossing's own CRD**, which is the strongest available
+control — the gate went from `3 blocked OK` to `1 blocking gap(s)` attributed by slug, and from
+`2 significance OK` to `1 undriven`, on the document that exposed both.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

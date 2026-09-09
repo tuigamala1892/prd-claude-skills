@@ -3511,6 +3511,109 @@ was unsayable.
 
 ---
 
+## R. What the fifth crossing found
+
+**The first CRD crossing since the fidelity plan began.** §5.3 ran end to end on 2026-08-14 and
+passed; everything numbered 44 upward landed after it. So this was a *regression* question — what
+did six schema versions do to a sequence that worked — and the answer is that the sequence still
+works and two of its guards had stopped reaching it.
+
+**Steps 1–4 all passed**, verified against git and pytest rather than the runs' own summaries:
+`PROJECT.md` valid with `stale=no` and five features on `built=`; a CRD with 7 EARS criteria, 2
+gaps and a correct significance flag; 4 tasks with layers derived and the backend three chained
+because they share files; **4/4 verified, 4 merge commits, 27 tests passing from a baseline of 8,
+0 worktrees left, and the delete trap held.**
+
+**Items 75 and 76 both worked on their first live run**, hours after landing. Every task carried
+`<data-model>` sourced from `<affected-contracts>` under the *touches* rule, and `/crd` produced
+`because="cross-cutting"` from unstructured prose — the open question when item 76 shipped was
+whether an interview would ever *write* one.
+
+**P55 — item 29's execution stop was unreachable on the CRD path.**
+*Verification: measured, by running the gate.*
+`check-gate.py` guarded assertion 3 with `os.path.isdir(args.document)`, and a CRD is a file, so
+`blocking_gaps()` never ran. It also called `features_of_prd()` unconditionally, so removing the
+guard alone would have traded a silent skip for a read error. The crossing's CRD carried two
+`<gap kind="decision">` — core §6 makes `decision` a stop — and the gate printed `3 blocked OK`.
+**Any change request could carry an undecided question into `/execute` and be waved through.**
+
+**P56 — a CRD's architectural significance never reached the gate, and item 76 built half of it.**
+*Verification: measured, by running the gate.*
+Two significance branches write to one `warnings` list and print under different prefixes: the CRD
+branch as `NOTE`, the PRD branch as `STALE`. `check-gate.py` filters for `STALE`. **And the CRD
+branch never resolved `**Drives:**` at all** — it reported *that* a change was significant, never
+*that no record drove it*. The crossing's CRD declared itself significant with no decision record
+naming it, and the gate printed `2 significance OK`.
+
+> **The second is the instructive one, and it is mine.** Item 76 added that branch the previous
+> day. I verified the screen *fired* on a CRD and not that anything downstream *acted* on what it
+> emitted — which is the question item 76 existed to answer. That is the third time in two days
+> the adjacent fact was measured and the load-bearing one inferred from it (P52's *silent*, P54's
+> *live reader*, and now this), and this instance was introduced while fixing the second.
+
+**The shape is the finding, not the two instances.** `os.path.isdir(...)` treats *PRD directory*
+as the general case and lets a CRD fall through to a default. Four sites now:
+`check-references.py` (group 8b), `check-gate.py` twice, and `check_crd()` itself.
+**The CRD path is not under-tested by accident — it is the `else` branch everywhere.**
+
+**77. The gate's assertions reach a CRD.**
+*Addresses P55 and P56. One item because they are one shape in one file.*
+
+- **`blocking_gaps()` dispatches on file-versus-directory**, the way `select-features.main()`
+  already does, and the `isdir` guard at its call site goes. **Both lines**, because either alone
+  leaves the assertion unreachable.
+- **`check_crd()` resolves `**Drives:**`** — records are discovered from the CRD's own directory,
+  falling back to the project — and reports the undriven case under **`STALE`**, in a list
+  separate from `NOTE`. One list per prefix is what stops two channels sharing one name again.
+- **Without records it says it could not look**, rather than reporting that nothing drives the
+  flag. The PRD branch has always drawn that distinction and the CRD branch now does too.
+
+**P57 — a live run wrote scratch files into the toolchain checkout.**
+*Verification: measured. The files are in the run's own timestamp range and no instruction names
+them.*
+Step 4 of the fifth crossing left `skills/execute/preflight_err.txt` and
+`skills/execute/resolve_err.txt` in the plugin, timestamped inside the `/execute` run. The first
+holds `preflight.sh`'s NOTE, captured by a stderr redirect.
+
+**Nothing instructs it.** No `SKILL.md` in the execute tree contains a `2>` redirect and no
+instruction names `_err.txt`: the model invented the capture, wrote it to a *relative* path, and
+the path resolved inside the checkout.
+
+**This is F4's class**, which item 4.6 resolved — *"a previous run's entire output landed in
+`skills/breakdown-generate-tasks/output/` and the caller was never told"*. What 4.6 built guards
+the **declared** output paths: `resolve-output.sh` refuses a tasks directory inside a plugin and
+`preflight.sh` refuses a plugin as a target. **Neither constrains a path a model invents
+mid-run**, and there is no rule saying where scratch may go.
+
+Three things make 82 bytes worth an item:
+
+- **It is silent.** Nothing reports it, and the operator learns of it from `git status` or not at
+  all.
+- **It is in the plugin**, which is shared by every project that loads it — unlike a stray file in
+  a target, which belongs to one run.
+- **No live harness checks.** `boundary-test.py`, `graph-experiment.py` and `run_5_3.py` all
+  verify the *target* and none looks at the checkout. `dirty-guard.sh` guards `git checkout --`
+  during a mutation round, which is a different moment entirely.
+
+**78. A run writes nothing into the toolchain, and the harness proves it.**
+*Addresses P57. Depends on nothing.*
+
+Two halves, because the rule and the evidence are different jobs — the split this plan has made
+since item 4.13.
+
+- **`/execute` says where scratch goes:** `{project_path}/.execute/{prd_slug}/`, never a relative
+  path. That directory already exists, already holds the ledger and the task-file snapshot, and is
+  already under a self-ignoring `.gitignore`. **A redirect with no directory in it is the defect**
+  — the cwd of a skill is not a thing the skill may assume.
+- **Every live harness checks the checkout afterwards** and fails if it is dirty. That is the half
+  that would have caught this: the rule above is prose, and P16 is this plan's finding about
+  prose. A run that dirties the toolchain must end red rather than end quietly.
+
+**It reports rather than deletes.** The files are evidence of what a run did, and a harness that
+tidied them away would leave the next person with the same surprise and no trace.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3591,6 +3694,8 @@ was unsayable.
 | 74 | A declared layer order is obeyed, not improved on | **P52** | **Correctness** |
 | 75 | The CRD's schema contracts reach the task that implements them | **P53** | **Correctness** |
 | 76 | `<architecturally-significant>` on a CRD | **P54** | **Correctness** |
+| 77 | The gate's assertions reach a CRD | **P55**, **P56** | **Correctness** |
+| 78 | A run writes nothing into the toolchain, and the harness proves it | **P57** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
