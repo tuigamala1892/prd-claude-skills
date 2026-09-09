@@ -292,7 +292,15 @@ def resolve(tasks_path, stored):
 #     their meaning as the task's effective tier and level, and `source_feature` keeps its
 #     meaning for the single-feature tasks that are all a 1.2 reader has ever seen -- it is
 #     omitted, never guessed, where a task descends from more than one.
-MANIFEST_SCHEMA_VERSION = "1.3"
+# 1.4 writes `prd.slug` on a first build, not only on a rebuild that already had one (P66).
+#
+# MOVING THIS MEANS MOVING `READER_SCHEMA` in check-compatibility.py, in the same commit. The
+# two constants are declared separately on purpose -- importing one into the other would make
+# item 24's comparison vacuous -- and the cost of that correct decision is that a bump here is
+# invisible over there. Item 65 moved this to 1.3 and left the reader at 1.2, so for two phases
+# every manifest this toolchain wrote warned against a reader inside the same toolchain. The
+# regression suite is the one place allowed to know both numbers, and it now compares them.
+MANIFEST_SCHEMA_VERSION = "1.4"
 
 # Item 32's rendered view, beside the manifest it is derived from.
 SUMMARY_NAME = "tasks-summary.md"
@@ -481,6 +489,21 @@ def main():
     resolved = project_path or prd.get("project_path") or existing.get("output_dir")
     if resolved:
         prd["project_path"] = resolved
+
+    # P66. `prd.slug` is the field /execute Step 2 documents reading, and a FIRST build never
+    # wrote it -- only a rebuild preserved one that was already there, so on the run that
+    # matters there was nothing to read. It is load-bearing rather than decorative: the ledger
+    # lives at `{project_path}/.execute/{prd_slug}/`, and `task-integrity.py record`,
+    # `ledger-status.sh` and `write-state.py` all take it. With nothing to read the value is a
+    # model's guess, and a resumed run that guesses differently points at a different ledger --
+    # which looks exactly like a fresh run.
+    #
+    # DERIVED FROM THE DIRECTORY, and that is sound rather than convenient: `/breakdown` resolves
+    # its output as `docs/tasks/{slug}` through `resolve-output.sh`, so the basename IS the slug
+    # by construction. Taking it from the document instead would need an argument every caller
+    # would have to pass correctly, to arrive at the same string.
+    if not prd.get("slug"):
+        prd["slug"] = os.path.basename(tasks_path.rstrip(os.sep + "/"))
     for key, src in (("slug", "prd_slug"), ("name", "prd_name")):
         if src in existing and key not in prd:
             prd[key] = existing[src]

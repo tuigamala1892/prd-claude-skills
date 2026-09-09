@@ -6592,9 +6592,15 @@ def _():
     # returns True.
     body = open(script, encoding="utf-8").read()
     code = body.split('"""', 2)[-1]          # past the docstring, which argues about the import
+    # EXECUTABLE lines only. This forbade the producer's constant by NAME, and a comment saying
+    # *keep this at or above MANIFEST_SCHEMA_VERSION* tripped it -- the "too broad: forbidding a
+    # word" variant in this project's own table, where a legitimate mechanism trips a check
+    # aimed at a different one. A cross-reference in prose is what `checks.md` asks for; an
+    # import is what this exists to stop, and only one of them is code.
     borrowed = [ln for ln in code.splitlines()
-                if "MANIFEST_SCHEMA_VERSION" in ln
-                or ("build-manifest" in ln and ("import" in ln or "spec_from_file" in ln))]
+                if not ln.strip().startswith("#")
+                and ("MANIFEST_SCHEMA_VERSION" in ln
+                     or ("build-manifest" in ln and ("import" in ln or "spec_from_file" in ln)))]
     assert not borrowed, (
         "the reader takes its accepted version from the producer, so the two can never disagree "
         f"and the compatibility check can never fire: {borrowed}")
@@ -10367,6 +10373,129 @@ def _():
             f"a `built=` outside core section 3's enum stopped being refused:\n{out[:400]}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+@check("the manifest carries what /execute reads, and its reader knows what its producer writes",
+       finding="P66")
+def _():
+    """Item 82. P66, and a second defect found while measuring the first.
+
+    `/execute` Step 2 says to extract four things from `manifest.json`. Measured:
+
+      prd.slug            NEVER written. Load-bearing: it names
+                          `{project_path}/.execute/{prd_slug}/`, so the LEDGER path depends on
+                          it, and `task-integrity.py record`, `ledger-status.sh` and
+                          `write-state.py` all take it as an argument. With nothing to read,
+                          the model derives it -- and the sixth crossing got the right answer
+                          from the tasks directory's basename. A guess that is usually right is
+                          P16: on a resumed run a different guess points at a different ledger,
+                          and a resume that finds no ledger looks like a fresh run.
+      prd.project_path    written WHEN `--project-path` is passed. The fallback can fire, and
+                          the claim that it could never fire is corrected here.
+      layers              STALE. Item 66's `resolve-layers.py` takes order from
+                          `layer_plan.json` and existence from `task_inventory`; the manifest
+                          has no `layers` key and has not needed one since.
+      summary.total_tasks written.
+
+    AND THE SECOND DEFECT, which is the generalisable one:
+
+    `build-manifest.py` declares `MANIFEST_SCHEMA_VERSION` and `check-compatibility.py` declares
+    `READER_SCHEMA` **separately and on purpose** -- importing the producer's constant would make
+    the comparison vacuous, and that reasoning is right. But the producer moved to `1.3` at item
+    65 and the reader stayed at `1.2`, so **every manifest this toolchain writes warns against a
+    reader in the same toolchain**, with `produced by toolchain 2.0.0, which is this one` on the
+    next line. A warning that fires on every correct run is one an operator learns to skip, and
+    it is the same warning that would matter if a manifest really were from a newer toolchain.
+
+    The two constants stay independent -- that design is sound. **This test is allowed to know
+    both**, which is the one place the comparison is not vacuous.
+    """
+    import shutil
+    import tempfile
+
+    bm = os.path.join(SKILLS, "breakdown", "scripts", "build-manifest.py")
+    cc = os.path.join(SKILLS, "execute", "scripts", "check-compatibility.py")
+
+    def constant(path, name):
+        m = re.search(name + r'\s*=\s*"(\d+\.\d+)"',
+                      open(path, encoding="utf-8").read())
+        assert m, f"{os.path.basename(path)} no longer declares {name}"
+        return tuple(int(x) for x in m.group(1).split("."))
+
+    produced = constant(bm, "MANIFEST_SCHEMA_VERSION")
+    read = constant(cc, "READER_SCHEMA")
+    assert read[0] == produced[0], (
+        f"reader major {read[0]} and producer major {produced[0]} disagree. Majors are not "
+        f"additive, so this is a refusal on every run rather than a warning")
+    assert read[1] >= produced[1], (
+        f"`build-manifest.py` writes schema {produced[0]}.{produced[1]} and "
+        f"`check-compatibility.py` reads {read[0]}.{read[1]}, so EVERY manifest this toolchain "
+        f"writes warns against a reader in the same toolchain. The two constants are separate "
+        f"on purpose -- importing one into the other makes the comparison vacuous -- which is "
+        f"exactly why moving one and not the other has to be caught here")
+
+    root = tempfile.mkdtemp(prefix="p66-")
+    try:
+        slug = "link-shelf"
+        tasks = os.path.join(root, "docs", "tasks", slug)
+        os.makedirs(os.path.join(tasks, "2-backend"))
+        open(os.path.join(tasks, "2-backend", "L2-001-x.xml"), "w", encoding="utf-8",
+             newline="\n").write(
+            '<task><meta><id>L2-001</id><name>Thing</name>\n'
+            '<source-feature slug="x" moscow="must-have" satisfies-criteria="1" '
+            'requirement-level="P0"/>\n</meta><objective>do it</objective></task>\n')
+
+        def build(*extra):
+            p = subprocess.run([sys.executable, bm, tasks, *extra], capture_output=True,
+                               text=True, encoding="utf-8", errors="replace")
+            assert p.returncode == 0, f"build-manifest refused:\n{(p.stdout + p.stderr)[:300]}"
+            return json.load(open(os.path.join(tasks, "manifest.json"), encoding="utf-8"))
+
+        # A FIRST build -- no existing manifest to preserve fields from -- must carry the slug.
+        m = build()
+        assert (m.get("prd") or {}).get("slug") == slug, (
+            f"a first build wrote prd.slug={((m.get('prd') or {}).get('slug'))!r}. /execute "
+            f"documents reading it and names the ledger directory with it, so with nothing to "
+            f"read the value is a model's guess: prd = {json.dumps(m.get('prd'))}")
+        assert m.get("summary", {}).get("total_tasks") == 1, "summary.total_tasks is not written"
+
+        # And with a project path, both fields -- the one that was already written and the
+        # one that was not.
+        m = build("--project-path", root)
+        prd = m.get("prd") or {}
+        assert prd.get("slug") == slug and prd.get("project_path"), (
+            f"--project-path dropped one of the two: {json.dumps(prd)}")
+
+        # A rebuild must not lose the block. Asserting the SLUG alone does not test this -- the
+        # slug is re-derived every build, so it survives even if preservation is gone entirely.
+        # `project_path` is the one that can only come from the existing manifest here, and the
+        # sixth crossing's run hand-wrote four more fields beside it (`name`,
+        # `source_document`, `input_format`, `project_type`) that a rebuild would silently drop.
+        m = build()
+        prd = m.get("prd") or {}
+        assert prd.get("slug") == slug, f"a rebuild lost prd.slug: {json.dumps(prd)}"
+        assert prd.get("project_path"), (
+            f"a rebuild dropped prd.project_path, so every field a caller ever added to this "
+            f"block survives only until the next build: {json.dumps(prd)}")
+
+        # The reader must be quiet about a manifest this toolchain just wrote.
+        p = subprocess.run([sys.executable, cc, tasks], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        out = p.stdout + p.stderr
+        assert "is newer than this toolchain reads" not in out, (
+            f"the reader warns about a manifest this toolchain wrote seconds ago:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # And the stale field. Item 66 owns the layer set; the manifest has no `layers` key.
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    step2 = ex.split("cat {tasks_path}/manifest.json", 1)
+    assert len(step2) == 2, "/execute no longer reads manifest.json where this check looks"
+    region = step2[1].split("###", 1)[0]
+    assert not re.search(r"^- `layers`", region, re.M), (
+        "/execute still documents extracting `layers` from the manifest. Item 66's "
+        "`resolve-layers.py` derives the layer set from layer_plan.json and task_inventory, and "
+        "the manifest has never carried that key -- a documented read of a field that does not "
+        "exist is the shape P66 is about")
 
 # ------------------------------------------------------------------------ runner
 

@@ -71,10 +71,17 @@ cat {tasks_path}/manifest.json
 ```
 
 Extract:
-- `prd.slug`: PRD identifier
+- `prd.slug`: PRD identifier — **written by `build-manifest.py` since manifest schema 1.4**, and
+  it names `{project_path}/.execute/{prd_slug}/` below, so every ledger path depends on it. A
+  manifest written before 1.4 may not carry it; the tasks directory's basename is the same
+  string by construction, and **say which one you used** (**P66**)
 - `prd.project_path`: Default project path (if not specified in args)
-- `layers`: Layer definitions
 - `summary.total_tasks`: Total task count
+
+**There is no `layers` key, and there has not been one since item 66.** `/execute` used to
+document extracting one; the layer set is *derived* — `resolve-layers.py` takes the order from
+`layer_plan.json` and the existence from `task_inventory`, which is the whole of item 66. Do not
+look for `layers` here and do not write a list of your own: the script below is the answer.
 
 **Project path resolution:**
 1. Use `--project-path` if provided

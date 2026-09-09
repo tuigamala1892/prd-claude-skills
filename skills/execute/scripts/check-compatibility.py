@@ -55,7 +55,15 @@ import sys
 
 # The manifest shapes THIS reader understands. See the docstring: importing the producer's
 # constant would make the comparison vacuous.
-READER_SCHEMA = "1.2"
+#
+# KEEP THIS AT OR ABOVE `MANIFEST_SCHEMA_VERSION` in build-manifest.py. It sat at 1.2 while the
+# producer wrote 1.3 from item 65 until item 82, so every manifest this toolchain produced was
+# reported as *newer than this toolchain reads* -- with `produced by toolchain 2.0.0, which is
+# this one` printed on the next line. A warning that fires on every correct run is one an
+# operator stops reading, and it is the same warning that would matter if a manifest really
+# were from a newer toolchain. The suite compares the two constants; nothing here imports the
+# other, because that is what would make this comparison mean nothing (P66).
+READER_SCHEMA = "1.4"
 
 VERSION = re.compile(r"^(\d+)\.(\d+)")
 

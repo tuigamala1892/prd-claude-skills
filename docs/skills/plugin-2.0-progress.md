@@ -5028,7 +5028,7 @@ no scope or confidence"* and exits 0. The key names are documented nowhere; `/br
 names the elements to extract and not the fields to write.
 
 **P66 — a first `build-manifest.py` build writes none of the fields `/execute` documents
-reading.** Its output carries `schema_version`, `summary`, `task_inventory`, `toolchain_version`
+reading.** **Closed by item 82, below — which corrects this entry about `prd.project_path`.** Its output carries `schema_version`, `summary`, `task_inventory`, `toolchain_version`
 and nothing else; `/execute` Step 2 says to extract `prd.slug`, `prd.project_path` and `layers`.
 The second of those is the fallback for a run given no `--project-path`, so the fallback can
 never fire.
@@ -5223,6 +5223,99 @@ than tidying.** Removing the else-branch does not change the *exit code* — the
 unplaceable, so it still exits 1 — and what breaks is that no feature is named. **The exit code
 alone never was the evidence here**; the naming assertion is what carries the finding, and the
 mutation round is what showed which of the two was load-bearing.
+
+---
+
+## Phase 19 — Item 82: the manifest carries what `/execute` reads, and its reader keeps up.
+
+**P66, from the sixth crossing.** Suite **151 → 152**. The finding was three-quarters right; the
+quarter that was wrong is corrected here, and measuring it turned up a second defect that was
+firing on every single run.
+
+### What `/execute` documents reading, measured against what is written
+
+| Documented at Step 2 | Measured |
+|---|---|
+| `prd.slug` | **never written on a first build** — only preserved on a rebuild that already had one |
+| `prd.project_path` | **written** when `--project-path` is passed |
+| `layers` | **stale** — item 66 superseded it |
+| `summary.total_tasks` | written |
+
+**The claim that `prd.project_path` could never fire was wrong**, and the record is corrected
+rather than quietly dropped: `build-manifest.py`'s own docstring says it fills that field, and it
+does. Phase 16's entry said otherwise because the probe ran the script without the argument.
+
+**`layers` is the interesting one.** Item 66 made the layer set *derived* — `resolve-layers.py`
+takes order from `layer_plan.json` and existence from `task_inventory` — and the manifest has
+never carried a `layers` key. `/execute` went on documenting the extraction of a field that does
+not exist, which is the same shape as F2 one artefact along: **a consumer instruction left behind
+by the producer change that superseded it.**
+
+### `prd.slug` is load-bearing, and the gap was filled by a model guessing
+
+It is not a label. It names `{project_path}/.execute/{prd_slug}/` — so **the ledger path depends
+on it** — and `task-integrity.py record`, `ledger-status.sh` and `write-state.py` all take it. It
+appears nine times in `/execute`.
+
+With nothing to read, the value is inferred. The sixth crossing's run inferred it correctly and
+then **hand-wrote a whole `prd` block into the manifest** — `slug`, `name`, `source_document`,
+`input_format`, `project_type`, `repo_structure` — and re-ran the build to check they survived. The
+workaround is in the run's own report, and it is the clearest possible statement of the gap.
+
+That a guess is usually right is P16: the tasks directory's basename *is* the slug, by
+construction, because `resolve-output.sh` resolves `docs/tasks/{slug}`. **So the derivation is
+sound and now belongs to the producer**, which is why `build-manifest.py` derives it from exactly
+that rather than growing an argument every caller would have to pass correctly to reach the same
+string.
+
+### The second defect: a correct design decision with no guard on it
+
+`build-manifest.py` declares `MANIFEST_SCHEMA_VERSION`; `check-compatibility.py` declares
+`READER_SCHEMA`. **Separately and on purpose** — the reader's docstring says importing the
+producer's constant would make the comparison vacuous, and that reasoning is right.
+
+Item 65 moved the producer to `1.3` (`a9964ea`) and left the reader at `1.2`. For two phases:
+
+```
+WARN   manifest schema_version 1.3 is newer than this toolchain reads (1.2) ...
+NOTE   produced by toolchain 2.0.0, which is this one
+```
+
+**Every manifest this toolchain wrote warned against a reader inside the same toolchain**, with
+the contradiction printed on the next line. A warning that fires on every correct run is one an
+operator stops reading — and it is the same warning that would matter if a manifest really were
+from a newer toolchain.
+
+The two constants stay independent. **The regression suite is the one place allowed to know both
+numbers**, and it now compares them: same major, reader's minor at or above the producer's. Both
+moved to `1.4` here, together, and each declaration now says in a comment that moving it means
+moving the other.
+
+### A check of my own repaired, and it is a named variant
+
+That comment broke an existing check. Item 24's assertion scanned `check-compatibility.py` for any
+line mentioning `MANIFEST_SCHEMA_VERSION`, to stop the reader importing the producer's constant —
+and a comment saying *keep this at or above `MANIFEST_SCHEMA_VERSION`* tripped it.
+
+**That is the "too broad — forbidding a word" row of this project's own mutation table**: a
+different, legitimate mechanism trips a check aimed at another one. A cross-reference in prose is
+what `checks.md` asks every script to carry; an import is what the check exists to stop; only one
+of them is code. It scans executable lines now, and was **watched still catching a real
+`from build_manifest import MANIFEST_SCHEMA_VERSION`** before being called fixed.
+
+### Verification
+
+`python tests/test_toolchain.py` — **151 → 152**, `failed 0`, `known 0`.
+
+**6 mutants, 6 caught**, baseline green either side: the first build not writing the slug, the
+producer moving without the reader, the reader falling behind alone, the majors diverging,
+`/execute` documenting `layers` again, and the `prd` block no longer preserved across a rebuild.
+
+**The last one survived its first round**, and the reason is worth keeping: the check asserted the
+*slug* survived a rebuild, and the slug is re-derived on every build — so it survives even with
+preservation deleted entirely. `project_path` is the field that can only come from the existing
+manifest, and it is what the assertion tests now. **A rebuild assertion that only checks a derived
+value tests nothing about preservation.**
 
 ---
 
