@@ -3511,6 +3511,65 @@ was unsayable.
 
 ---
 
+## R. What the fifth crossing found
+
+**The first CRD crossing since the fidelity plan began.** §5.3 ran end to end on 2026-08-14 and
+passed; everything numbered 44 upward landed after it. So this was a *regression* question — what
+did six schema versions do to a sequence that worked — and the answer is that the sequence still
+works and two of its guards had stopped reaching it.
+
+**Steps 1–4 all passed**, verified against git and pytest rather than the runs' own summaries:
+`PROJECT.md` valid with `stale=no` and five features on `built=`; a CRD with 7 EARS criteria, 2
+gaps and a correct significance flag; 4 tasks with layers derived and the backend three chained
+because they share files; **4/4 verified, 4 merge commits, 27 tests passing from a baseline of 8,
+0 worktrees left, and the delete trap held.**
+
+**Items 75 and 76 both worked on their first live run**, hours after landing. Every task carried
+`<data-model>` sourced from `<affected-contracts>` under the *touches* rule, and `/crd` produced
+`because="cross-cutting"` from unstructured prose — the open question when item 76 shipped was
+whether an interview would ever *write* one.
+
+**P55 — item 29's execution stop was unreachable on the CRD path.**
+*Verification: measured, by running the gate.*
+`check-gate.py` guarded assertion 3 with `os.path.isdir(args.document)`, and a CRD is a file, so
+`blocking_gaps()` never ran. It also called `features_of_prd()` unconditionally, so removing the
+guard alone would have traded a silent skip for a read error. The crossing's CRD carried two
+`<gap kind="decision">` — core §6 makes `decision` a stop — and the gate printed `3 blocked OK`.
+**Any change request could carry an undecided question into `/execute` and be waved through.**
+
+**P56 — a CRD's architectural significance never reached the gate, and item 76 built half of it.**
+*Verification: measured, by running the gate.*
+Two significance branches write to one `warnings` list and print under different prefixes: the CRD
+branch as `NOTE`, the PRD branch as `STALE`. `check-gate.py` filters for `STALE`. **And the CRD
+branch never resolved `**Drives:**` at all** — it reported *that* a change was significant, never
+*that no record drove it*. The crossing's CRD declared itself significant with no decision record
+naming it, and the gate printed `2 significance OK`.
+
+> **The second is the instructive one, and it is mine.** Item 76 added that branch the previous
+> day. I verified the screen *fired* on a CRD and not that anything downstream *acted* on what it
+> emitted — which is the question item 76 existed to answer. That is the third time in two days
+> the adjacent fact was measured and the load-bearing one inferred from it (P52's *silent*, P54's
+> *live reader*, and now this), and this instance was introduced while fixing the second.
+
+**The shape is the finding, not the two instances.** `os.path.isdir(...)` treats *PRD directory*
+as the general case and lets a CRD fall through to a default. Four sites now:
+`check-references.py` (group 8b), `check-gate.py` twice, and `check_crd()` itself.
+**The CRD path is not under-tested by accident — it is the `else` branch everywhere.**
+
+**77. The gate's assertions reach a CRD.**
+*Addresses P55 and P56. One item because they are one shape in one file.*
+
+- **`blocking_gaps()` dispatches on file-versus-directory**, the way `select-features.main()`
+  already does, and the `isdir` guard at its call site goes. **Both lines**, because either alone
+  leaves the assertion unreachable.
+- **`check_crd()` resolves `**Drives:**`** — records are discovered from the CRD's own directory,
+  falling back to the project — and reports the undriven case under **`STALE`**, in a list
+  separate from `NOTE`. One list per prefix is what stops two channels sharing one name again.
+- **Without records it says it could not look**, rather than reporting that nothing drives the
+  flag. The PRD branch has always drawn that distinction and the CRD branch now does too.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3591,6 +3650,7 @@ was unsayable.
 | 74 | A declared layer order is obeyed, not improved on | **P52** | **Correctness** |
 | 75 | The CRD's schema contracts reach the task that implements them | **P53** | **Correctness** |
 | 76 | `<architecturally-significant>` on a CRD | **P54** | **Correctness** |
+| 77 | The gate's assertions reach a CRD | **P55**, **P56** | **Correctness** |
 
 **Sequence.** The previous version of this section was a set of pairwise constraints, each
 correctly reasoned, that had never been composed — eight items were separately asserted to be first
