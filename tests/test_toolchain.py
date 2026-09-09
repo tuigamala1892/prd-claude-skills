@@ -5299,9 +5299,11 @@ def _():
 
     # The RUNNABLE invocation, not the filename. Twice now a bare substring has been satisfied by
     # prose ABOUT a script while the command that ran it was deleted.
+    # The placeholder's NAME is not pinned here: that is P62's assertion, and pinning it in
+    # four places is how item 79's rename broke three unrelated checks at once.
     skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
-    assert "scripts/select-features.py {prd_dir}" in skill, (
-        "/breakdown never RUNS the selector on the PRD directory")
+    assert re.search(r"python \S*scripts/select-features\.py \{[a-z_]+\}", skill), (
+        "/breakdown never RUNS the selector on the document it was given")
     for flag in ("--priority", "--include-tbd"):
         assert flag in skill, f"/breakdown documents no {flag}"
 
@@ -5524,8 +5526,8 @@ def _():
     script = os.path.join(SKILLS, "breakdown", "scripts", "check-coverage.py")
     assert os.path.isfile(script), "check-coverage.py does not exist"
     skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
-    assert "scripts/check-coverage.py {prd_dir} {tasks_dir}" in skill, (
-        "/breakdown never RUNS the coverage check on the PRD and the tasks directory")
+    assert re.search(r"python \S*scripts/check-coverage\.py \{[a-z_]+\} \{tasks_dir\}", skill), (
+        "/breakdown never RUNS the coverage check on the document and the tasks directory")
 
     # The fifth assertion is somewhere else, and this is the statement that it is.
     refs = open(os.path.join(SKILLS, "breakdown", "scripts", "check-references.py"),
@@ -6816,7 +6818,7 @@ def _():
 
         # /breakdown must actually run it, as a command rather than as a paragraph about one.
         skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
-        assert "scripts/check-gate.py {prd_dir} {tasks_dir}" in skill, (
+        assert re.search(r"python \S*scripts/check-gate\.py \{[a-z_]+\} \{tasks_dir\}", skill), (
             "/breakdown never RUNS the gate, so item 38 is a script nothing invokes")
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -10028,6 +10030,137 @@ def _():
     assert result["paths"]["n/a"] >= 1 and result["paths"]["prd-only"] >= 1, (
         "the column reports only one kind of answer, so it is not classifying anything")
     assert result["rows"] >= 28, f"checks.md parsed to only {result['rows']} rows"
+
+@check("a skill that takes either document does not name its placeholder for one of them",
+       finding="P62")
+def _():
+    """F2. Item 77 fixed the scripts to dispatch on shape; the instruction kept a PRD's name.
+
+    `/breakdown` takes a PRD directory or a CRD file and detects which by root element. It then
+    passed `{prd_dir}` to four scripts that accept EITHER, and defined that placeholder exactly
+    once, as *"the directory holding `index.md` and `features/` -- the input file's directory,
+    not the input file."* Followed literally on the CRD path, `{prd_dir}` is `docs/crd/`, and
+    that is a directory the PRD branch accepts and reads as empty:
+
+        check-references.py docs/crd/   ->  exit 0, `0 references checked`
+                                            (the file form finds six on the same document)
+        check-coverage.py   docs/crd/   ->  exit 2, `no index.md in ...`
+
+    The fifth crossing passed the FILE and got the right answer, contradicting its own
+    instructions -- which is P16 exactly: a prose guard that has held by luck.
+
+    ITEM 79'S CHECK IS STRUCTURALLY BLIND TO THIS, which is why it is a separate assertion.
+    `check-enforcement.py` builds its own argv and always passes a CRD in its CRD shape, so it
+    probes whether the SCRIPT reaches the CRD path and can say nothing about whether the SKILL
+    hands it the right thing.
+
+    THE POPULATION IS DERIVED, NOT NAMED. A document that dispatches on root element is one that
+    takes both shapes; exactly one file does, and the check fails if that stops being true rather
+    than silently measuring nothing.
+    """
+    dual, prd_only = set(), set()
+    for d in (os.path.join(SKILLS, "breakdown", "scripts"), os.path.join(SCHEMA, "scripts")):
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".py"):
+                continue
+            body = open(os.path.join(d, fn), encoding="utf-8", errors="replace").read()
+            m = re.search(r'add_argument\(\s*"((?!-)[a-z_]+)"([^)]*)\)', body, re.S)
+            if not m:
+                continue
+            arg, rest = m.group(1), m.group(2)
+            mv = re.search(r'metavar="([^"]+)"', rest)
+            if mv and "|" in mv.group(1):
+                dual.add(fn)
+            elif "prd" in arg:
+                # Its FIRST POSITIONAL is named for a PRD and it declares no dual metavar, so it
+                # takes one shape. Derived per script rather than counted, because a count is
+                # satisfied by any one surviving site -- which is how this check's own negative
+                # control survived its mutant the first time.
+                prd_only.add(fn)
+    assert len(dual) >= 5, (
+        f"only {len(dual)} script(s) declare a dual metavar, so the check has no population. "
+        f"A script that takes either shape says so in `metavar`")
+    assert prd_only, (
+        "no script declares a PRD-shaped first positional any more, so the distinction this "
+        "check draws has nothing on the other side of it")
+
+    # A document that dispatches on root element takes both shapes. Derived so that a second
+    # such skill is covered the day it appears, rather than the day somebody remembers.
+    both_paths = []
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [x for x in dirs if x not in (".git", "__pycache__", "data", "docs", "tests")]
+        for fn in sorted(files):
+            if not fn.endswith(".md"):
+                continue
+            p = os.path.join(root, fn)
+            if re.search(r"`?<prd>`?\s*(?:or|\|)\s*`?<crd>`?",
+                         open(p, encoding="utf-8", errors="replace").read()):
+                both_paths.append(p)
+    assert both_paths, (
+        "no document dispatches on root element, so nothing takes both shapes and this check "
+        "is measuring an empty set")
+
+    invocation = re.compile(r"(?:python\d?|sh)\s+\S*?([a-z-]+\.py)\s+(\{[a-z_]+\})")
+    problems, checked, kept = [], 0, 0
+    for p in both_paths:
+        text = open(p, encoding="utf-8", errors="replace").read()
+        rel = os.path.relpath(p, REPO).replace(os.sep, "/")
+        for script, placeholder in invocation.findall(text):
+            name = placeholder.strip("{}")
+            if script in dual:
+                checked += 1
+                if "prd" in name or "crd" in name:
+                    problems.append(
+                        f"{rel}: `{script} {placeholder}` -- that script takes either shape and "
+                        f"the placeholder names one of them")
+            elif script in prd_only:
+                # The negative control, and it is PER SCRIPT rather than a count. Renaming EVERY
+                # placeholder would satisfy the rule above while losing the distinction it draws:
+                # a script that takes only a PRD directory must still be handed one, by a name
+                # that says so. A count was the first version and its mutant SURVIVED -- a second
+                # site (`check-artefacts.py {input_path_or_prd_dir}`) kept the total above zero.
+                kept += 1
+                if "prd" not in name:
+                    problems.append(
+                        f"{rel}: `{script} {placeholder}` -- that script takes a PRD directory "
+                        f"and nothing else, and the placeholder no longer says so")
+            if name == "document" and script not in dual:
+                # The converse direction, which item 69's lesson says to check: a placeholder
+                # promising either shape handed to a script that accepts one.
+                problems.append(
+                    f"{rel}: `{script} {placeholder}` -- the placeholder promises either shape "
+                    f"and that script declares no `prd-dir|crd-file` metavar")
+
+    assert not problems, (
+        "a skill that takes either document names its placeholder for one of them:\n    "
+        + "\n    ".join(problems)
+        + "\n\nFollowed literally on the CRD path this resolves to the CRD's DIRECTORY, which "
+          "the PRD branch accepts and reads as empty")
+    assert checked >= 4, (
+        f"only {checked} dual-script invocation(s) were examined, so the rule is not reaching "
+        f"the invocations it is about")
+    assert kept >= 1, (
+        "no PRD-only script is invoked at all from a document that takes both shapes, so the "
+        "distinction this check draws is no longer exercised anywhere")
+
+    # And the placeholder that replaced it must be DEFINED, naming both shapes. An undefined
+    # `{document}` is a model guessing, which is the same failure one word further on.
+    for p in both_paths:
+        text = open(p, encoding="utf-8", errors="replace").read()
+        rel = os.path.relpath(p, REPO).replace(os.sep, "/")
+        for script, placeholder in invocation.findall(text):
+            if script not in dual:
+                continue
+            name = placeholder.strip("{}")
+            m = re.search(r"^.*`\{" + re.escape(name) + r"\}` is .*(?:\n(?!\n).*)*",
+                          text, re.M)
+            assert m, (
+                f"{rel}: `{placeholder}` is passed to {script} and the document never says what "
+                f"it is. A placeholder with no definition is a model guessing")
+            definition = m.group(0)
+            assert "PRD" in definition and "CRD" in definition, (
+                f"{rel}: `{placeholder}`'s definition does not say what it is on BOTH paths, so "
+                f"one of them is left to inference:\n      {definition[:300]}")
 
 # ------------------------------------------------------------------------ runner
 
