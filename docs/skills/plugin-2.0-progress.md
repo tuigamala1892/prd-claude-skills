@@ -4995,7 +4995,7 @@ would have measured the prompt.
 ### Four findings, each reproduced before it was recorded
 
 **P63 — both `PROJECT.md` producers omit a required attribute, and the validator has no branch
-for it.** `crd-investigator` and `project-context-finalizer` each wrote
+for it.** **Closed by item 81, below — which also corrects this entry's claim about `name`.** `crd-investigator` and `project-context-finalizer` each wrote
 `<feature id="save-link" name="Save a link">`. `built=` is **Required: Yes** in
 `project-format.md` and appears in the investigator's own template; `name=` is not defined
 anywhere. Two independent producers, the same substitution.
@@ -5136,6 +5136,93 @@ the registry row renamed away.
 **And against the artefact that produced the finding**: the crossing's own five-task set passes,
 and the same `L4-001` with the same unescaped `<` put back is refused by name at
 `line 41, column 61`. That is the strongest control available for a check written after the fact.
+
+---
+
+## Phase 18 — Item 81: a feature declares its build state, and an unplaceable file says why.
+
+**P63, from the sixth crossing.** Suite **150 → 151**. Two holes, and the second is the one that
+made the first invisible.
+
+### A correction to this ledger's own account of the finding, made by reading the spec
+
+Phase 16 recorded that both producers *"omit the required `built=` and add an undefined `name=`"*.
+**`name` is not undefined** — `project-format.md` marks it Required, as a *child element*. And
+**both agent templates are correct**: `crd-investigator.md` and `project-context-finalizer.md`
+each show `<feature id="…" built="…">` with `<name>` inside. The runs departed from templates
+that were right.
+
+That correction is what decided the work. If the templates were wrong, the fix would be prose. They
+are not, so **the fix is the validator** — a rule stated in a template that nothing enforces is
+P16, and two independent models drifted from it on the same day.
+
+### Hole 1 — the branch that was missing
+
+```python
+if "built" in f:      enum(...)          # the current spelling
+elif "status" in f:   warnings.append()  # the pre-item-45 one, accepted on read
+                                         # and nothing for NEITHER
+```
+
+Item 79's else-branch shape, in a validator rather than a dispatch. A `<feature>` with no build
+state passed every reader: `check-project-md.py` called the file *valid* with `features 5`.
+
+### Hole 2 — and it would not have fired anyway
+
+```python
+if version is None:  escalate                       # <- the crossing's file landed here
+else:                CHECKERS[kind](text, ...)      # <- so this never ran
+```
+
+**A file whose version cannot be detected was never content-checked at all.** And the two
+conditions are frequently one file: a version is detected *from shape*, so an artefact that has
+lost a required element loses its version with it. R3's `done` predicate requires every feature
+entry to carry `built=` — which makes *missing required attribute* and *unknown schema version*
+the same observation.
+
+So the operator got one line:
+
+> `matches no known schema version. `migrate.py --detect` escalates rather than guessing`
+
+ran `/migrate`, and was correctly told `ESCALATE … no migration can be selected`. **A remedy named
+by the only message they got, which cannot apply.**
+
+**The escalation is not routed around** — that was a deliberate decision and it stands. The
+diagnosis is added beside it: an unplaceable artefact is now judged against the current schema
+*to say why*, labelled as such, because judging it against a version nobody could determine is the
+guess the script refuses to make.
+
+Against the crossing's own `PROJECT.md`, one line about schema versions became seven, each naming
+a feature and the attribute it lacks.
+
+### What is NOT built, and why it is written down instead
+
+`project-format.md` marks four things Required on a `<feature>`: `id`, `built`, `name`, `files`.
+This asserts the first two. **`name` and `files` are unchecked and stay that way** — there is
+evidence of the `built` failure from a live run and none for the other two, and building checks
+without evidence is how a check comes out wrong. Recorded here rather than silently added, which
+is `checks.md`'s own rule about an assertion somebody specifies and does not build.
+
+**A smaller correction inside the validator, which is the nicest detail here.** The old error
+message read `f"<feature name=\"{f.get('name', '?')}\">"` — it reached for `name` as an
+*attribute*, which the spec does not define. **The validator was modelling the wrong shape in its
+own error text**, which is a plausible source for the shape both producers then wrote. It names
+`id` now.
+
+### Verification
+
+`python tests/test_toolchain.py` — **150 → 151**, `failed 0`, `known 0`. Watched failing first,
+with the message the crossing actually received.
+
+**6 mutants, 6 caught**, baseline green either side: the else-branch removed, the diagnosis
+removed, the feature no longer named, the legacy `status=` turned into a refusal, the enum check
+removed, and the checker made to refuse everything.
+
+**Two were caught by a different assertion than predicted, and that is worth recording rather
+than tidying.** Removing the else-branch does not change the *exit code* — the file is still
+unplaceable, so it still exits 1 — and what breaks is that no feature is named. **The exit code
+alone never was the evidence here**; the naming assertion is what carries the finding, and the
+mutation round is what showed which of the two was load-bearing.
 
 ---
 
