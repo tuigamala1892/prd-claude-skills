@@ -5022,7 +5022,7 @@ in prose.
 The number points at **attribution**; the cause is a **broken file**. `checks.md` has no row for
 *a task file parses*, and this is the ownerless row it should have had.
 
-**P65 — `check-scope.py` no-ops silently on a key it does not know.** Given an `analysis.json`
+**P65 — `check-scope.py` no-ops silently on a key it does not know.** **Closed by item 83, below.** Given an `analysis.json`
 carrying `scope_declared` instead of `scope` it prints *"nothing to compare: the analysis carried
 no scope or confidence"* and exits 0. The key names are documented nowhere; `/breakdown` Phase 2
 names the elements to extract and not the fields to write.
@@ -5316,6 +5316,80 @@ producer moving without the reader, the reader falling behind alone, the majors 
 preservation deleted entirely. `project_path` is the field that can only come from the existing
 manifest, and it is what the assertion tests now. **A rebuild assertion that only checks a derived
 value tests nothing about preservation.**
+
+---
+
+## Phase 20 — Item 83: a field a check reads is named where the analysis is written.
+
+**P65, the last of the sixth crossing's four.** Suite **152 → 153**. All four are now closed.
+
+### Item 49's reader could not see its input, and reported that as agreement
+
+`check-scope.py` reads `analysis["scope"]` and `analysis["confidence"]`. Item 49 made `<scope>`
+and `<confidence>` **required** CRD elements whose only consumer anywhere in the toolchain is that
+script. And `/breakdown` Phase 2's `**For CRD:**` block — the instruction that writes
+`analysis.json` — **named neither.** It lists eight things to extract; those two are not among
+them.
+
+So the destination key was a model's guess. The crossing guessed `scope_declared`, and got:
+
+```
+nothing to compare: the analysis carried no scope or confidence
+```
+
+exit 0 — **the same sentence a correct run prints when a document genuinely predicted nothing.**
+The script could not tell *nobody predicted anything* from *the prediction is here under a name I
+do not read*, and reported the reassuring one. The run noticed and renamed the key, which is why
+the crossing's final `analysis.json` is correct and the first attempt is only in its report.
+
+### The convention already existed, one line above
+
+Item 75's entry in that same list reads *"Schema contracts from
+`<impact-analysis><affected-contracts>`, **into `data_models`**"* — source **and** destination.
+The pattern was applied to one field and not to these two. **A field whose name is not written
+down is a field the next run invents.**
+
+### What landed
+
+The instruction names both destinations. And the reader stops reporting a silence it cannot
+distinguish from agreement: when it finds nothing it now says **which keys it read**, and names
+any top-level key containing `scope` or `confidence` as a near-miss.
+
+That screen is a *shape*, not a spell-checker — `scope_declared` matches, `api_endpoints` does
+not — because a screen that flags every unread field is the same defect pointed the other way: a
+report nobody can act on. The legitimately-empty case still prints `nothing to compare` and
+nothing else, and that is asserted.
+
+Against the crossing's own artefacts with its first key names restored:
+
+```
+nothing to compare: the analysis carried no scope or confidence
+    read: scope, confidence, feature_signals (top level), and feature_signals[].{feature,scope,confidence}
+    NEAR  the file carries confidence_declared, scope_declared -- item 49's fields are read by
+          the names above, so this prediction reaches nothing
+```
+
+### Two weak assertions of my own, and mutation found both
+
+**Asserting a word two lines could satisfy.** *"the reader says which keys it read"* was checked
+as `"read" in out` — and the NEAR line says *"read by the names above"*, so deleting the list
+entirely left the check green. **Two sites satisfied one assertion, so no single edit could break
+it** — the site-counting rule, for the third time this session. It keys on `feature_signals` now,
+a name that appears only in the list.
+
+**Asserting one example instead of the class.** The negative control checked that
+`scope_declared` was absent from the empty case — so widening the near-miss screen to flag *every*
+unread key survived, because the keys it then flagged were `tech_stack` and `api_endpoints`. It
+asserts `NEAR` itself now.
+
+Neither was found by reading. Both were found by breaking the thing the assertion was supposed to
+protect and watching nothing happen.
+
+### Verification
+
+`python tests/test_toolchain.py` — **152 → 153**, `failed 0`, `known 0`. **6 mutants, 6 caught**,
+baseline green either side: each half of the instruction, the near-miss report, the list of keys
+read, the screen widened to flag everything, and a correctly-keyed analysis no longer compared.
 
 ---
 

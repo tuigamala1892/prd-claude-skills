@@ -191,7 +191,25 @@ def main():
         for line in reports:
             print(f"  DISAGREES  {line}")
         if not lines and not reports:
+            # P65. This used to be the whole message, and it is the same sentence whether the
+            # document predicted nothing or the prediction is sitting in the file under a key
+            # nothing reads -- and the reassuring reading is the one it gave. The sixth
+            # crossing's analysis carried `scope_declared`; item 49's only reader said `nothing
+            # to compare` and exited 0.
+            #
+            # It cannot know every wrong name, so it does not guess: it says what it READ, and
+            # names any top-level key that contains one of those words. That is a shape, not a
+            # spell-checker -- `scope_declared` matches, `api_endpoints` does not.
+            read = ("scope", "confidence", "feature_signals")
+            near = sorted(k for k in analysis
+                          if k not in read and any(w in k for w in ("scope", "confidence")))
             print("  nothing to compare: the analysis carried no scope or confidence")
+            print(f"      read: {', '.join(read)} (top level), and "
+                  f"feature_signals[].{{feature,scope,confidence}}")
+            if near:
+                print(f"      NEAR  the file carries {', '.join(near)} -- item 49's fields are "
+                      f"read by the names above, so this prediction reaches nothing. "
+                      f"/breakdown Phase 2 names the destination keys")
 
     return 0
 

@@ -376,6 +376,14 @@ Extract directly from CRD structure:
   implementer was handed a change to a model the document had already described (**P53**)
 - Tech stack from PROJECT.md context
 - Related existing features from `<context><related-features>`
+- **`<impact-analysis><scope>` into `scope`, and `<impact-analysis><confidence>` into
+  `confidence`** — both at the *top level* of `analysis.json`, under exactly those key names
+  (item 49, **P65**). They are required elements of a CRD and `check-scope.py` is their only
+  reader in the whole toolchain, by those keys. This line names the destination for the same
+  reason the `data_models` line above it does: **a field whose name is not written down is a
+  field the next run invents.** The sixth crossing wrote `scope_declared`, and item 49's reader
+  printed *"nothing to compare"* — which is what it also prints when a document predicted
+  nothing at all.
 
 The CRD already contains impact analysis, so less inference is needed.
 
