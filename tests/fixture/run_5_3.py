@@ -175,6 +175,22 @@ def build_steps(ws):
     ]
 
 
+
+def checkout_guard(phase):
+    """Item 78: a live run must not write into the toolchain checkout (P57).
+
+    Every harness here verifies the TARGET and none looked at the plugin, which is how a run
+    left `skills/execute/preflight_err.txt` behind unnoticed. `--snapshot` before, `--check`
+    after; residue is named and never deleted, because it is evidence.
+    """
+    import subprocess as _sp, sys as _sys, os as _os
+    script = _os.path.join(REPO, "tests", "checkout-clean.py")
+    p = _sp.run([_sys.executable, script, f"--{phase}"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace")
+    if phase == "check" and p.returncode == 1:
+        print(p.stderr.rstrip(), file=_sys.stderr)
+    return p.returncode
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--workdir", default=default_workdir())
@@ -189,6 +205,7 @@ def main():
     ws = os.path.abspath(args.workdir)
     app = os.path.join(ws, "app")
     steps = build_steps(ws)
+    checkout_guard("snapshot")   # item 78: the plugin must be unchanged by this run
 
     if args.list:
         for s in steps:
@@ -228,7 +245,8 @@ def main():
         print(f"  {status:<8} {i}. {desc}")
         print(f"           {why}")
     print(f"\n  results: {results}")
-    return 0 if all(o[2] == "PASS" for o in outcomes) else 1
+    dirty = checkout_guard("check")   # item 78: did the run write into the plugin?
+    return 0 if all(o[2] == "PASS" for o in outcomes) and dirty == 0 else 1
 
 
 if __name__ == "__main__":

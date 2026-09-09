@@ -9641,6 +9641,83 @@ def _():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+@check("a live run writes nothing into the toolchain, and every harness proves it",
+       finding="P57")
+def _():
+    """Item 78. F4's class, arriving through a path nobody declared.
+
+    The fifth crossing left `skills/execute/preflight_err.txt` in the checkout. No SKILL.md in
+    the execute tree contains a `2>` redirect and none names `_err.txt`: the model invented a
+    stderr capture, wrote it to a RELATIVE path, and the path resolved inside the plugin.
+
+    `resolve-output.sh` refuses a tasks directory inside a plugin and `preflight.sh` refuses a
+    plugin as a target -- both guard paths somebody DECLARED. Neither can guard one a model
+    invents, and the plugin is shared by every project that loads it.
+
+    TWO HALVES, and the second is why this is an item rather than a deletion. `/execute` names
+    the directory scratch may use; that is prose, and P16 is this plan's finding about prose. The
+    harnesses check, so a run that dirties the toolchain ends red rather than ending quietly.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(REPO, "tests", "checkout-clean.py")
+    assert os.path.isfile(script), "tests/checkout-clean.py does not exist"
+
+    # The rule, in the skill that broke it. Scoped to the section, not the whole file.
+    ex = open(os.path.join(SKILLS, "execute", "SKILL.md"), encoding="utf-8").read()
+    section = ex.split("Where scratch goes", 1)
+    assert len(section) == 2, (
+        "execute/SKILL.md does not say where scratch may be written. A relative redirect is the "
+        "defect, and a skill may not assume its cwd")
+    rule = prose(section[1].split("###", 1)[0])
+    assert ".execute/" in rule and "relative" in rule.lower(), (
+        f"the rule names no directory, or does not forbid a relative path: {rule[:200]}")
+
+    # Every live harness takes a snapshot AND checks. One without the other is decoration:
+    # a snapshot nobody compares proves nothing, and a check with no baseline cannot run.
+    for rel in ("tests/fixture/run_5_3.py", "tests/boundary-test.py",
+                "tests/graph-experiment.py"):
+        body = open(os.path.join(REPO, rel), encoding="utf-8").read()
+        assert 'checkout_guard("snapshot")' in body, f"{rel} takes no checkout snapshot"
+        assert 'checkout_guard("check")' in body, (
+            f"{rel} snapshots the checkout and never checks it. Every harness here verifies the "
+            f"TARGET, which is exactly how P57 went unnoticed")
+
+    # And the guard itself, by running it: it must name residue and must NOT delete it.
+    root = tempfile.mkdtemp(prefix="item78-")
+    try:
+        def run(*a):
+            return subprocess.run([sys.executable, script, *a], cwd=REPO, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace")
+
+        # Snapshot whatever is here now, then plant residue where the crossing planted it.
+        assert run("--snapshot").returncode == 0, "checkout-clean.py --snapshot failed"
+        stray = os.path.join(SKILLS, "execute", "item78_probe_err.txt")
+        open(stray, "w", encoding="utf-8", newline="\n").write("residue\n")
+        try:
+            p = run("--check")
+            assert p.returncode == 1, (
+                "the guard passed a checkout carrying a file a run had left in it")
+            assert "item78_probe_err.txt" in p.stderr, (
+                f"the guard refused without naming the path, so nobody can act on it:"
+                f"\n{p.stderr[:300]}")
+            assert os.path.isfile(stray), (
+                "the guard DELETED the residue. It is evidence of what a run did, and tidying it "
+                "away hands the next person the same surprise with no trace")
+        finally:
+            # Tolerant on purpose: a mutant that DELETES the residue is one this check is meant
+            # to catch, and the teardown must not then raise over the file it removed.
+            if os.path.isfile(stray):
+                os.remove(stray)
+
+        p = run("--check")
+        assert p.returncode == 0, (
+            f"the guard still refuses after the residue was removed, so it is not comparing "
+            f"against its snapshot:\n{p.stderr[:300]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
 # ------------------------------------------------------------------------ runner
 
 def main():

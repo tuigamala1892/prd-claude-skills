@@ -402,6 +402,7 @@ def live(keep=False):
     reg = json.load(open(os.path.join(HERE, "fixture", "prd", "SCHEMAS.json"), encoding="utf-8"))
     prd = os.path.join(HERE, "fixture", "prd", reg["current"], "link-shelf")
 
+    checkout_guard("snapshot")   # item 78
     root = tempfile.mkdtemp(prefix="boundary-run-")
     project = os.path.join(root, "app")
     os.makedirs(project)
@@ -437,13 +438,30 @@ def live(keep=False):
         print(f"the /breakdown run exited {p.returncode}; nothing to grade", file=sys.stderr)
         return 2
     try:
-        return grade(workspace_prd, tasks, project=project)
+        graded = grade(workspace_prd, tasks, project=project)
+        return graded or checkout_guard("check")   # item 78
     finally:
         if not keep:
             shutil.rmtree(root, ignore_errors=True)
         else:
             print(f"kept: {root}")
 
+
+
+def checkout_guard(phase):
+    """Item 78: a live run must not write into the toolchain checkout (P57).
+
+    Every harness here verifies the TARGET and none looked at the plugin, which is how a run
+    left `skills/execute/preflight_err.txt` behind unnoticed. `--snapshot` before, `--check`
+    after; residue is named and never deleted, because it is evidence.
+    """
+    import subprocess as _sp, sys as _sys, os as _os
+    script = _os.path.join(REPO, "tests", "checkout-clean.py")
+    p = _sp.run([_sys.executable, script, f"--{phase}"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace")
+    if phase == "check" and p.returncode == 1:
+        print(p.stderr.rstrip(), file=_sys.stderr)
+    return p.returncode
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

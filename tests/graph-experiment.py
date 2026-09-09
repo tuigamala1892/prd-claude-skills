@@ -235,6 +235,7 @@ def live(keep=False, arms=("default", "poor"), out_dir=None):
     prd_src = os.path.join(HERE, "fixture", "prd", reg["current"], "link-shelf")
 
     results = {}
+    checkout_guard("snapshot")   # item 78
     root = out_dir or tempfile.mkdtemp(prefix="oq7-")
     # A workspace inside this checkout is refused by `resolve-output.sh` before a single task is
     # written -- correctly, since F4 is a run whose entire output landed in the toolchain tree.
@@ -302,13 +303,30 @@ def live(keep=False, arms=("default", "poor"), out_dir=None):
         open(out, "w", encoding="utf-8", newline="\n").write(
             json.dumps({"verdict": verdict, "arms": results}, indent=2))
         print(f"  result: {out}")
-        return 0 if "NO RESULT" not in verdict else 1
+        dirty = checkout_guard("check")   # item 78
+        return 0 if "NO RESULT" not in verdict and dirty == 0 else 1
     finally:
         if keep:
             print(f"kept: {root}")
         else:
             shutil.rmtree(root, ignore_errors=True)
 
+
+
+def checkout_guard(phase):
+    """Item 78: a live run must not write into the toolchain checkout (P57).
+
+    Every harness here verifies the TARGET and none looked at the plugin, which is how a run
+    left `skills/execute/preflight_err.txt` behind unnoticed. `--snapshot` before, `--check`
+    after; residue is named and never deleted, because it is evidence.
+    """
+    import subprocess as _sp, sys as _sys, os as _os
+    script = _os.path.join(REPO, "tests", "checkout-clean.py")
+    p = _sp.run([_sys.executable, script, f"--{phase}"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace")
+    if phase == "check" and p.returncode == 1:
+        print(p.stderr.rstrip(), file=_sys.stderr)
+    return p.returncode
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
