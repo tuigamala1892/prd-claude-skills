@@ -123,11 +123,11 @@ and the produced application passing 88 of its own tests. Run 9 added the last p
 `execute-state.json` is now generated from the ledger and git, and agreed with both for
 the first time. See
 [`docs/skills/toolchain-assessment-and-plan.md`](docs/skills/toolchain-assessment-and-plan.md)
-for the full assessment, including the four runs before those that did not.
+for the full assessment, including the runs before those that did not.
 
 Fixed and verified under a real run:
 
-- ~~All 15 skills declare `allowed-tools`, which stops `context: fork` working.~~
+- ~~Every skill declares `allowed-tools`, which stops `context: fork` working.~~
   **Fixed** (4.11, F13). That key is a *command* key; in a skill it restricted nothing
   and silently disabled forking, so for the life of this toolchain no skill forked,
   `agent:` never fired, and no skill's `model:` applied.
@@ -155,15 +155,15 @@ became a script because the described version demonstrably failed, and each has 
 in every run since.
 
 - ~~Model identifiers were stale, and skills disagreed with the agents they name.~~ **Fixed**
-  (4.2, F5/F6/F7). One pass over all 22 declarations, so they could not drift apart in the
+  (4.2, F5/F6/F7). One pass over every declaration, so they could not drift apart in the
   doing of it.
 
 Still outstanding, none of it blocking: the `what-next.md` template that `/prd --resume`
 greps for does not match what `/prd` writes (4.3, 4.4), and a few consistency items
 (4.1, 4.5, 4.6, 4.10).
 
-`tests/test_toolchain.py` guards every fix above against regression — **31 checks, 0 known
-failures**, each verified to fail when its fix is reverted.
+`tests/test_toolchain.py` guards every fix above against regression — **every check verified
+to fail when its fix is reverted.**
 
 ## Attribution and licensing
 
