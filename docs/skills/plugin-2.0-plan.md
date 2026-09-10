@@ -1,15 +1,39 @@
 # Plugin 2.0 — Fidelity Plan (PRD and CRD paths)
 
-**Status:** **Phases 1–11 complete and merged as of 2026-09-08.** Phases 10 and 11 hold items
+**Status:** **Phases 1–22 complete and merged as of 2026-09-10.** Phases 10 and 11 hold items
 68–72 from [`plugin-2.0-verification.md`](plugin-2.0-verification.md) — a static verification of
 the implementation against this document, which found four defects that arrived *after* the
 decisions they sit beside, and four documents that had described a smaller project than exists
-since before the plan began. Phase 5 was the only phase large enough to need splitting, and **the
-split into five commit groups is in the ledger**, being a sequencing decision rather than a change
-to what is specified here. This document
+since before the plan began. Phases 12–22 hold items 73–85, from an experiment, two live
+crossings, and one measurement of this document's own closing sentence. Phase 5 was the only
+phase large enough to need splitting, and **the split into five commit groups is in the ledger**,
+being a sequencing decision rather than a change to what is specified here. This document
 stays a **specification**; what has actually landed, and where the implementation departed from
 what is written here, is recorded in [`plugin-2.0-progress.md`](plugin-2.0-progress.md). Nothing
 is implemented except what that file lists.
+
+### How this document grows, which has been re-argued three times
+
+**Two rules, and only the second one restricts what may be added here.**
+
+**1. A discovery made after this plan was written is PLACED IN IT** — a finding in §3, an item in
+its own lettered section, and a slot in §6's ordering — *labelled as found after the fact rather
+than presented as foresight*. That is the practice `49d5c8b` set at item 60: *"Item 60 was found
+by implementing 23a, not by planning, so the plan gains the finding and the item after the fact.
+Recorded that way in both places rather than presented as foresight."* Sections **K** through
+**U** are that rule in use: each holds the findings and items from one episode of discovery, and
+each says which episode.
+
+**2. Existing text is NEVER REFRAMED to accommodate a later discovery.** A heading, a claim or a
+grade written before is left as it was written; where the implementation departed from it, the
+departure is recorded in the ledger under `### Deviation(s) from the plan` or `### Departure N`.
+That is the ledger's own charter — *"a companion to this file, which stays a specification"* — and
+it has been broken once, at `4a36c62`, by retitling a Phase 7 heading. That was reverted.
+
+**The two are easy to conflate because both protect this document's integrity**, and the search
+that settled it is on record: on 2026-09-07 every session transcript was searched for an argument
+that later work should stay out of the plan. **There is none**, and the precedent runs the other
+way. Written here so it is not re-derived a fourth time.
 **Date:** 2026-08-17
 **Subject:** what `/prd` and `/crd` write, and how much of it survives into `/breakdown` and `/execute`
 **Supersedes:** items **4.4** and **4.5** of [`toolchain-assessment-and-plan.md`](toolchain-assessment-and-plan.md), which are folded in below as items 12 and 18.
@@ -3630,6 +3654,236 @@ tidied them away would leave the next person with the same surprise and no trace
 
 ---
 
+## S. What measuring the else branch found
+
+**Section R closed by saying the CRD path is the `else` branch everywhere, and that this was
+worth a check of its own.** Measuring that sentence before building the check is what this
+section records — because the sentence turned out to be true about something other than what it
+named.
+
+**43 `isdir`/`is_dir` calls across 28 files.** Twenty-two are on a tasks directory, a repo root,
+a worktree or a discovery candidate. Of the twenty-one on a document, **seven are PRD-only
+scripts that refuse a CRD with `exit 2` and a named reason**, ten dispatch correctly, and two
+were defective. A lint on the call would have flagged `select-features.py` — the dispatch this
+plan's ledger calls canonical — and found none of the three findings below, which are about a
+*value*, a *caller* and a *printed line* rather than a branch.
+
+**P61 — capability parity is recorded and enforcement parity is not.**
+*Verification: measured, against both registries.*
+`parity.md` measures whether an ELEMENT is documented on both paths, with a substring probe
+against a format reference. `checks.md` measures ownership, in both directions since item 69.
+**Neither can say *this assertion runs on the CRD path***, and four of the six known sites are
+capabilities `parity.md` already records as `both` — the element on two paths and the check over
+it on one. 144 static checks saw none of them; every one was found by a live run.
+
+**P58 — a CRD's `<gaps>` were never validated, and a typo defeats item 29 there.**
+*Verification: measured, by mutating the fifth crossing's own CRD.*
+`check-status.py` owns *`<gaps>` well-formed, and aged* and had one caller, `commands/prd.md`.
+Misspelling both blocking kinds — `decision` → `decsion` — and dropping a `raised` date: the PRD
+control exits 1 with two named contradictions; every script that reads the CRD exits 0, and the
+gate prints `3 blocked OK`. Item 77 made the assertion *reach* a CRD; nothing validated the value
+it dispatches on.
+
+**P59 — the gate reports a pass it has not established, in two ways.**
+*Verification: measured, by running the gate.*
+An unrecognised `kind` is `does not block` rather than `cannot be classified`, on **both** paths,
+since `/breakdown` runs `check-status.py` on neither. And `gap_err` is appended to `findings`
+while the printed line keys on `gaps` alone, so an assertion that could not run at all prints
+`3 blocked OK` while `--json` carries `could not read the document`. **The comment three lines
+below in the same function records that identical defect being fixed for assertion 4** and left
+standing for assertion 3.
+
+**P60 — item 35's third direction has never seen a CRD.**
+*Verification: measured, with a PRD positive control.*
+The screen for a document nobody has flagged that the heuristics say is a candidate sits behind
+`if os.path.isdir(features_dir)`. An unflagged CRD naming a quality attribute is offered to
+nobody; the same mutation on a PRD prints `CANDIDATE … quality-attribute (names 'password')`.
+
+**P62 — `/breakdown` names its document placeholder for one of the two shapes.**
+*Verification: measured, by running the scripts as documented.*
+`{prd_dir}` is defined once — *"the directory holding `index.md` and `features/`"* — and that one
+definition governs five invocations, four of which take either shape, including the gate.
+Followed literally on the CRD path it resolves to `docs/crd/`, which is a directory, so the PRD
+branch accepts it: `check-references.py` returns `0 references checked` where the file form finds
+six. **Item 77 fixed the scripts and left the instruction naming one of them.** The fifth
+crossing passed the file anyway, contradicting its own instructions — P16's shape, holding by
+luck.
+
+---
+
+**79. Every assertion says which paths it reaches, and each `both` is probed by running it.**
+*Addresses the class behind P55, P56, P58, P60 and group 8b. Depends on nothing.*
+
+`schema/checks.md` gains a **`Paths`** column — `both` · `prd-only` · `crd-only` · `n/a` — with a
+reason required for every value except `both`. **Four-valued and not three**, because twelve of
+its rows read a task file, a manifest or the project's `architecture.md` and have no PRD/CRD axis
+at all; forcing a verdict there manufactures a difference that means nothing, which is
+`parity.md`'s own warning about spelling one level up.
+
+`schema/scripts/check-enforcement.py` owns it. **Every `both` row runs its owner twice** — against
+a well-formed CRD and one mutated to carry the defect that assertion exists to catch — and the
+good run must stay silent. A declared column alone is a documentation ratchet: it catches the row
+nobody wrote down and nothing about whether the code reaches.
+
+**And P58, P59, P60 and P62 are fixed with it**, since a column asserting that assertions reach
+both paths is worth nothing while four of them do not.
+
+---
+
+## T. What the sixth crossing found
+
+**The first crossing driven end to end by a program**, against a fixture rebuilt with `--clean`:
+5 commits, 17 files, 8 passing tests, no `PROJECT.md`. **All four steps passed** — 5/5 tasks
+verified against git, 5 merge commits, 25 tests from a baseline of 8, 0 worktrees left, the
+delete trap held, and `checkout-clean.py` reporting the run added nothing to the toolchain.
+
+**Both of the previous section's changes were exercised.** Item 79's `check-status.py` invocation
+in `commands/crd.md` ran for the first time and aged a real gap — and `/crd` **recorded** that gap
+rather than inventing an answer, writing *"Not covered by the stakeholder's answers"* when nothing
+in the prompt told it to. P62's `{document}` reached a live run, and `no index.md` appears nowhere
+in the output.
+
+**The instrument was wrong first, and the run said so.** Step 2's bare invocation returned four
+clarifying questions and no document — which is `/crd` behaving correctly, because it is an
+interview and one non-interactive turn is not one. *A refused run is not a failed measurement.*
+
+**P63 — both `PROJECT.md` producers omit a required attribute, and the validator has no branch
+for it.**
+*Verification: measured, and reproduced in isolation.*
+`crd-investigator` and `project-context-finalizer`, independently, wrote
+`<feature id="save-link" name="Save a link">`: no `built=`. `check_project_context()` had a branch
+for `built`, a branch for the pre-item-45 `status`, and **none for neither**. And it would not
+have fired anyway: `main()` reads `if version is None: escalate; else: CHECKERS[kind](...)`, so a
+file whose version cannot be detected is never content-checked — and the two conditions are
+frequently one file, since a version is detected *from shape*. The operator got one line about
+schema versions, ran `/migrate`, and was correctly told no migration can be selected. **A remedy
+named by the only message they got, which cannot apply.**
+
+**P64 — nothing asserts a task file is well-formed XML, and three readers hide it in turn.**
+*Verification: measured, and reproduced from scratch.*
+A generated `L4-001` carried `<contract kind="schema" ref="Link">` unescaped in prose.
+`build-manifest.py` reported `2 task(s)`, exit 0 — it parses with `ElementTree` behind a bare
+`except Exception` whose comment reads *"a malformed task file is item 4.x's problem, not this
+script's"*. **The deferral was deliberate and the owner it deferred to was never assigned.**
+`check-coverage.py` imports `edges_of` from that script, correctly, and inherits the silence: a
+file that cannot be parsed has no `<source-feature>` edges, and no edges reads as *attributed to
+nothing*. `breakdown-review-tasks` **passed** it, because it reads the file as text.
+
+**P65 — item 49's only reader could not see its input, and reported that as agreement.**
+*Verification: measured, by running the check against the crossing's first analysis.*
+`check-scope.py` reads `analysis["scope"]` and `analysis["confidence"]`, and `/breakdown` Phase
+2's `**For CRD:**` block names neither — it lists eight things to extract and those two are not
+among them. The run guessed `scope_declared` and got *"nothing to compare: the analysis carried
+no scope or confidence"*, exit 0 — **the same sentence a correct run prints when a document
+predicted nothing.**
+
+**P66 — the manifest does not carry what `/execute` documents reading.**
+*Verification: measured, with two corrections to the first reading.*
+`prd.slug` is never written on a first build, only preserved by a rebuild that already had one —
+and it names `{project_path}/.execute/{prd_slug}/`, so every ledger path depends on it. The
+crossing filled the gap by hand. `layers` is **stale**: item 66 made the layer set derived and
+the manifest has never carried the key. `prd.project_path` **is** written when `--project-path`
+is passed, and the claim that its fallback could never fire was wrong.
+
+**P67 — a format table that can be followed to the wrong answer.**
+*Verification: measured across the crossing's seven features.*
+`project-format.md`'s feature table had one column headed `Attribute/Element` that never said
+which was which; the only statement of it lived in an example further up the page. `<files>` is
+correct on all seven features and `name` is an **attribute** on all seven. **Both producer
+templates are correct**, so the shape written matched neither template and matched a permitted
+reading of the table. Nothing parses either form mechanically — `<files>` is read by an
+instruction — which is why a required element was absent on every feature of an artefact two live
+runs had already consumed.
+
+---
+
+**80. A task file parses, before any reader reports a symptom of one that does not.**
+*Addresses P64. Depends on nothing.*
+`check-task-xml.py` owns it, called from `/breakdown` Phase 5 before the manifest, from
+`breakdown-review-tasks` before every criterion that reads text, and from `/execute` after
+compatibility — **the consumer side, and the one that must refuse**, because nothing on that path
+parses a task and a malformed one reaches an implementer as text. `build-manifest.py` stops
+reporting success over a file it could not read and **names the owner** rather than growing a
+second copy of the assertion.
+
+**81. A feature declares its build state, and an unplaceable file says why.**
+*Addresses P63. Depends on nothing.*
+The missing `else`, and the diagnosis. The escalation is **not** routed around — that decision
+stands — but an artefact whose version cannot be determined is now judged against the current
+schema *to say why*, labelled as such.
+
+**82. The manifest carries what `/execute` reads, and its reader keeps up.**
+*Addresses P66. Depends on nothing.*
+`build-manifest.py` derives `prd.slug` from the tasks directory, which `resolve-output.sh`
+guarantees is the slug; `/execute` stops documenting a `layers` key item 66 superseded. **And a
+second defect found while measuring the first:** `MANIFEST_SCHEMA_VERSION` moved to `1.3` at item
+65 and `READER_SCHEMA` stayed at `1.2`, so every manifest this toolchain wrote warned against a
+reader inside the same toolchain. The two constants stay separate — importing one would make the
+comparison vacuous — and **the regression suite is the one place allowed to know both**.
+
+**83. A field a check reads is named where the analysis is written.**
+*Addresses P65. Depends on nothing.*
+`/breakdown`'s CRD block names `scope` and `confidence` as destinations, the way item 75's line
+above it already named `data_models`. And `check-scope.py` stops reporting a silence it cannot
+distinguish from agreement: it says which keys it read, and names any top-level key containing
+`scope` or `confidence` as a near-miss — a shape, not a spell-checker.
+
+**84. A `PROJECT.md` feature carries the elements the format marks required.**
+*Addresses P67. Depends on 81.*
+The table's first column is split into *Field* / *Written as* / *Required*, and
+`check_project_context()` asserts `<name>` and `<files>`, naming the attribute case as such
+rather than reporting the element as absent. **Undefined extra children stay accepted**, and the
+check asserts that they are: nothing measured says unknown content is a defect.
+
+---
+
+## U. What the registries did not cover
+
+**Three files in this repository exist to tell an absence from a decision.** `readers.md`
+distinguishes an element with no reader from one with a recorded reason it has none; `checks.md`
+distinguishes an assertion with an owner from an ownerless row kept deliberately; `parity.md`
+distinguishes a settled asymmetry from one marked `open`. Asking what had no such file produced
+this section.
+
+**P68 — the findings have no registry, and the plan is organised around them.**
+*Verification: measured against the plan, the ledger and the suite.*
+Of the ids in `P1..P68`: 57 are defined by a `**PN — claim**` heading here, 57 are guarded by a
+`finding=` check in the suite, and **ten needed a judgement**. P9 was explicitly *retracted* and
+P13 was *closed* by measurement — and both were simply absent from every index, so nothing could
+tell a decision from an omission.
+
+**And the most recent work was the worst offender.** P58–P68 — the findings in sections S, T and
+this one — existed only as `finding=` tags in the suite and words in commit messages. **Eleven
+findings with no definition anywhere**, created in two days by the work that was closing exactly
+that shape of defect elsewhere. Placing them under headings in S and T is part of the remedy;
+the registry is the rest of it.
+
+> **A note on the id space, because it corrupted the first count.** `P0`, `P1` and `P2` are also
+> core §4's criterion priority levels, so a bare `\bP\d+\b` matches `priority="P0"`. The first
+> measurement said 58 findings and was wrong. **`P0` is not a finding.**
+
+---
+
+**85. Every finding has a status, and a closed one names where it was settled.**
+*Addresses P68. Depends on nothing.*
+
+`docs/skills/plugin-2.0-findings.md` — one row per finding: id, the claim in a line, a status in
+`closed` · `retracted` · `open` · `superseded`, and what settled it. **`retracted` is not
+`closed`**, and P9 is why the column has four values: recording a predicted failure with no live
+instance as *closed* would claim a fix that never happened, and deleting the row would lose the
+retraction the plan explicitly kept.
+
+`tests/check-findings.py` owns it, and **has no `checks.md` row on purpose**: that table is
+*every assertion the toolchain makes about an artefact*, and this asserts nothing about a PRD, a
+CRD or a task — it audits the project's own record-keeping. `mutate.py` and `probe-p1.py` live in
+`tests/` on the same basis.
+
+Its load-bearing assertion is the one that decays without help: **a row naming a regression check
+must name one that exists.** A check renamed in the suite leaves a row pointing at nothing, and
+the row still reads as guarded.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
@@ -3864,6 +4118,97 @@ keeps making it.
 `skills/`, `commands/`, `agents/`, `schema/` or `tests/`. Nothing read the four documents at the
 repository root, so the only artefacts with no automated reader at all were the ones a human
 reads first — and they drifted for nine phases without a single check going red.
+
+---
+
+### Phase 12 — The graph is load-bearing.
+
+`73`
+
+**Open question 7's experiment, finally run**, and the design was committed before the
+measurement — which was the point. The layer graph turns out to be load-bearing, so a wrong one
+is a defect rather than a preference, and item 73 makes it an exit code instead of a model's
+judgement.
+
+### Phase 13 — The declared order is obeyed.
+
+`74`
+
+**A second script rather than a widening of 73**, because *is this graph valid* and *did the run
+obey it* are two questions and this repository gives each one an owner. Its finding corrected two
+claims of its own along the way, both recorded in the ledger rather than smoothed out.
+
+### Phase 14 — What the fifth crossing found.
+
+`77` · `78`
+
+**The first CRD run since this plan began**, so a regression question rather than a new one. Two
+of the sequence's guards had stopped reaching it, and the third finding arrived from `git status`
+rather than from any check: a run had written a stderr capture into the plugin checkout, which no
+rule forbade because every guard covered paths somebody *declared*.
+
+### Phase 15 — The else branch, measured before it was believed.
+
+`79`
+
+**Section R's closing sentence, measured.** The measurement changed what got built: the class is
+not the `isdir` call — a lint would have flagged the canonical dispatch and found none of the
+three defects — it is that nothing recorded which paths an assertion is supposed to reach. P58,
+P59, P60 and P62 are fixed in the same phase, because a column asserting reach is worth nothing
+while four assertions do not.
+
+### Phase 16 — The sixth crossing.
+
+*(no items)*
+
+**The first crossing driven end to end by a program**, and the phase that specified the next
+five. Four steps, four passes, four findings — and both of Phase 15's changes exercised live. Its
+own instrument was wrong first, which is recorded because *a refused run is not a failed
+measurement*.
+
+### Phase 17 — A task file parses.
+
+`80`
+
+**P64 first of the four**, because it is the only one where three readers each reported a
+different symptom for one cause and none of them pointed at the broken file.
+
+### Phase 18 — A feature declares its build state.
+
+`81`
+
+**P63.** Two holes, and the second made the first invisible: a validator with a branch for each
+known spelling and none for neither, behind an escalation path that skipped content checking
+entirely.
+
+### Phase 19 — The manifest carries what `/execute` reads.
+
+`82`
+
+**P66**, plus a second defect found while measuring it — two version constants that had disagreed
+since item 65, so every manifest this toolchain wrote warned against a reader inside it.
+
+### Phase 20 — The analysis fields have names.
+
+`83`
+
+**P65**, the last of the sixth crossing's four. Item 49's only reader could not see its input and
+printed the same sentence it prints when a document predicted nothing.
+
+### Phase 21 — Item 81's residue.
+
+`84`
+
+**P67.** The two fields item 81 deferred for *no evidence*, once the crossing's artefact was read
+properly — and the format table that explains why two independent producers wrote the same wrong
+shape.
+
+### Phase 22 — The findings get a registry.
+
+`85`
+
+**P68**, and it is the axis this plan never gave itself. Three files already told an absence from
+a decision; findings — the thing the whole document is organised around — had none.
 
 ---
 
