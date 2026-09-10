@@ -413,15 +413,34 @@ one pass and each one takes only the steps it needs.
 carrying none of the five root elements is reported `SKIPPED` and changes no exit code. It was an
 escalation once, which meant a single `README.md` beside `docs/prd/` halted the migration before
 it began — and worse, gave the operator no way to tell that harmless case from a `<feature>` in
-no recognised schema, since both arrived as exit 2 under the same word. They are different
-questions and now have different answers. `SKIPPED` files are still **named**, because the one
-case this must not swallow is a real artefact whose root element somebody broke.
+no recognised schema, since both arrived as exit 2 under the same word.
+
+**But an absent root element is only half the question, and the first version of this rule asked
+only that half.** *"Does this file have a root element"* decides whether a README is an artefact.
+It also silently decides that a `what-next.md` holding nothing but `# What Next` is not one — and
+that file is an artefact of the PRD in every sense except the one being tested. A `/prd` run that
+went off-script and never wrote the skeleton produces exactly it, which is how this was found: on
+a corpus, not in the suite, and only because `SKIPPED` files are named.
+
+So the question is **should this file have had a root element**, and the only thing that answers
+it is the name. `index.md`, `what-next.md`, `PROJECT.md` and every `.md` directly under a
+`features/` directory are names this toolchain writes; one of those carrying no root **escalates**,
+because it should be an artefact and is not. Anything else carrying no root is prose somebody put
+beside the corpus, and stays `SKIPPED` — still named, because a count cannot be read.
+
+**This does not reopen *"deciding by filename"*.** That rule governs which artefact a file IS, and
+it stands: R1 reaches a feature file by its ROOT ELEMENT and never by its name, or `/prd --resume`
+breaks. The name is consulted for a different question, asked only once the root is known absent,
+and nothing downstream reads the answer. The two failure modes also settle the default between
+them: a file wrongly called the toolchain's is one line an operator dismisses, and a file wrongly
+called prose is a corpus migrated to the current schema around a markdown heading, with nothing
+that ever says so.
 
 | Exit | Means |
 |---|---|
 | **0** | every file reached the target, or reached `PARTIAL` and the half the script may do is done |
 | **1** | a postcondition failed, or `--check` found a file short of the target. Nothing partly written survives |
-| **2** | escalation — a file matched no precondition, could not be decoded as UTF-8, or is **missing something only a person can write** (R7, R8). Nothing was written for those, and each is named |
+| **2** | escalation — a file matched no precondition, could not be decoded as UTF-8, is **missing something only a person can write** (R7, R8), or is a file the toolchain writes that carries no artefact root at all. Nothing was written for those, and each is named |
 | **3** | usage error |
 
 | Per-file verdict | Means |
@@ -431,7 +450,7 @@ case this must not swallow is a real artefact whose root element somebody broke.
 | `ALREADY` | the file is at or beyond the target |
 | `UNCHANGED` | the target's steps do not touch this kind of artefact |
 | `ESCALATE` | the file matched no precondition, could not be decoded, or is missing what only a person can write. **Nothing was written** |
-| `SKIPPED` | the file carries no artefact root element. It is not an artefact, it stops nothing, and it is listed rather than dropped |
+| `SKIPPED` | the file carries no artefact root element **and is not one the toolchain writes**. It is not an artefact, it stops nothing, and it is listed rather than dropped |
 
 **`--check` writes nothing** and asserts the postconditions against files as they are. It is what
 makes *"the migration ran"* a different claim from *"the migration finished"*, and it is what the

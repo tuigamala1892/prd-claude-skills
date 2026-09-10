@@ -92,6 +92,33 @@ def kind_of(text):
     return None
 
 
+# Names the toolchain itself writes. Consulted for ONE question, and only after kind_of() has
+# already come back None: is an absent root element expected here, or is it the whole problem?
+OWNED_NAMES = {"index.md", "what-next.md", "project.md"}
+OWNED_DIRS = {"features"}
+
+
+def toolchain_owns(path):
+    """True when this repository's own commands are what create a file at this path.
+
+    THIS IS NOT `deciding by filename`, and the distinction is worth stating because the rule it
+    sounds like is one ROOTS is careful about. That rule is about which artefact a file IS, and
+    it stands untouched: R1 must not reach index.md because of its ROOT ELEMENT, never its name,
+    or `/prd --resume` breaks. Nothing here selects a rule, a kind or a schema version. The name
+    is asked a different question, and asked only when the root element is already known absent:
+    whether that absence is ordinary.
+
+    The two failure modes are not symmetric, and that sets the default. A file wrongly called
+    the toolchain's is one escalation line an operator reads and dismisses. A file wrongly called
+    prose is a PRD migrated to the current schema around a what-next.md still holding a markdown
+    heading, with nothing that ever says so -- which is how this was found, on a corpus rather
+    than in this suite.
+    """
+    name = os.path.basename(path).lower()
+    parent = os.path.basename(os.path.dirname(os.path.abspath(path))).lower()
+    return name in OWNED_NAMES or parent in OWNED_DIRS
+
+
 def read(path):
     """Returns (text normalised to \\n, the line ending the file actually used).
 
@@ -717,13 +744,21 @@ def main():
         kind = kind_of(text)
 
         if kind is None:
-            # NOT an escalation. `docs/prd/` holds a README, and a README is not an artefact the
-            # migration failed to understand -- it is not an artefact. Giving the two the same
-            # exit code halted every corpus that documents itself, and left the operator no way
-            # to tell the harmless case from the alarming one, which is the whole purpose of
-            # exit 2. Still NAMED and counted, because the one case this must not swallow is a
-            # real artefact whose root element somebody broke.
-            skipped.append(f"{rel}: no artefact root element -- not an artefact; left alone")
+            # `Does this file have a root element?` answers whether a README is an artefact,
+            # which is what it was added for, and silently answers a second question nobody
+            # asked it: whether a what-next.md holding `# What Next` is one. A /prd run that
+            # went off-script and never wrote the skeleton produces exactly that, and the file
+            # is an artefact of the PRD in every sense except the one being tested.
+            #
+            # So the absent root is not the whole question. `SHOULD this file have had one` is,
+            # and only the NAME answers it -- see toolchain_owns().
+            if toolchain_owns(path):
+                escalations.append(
+                    f"{rel}: no artefact root element, in a file the toolchain writes -- it "
+                    f"should be an artefact and is not. Nothing here can be migrated; the "
+                    f"skeleton has to be authored or regenerated. NOT WRITTEN")
+            else:
+                skipped.append(f"{rel}: no artefact root element -- not an artefact; left alone")
             continue
 
         current = detect(text, kind)

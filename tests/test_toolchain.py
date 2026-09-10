@@ -4594,6 +4594,96 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a file the toolchain itself writes is missed when it has no root, not skipped "
+       "-- by running it", finding="P28")
+def _():
+    """The correction to finding 6, found by a corpus rather than by this suite.
+
+    `Does this file have an artefact root element?` was the wrong question. It answers whether a
+    README is an artefact, which is what finding 6 needed, and it silently answers a second
+    question it was never asked: whether a `what-next.md` holding nothing but `# What Next` is
+    one. A `/prd` run that went off-script and never wrote the skeleton produces exactly that,
+    and the file is an artefact of the PRD in every sense except the one the detector tested.
+
+    The question that separates them is **should this file have had a root element**, and the
+    only thing that answers it is the name. `index.md`, `what-next.md` and `PROJECT.md` are names
+    the toolchain writes; so is any `.md` directly under a `features/` directory. Anything else
+    carrying no root is prose somebody put beside the corpus, and prose is not this tool's
+    business.
+
+    **This does not reopen `deciding by filename`.** That rule -- stated where ROOTS is defined --
+    is about which artefact a file IS, and it stands: R1 must not touch `index.md` because of its
+    ROOT element, never its name, or `/prd --resume` breaks. The name is consulted for a
+    different question, asked only once the root element has already come back absent: whether
+    that absence is expected. Nothing downstream reads it, and no rule selects on it.
+
+    The asymmetry in the two failure modes is what sets the default. A spurious escalation is a
+    line an operator reads and dismisses. A missed one is a PRD migrated to schema-6 with a
+    what-next.md still holding a markdown heading, and nothing that ever says so.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-owned-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(os.path.join(work, "features"))
+
+        good = os.path.join(work, "features", "save-link.md")
+        open(good, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <status>tbd</status>\n  </meta>\n</feature>\n")
+
+        # The corpus that found this: /prd went off-script and wrote a heading.
+        offscript = os.path.join(work, "what-next.md")
+        open(offscript, "w", encoding="utf-8", newline="\n").write("# What Next\n\n")
+        before = open(offscript, "rb").read()
+
+        # A feature file the same run never structured either.
+        prose_feature = os.path.join(work, "features", "tag-links.md")
+        open(prose_feature, "w", encoding="utf-8", newline="\n").write(
+            "# Tag links\n\nWe never finished writing this one up.\n")
+
+        # And the file finding 6 exists for, which must still not halt anything.
+        readme = os.path.join(work, "README.md")
+        open(readme, "w", encoding="utf-8", newline="\n").write(
+            "# Product requirements\n\nHow this directory is laid out.\n")
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+
+        assert p.returncode == 2, (
+            f"a what-next.md holding nothing but a heading exited {p.returncode}. It is an "
+            f"artefact of the PRD that was never written in the schema, and skipping it migrates "
+            f"the corpus around it and says the migration finished:\n{p.stdout}\n{p.stderr}")
+        assert "what-next.md" in p.stderr, (
+            f"the file is not in the escalation list, so the run's exit code says something is "
+            f"wrong and nothing says what:\n{p.stderr}")
+        assert os.path.join("features", "tag-links.md") in p.stderr or \
+            "tag-links.md" in p.stderr, (
+            f"a prose file under features/ was not escalated. The toolchain writes every .md in "
+            f"that directory, so one with no root element is a feature nobody structured:\n"
+            f"{p.stderr}")
+        assert open(offscript, "rb").read() == before, (
+            "an escalated file was modified. Nothing is written for these")
+
+        # Finding 6 must survive intact: a README still does not escalate, and is still named.
+        assert "README.md" not in p.stderr, (
+            f"a README is escalating again, which is the halt finding 6 removed. The name is what "
+            f"separates them, and this one is nobody's artefact:\n{p.stderr}")
+        assert "README.md" in p.stdout, (
+            f"the README is not reported at all now. Skipped files are named, because a count "
+            f"cannot be read:\n{p.stdout}")
+
+        # And the run still does the work it can, which is what makes exit 2 per-file rather
+        # than a verdict on the tree.
+        assert "<definition>tbd</definition>" in open(good, encoding="utf-8").read(), (
+            "the artefact beside them was not migrated")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule
