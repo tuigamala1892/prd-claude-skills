@@ -4684,6 +4684,88 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("the derivation reads a feature written before the rename -- by running it",
+       finding="P28")
+def _():
+    """Core section 3's accepted-on-read rule, asserted on the reader that DERIVES from it.
+
+    `A reader that finds <status> where it expects <definition> treats it as that element and
+    carries on.` The rule is stated once for every reader, and this one did not implement it:
+    it matched only the new spelling and defaulted a miss to `tbd`, so against a corpus written
+    before item 45 it reported every feature as unfinished.
+
+    **The default is what makes this the worst place to have missed it.** A reader that failed
+    loudly would be a nuisance. This one produces a plausible answer -- twenty-one features `tbd`
+    reads exactly like a PRD that is genuinely unfinished -- and writes it into the file as
+    DERIVED content, over the top of a block whose whole promise is that it stays true. It exits
+    0 while doing it.
+
+    The two spellings are compared to each other rather than to an expected block. What the
+    counts should be is `check-artefacts`'s question and item 11's; the only question here is
+    that the tag a file happens to use does not change the answer.
+
+    **No warning is asserted, deliberately.** `check-artefacts.py` already reports the old
+    spelling per file and names item 45 while doing it. `schema/checks.md`'s rule is one
+    assertion, one owning script, and a generator that warned about the same thing would be the
+    second owner of an assertion that already has one.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    builder = os.path.join(SCHEMA, "scripts", "build-what-next.py")
+    assert os.path.isfile(builder), "schema/scripts/build-what-next.py is missing"
+
+    root = tempfile.mkdtemp(prefix="prd-dualread-")
+    try:
+        new = os.path.join(root, "new")
+        old = os.path.join(root, "old")
+        shutil.copytree(current_fixture("link-shelf"), new)
+        shutil.copytree(current_fixture("link-shelf"), old)
+
+        # The ONLY difference between the two trees: the pre-rename spelling.
+        swapped = 0
+        for name in sorted(os.listdir(os.path.join(old, "features"))):
+            path = os.path.join(old, "features", name)
+            text = open(path, encoding="utf-8").read()
+            text, n = re.subn(r"<definition>(\s*[a-z-]+\s*)</definition>",
+                              r"<status>\1</status>", text, count=1)
+            swapped += n
+            open(path, "w", encoding="utf-8", newline="\n").write(text)
+        assert swapped >= 3, (
+            f"only {swapped} feature file(s) carried a <definition> to rewrite, so the two trees "
+            f"barely differ and this comparison is not exercising the rule")
+
+        def derive(tree):
+            p = subprocess.run([sys.executable, builder, tree, "--stdout"],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace")
+            assert p.returncode == 0, f"the builder failed on {tree}: {p.stderr}"
+            return p.stdout
+
+        after_new, after_old = derive(new), derive(old)
+        assert after_new == after_old, (
+            "the derived <authoring-gaps> depends on which spelling a feature file uses. Core "
+            "section 3 says a reader finding <status> where it expects <definition> treats it as "
+            "that element -- and a derivation that does not is worse than one that fails, "
+            "because `tbd` for every feature is exactly what an unfinished PRD looks like and it "
+            "is written into the file as derived truth.\n"
+            f"--- new spelling ---\n{after_new}\n--- old spelling ---\n{after_old}")
+
+        # And the answer is the RIGHT one, not merely the same one. Two readers agreeing on a
+        # wrong count is the failure this comparison would otherwise sail through: the fixture
+        # is `defined` throughout, so a summary calling anything `tbd` has misread it.
+        m = re.search(r'<summary\b([^/>]*)/?>', after_old)
+        assert m, f"the derivation wrote no <summary>:\n{after_old}"
+        attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        assert attrs.get("defined") == str(swapped), (
+            f"the summary counts {attrs.get('defined')} defined feature(s) where the fixture has "
+            f"{swapped}. Both spellings agreeing on a wrong count is the one way this check "
+            f"passes while the defect stands:\n{after_old}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule
