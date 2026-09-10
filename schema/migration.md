@@ -460,6 +460,17 @@ regression suite calls. A `PARTIAL` tree fails it, deliberately.
 answer is not one of the known versions. It is how an artefact selects the right migration rather
 than the newest one.
 
+**It also counts its own listing**, in a totals line naming the path scanned, the number of
+artefacts found per schema, and how many escalated or were not artefacts. That is not a
+convenience: the skill's Phase 1 requires those totals to be stated before anything is migrated,
+and for four phases nothing produced them, so the only way to obey the instruction was to count
+the rows by eye. A sixty-six line listing was duly reported as sixty. An element with no producer
+is the defect this plan spends most of its items removing, and it had one in its own skill.
+
+The totals are **derived from the rows that were printed**, never counted a second way. A summary
+that can disagree with the listing beneath it is the same defect one layer down, and harder to
+see, because a printed number reads as a counted one.
+
 **Item 24's stamp does not replace this, and the earlier version of this paragraph said it would.**
 `<toolchain-version>` records what *produced* a file; the migration needs to know what *shape* the
 file is in, and those are different questions — a 2.0.1 toolchain writes schema-4 and schema-5
