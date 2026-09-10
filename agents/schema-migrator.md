@@ -29,7 +29,7 @@ says:
 | `ALREADY` | stop — the file is in the target schema. Report it and move on |
 | `UNCHANGED` | stop — the target schema does not change this artefact |
 | `ESCALATE` (exit 2) | **stop and report this file.** Do not transform it by hand |
-| `SKIPPED` | not an artefact — no root element. Report it in your summary and move on; it stops nothing |
+| `SKIPPED` | not an artefact — no root element, and not a name the toolchain writes. Report it in your summary and move on; it stops nothing |
 | `FAILED` (exit 1) | **stop and report.** The file was restored; something is wrong with the rule, not with the file |
 
 **Exit 2 is not a problem to route around.** Usually it means the file matched no precondition,
