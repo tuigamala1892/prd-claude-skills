@@ -4766,6 +4766,108 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("--detect counts its own listing, and the totals cannot drift from it -- by running it",
+       finding="P28")
+def _():
+    """The skill asks Phase 1 for five numbers, and until now nothing produced them.
+
+    `Say the totals plainly: N artefacts, M already current, K in schema-1, J that could not be
+    placed, and S files that are not artefacts.` A real run ends with a summary line carrying
+    exactly that shape. `--detect` ended with nothing, so an agent told to state the totals had
+    one way to get them: count the rows by eye. On a sixty-six line listing one did, and reported
+    sixty features where there were sixty-five -- with every other fact in its report correct,
+    which is what makes an invented number dangerous rather than obvious.
+
+    This is item 51's defect wearing this repository's own skill: an element with no producer.
+    It is why item 11 shipped `build-what-next.py` beside `<authoring-gaps>` instead of waiting
+    for its documented deriver -- twenty-one entries kept in step by hand has never once
+    happened, and neither has counting sixty-five lines.
+
+    **The assertion is self-consistency, not a hardcoded count.** A fixture-sized expected number
+    would break every time the fixture grew and would say nothing about a corpus of any other
+    size. What matters is that the summary is DERIVED from the same rows it summarises: parse the
+    listing, parse the totals, and require them to agree. A summary that can drift from the
+    listing beneath it is the invented number again, one layer down and harder to spot.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    versions = list(reg.get("versions") or {})
+    oldest = versions[0]
+
+    root = tempfile.mkdtemp(prefix="prd-totals-")
+    try:
+        work = os.path.join(root, "tree")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", oldest), work)
+        # One of each kind the totals have to separate: prose that is nobody's artefact, and a
+        # file the toolchain writes that carries no root at all.
+        open(os.path.join(work, "README.md"), "w", encoding="utf-8", newline="\n").write(
+            "# PRDs\n\nHow this directory is laid out.\n")
+        open(os.path.join(work, "link-shelf", "what-next.md"), "w", encoding="utf-8",
+             newline="\n").write("# What Next\n\n")
+
+        p = _run_migrate(work, "--detect")
+        assert p.returncode == 2, (
+            f"the tree holds a file the toolchain writes with no root element, which escalates; "
+            f"--detect exited {p.returncode}")
+
+        # The KIND is what makes this a listing row rather than a totals row. Matching
+        # `schema-N` followed by two more fields also matches the per-schema breakdown
+        # (`schema-1  7     schema-3  1`), which counted the summary as one of the things it
+        # was summarising -- and the first version of this check did exactly that, then
+        # reported the off-by-one as a defect in the script.
+        kinds = "|".join(re.escape(k) for k in
+                         ("feature", "crd", "prd", "what-next", "project-context"))
+        rows = {}
+        for line in p.stdout.splitlines():
+            m = re.match(r"\s+(schema-\d+)\s+(?:%s)\s+\S" % kinds, line)
+            if m:
+                rows[m.group(1)] = rows.get(m.group(1), 0) + 1
+        assert rows, f"--detect listed no artefacts at all:\n{p.stdout}"
+
+        listed_skipped = len([l for l in p.stdout.splitlines() if l.strip().startswith("SKIPPED")])
+        listed_escalated = len([l for l in p.stderr.splitlines()
+                                if l.strip().startswith("ESCALATE")])
+        assert listed_skipped and listed_escalated, (
+            f"the tree was built to produce one of each and the listing shows "
+            f"{listed_skipped} skipped, {listed_escalated} escalated")
+
+        # The totals line: `N artefacts under <path>, E escalated, S not artefacts`
+        m = re.search(r"^\s*(\d+) artefacts? under (.+?), (\d+) escalated, (\d+) not artefacts?\s*$",
+                      p.stdout, re.M)
+        assert m, (
+            "--detect printed no totals line. The skill's Phase 1 asks for five numbers and "
+            "nothing produces them, so the only way to obey it is to count the rows by eye -- "
+            "which is how a sixty-six line listing was reported as sixty:\n" + p.stdout)
+
+        total, path_said, escalated, not_artefacts = (
+            int(m.group(1)), m.group(2), int(m.group(3)), int(m.group(4)))
+
+        assert total == sum(rows.values()), (
+            f"the totals say {total} artefacts and the listing has {sum(rows.values())} rows. A "
+            f"summary that can disagree with the listing beneath it is the invented number again")
+        assert escalated == listed_escalated, (
+            f"the totals say {escalated} escalated, the listing names {listed_escalated}")
+        assert not_artefacts == listed_skipped, (
+            f"the totals say {not_artefacts} not artefacts, the listing names {listed_skipped}")
+
+        # Per schema, because `how many are already current` is the number Phase 1 leads with.
+        for version, count in sorted(rows.items()):
+            assert re.search(r"\b%s\s+%d\b" % (re.escape(version), count), p.stdout), (
+                f"the totals do not break out {version}, or disagree with the {count} row(s) "
+                f"the listing holds for it:\n{p.stdout}")
+
+        # The path is named. The report that prompted this scanned the repository root rather
+        # than the PRD directory, so its `0 non-artefact files` was a claim about a wider tree
+        # than the reader had in mind -- and nothing in the output said which tree it meant.
+        assert os.path.basename(work) in path_said or work in path_said, (
+            f"the totals do not say what was scanned. `{path_said}` should name the path given "
+            f"to --detect, so a run against the wrong directory is visible in its own output")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule

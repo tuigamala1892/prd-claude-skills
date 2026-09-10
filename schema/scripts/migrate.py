@@ -725,6 +725,7 @@ def main():
             return 3
 
     escalations, failures, short, skipped = [], [], [], []
+    found = {}
     migrated = already = partial = 0
     root = args.path if os.path.isdir(args.path) else (os.path.dirname(args.path) or ".")
     index_slugs = _index_slugs(root)
@@ -768,6 +769,7 @@ def main():
             continue
 
         if args.detect:
+            found[current] = found.get(current, 0) + 1
             if not args.quiet:
                 print(f"  {current:<10} {kind:<16} {rel}")
             continue
@@ -838,6 +840,28 @@ def main():
             print(f"  SKIPPED    {line}")
         for line in escalations:
             print(f"  ESCALATE   {line}", file=sys.stderr)
+        if not args.quiet:
+            # The skill's Phase 1 asks for these five numbers, and until now nothing produced
+            # them: a run ends with a summary line and --detect ended with the last row. An
+            # agent told to state a total it was never given counts the listing by eye, and on
+            # a sixty-six line one it reported sixty features where there were sixty-five --
+            # every other fact in the report correct, which is what makes the invented number
+            # hard to see. This is item 51's defect in this repository's own skill: an element
+            # with no producer.
+            #
+            # DERIVED from the same rows that were printed, never counted a second way. A
+            # summary that can disagree with the listing beneath it is the same defect again,
+            # one layer down and harder to catch.
+            total = sum(found.values())
+            print(f"\n{total} artefact{'' if total == 1 else 's'} under {args.path}, "
+                  f"{len(escalations)} escalated, "
+                  f"{len(skipped)} not artefact{'' if len(skipped) == 1 else 's'}")
+            if found:
+                # In VERSIONS order rather than by count: `how many are already current` is the
+                # number Phase 1 leads with, and it is the last column when the order is the
+                # schema's own.
+                print("    " + "     ".join(f"{v}  {found[v]}"
+                                            for v in VERSIONS if v in found))
         return 2 if escalations else 0
 
     if not args.quiet:
