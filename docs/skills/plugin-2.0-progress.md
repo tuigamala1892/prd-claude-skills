@@ -24,6 +24,25 @@ implementation departed from what the plan specified** — that last one is the 
 worth keeping. A plan written before the code is read is a plan that will be wrong somewhere, and
 the places it was wrong are what the next phase needs to know.
 
+**What does NOT belong here: a discovery that deserves an item.** The two files divide by *kind*,
+not by date, and this has been re-argued three times:
+
+| | Goes in the plan | Goes here |
+|---|---|---|
+| A finding, an item, a section, a slot in §6 | ✅ **placed**, labelled as found after the fact | — |
+| A departure from what the plan specified | — | ✅ under `### Deviation(s) from the plan` or `### Departure N` |
+| Reframing existing plan text to fit a later discovery | ❌ **never** | the departure is recorded here instead |
+
+The practice is `49d5c8b`'s, at item 60: *"found by implementing 23a, not by planning, so the plan
+gains the finding and the item after the fact. Recorded that way in both places rather than
+presented as foresight."* Sections **K–U** of the plan are that rule in use, one per episode of
+discovery.
+
+**The prohibition is on reframing, not on extending**, and the two are easy to conflate because
+both protect the plan's integrity. Every session transcript was searched on 2026-09-07 for an
+argument that later work should stay out of the plan: **there is none**, and the precedent runs
+the other way. The one violation — retitling a Phase 7 heading at `4a36c62` — was reverted.
+
 ---
 
 ## Phase 1 — Fix what is broken today. No schema change.

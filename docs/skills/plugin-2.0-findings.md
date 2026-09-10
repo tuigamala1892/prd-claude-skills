@@ -46,10 +46,12 @@ kept rather than removing.
 so a bare grep for `P2` finds both. The findings are the ones defined by a heading; the levels
 always appear as `P0|P1|P2` or inside a `priority=` attribute. `P0` is **not** a finding.
 
-**P58–P68 were never given a claim heading.** They came out of the sixth crossing and the items
-that closed it, and existed only as `finding=` tags in the suite and words in commit messages.
-Their check name is their claim here, which is weaker than the plan's headings and is why the
-next finding should get one.
+**P58–P68 had no claim heading when this file was built.** They came out of the sixth crossing
+and the items that closed it, and existed only as `finding=` tags in the suite and words in
+commit messages — eleven findings nobody could look up. They were **placed into the plan at
+sections S, T and U** in the same phase, so the claims below are theirs rather than their checks'.
+That is the remedy and the rule: a finding gets a heading in the plan and a row here, and neither
+substitutes for the other.
 
 ---
 
@@ -114,17 +116,17 @@ next finding should get one.
 | **P55** | item 29's execution stop was unreachable on the CRD path | closed | `the gate's assertions reach a CRD, not only a PRD directory -- by running it` |
 | **P56** | a CRD's architectural significance never reached the gate, and item 76 built half of it | closed | item 77 — the CRD branch reported significance under `NOTE` while the gate filtered for `STALE`, so the screen fired and nothing downstream acted |
 | **P57** | a live run wrote scratch files into the toolchain checkout | closed | `a live run writes nothing into the toolchain, and every harness proves it` |
-| **P58** | a CRD's <gaps> are validated by the script that owns the assertion -- by running it | closed | `a CRD's <gaps> are validated by the script that owns the assertion -- by running it` |
-| **P59** | the gate never reports `blocked OK` for an assertion it could not make -- by running it | closed | ``the gate never reports `blocked OK` for an assertion it could not make -- by running it`` |
-| **P60** | the significance-candidate screen reaches a CRD, not only a PRD -- by running it | closed | `the significance-candidate screen reaches a CRD, not only a PRD -- by running it` |
-| **P61** | every assertion says which paths it reaches, and each `both` is probed by running it | closed | ``every assertion says which paths it reaches, and each `both` is probed by running it`` |
-| **P62** | a skill that takes either document does not name its placeholder for one of them | closed | `a skill that takes either document does not name its placeholder for one of them` |
-| **P63** | a feature declares its build state, and an unplaceable file still says why -- by running it | closed | `a feature declares its build state, and an unplaceable file still says why -- by running it` |
-| **P64** | a task file parses, and every reader that cannot read one says so -- by running it | closed | `a task file parses, and every reader that cannot read one says so -- by running it` |
-| **P65** | the analysis fields a check reads are named where the analysis is written -- by running it | closed | `the analysis fields a check reads are named where the analysis is written -- by running it` |
-| **P66** | the manifest carries what /execute reads, and its reader knows what its producer writes | closed | `the manifest carries what /execute reads, and its reader knows what its producer writes` |
-| **P67** | a PROJECT.md feature carries the elements the format marks required -- by running it | closed | `a PROJECT.md feature carries the elements the format marks required -- by running it` |
-| **P68** | every finding the plan names has a status, and a closed one names where it was settled | closed | `every finding the plan names has a status, and a closed one names where it was settled` |
+| **P58** | a CRD's `<gaps>` were never validated, and a typo defeats item 29 there | closed | `a CRD's <gaps> are validated by the script that owns the assertion -- by running it` |
+| **P59** | the gate reports a pass it has not established, in two ways | closed | ``the gate never reports `blocked OK` for an assertion it could not make -- by running it`` |
+| **P60** | item 35's third direction has never seen a CRD | closed | `the significance-candidate screen reaches a CRD, not only a PRD -- by running it` |
+| **P61** | capability parity is recorded and enforcement parity is not | closed | ``every assertion says which paths it reaches, and each `both` is probed by running it`` |
+| **P62** | `/breakdown` names its document placeholder for one of the two shapes | closed | `a skill that takes either document does not name its placeholder for one of them` |
+| **P63** | both `PROJECT.md` producers omit a required attribute, and the validator has no branch for it | closed | `a feature declares its build state, and an unplaceable file still says why -- by running it` |
+| **P64** | nothing asserts a task file is well-formed XML, and three readers hide it in turn | closed | `a task file parses, and every reader that cannot read one says so -- by running it` |
+| **P65** | item 49's only reader could not see its input, and reported that as agreement | closed | `the analysis fields a check reads are named where the analysis is written -- by running it` |
+| **P66** | the manifest does not carry what `/execute` documents reading | closed | `the manifest carries what /execute reads, and its reader knows what its producer writes` |
+| **P67** | a format table that can be followed to the wrong answer | closed | `a PROJECT.md feature carries the elements the format marks required -- by running it` |
+| **P68** | the findings have no registry, and the plan is organised around them | closed | `every finding the plan names has a status, and a closed one names where it was settled` |
 
 ---
 
