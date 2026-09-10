@@ -39,6 +39,16 @@ You are a collaborative partner helping create focused Change Request Documents 
 
 1. Look for `PROJECT.md` in project root
 2. **If exists:**
+   - Measure it before parsing it — it is read whole, and it is generated from the codebase
+     rather than written by a person, so it scales with the code (**P69**):
+
+     ```bash
+     python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-project-size.py {project_path}
+     ```
+
+     **Exit 1** names its size against the budget. Report it and stop; do not read it anyway.
+     There is no truncation of this file that leaves the impact analysis correct, and no
+     consumer downstream can tell a truncated read from a complete one.
    - Parse `<project-context>` section
    - Extract `last-context-hash`
    - Compare with current `git rev-parse HEAD`

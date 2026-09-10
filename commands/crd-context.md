@@ -153,6 +153,26 @@ Updated PROJECT.md with incremental changes.
   New context hash: {hash}
 ```
 
+### 6. Measure What Was Written
+
+After step 4 or step 5 — whichever ran — measure the file before anybody reads it:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-project-size.py {project_path}
+```
+
+This is the write side of **P69**, and it is the only place a person can act on the answer.
+`PROJECT.md` is generated from the codebase and **grows monotonically**: the investigation
+catalogues one `<feature>` per feature and one entry per registry item, the incremental update
+adds and never removes, and `project-context-finalizer` appends after every `/execute`. Nothing
+compacts it. So the size is a property of the project rather than of any one run, and the run
+that just wrote it is where the ceiling is worth reporting.
+
+**Exit 1** names the file's estimated tokens against the budget and which sections carry them.
+Report it with the completion message rather than swallowing it: the remedy — narrowing what the
+investigation catalogues, or splitting the project — belongs to whoever asked for the context,
+and the alternative is a truncated read that every consumer treats as complete.
+
 ## PROJECT.md Location
 
 PROJECT.md is always at: `{project_path}/PROJECT.md`

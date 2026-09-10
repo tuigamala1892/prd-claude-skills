@@ -5701,6 +5701,198 @@ same reason Phase 22's seventh mutant was dropped as invalid.
 
 ---
 
+## Phase 24 — Item 86: the ownerless row, and the measurement that decided it was worth building.
+
+**Suite 155 → 156.** `checks.md` has carried exactly one ownerless row since item 79, and the
+rule that put it there — *an assertion this plan specified and has not built is a fact about the
+project* — has a second half nobody had exercised: **a row kept deliberately is also a row that
+might turn out not to be worth building.** So the first work of this item was deciding whether to
+do it, and the answer had to come from measurement rather than from the row's continued presence.
+
+### The question was reachability, and item 81 is the precedent for how to get it wrong
+
+Item 81 deferred `name` and `files` on a `PROJECT.md` feature for *"no evidence"*, and item 84
+found the evidence sitting in an artefact that had already been read by a live `/breakdown` and a
+live `/execute`. The deferral was not wrong to want evidence; it was wrong about whether any
+existed. So this item started by looking, and there were three things to find.
+
+**(a) The producer already anticipates the case, and its remedy is the defect.**
+`skills/crd-investigate/SKILL.md`'s Error Handling table carries the row:
+
+| Situation | Action |
+|---|---|
+| Very large codebase | Limit scope, note truncation |
+
+That row predates this finding. **A very large codebase is not a hypothesis this item invented —
+it is a situation the producer was written to handle**, and the entire handling is a prose
+instruction to a model to truncate and mention it, with nothing measuring whether it did. That is
+P5's shape one artefact over, written down in the producer and never connected to a check.
+
+**(b) The file grows monotonically, and no generation limit bounds it.** The obvious objection to
+reachability is that `PROJECT.md` is written by a model in one response, so its own output limit
+caps it. `agents/project-context-finalizer.md` disposes of that: it runs after **every**
+`/execute`, adds one `<feature>` per implemented feature, one `<endpoint>` per api export and one
+`<model>` per schema export, and preserves what is already there. `crd-context-update` is
+likewise additive — *"existing features unchanged"*. **Nothing in the toolchain compacts this
+file.** Its size is therefore a property of how many runs a project has had, not of any single
+generation, and the greenfield path is a producer of the brownfield path's input.
+
+**(c) The live artefact, measured.** 13,803 chars for 7 features, 7 endpoints and 4 models —
+3,834 estimated tokens, about 300 more entries of headroom against the 60k budget. A project with
+~300 catalogued features-plus-endpoints-plus-models crosses it, which is an ordinary mid-sized
+service rather than an extreme.
+
+### What nothing measured, watched before the check existed
+
+A `PROJECT.md` built by scaling the live artefact's own entries to 252 features, 252 endpoints and
+109 models — **277,223 chars, 77,006 estimated tokens, 28% past the budget and 38% of a 200k
+window in one file** — was put through both scripts that read it today:
+
+```
+$ check-project-md.py <project>
+PROJECT.md valid: meta 2, features 252, api-registry 252, schema-registry 109
+exit 0
+
+$ check-prd-size.py <project>
+REFUSED: no index.md in <project>
+exit 2
+```
+
+**The one guard that reads the file calls it valid, and the one guard that measures size refuses
+to look at it.** That is the hole, watched rather than argued.
+
+### A correction to the row's own arithmetic, and it makes the case stronger
+
+Item 79's row records *~1,382 chars per feature, so ~156 features crosses the 60k budget*. **The
+per-feature figure does not reproduce on the artefact available today** — the block is 1,176
+chars/feature and the whole file is 1,972 — and the likely reason is that it was taken from the
+5-feature `PROJECT.md` step 1 of the sixth crossing wrote, which step 4 then replaced. It cannot
+be re-derived, so it is recorded as not reproducing rather than corrected to a number.
+
+**The more useful correction is that features are the wrong unit.** Measured on the live file:
+
+| Section | Tokens | Entries |
+|---|---:|---:|
+| the markdown half | 1,546 | — |
+| `<features>` | 976 | 7 |
+| `<api-registry>` | 682 | 7 |
+| `<schema-registry>` | 578 | 4 |
+
+**40% of the file is the markdown half** — the component tree, the key patterns, the signals list
+— which grows with *files*, and which the row's arithmetic does not count at all. The registries
+together are larger than `<features>`. So the threshold arrives sooner than *156 features*
+suggests, and the honest unit is the entry rather than the feature. The check reports the
+decomposition for exactly this reason: an author over the ceiling needs to know which term grew.
+
+### Where it belongs, and why neither script that already reads the file
+
+Three candidates, and two are closed by decisions that already exist.
+
+**Extending `check-prd-size.py` contradicts item 79 in writing.** Its `Paths` cell is `prd-only`
+with a stated reason, and that reason ends *"the unbounded input on the CRD path is `PROJECT.md`
+… and that is the row below rather than this script's job."* Widening it now would make item 79's
+own cell false.
+
+**Extending `check-project-md.py` is refused by a check that already runs.**
+`tests/test_toolchain.py` asserts *"two assertions share an owner … a script that owns two
+assertions has two reasons to exit 1"*, so a second row naming it fails the suite. Its docstring
+draws the same line from the inside: *"Well-formedness is this script's job. Which registry a
+project needs is its architecture's."*
+
+**So: a new owner**, `skills/breakdown/scripts/check-project-size.py`, beside its sibling. That
+directory is where validators live regardless of who calls them — `check-writable.py` and
+`check-status.py` are both invoked by `commands/crd.md` — and the pair now reads as a pair:
+`check-prd-size.py` is `prd-only`, `check-project-size.py` is `crd-only`, one question, two
+documents.
+
+### What landed
+
+`check-project-size.py`, taking **both** the divisor and the budget from `check-prd-size.py` by
+import rather than by copy. 3.6 chars per token is this repository's own corpus measurement and
+60,000 is the per-prompt ceiling item 18 chose; a second copy of either is the drift that produced
+three disagreeing definitions of `<criterion>`. It measures the whole file, because the whole file
+is what every consumer loads, and prints the decomposition, the per-entry cost and the headroom in
+entries.
+
+**Four callers, and the write side is the one that matters.** `commands/crd-context.md` measures
+after generating or updating — the only point where a person can act on the answer, since the
+remedy is narrowing what the investigation catalogues. `commands/crd.md`, `skills/crd/SKILL.md`
+and `skills/breakdown/SKILL.md` are read sides.
+
+**An absent `PROJECT.md` is exit 0**, following `check-project-md.py`: greenfield has none and
+never will. It prints no measurement, so a run that measured nothing cannot be read as a run that
+measured and was content — which is asserted, because that is precisely how a size check becomes
+hollow.
+
+### What is deliberately NOT built
+
+**No warning band.** The row is one assertion and it gets one exit code. The report prints the
+headroom in entries, which is the early warning, and adding a second threshold would give one
+script two reasons to exit non-zero — the thing `checks.md` exists to prevent.
+
+**The 2,000-line read ceiling is not encoded.** At this file's density — 74.6 chars per line —
+a harness that truncates a read at 2,000 lines bites at roughly 41k estimated tokens, *below* the
+60k budget. That is a real and lower ceiling, and it is deliberately not what the check keys on:
+it is a property of the harness rather than of the toolchain, and a check pinned to it would be
+asserting somebody else's implementation detail. It is recorded here because it means the budget
+is conservative in the right direction.
+
+### Verification
+
+`python tests/test_toolchain.py` — **155 → 156**, `failed 0`, `known 0`, both sides.
+
+Watched failing first, and in the order that makes the failure mean something: the check was
+written before the script, and its first run failed with *"check-project-size.py does not exist"*
+— then the hole itself was watched, with the 77,006-token file passing `check-project-md.py` and
+being refused a reading by `check-prd-size.py`.
+
+****Mutation: 9 mutants, 9 caught**, baseline green either side and every file restored by hash.
+Each was caught by the check predicted for it. **Three were built to leave the check's most
+obvious assertion true**, and they are the reason the round is worth reading:
+
+| Mutant | What survives it, if the check is careless |
+|---|---|
+| the refusal stops naming the size | it still exits 1 and still refuses; it stops saying *by how much* |
+| the divisor is copied rather than imported | the two scripts still agree, because the copy is the same value |
+| a listed caller mentions the script instead of running it | the file still names it and the row still lists it |
+
+The first is why the size assertion runs under `--quiet`: the informational report carries the
+same number, so a check reading the default output would have stayed green while the refusal said
+nothing. The second is why the divisor is asserted over the AST *as well as* by running both
+scripts on identical bytes — agreement cannot see a copy until the day it stops agreeing, which is
+the day it matters. The third is the gap between `checks.md`'s two existing directions: the
+forward check asserts a named caller *contains* the script's name, item 69's asserts no *unlisted*
+file runs it, and neither sees a listed caller that only mentions it.
+
+**And one mutant exists solely to prove the rest are not hollow.** `it refuses everything`
+satisfies every assertion about refusing; only the control — a file inside the budget must pass —
+catches it.**
+
+### Three of my own, and one is a rule already written down
+
+**1 — the divisor assertion flagged the sentence that explains the divisor.** The first version
+grepped the script's lines for `3.6` and excluded comments. It fired on the docstring paragraph
+*"3.6 chars per token is this repository's own corpus measurement"* — the prose whose whole job is
+to say the number has one owner. **A line grep is the wrong instrument for a claim about code**;
+it is asserted over the AST now, which also catches `cpt = 3.60`, and it covers the budget as
+well as the divisor. This is *prose checks need a region and a shape*, arriving from the other
+direction: the region was code and the grep did not know that.
+
+**2 — an entry count taken from a grep rather than from a parse.** The first draft of the script's
+docstring said the live artefact was *"7-feature, 8-endpoint"*. It has **7** endpoints; the 8 came
+from the Phase 16 table's *8 passing tests*, one column over. Corrected in all three places it had
+been written. It changes nothing about the finding and is recorded because deriving a number from
+the wrong reading of an adjacent fact is this session's named recurring error.
+
+**3 — the measurement was placed where an update could invalidate it.** The first wiring in
+`skills/crd/SKILL.md` measured in the *"If exists"* branch, before the staleness check — and
+`/crd` triggers `/crd-context-update` on exit 3, which grows the file, before anything reads it.
+The measured file was therefore not always the file that gets read. It sits at the end of Phase 2
+now, after every branch, so one invocation covers all three ways in. **Found by asking which
+consumer reads the file I measured**, which is the question the `Invoked by` column is for.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on

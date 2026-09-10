@@ -127,6 +127,7 @@ substitutes for the other.
 | **P66** | the manifest does not carry what `/execute` documents reading | closed | `the manifest carries what /execute reads, and its reader knows what its producer writes` |
 | **P67** | a format table that can be followed to the wrong answer | closed | `a PROJECT.md feature carries the elements the format marks required -- by running it` |
 | **P68** | the findings have no registry, and the plan is organised around them | closed | `every finding the plan names has a status, and a closed one names where it was settled` |
+| **P69** | the CRD path's unbounded input is generated from a codebase, and nothing measures it | closed | `PROJECT.md fits the prompt it is about to be sent in -- by running it` |
 
 ---
 

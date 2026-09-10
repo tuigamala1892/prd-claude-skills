@@ -10777,6 +10777,192 @@ def _():
             f"no row is `{status}`. P9 was retracted and P13 was closed by measurement; a "
             f"registry that cannot tell those apart is the one that already existed")
 
+@check("PROJECT.md fits the prompt it is about to be sent in -- by running it",
+       finding="P69")
+def _():
+    """Item 86. The ownerless row item 79 wrote down rather than built.
+
+    `check-prd-size.py` is `prd-only` on a DECIDED basis: a PRD is a corpus fanned into one
+    prompt per feature, a CRD is one authored document read whole. Filling in that column asked
+    what the unbounded input on the CRD path is, and the answer was not the CRD. It is
+    `PROJECT.md`, which is generated from a codebase rather than written by a person.
+
+    WHY IT IS REACHABLE, WHICH IS THE HALF THAT HAD TO BE ESTABLISHED FIRST
+
+    Three things, each measured rather than argued:
+
+    (a) `crd-investigate/SKILL.md`'s own error table already lists **`Very large codebase`**, and
+        its remedy is `Limit scope, note truncation` -- a prose instruction to a model, with
+        nothing measuring whether it obeyed. That is P5's shape one artefact over, written into
+        the producer's own instructions.
+    (b) `project-context-finalizer` is ADDITIVE and runs after every `/execute`: one `<feature>`
+        per implemented feature, one `<endpoint>` per api export, one `<model>` per schema
+        export, existing entries preserved. Nothing compacts. So the file grows with the number
+        of runs, bounded by no author and by no single generation's output limit.
+    (c) Measured on the live crossing artefact: 13,803 chars for 7 features -- and **40% of it is
+        the markdown half**, the component tree and pattern list, which `checks.md`'s row does
+        not count at all. The registries are the larger term, not the features.
+
+    WHAT THE ASSERTIONS ARE, AND WHY EACH IS A VALUE
+
+    The refusal is asserted on the NUMBER, not on the wording, and under `--quiet` so that the
+    informational report cannot be what satisfies it -- the site-counting rule, which this
+    repository has now recorded four failures of. The budget boundary is asserted at B and B+1.
+    And the divisor is asserted by running BOTH size scripts over identical bytes and comparing
+    what they report: 3.6 is this repository's own corpus measurement, and a second copy of it
+    is exactly the drift `schema/core.md` exists to prevent.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-project-size.py")
+    assert os.path.isfile(script), (
+        "check-project-size.py does not exist. `checks.md` has carried an ownerless row for "
+        "this assertion since item 79, and an assertion nobody built is still an assertion")
+
+    sibling = os.path.join(SKILLS, "breakdown", "scripts", "check-prd-size.py")
+
+    def run(*argv):
+        p = subprocess.run([sys.executable, script, *argv], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return p.returncode, p.stdout + p.stderr
+
+    def write(root, body):
+        with open(os.path.join(root, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+
+    # A well-formed PROJECT.md padded to an EXACT character count, so the estimate is a value
+    # this check predicts rather than reads back out of the output it is judging.
+    def project_md(chars):
+        head = ('# Project: pad\n\n## Overview\n\nPadding.\n\n## Context Metadata\n'
+                '<project-context version="1.0">\n'
+                '  <meta><last-updated>2026-09-10</last-updated>\n'
+                '  <last-context-hash>abc1234</last-context-hash></meta>\n'
+                '  <features>\n    <feature id="a" built="complete">\n'
+                '      <name>A</name>\n      <files>app/a.py</files>\n    </feature>\n'
+                '  </features>\n  <api-registry>\n'
+                '    <endpoint method="GET" path="/a"><request>none</request>'
+                '<response>A</response></endpoint>\n'
+                '  </api-registry>\n</project-context>\n')
+        assert len(head) < chars, "the padding target is smaller than the smallest valid file"
+        return head[:-1] + "x" * (chars - len(head)) + "\n"
+
+    root = tempfile.mkdtemp(prefix="p69-")
+    try:
+        BUDGET, CPT = 1000, 3.6
+
+        # 1 -- CONTROL. A file inside the budget must pass. Without this, a script that refused
+        # every input whatsoever would satisfy every other assertion here.
+        write(root, project_md(int(BUDGET * CPT) - 400))
+        code, out = run(root, "--budget", str(BUDGET))
+        assert code == 0, f"a PROJECT.md inside the budget was refused (exit {code}):\n{out[:400]}"
+
+        # 2 -- THE BOUNDARY, both sides of it. Exactly at the budget fits; one token over does
+        # not. An off-by-one here is the difference between a guard and a decoration.
+        write(root, project_md(int(BUDGET * CPT)))
+        code, out = run(root, "--budget", str(BUDGET))
+        assert code == 0, (
+            f"a PROJECT.md of exactly {BUDGET} estimated tokens was refused against a budget of "
+            f"{BUDGET} (exit {code}):\n{out[:400]}")
+
+        over = int((BUDGET + 1) * CPT) + 2
+        write(root, project_md(over))
+        code, out = run(root, "--budget", str(BUDGET), "--quiet")
+        assert code == 1, (
+            f"a PROJECT.md of {int(over / CPT)} estimated tokens was accepted against a budget "
+            f"of {BUDGET} (exit {code}). Nothing else in the toolchain measures this file, so "
+            f"what happens downstream is a silently truncated read:\n{out[:400]}")
+
+        # The refusal names the SIZE, under --quiet so the informational report cannot be what
+        # satisfies it. An author told only `too big` cannot tell a file to split from a budget
+        # to raise.
+        assert f"{int(over / CPT):,}" in out, (
+            f"the refusal does not name the measured size {int(over / CPT):,}, so it says a "
+            f"file is too big without saying by how much:\n{out[:400]}")
+        assert f"{BUDGET:,}" in out, (
+            f"the refusal does not name the budget it applied:\n{out[:400]}")
+
+        # 3 -- ABSENT IS NOT THE SAME AS FITS. `check-project-md.py` exits 0 with no PROJECT.md
+        # because greenfield has none and never will, and this follows that precedent -- but a
+        # run that measured nothing must not read as a run that measured and was happy.
+        empty = tempfile.mkdtemp(prefix="p69-none-", dir=root)
+        code, none_out = run(empty)
+        assert code == 0, (
+            f"a project with no PROJECT.md was refused (exit {code}). Greenfield has none and "
+            f"never will:\n{none_out[:300]}")
+        write(root, project_md(2000))
+        _code, some_out = run(root)
+        assert "estimated" in some_out and "estimated" not in none_out, (
+            "a run that measured nothing prints the same report as a run that measured a file "
+            f"and found it fine:\n  absent: {none_out[:150]}\n  present: {some_out[:150]}")
+
+        # 4 -- ONE DIVISOR, ASSERTED BY RUNNING BOTH. Identical bytes through both size scripts
+        # must yield the same estimate. A second hardcoded 3.6 is how three definitions of
+        # `<criterion>` came to exist and disagree.
+        body = project_md(7200)
+        write(root, body)
+        _c, mine = run(root)
+        prd = tempfile.mkdtemp(prefix="p69-prd-", dir=root)
+        with open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+        p = subprocess.run([sys.executable, sibling, prd], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        theirs = re.search(r"index pass\s+([\d,]+)", p.stdout + p.stderr)
+        assert theirs, f"check-prd-size.py's index line did not parse:\n{p.stdout[:400]}"
+        assert theirs.group(1) in mine, (
+            f"the two size scripts disagree on identical content: check-prd-size.py says "
+            f"{theirs.group(1)} and check-project-size.py's report does not carry that number. "
+            f"The divisor is this repository's own corpus measurement and there is meant to be "
+            f"one copy of it:\n{mine[:400]}")
+        # And the same claim as a shape rather than as agreement on one input: no numeric
+        # literal for the divisor or the budget anywhere in the CODE. Asserted over the AST
+        # because the docstring says 3.6 out loud -- it explains where the number came from,
+        # so a line grep flags that sentence while still missing `cpt = 3.60`.
+        tree = ast.parse(open(script, encoding="utf-8").read())
+        literals = sorted({n.value for n in ast.walk(tree)
+                           if isinstance(n, ast.Constant) and n.value in (3.6, 60000)})
+        assert not literals, (
+            f"check-project-size.py defines {literals} itself. The divisor is this "
+            f"repository's own corpus measurement and the budget is its sibling's; both come "
+            f"from check-prd-size.py, or there are two of each waiting to disagree")
+
+        # 5 -- THE REGISTRY ROW, AND ITS CALLERS RUN IT. `checks.md`'s forward check asserts a
+        # named caller CONTAINS the script's name; item 69's asserts that no UNLISTED file
+        # invokes it. Neither catches a row listing a file that only mentions it in prose,
+        # which is the whole failure mode for a script wired in on the day it is written.
+        table = open(os.path.join(SCHEMA, "checks.md"), encoding="utf-8").read()
+        rows = [ln for ln in table.split("## The table", 1)[-1].splitlines()
+                if ln.startswith("|") and "check-project-size.py" in ln]
+        assert len(rows) == 1, (
+            f"checks.md has {len(rows)} rows naming check-project-size.py. The ownerless row "
+            f"item 79 wrote down is the one this script was built to fill")
+        cells = [c.strip() for c in rows[0].strip().strip("|").split("|")]
+        assert cells[1].strip("`") == "check-project-size.py", (
+            f"the row naming check-project-size.py does not give it the Owner cell: {cells[1]}")
+        assert cells[3] == "crd-only", (
+            f"the row's Paths is {cells[3]!r}. PROJECT.md exists only on the CRD path -- a "
+            f"greenfield project has no codebase to have been generated from")
+
+        callers = re.findall(r"`([^`]+)`", cells[2])
+        assert len(callers) >= 4, (
+            f"the row names {len(callers)} caller(s). Four files load PROJECT.md into a prompt, "
+            f"and a guard wired into one of them measures one of four reads")
+        for caller in callers:
+            full = os.path.join(REPO, caller.replace("/", os.sep))
+            assert os.path.isfile(full), f"listed caller does not exist: {caller}"
+            text = open(full, encoding="utf-8", errors="replace").read()
+            runs = any(
+                re.search(r"(python\d?|sh|bash)\s+[^\s|]*check-project-size\.py", ln)
+                or re.search(r"(\$\{CLAUDE_PLUGIN_ROOT\}|\{skill_dir\})[^\s`]*"
+                             r"check-project-size\.py", ln)
+                for ln in text.splitlines())
+            assert runs, (
+                f"{caller} is listed as invoking check-project-size.py and only mentions it. A "
+                f"row without an invocation is a claim, not a caller")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():
