@@ -45,7 +45,7 @@ postconditions, and restores any file whose postconditions fail.
 |---|---|---|
 | 0 | every file is in the target schema | continue to Phase 3 |
 | 1 | a postcondition failed; **that file was restored** | **stop.** Report it verbatim. This is a defect in the rule, not in the artefact |
-| 2 | one or more files matched no precondition | **stop.** Report each by name |
+| 2 | one or more files matched no precondition, or could not be decoded as UTF-8 | **stop.** Report each by name |
 
 **Never work around exit 1 or 2 by editing a file by hand.** Both mean the specification and the
 artefact disagree, and the resolution is a decision about the schema, not an edit.

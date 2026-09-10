@@ -106,13 +106,23 @@ design of it.
 
 | # | Precondition | Transformation | Postcondition |
 |---|---|---|---|
-| R4 | a PRD feature file with any `<criterion>` lacking `pattern` | every criterion lacking `priority` gains `priority="P1"`; every one lacking `derived-from` gains `derived-from="{{its id}}"` | every criterion carries both, and the id list is unchanged |
+| R4 | a PRD feature file with any `<criterion>` lacking `priority` | every criterion lacking `priority` gains `priority="P1"`; every one lacking `derived-from` gains `derived-from="{{its id}}"` | every criterion carries both, and the id list is unchanged |
 | R5 | a CRD, same condition | as R4 | as R4 |
 
 **`priority="P1"` is written in rather than left to the documented default, and that is not
 noise.** An absent attribute and a deliberate `P1` are indistinguishable, so a partly-assigned
 corpus could not be told from a finished one — and the marker is the shape. This is the
 constraint the top of this file states, meeting its first real case.
+
+**The precondition is `priority`, and it used to be `pattern`.** A pattern-less criterion stopped
+being evidence that a file predates item 34 the moment R10 existed, because R10's postcondition
+requires the criteria it creates to carry **no `pattern`** — a migrated requirement's EARS sentence
+is a judgement nobody has made yet. Keyed on `pattern`, R4 and R5 re-fired on a schema-5 CRD, and
+`detect` read it back as schema-2: the file oscillated between versions on alternate runs and
+collected `derived-from="1"` on criteria a person had authored, which is a false record of
+provenance in the one attribute whose whole purpose is to be a true one. Keyed on `priority` — the
+attribute the transform makes **total**, for exactly this reason — the rule fires when it has work
+to do and not otherwise.
 
 **`derived-from` is what makes the rewrite reviewable.** It carries until the migration is signed
 off, and it is the only way a reader can check a rewritten sentence against the triple it came
@@ -385,7 +395,7 @@ one pass and each one takes only the steps it needs.
 |---|---|
 | **0** | every file reached the target, or reached `PARTIAL` and the half the script may do is done |
 | **1** | a postcondition failed, or `--check` found a file short of the target. Nothing partly written survives |
-| **2** | escalation — one or more files matched no precondition. Nothing was written for those, and each is named |
+| **2** | escalation — one or more files matched no precondition, **or could not be decoded as UTF-8**. Nothing was written for those, and each is named |
 | **3** | usage error |
 
 | Per-file verdict | Means |
@@ -410,6 +420,13 @@ file is in, and those are different questions — a 2.0.1 toolchain writes schem
 artefacts alike. The shape is also self-correcting where a stamp is not: a hand-edited file has the
 shape it has, whatever the stamp still claims. So detection stays keyed on the shape, and the stamp
 is what `list-prds.py` reports before a resume.
+
+**What the migration will not silently normalise.** A file keeps the line endings it arrived
+with, and a file that is not valid UTF-8 is escalated rather than decoded with replacement
+characters. Neither is a rule about the schema, and both were once done quietly: the first turns
+every per-file diff into a whole-file one, which costs nothing a postcondition can see and
+everything the review depends on, and the second is the only failure here that destroys content
+in a run that reports success.
 
 **Re-running is safe and is expected.** A file already in the target schema is reported `ALREADY`
 and left untouched, which is the same answer whether it was migrated a second ago or a release
