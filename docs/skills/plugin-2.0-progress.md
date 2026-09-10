@@ -6031,6 +6031,133 @@ measured table as a boundary would have left a false statement in the file while
 entry about deleting false statements from it. *Reconcile the corpus rather than trusting its
 figures* applies to a table of findings exactly as it applies to a corpus of artefacts.
 
+## Phase 26 — Four derived counts in `README.md`, outside the carve-out that keeps the other three.
+
+**Suite 163 → 163.** No check added, none removed, none changed — the identity Phase 23 made the
+result rather than an omission from it, for the third time.
+
+**This phase does not do what it was asked to do, and that is the finding.** The brief was *the
+same rationale, applied to `README.md`*. Both prior phases had already ruled on that file, in
+terms, and ruled the other way:
+
+> Phase 23: *"`README.md`'s counts stay checked, and the difference is what the number replaces.
+> README states a count INSTEAD of a listing, so the number is all a reader has."*
+>
+> Phase 25: *"`README.md`'s counts stay: they replace a listing and item 72 asserts each against a
+> disk scan. A count with a reader is inventory."*
+
+So the rationale, applied faithfully, **keeps** `15 skills` / `10 subagent definitions` /
+`3 slash commands`. Applying the *change* rather than the *rationale* would have deleted three
+checked facts and broken item 72 — which asserts each count is present before asserting its value,
+so a deletion fails the suite rather than passing it quietly.
+
+**What the carve-out never covered is the rest of the file.** It was decided about the Layout
+block. A sweep of the whole of `README.md` for numbers found four more, none of them in that block,
+none of them replacing a listing, and none with a reader.
+
+| Line | Said | Measured 2026-09-10 |
+|---|---|---:|
+| the Status section's closing line | `31 checks, 0 known failures` | **163** |
+| item 4.2's entry | `One pass over all 22 declarations` | **25** — 15 skills + 10 agents |
+| the assessment pointer | `the four runs before those that did not` | **5** — the assessment records runs 1–9 |
+| F13's struck-through defect line | `All 15 skills declare allowed-tools` | 15, correct today |
+
+Three were stale; one was accurate and went anyway, which is Phase 23's argument rather than a new
+one.
+
+### `31` is the sharpest number this project has carried
+
+`CLAUDE.md`'s `137 checks` was stale against 155 and Phase 23 called it worthless. **`31` against
+163 is the same defect at five times the size** — the suite has grown by 132 checks since somebody
+last touched that line, and it sits in the sentence claiming the suite *guards every fix above*.
+A reader deciding whether this toolchain is tested reads `31` and is off by a factor of five.
+
+It is also the clearest case for deleting rather than correcting, because the number moves every
+time a check is added — which is what every phase in this ledger does. Correcting it buys one
+phase. Checking it would make each future item edit `README.md` to stay green, for a figure that no
+skill, script or check consults.
+
+### The file contradicted itself about the run history, eight sections apart
+
+`five end-to-end runs to diagnose` in *Running unattended* and `the four runs before those that did
+not` in *Status* describe the same stretch of §5.2 and disagree. The assessment records runs 1–9,
+so the runs before run 6 are **five** and the *Status* line is the wrong one.
+
+**This is exactly Phase 25's `8-Phase` / `nine-phase` finding, in a different file.** Neither copy
+has a reader, so nothing was ever going to reconcile them: two unread copies of one derived fact
+drift independently, and the file asserts both values at once. That it has now happened twice, in
+two documents, is the argument against the second copy rather than against the wrong one — which is
+why the fix is again not to make *Status* say `five`.
+
+### Deleting an unread count closed a hole in the check over a read one
+
+This was not expected, and it is the most useful thing in the phase.
+
+Item 72 finds README's skill count with `re.search(r"(\d+)\s+skills", readme)` — **unscoped over
+the whole file**, unlike the `ARCHITECTURE.md` and `CLAUDE.md` halves of the same check, which are
+scoped to a fenced block under a named heading. At `HEAD` **two sites satisfied that regex**: the
+Layout block, and F13's `All 15 skills declare allowed-tools`.
+
+Measured both ways, by deleting the Layout line and running the regex:
+
+| | sites matching | Layout line deleted → check |
+|---|---:|---|
+| at `HEAD` | 2 | **passes** on the strikethrough line |
+| after this phase | 1 | **fails**, as it should |
+
+So the check's own worst case — the Layout block going missing, the omission direction item 72
+calls *worse than a ghost* — was satisfied by a decorative number in a struck-through sentence
+about a defect fixed nine phases ago. **Removing a count with no reader is what made the count with
+a reader load-bearing.**
+
+*Count the sites that satisfy a check: if more than one does, no single edit can break it.* The
+rule has now been confirmed on the check-side as well as the mutant-side, and this is the first
+time obeying it **strengthened** a check rather than repairing one.
+
+The residual weakness stays recorded rather than fixed, because this commit removes numbers and
+adds no rows: **README's half of item 72 is unscoped where the other two halves are scoped.** It
+happens to have one satisfying site now; it has no structural guarantee of that, and the fix is to
+scope it to the Layout fence the way `enumerated()` already scopes the others.
+
+### What was left alone in the same file, and why
+
+| Kept | Because |
+|---|---|
+| `15 skills` / `10 subagent definitions` / `3 slash commands` | the counterexample, twice ruled on: they replace a listing, item 72 asserts each against a disk scan, and two mutants in `documents.py` guard them |
+| `645` Bash calls, `python (177)`, `git rev-parse (57)`, and the rest | measurements from one identified run, frozen. Evidence, not a population |
+| `18 tasks`, `18 merge commits`, `88 of its own tests`, `Runs 6 through 9` | the same: results of identified runs, with the assessment behind them |
+| `five end-to-end runs to diagnose` | closed history, and the half of the contradiction that agrees with the record |
+| `measured 2026-08-26`, `open since December 2025` | dated measurements. Phase 23 and 25 both kept these |
+| `six things … — preflight, create-worktree, record-task, ledger-status, build-manifest and write-state` | enumerated beside itself, which is Phase 23's keep rule verbatim |
+| `4.1, 4.5, 4.6, 4.10`, `F13`, `#67198` | cross-references with readers |
+| `created January 2026` | attribution, and load-bearing for the licence reconstruction below it |
+
+### Verification
+
+`python tests/test_toolchain.py` before and after: **`passed 163  failed 0  known 0  fixed 0`**,
+and the two runs are **identical check for check** — diffed line by line, zero differing.
+
+**That identity is the evidence, and here it is the claim rather than a defect.** Four figures were
+changed in a tracked document and nothing noticed. *MISSED has two meanings, and this is the other
+one.*
+
+`tests/mutants/documents.py` re-run because this phase edited a file three of its mutants anchor
+in: **15/15 caught**, baseline green before mutating, every file restored byte-for-byte and
+verified by hash rather than assumed. The two README count mutants matter most here — they are the
+evidence that the three kept counts are still guarded after a fourth was removed from the same
+file.
+
+No check was added and no mutant: a mutant for a rule that does not exist has nothing to prove.
+
+### What this got wrong on the way
+
+**Nothing, but only because the ruling was read before the change was made.** The brief was to
+apply Phase 23 and 25's rationale to `README.md`, and both of those commits contain a paragraph
+saying `README.md` is the exception. Taking the instruction at face value — the three Layout counts
+are derived counts, so delete them — would have broken item 72 and removed the only three numbers
+in the repository that had earned their place. *Check the spec before calling it a defect*, applied
+to a phase's own brief rather than to the code.
+
 ---
 
 ## What the machine sleeping taught, which was not about sleep
