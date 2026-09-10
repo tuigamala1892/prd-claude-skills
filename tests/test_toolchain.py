@@ -4014,6 +4014,267 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a partly migrated tree is safe to re-enter -- by running the step twice",
+       finding="P28")
+def _():
+    """Item 41's first stated property, asserted where it actually breaks.
+
+    `A 65-file migration will be interrupted. Re-running must be safe.` The suite asserted that
+    only for the MECHANICAL step, where every file finishes and re-entry is the trivial case:
+    nothing is PARTIAL, so `done` is true and every rule is skipped. The interesting case is a
+    MIXED step, because that is the one that leaves files in the third state -- and a rule whose
+    precondition goes false when its mechanical half lands is neither skippable nor applicable
+    on the second pass.
+
+    Two things are asserted, and the second is not implied by the first: the run has to SUCCEED,
+    and it has to leave the bytes alone. A second pass that exits 0 while rewriting content is a
+    migration that never converges.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    versions = list(reg.get("versions") or {})
+    mixed = [(versions[i - 1], n) for i, n in enumerate(versions)
+             if i and reg["versions"][n].get("migration_from_previous") == "mixed"]
+    assert mixed, "no step is declared `mixed`, so re-entering the third state is unexercised"
+
+    for src_version, target in mixed:
+        root = tempfile.mkdtemp(prefix="prd-reenter-")
+        try:
+            work = os.path.join(root, "tree")
+            shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+
+            p = _run_migrate(work, "--to", target, "--quiet")
+            assert p.returncode == 0, (
+                f"{src_version} -> {target}: the first pass failed:\n{p.stdout}\n{p.stderr}")
+
+            after_first = {}
+            for dirpath, _d, filenames in os.walk(work):
+                for name in filenames:
+                    full = os.path.join(dirpath, name)
+                    after_first[os.path.relpath(full, work)] = open(full, "rb").read()
+
+            p = _run_migrate(work, "--to", target, "--quiet")
+            assert p.returncode == 0, (
+                f"{src_version} -> {target}: re-entering the tree the migration just produced "
+                f"exited {p.returncode}. `Re-running is safe and is expected` is the property "
+                f"the whole design rests on, and a partly migrated tree is the case that "
+                f"matters:\n{p.stdout}\n{p.stderr}")
+            assert "FAILED" not in p.stderr, (
+                f"{src_version} -> {target}: a second pass reported a FAILED file. A rule whose "
+                f"mechanical half is done and whose judgements are outstanding is PARTIAL, not "
+                f"broken:\n{p.stderr}")
+
+            for rel, content in after_first.items():
+                full = os.path.join(work, rel)
+                assert open(full, "rb").read() == content, (
+                    f"{src_version} -> {target}: a second pass modified {rel}. Re-entering a "
+                    f"partly migrated tree has to be safe, and it is only safe if this holds")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a migration keeps the line endings it found -- by running it", finding="P28")
+def _():
+    """Item 41's `reviewed as a diff`, which is a claim about the diff as much as the review.
+
+    The rules rename tags and move elements. None of them is about line endings, so a file that
+    arrived CRLF has to leave CRLF -- and on the platform where most of this corpus is authored,
+    it arrives CRLF. Rewriting every line of every file turns each per-file diff into a whole-file
+    diff, which does not fail any postcondition and destroys the only mechanism the guide names
+    for catching silent semantic loss.
+
+    The rename invariants cannot see this: they compare values and tag counts, and both survive
+    a line-ending flip intact.
+    """
+    import shutil
+    import tempfile
+
+    pair = _mechanical_pair()
+    assert pair, "no mechanical step to exercise line-ending preservation against"
+    src_version, target = pair
+
+    root = tempfile.mkdtemp(prefix="prd-eol-")
+    try:
+        work = os.path.join(root, "tree")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", src_version), work)
+
+        crlf = []
+        for dirpath, _d, filenames in os.walk(work):
+            for name in filenames:
+                if not name.lower().endswith(".md"):
+                    continue
+                full = os.path.join(dirpath, name)
+                raw = open(full, "rb").read()
+                open(full, "wb").write(raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+                crlf.append(full)
+        assert crlf, "the fixture holds no .md files, so nothing was converted"
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 0, (
+            f"a CRLF tree failed to migrate (exit {p.returncode}):\n{p.stdout}\n{p.stderr}")
+
+        for full in crlf:
+            raw = open(full, "rb").read()
+            bare = raw.count(b"\n") - raw.count(b"\r\n")
+            assert bare == 0, (
+                f"{os.path.relpath(full, work)} came back with {bare} LF-only line(s): the "
+                f"migration rewrote line endings it was not asked to touch. Every diff in the "
+                f"review is now a whole-file diff, and the review is what catches the losses "
+                f"no postcondition thought to assert")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a file the migration cannot decode is escalated, never rewritten -- by running it",
+       finding="P28")
+def _():
+    """The escalation path's other door, and the only failure here that loses content.
+
+    Reading with `errors="replace"` and writing the result back is not a read at all: every byte
+    the decoder could not place becomes U+FFFD, permanently, and the run exits 0. A corpus
+    authored in a Windows editor and saved as cp1252 is the ordinary case, not the exotic one.
+
+    `A file the migration cannot place is a file whose meaning would be guessed at` -- and a file
+    it cannot decode is the same statement one layer down, so it takes the same exit code and the
+    same guarantee: named, and left exactly as it was found.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-encoding-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(work)
+
+        good = os.path.join(work, "ok.md")
+        open(good, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <status>tbd</status>\n  </meta>\n</feature>\n")
+
+        # cp1252: a smart quote and an accented letter, neither of which is valid UTF-8.
+        undecodable = os.path.join(work, "cp1252.md")
+        open(undecodable, "wb").write(
+            "<feature>\n  <meta>\n    <status>tbd</status>\n  </meta>\n"
+            "  <description>A “quoted” café note.</description>\n"
+            "</feature>\n".encode("cp1252"))
+        before = open(undecodable, "rb").read()
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 2, (
+            f"a file that is not valid UTF-8 did not escalate (exit {p.returncode}). Decoding it "
+            f"with a replacement character and writing the result back is content loss the run "
+            f"reports as success:\n{p.stdout}\n{p.stderr}")
+        assert "cp1252.md" in p.stderr, f"the escalation does not name the file:\n{p.stderr}"
+
+        after = open(undecodable, "rb").read()
+        assert after == before, (
+            "a file that could not be decoded was rewritten anyway. Escalation means the tree is "
+            "exactly as it was found, and here that is the difference between a halt and four "
+            "characters nobody can recover")
+        assert "�" not in after.decode("cp1252"), (
+            "the file now holds replacement characters, so the original bytes are gone")
+
+        # The half that must still work, exactly as for an unplaceable file.
+        assert "<definition>tbd</definition>" in open(good, encoding="utf-8").read(), (
+            "one undecodable file stopped the files it has nothing to do with")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("an authored criterion never gains a migration's provenance -- by running it",
+       finding="P28")
+def _():
+    """R4's half of the precondition fix, which the CRD path exercises and the PRD path did not.
+
+    `derived-from` exists so a reader can check a rewritten sentence against the triple it came
+    from (core section 2 makes it migration-only). Stamping it on a criterion a person authored
+    is a false record in the one attribute whose entire purpose is to be a true one -- and it is
+    invisible afterwards, because a self-referential `derived-from="2"` is exactly what a
+    genuinely migrated criterion carries.
+
+    The precondition is what separates the two, and only `priority` can: it is the attribute the
+    transform makes TOTAL, so `some criterion lacks priority` means `this file predates item 34`
+    and nothing else. `pattern` stopped meaning that when R10 arrived, whose postcondition
+    REQUIRES the criteria it creates to lack one.
+
+    This is the same defect the re-entry check catches on the CRD path, asserted on the path that
+    has no R10 to surface it. An element on both paths whose check runs on one is the failure
+    this repository keeps finding, and the migration is not exempt from it.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-provenance-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(work)
+        # A feature authored AFTER item 34 and still in flight: its criteria carry `priority`,
+        # one has not been given its `pattern` yet, and neither came from anywhere.
+        feature = os.path.join(work, "in-flight.md")
+        open(feature, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n"
+            "  <meta>\n"
+            "    <definition>in-progress</definition>\n"
+            "  </meta>\n"
+            "  <user-story>As a reader, I want links, so that I can find them again.</user-story>\n"
+            "  <description>Authored after item 34, and not finished.</description>\n"
+            "  <acceptance-criteria>\n"
+            '    <criterion id="1" pattern="event-driven" priority="P0">When a link is saved, '
+            "the system shall store it.</criterion>\n"
+            '    <criterion id="2" priority="P1">The system shall list saved links.</criterion>\n'
+            "  </acceptance-criteria>\n"
+            "  <notes>\n"
+            "    <considerations>None yet.</considerations>\n"
+            "  </notes>\n"
+            "</feature>\n")
+
+        _run_migrate(work, "--to", target, "--quiet")
+
+        after = open(feature, encoding="utf-8").read()
+        pattern_less = re.search(r'<criterion id="2"[^>]*>', after)
+        assert pattern_less, f"the criterion went missing entirely:\n{after}"
+        assert "derived-from" not in pattern_less.group(0), (
+            f"the migration stamped provenance on a criterion nobody migrated:\n"
+            f"  {pattern_less.group(0)}\n"
+            f"`derived-from` says `this sentence was rewritten from something, and here is what` "
+            f"-- on an authored criterion that is a claim about a rewrite that never happened, "
+            f"and it is indistinguishable afterwards from one that did")
+
+        # The other half, so this cannot be satisfied by a rule that stopped running: a file that
+        # really does predate item 34 must still be stamped.
+        old = os.path.join(work, "old.md")
+        open(old, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n"
+            "  <meta>\n"
+            "    <status>tbd</status>\n"
+            "  </meta>\n"
+            "  <description>Written before item 34.</description>\n"
+            "  <acceptance-criteria>\n"
+            '    <criterion id="1"><given>a link</given><when>saved</when>'
+            "<then>it is stored</then></criterion>\n"
+            "  </acceptance-criteria>\n"
+            "</feature>\n")
+
+        _run_migrate(work, "--to", target, "--quiet")
+
+        stamped = re.search(r'<criterion id="1"[^>]*>', open(old, encoding="utf-8").read())
+        assert stamped and 'derived-from="1"' in stamped.group(0), (
+            f"a criterion that predates item 34 was NOT stamped, so the rule has stopped firing "
+            f"where it is supposed to:\n  {stamped.group(0) if stamped else 'no criterion'}")
+        assert 'priority="P1"' in stamped.group(0), (
+            "the criterion gained no `priority`, and priority is the attribute the transform "
+            "makes total so that a partly-assigned corpus can be told from a finished one")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule

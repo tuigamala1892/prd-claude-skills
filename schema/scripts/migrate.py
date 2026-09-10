@@ -8,9 +8,11 @@ gives it, and a rule that exists here and not there is a bug in this file.
 WHAT MAKES THIS SAFE TO RE-ENTER
 
 The marker of "already migrated" is the SHAPE, never a stamp. A feature file carrying
-<definition> is past schema-1; a criterion carrying `pattern` is past schema-2. So re-running is
-safe by construction, a partly migrated tree is safe to re-enter, and there is no side-car that
-can disagree with the content. The cost is a constraint the guide states: a transformation whose
+<definition> is past schema-1; a criterion carrying `priority` is past schema-2 -- `priority` and
+not `pattern`, because R10 creates criteria that are REQUIRED to lack a pattern, so only the
+attribute the transform makes total still means what it used to. So re-running is safe by
+construction, a partly migrated tree is safe to re-enter, and there is no side-car that can
+disagree with the content. The cost is a constraint the guide states: a transformation whose
 completion is not visible in the shape has to be made total until it is -- which is why criterion
 `priority` is WRITTEN IN as P1 rather than left to a documented default.
 
@@ -26,7 +28,10 @@ WHAT IT REFUSES TO DO
 
 A file matching no precondition is REPORTED, never transformed. That is the whole escalation
 path, and it is why exit 2 exists separately from exit 1: nothing was written for those files,
-so the tree is exactly as it was found.
+so the tree is exactly as it was found. A file that is not valid UTF-8 takes the same path, for
+the same reason one step earlier -- bytes this script cannot decode are a meaning it would be
+guessing at, and decoding them with a replacement character loses the original irrecoverably in
+a run that would otherwise exit 0.
 
 USAGE
 
@@ -39,7 +44,8 @@ EXIT CODES
   0  every file reached the target schema and every postcondition holds
   1  a postcondition failed, or --check found a file short of the target. Nothing partly
      written survives: a file whose postconditions failed is left exactly as it was
-  2  escalation -- one or more files matched no precondition. Nothing written for those
+  2  escalation -- one or more files matched no precondition, or could not be decoded as
+     UTF-8. Nothing written for those, and each is named
   3  usage error
 """
 
@@ -87,12 +93,32 @@ def kind_of(text):
 
 
 def read(path):
-    with open(path, encoding="utf-8", errors="replace") as f:
-        return f.read()
+    """Returns (text normalised to \\n, the line ending the file actually used).
+
+    STRICT decoding, and the UnicodeDecodeError is meant to reach the caller. Reading with
+    `errors="replace"` and writing the result back is not a read: every byte the decoder cannot
+    place becomes U+FFFD, permanently, in a run that exits 0. A corpus authored in a Windows
+    editor and saved as cp1252 is the ordinary case rather than the exotic one, and a file this
+    script cannot decode is a file whose meaning it would be guessing at -- which is the
+    escalation path's definition, so it takes the escalation path.
+
+    The line ending comes back with the text because none of these rules is ABOUT line endings.
+    A file that arrived CRLF has to leave CRLF: rewriting every line turns each per-file diff
+    into a whole-file diff, which fails no postcondition and destroys the one mechanism the guide
+    names for catching silent semantic loss. The rename invariants cannot see it either -- values
+    and tag counts both survive a line-ending flip intact.
+
+    A file mixing both endings takes the one it uses more often. It is the only answer that is
+    not a guess, and a file already inconsistent with itself has no convention to preserve.
+    """
+    raw = open(path, "rb").read()
+    text = raw.decode("utf-8")
+    crlf = text.count("\r\n")
+    return text.replace("\r\n", "\n"), ("\r\n" if crlf > text.count("\n") - crlf else "\n")
 
 
-def write(path, text):
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
+def write(path, text, newline="\n"):
+    with open(path, "w", encoding="utf-8", newline=newline) as f:
         f.write(text)
 
 
@@ -327,7 +353,13 @@ def _index_slugs(root):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         if "index.md" in filenames:
-            text = read(os.path.join(dirpath, "index.md"))
+            try:
+                text, _eol = read(os.path.join(dirpath, "index.md"))
+            except UnicodeDecodeError:
+                # None is the documented "there was no index to read", and R8's third clause is
+                # skipped rather than guessed. Nothing is lost by being quiet here: the walk
+                # reaches this same file and escalates it by name, so the run stops regardless.
+                return None
             return {m for m in re.findall(r'file="features/([a-z0-9-]+)\.md"', text)}
     return None
 
@@ -383,12 +415,12 @@ RULES = [
     # the schema allows outright. Requiring at least one would have made a legitimate artefact
     # unplaceable and escalated it -- turning a rule about criteria into a rule about features.
     ("R4", "schema-3", "feature",
-     lambda t: bool(_criteria_lacking(t, "pattern")),
+     lambda t: bool(_criteria_lacking(t, "priority")),
      _stamp_criteria,
      lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
 
     ("R5", "schema-3", "crd",
-     lambda t: bool(_criteria_lacking(t, "pattern")),
+     lambda t: bool(_criteria_lacking(t, "priority")),
      _stamp_criteria,
      lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
 
@@ -482,8 +514,14 @@ def _is_defined(text):
 # reach. Named rather than inferred: "the transform did not finish" and "the transform is broken"
 # are different answers and only one of them is a defect.
 PARTIAL_OF = {
-    "R4": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
-    "R5": lambda t: not _criteria_lacking(t, "priority") and not _criteria_lacking(t, "derived-from"),
+    # `priority` alone, and NOT `derived-from`. Priority is the total one -- written in rather
+    # than left to the documented default precisely so that a partly-assigned corpus can be told
+    # from a finished one -- so it is the honest marker of "the mechanical half landed".
+    # `derived-from` is neither total nor permanent: an authored criterion never had one (core
+    # section 2 makes it migration-only) and a migrated one LOSES it at sign-off, so requiring it
+    # here would call a signed-off file unfinished and an authored one half-migrated.
+    "R4": lambda t: not _criteria_lacking(t, "priority"),
+    "R5": lambda t: not _criteria_lacking(t, "priority"),
     "R6": lambda t: not _meta_has(t, "priority")
                     and ("<notes>" not in t or "<considerations>" in t),
     "R9": lambda t: bool(re.search(r"<meta>.*?<status>", t, re.S)),
@@ -571,8 +609,14 @@ def steps_to(kind, current, target):
 
 
 def apply_steps(text, kind, current, target):
-    """Returns (new text, [rule ids applied], [problems], verdict)."""
-    applied, problems, partial = [], [], False
+    """Returns (new text, [rule ids to report], [problems], verdict).
+
+    The reported ids are what the skill hands `schema-migrator` as the outstanding work, so a
+    rule left PARTIAL by an EARLIER pass belongs in that list even though this pass did not run
+    its transform. Reporting only what ran made a resumed migration say `judgements outstanding
+    ()`, which is the one thing the operator resuming it needs to know.
+    """
+    applied, outstanding, problems, partial = [], [], [], False
     for version, rules in steps_to(kind, current, target):
         if kind in UNCHANGED.get(version, ()):
             continue
@@ -580,7 +624,19 @@ def apply_steps(text, kind, current, target):
             if done(text):
                 continue
             if not precond(text):
-                problems.append(f"{rid}: no precondition matched at {version}")
+                # A precondition that no longer matches is not automatically an unplaceable
+                # file: for R9 and R10 it goes false the MOMENT their mechanical half lands
+                # (<meta><status> now exists; <requirements> is gone) while `done` stays false
+                # pending the judgements. On a second pass such a rule was neither skippable nor
+                # applicable, and a file sitting in exactly the state it was supposed to be in
+                # was reported FAILED -- which broke the first property this migration claims,
+                # that a partly migrated tree is safe to re-enter. detect() has always consulted
+                # PARTIAL_OF at this same fork; this is application catching up with detection.
+                if rid in PARTIAL_OF and PARTIAL_OF[rid](text):
+                    partial = True
+                    outstanding.append(rid)
+                else:
+                    problems.append(f"{rid}: no precondition matched at {version}")
                 continue
             before = text
             text = transform(text)
@@ -598,7 +654,8 @@ def apply_steps(text, kind, current, target):
                     partial = True
                 else:
                     problems.append(f"{rid}: postcondition does not hold after transforming")
-    return text, applied, problems, ("PARTIAL" if partial else "MIGRATED")
+    report = applied + [r for r in outstanding if r not in applied]
+    return text, report, problems, ("PARTIAL" if partial else "MIGRATED")
 
 
 def main():
@@ -628,8 +685,17 @@ def main():
     index_slugs = _index_slugs(root)
 
     for path in artefacts(args.path):
-        text = read(path)
         rel = os.path.relpath(path, root)
+        try:
+            text, eol = read(path)
+        except UnicodeDecodeError as e:
+            # Exit 2's guarantee, one layer below the one it was written for: nothing was
+            # written for this file, and it is named. Replacing the bytes it could not decode
+            # and carrying on is the only failure here that loses content irrecoverably.
+            escalations.append(
+                f"{rel}: not valid UTF-8 ({e.reason}, byte {e.start}) -- cannot be read without "
+                f"guessing at what those bytes meant. NOT WRITTEN")
+            continue
         kind = kind_of(text)
 
         if kind is None:
@@ -688,7 +754,7 @@ def main():
             continue
 
         if not args.check and not args.dry_run:
-            write(path, new)
+            write(path, new, eol)
         if verdict == "PARTIAL":
             partial += 1
             short.append(f"{rel}: mechanically migrated; judgements outstanding "
