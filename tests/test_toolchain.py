@@ -3998,8 +3998,17 @@ def _():
         assert p.returncode == 2, (
             f"a file matching no precondition did not escalate (exit {p.returncode}). Exit 2 is "
             f"separate from exit 1 precisely so that 'nothing was written for these' is sayable")
-        for name in ("stray.md", "odd.md"):
-            assert name in p.stderr, f"the escalation does not name {name}:\n{p.stderr}"
+        assert "odd.md" in p.stderr, f"the escalation does not name odd.md:\n{p.stderr}"
+        # stray.md carries no artefact root element, so it is not an artefact this migration
+        # failed to place -- it is not an artefact, and it is reported as skipped rather than
+        # escalated (finding 6). It must still be NAMED: the case that must not be swallowed is
+        # a real feature file whose root element somebody broke.
+        assert "stray.md" in p.stdout, (
+            f"a file that is not an artefact was not reported at all. Skipping silently is the "
+            f"one way this fix turns into a corpus quietly missing a file:\n{p.stdout}")
+        assert "stray.md" not in p.stderr, (
+            f"a README-shaped file is still being escalated, which is what halted a corpus "
+            f"before it began:\n{p.stderr}")
 
         for path, content in untouched.items():
             assert open(path, "rb").read() == content, (
@@ -4271,6 +4280,207 @@ def _():
         assert 'priority="P1"' in stamped.group(0), (
             "the criterion gained no `priority`, and priority is the attribute the transform "
             "makes total so that a partly-assigned corpus can be told from a finished one")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a file that is not an artefact at all does not halt the migration -- by running it",
+       finding="P28")
+def _():
+    """Finding 6. `docs/prd/` holds a README, and a README is not a failed artefact.
+
+    Exit 2 means `the migration does not understand this file`, and the skill's Phase 1 says to
+    stop and show a person every file that earns it. Both are right for a <feature> in no
+    recognised schema. Neither is right for prose: a corpus with one README halted before it
+    began, and the operator had no way to tell the harmless case from the alarming one because
+    the script gave them the same exit code and the same word.
+
+    So the two are separated by the only thing that distinguishes them -- whether the file
+    carries any artefact root element at all. A file with none is reported and skipped; a file
+    with one the migration cannot place still escalates. The reporting is the half that keeps
+    this honest: a real artefact somebody broke the root element of would otherwise vanish
+    silently, so `skipped` is named per file and counted, never merely dropped.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-not-artefact-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(work)
+        good = os.path.join(work, "ok.md")
+        open(good, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <status>tbd</status>\n  </meta>\n</feature>\n")
+        readme = os.path.join(work, "README.md")
+        open(readme, "w", encoding="utf-8", newline="\n").write(
+            "# Product requirements\n\nHow this directory is laid out.\n")
+        before = open(readme, "rb").read()
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 0, (
+            f"a tree whose only oddity is a README exited {p.returncode}. A file carrying no "
+            f"artefact root element is not an artefact the migration failed to place -- it is "
+            f"not an artefact, and halting on it stops every corpus that documents itself:\n"
+            f"{p.stdout}\n{p.stderr}")
+        assert "README.md" in (p.stdout + p.stderr), (
+            "the skipped file was not named. Skipping silently would hide a real artefact whose "
+            "root element somebody broke, which is the one case this must not swallow")
+        assert open(readme, "rb").read() == before, "a file it does not own was rewritten"
+        assert "<definition>tbd</definition>" in open(good, encoding="utf-8").read(), (
+            "the artefact beside it was not migrated")
+
+        # And the half that must NOT relax: an artefact root the migration cannot place still
+        # stops the run. Losing this is how the fix above turns into swallowing everything.
+        odd = os.path.join(work, "odd.md")
+        open(odd, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n  <meta>\n    <name>X</name>\n  </meta>\n</feature>\n")
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 2, (
+            f"a <feature> in no recognised schema stopped escalating (exit {p.returncode}). "
+            f"That is the case exit 2 exists for, and it must not have been relaxed along with "
+            f"the README:\n{p.stdout}\n{p.stderr}")
+        assert "odd.md" in p.stderr, f"the escalation does not name odd.md:\n{p.stderr}"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("an artefact missing what only a person can write is escalated, not called a rule defect "
+       "-- by running it", finding="P28")
+def _():
+    """Finding 5. R7 and R8 transform nothing, so they cannot fail the way a transformation does.
+
+    `A migration cannot invent a rationale for a decision it was not present for. What it can do
+    is refuse to finish while one is missing` -- and the exit code that refusal takes decides what
+    the operator is told to do about it. Routed to exit 1, it arrived under `this is a defect in
+    the rule, not in the artefact` and `never work around it by editing a file by hand`, which is
+    exactly backwards: the resolution is a person writing the rationale into the file.
+
+    Exit 2 is where it belongs, and the guide had already settled the same question the same way
+    one rule along -- a `wont-have` requirement is an escalation `using machinery that already
+    exists`, because it too is a decision about the change rather than about its format.
+
+    Exit 1 keeps the meaning its advice assumes: a rule broke its own postcondition. That is why
+    the convention check AFTER the transform stays a failure -- an artefact that arrived
+    incomplete and a migration that made it incomplete are different claims, and only the second
+    is a bug in this repository's code.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    target = reg["current"]
+
+    root = tempfile.mkdtemp(prefix="prd-convention-")
+    try:
+        work = os.path.join(root, "tree")
+        os.makedirs(work)
+        feature = os.path.join(work, "dropped.md")
+        open(feature, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n"
+            "  <meta>\n"
+            "    <status>excluded</status>\n"
+            "  </meta>\n"
+            "  <description>Decided against, and nobody wrote down why.</description>\n"
+            "</feature>\n")
+        before = open(feature, "rb").read()
+
+        p = _run_migrate(work, "--to", target, "--quiet")
+        assert p.returncode == 2, (
+            f"an `excluded` feature with no <rationale> exited {p.returncode}. Exit 1 carries "
+            f"`a defect in the rule, not in the artefact` and `never edit a file by hand` -- and "
+            f"here the artefact is what is incomplete and a hand edit is exactly the fix:\n"
+            f"{p.stdout}\n{p.stderr}")
+        assert "dropped.md" in p.stderr, f"the file is not named:\n{p.stderr}"
+        assert "FAILED" not in p.stderr, (
+            f"reported as FAILED, which is the word reserved for a rule that broke its own "
+            f"postcondition:\n{p.stderr}")
+        assert open(feature, "rb").read() == before, (
+            "the file was rewritten. Nothing is written for an escalated artefact")
+
+        # BOTH spellings, because the routing depended on which one the file used. Core section 3
+        # says a reader finding <status> where it expects <definition> treats it as that element;
+        # this reader did not, so an `excluded` feature that had not yet been renamed slipped
+        # past the incoming check and was caught after R1 had renamed it -- arriving as a rule
+        # defect on exit 1, which is the wrong answer reached by the wrong route. An artefact
+        # that is only old must escalate exactly as one already migrated does.
+        renamed = os.path.join(work, "renamed.md")
+        open(renamed, "w", encoding="utf-8", newline="\n").write(
+            "<feature>\n"
+            "  <meta>\n"
+            "    <definition>excluded</definition>\n"
+            "  </meta>\n"
+            "  <description>Decided against, and nobody wrote down why.</description>\n"
+            "</feature>\n")
+        os.remove(feature)
+
+        p2 = _run_migrate(work, "--to", target, "--quiet")
+        assert p2.returncode == 2 and "renamed.md" in p2.stderr, (
+            f"the same gap in the NEW spelling took a different route (exit {p2.returncode}). "
+            f"Which tag a file happens to use is the one thing that must not decide whether its "
+            f"missing rationale is called the artefact's gap or this file's bug:\n{p2.stderr}")
+
+        # The advice the operator acts on has to have moved with the exit code, or the fix is
+        # only half made. `"rationale" in body` was the first version of this and it did no work:
+        # the word appears in the paragraph that merely NAMES the third kind, so the check passed
+        # whatever the guidance said to do about it. A region and a shape, then -- the exit-code
+        # guidance specifically, and the thing it has to tell a reader.
+        for name, rel, start, end in (
+                ("migrate", os.path.join("skills", "migrate", "SKILL.md"),
+                 "| Exit | What it means | What you do |", "## Phase 3"),
+                ("schema-migrator", os.path.join("agents", "schema-migrator.md"),
+                 "| It says | You |", "## Where your judgement is wanted")):
+            body = open(os.path.join(REPO, rel), encoding="utf-8").read()
+            assert start in body and end in body, (
+                f"{name} no longer has the exit-code region this check reads, so the check cannot "
+                f"run -- which is not the same as passing")
+            region = body[body.index(start):body.index(end)]
+
+            assert "rationale" in region.lower(), (
+                f"{name}'s exit-code guidance never mentions a <rationale>, so a reader who meets "
+                f"this escalation is told only that the migration does not understand the file")
+
+            # The shape: it must say the resolution is somebody WRITING the missing content.
+            # Naming the case without saying what to do about it is what left the old advice --
+            # `never work around it by editing a file by hand` -- standing over it unqualified.
+            resolves = [ln for ln in region.splitlines()
+                        if re.search(r"\b(person|somebody|whoever)\b", ln, re.I)
+                        and re.search(r"\b(writ|supplie?s?|fill)", ln, re.I)]
+            assert resolves, (
+                f"{name}'s exit-code guidance names the case but never says a person writes the "
+                f"missing content. Exit 1 and two of the three kinds of exit 2 carry `never work "
+                f"around it by editing a file by hand`, and with nothing to distinguish it that "
+                f"sentence stands over this one too -- which is the defect, restated")
+
+        # The half of this that is worth asserting mechanically, and the half that is not.
+        #
+        # `a person supplies this` is satisfied by the paragraph that merely NAMES the case,
+        # because that paragraph quotes the script's own line -- so a check keyed on it passes
+        # while the guidance beside it says anything at all. Two versions of this check failed
+        # exactly that way, and the mutant found both. The honest conclusion is that the TONE of
+        # prose guidance is not mechanically checkable, and a check that appears to hold it is
+        # worse than no check.
+        #
+        # What IS checkable is a prohibition sitting in the list of prohibitions, where the agent
+        # meets them together. Inventing a rationale is a judgement a machine must not make,
+        # exactly like assigning a `pattern`, so it belongs beside it rather than in a paragraph
+        # of its own that nothing can hold.
+        # Scoped to the LIST SENTENCE, not to everything before the next heading. The paragraph
+        # under the list explains the prohibition and names a <rationale> while doing so, so a
+        # check reading the whole region has two sites satisfying it and no single edit can
+        # break it -- which is how the previous two versions of this passed. Count the sites: if
+        # more than one satisfies the assertion, the assertion is not holding the one that
+        # matters.
+        agent = open(os.path.join(REPO, "agents", "schema-migrator.md"), encoding="utf-8").read()
+        assert "**Forbidden.**" in agent, "the agent no longer states what it may not do"
+        forbidden = agent[agent.index("**Forbidden.**"):].split("\n\n")[0]
+        assert "rationale" in forbidden, (
+            "inventing a <rationale> is not in the agent's Forbidden list. It is the one gap on "
+            "that list that LOOKS closable -- the file says `excluded`, no reason is recorded, "
+            "and a plausible reason is easy to write -- so it is the one that most needs to sit "
+            "beside `assigning a pattern` rather than in prose elsewhere")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -4747,6 +4957,14 @@ def _():
 
     Run the migration rather than read it: the rules transform nothing, so their whole value is
     the exit code, and an exit code that has not been seen non-zero is a hypothesis.
+
+    The code is 2 rather than 1, and the difference is the whole of finding 5. Exit 1 means a
+    rule broke its own postcondition -- `a defect in the rule, not in the artefact`, which the
+    skill pairs with `never work around it by editing a file by hand`. Both are backwards for a
+    missing <rationale>: the artefact is what is incomplete, and a person writing the sentence is
+    the fix rather than a workaround. Asserted as exactly 2 rather than merely non-zero, because
+    `refused` and `refused for the right reason` are different claims and only the second tells
+    the operator what to do next.
     """
     import shutil
     import tempfile
@@ -4758,7 +4976,7 @@ def _():
         # R7: excluded with no rationale must refuse; with one, it passes.
         bad = _mini_prd(os.path.join(root, "a"), "excluded")
         p = _run_migrate(bad, "--to", target, "--quiet")
-        assert p.returncode == 1 and "R7" in p.stderr, (
+        assert p.returncode == 2 and "R7" in p.stderr, (
             f"an `excluded` feature with no <rationale> was accepted (exit {p.returncode}). A "
             f"feature nobody will build is a decision, and a decision nobody can reconstruct is "
             f"a gap in the record:\n{p.stdout}\n{p.stderr}")
@@ -4769,7 +4987,7 @@ def _():
         # wrote something in it" are different claims.
         empty = _mini_prd(os.path.join(root, "a2"), "excluded", "  <rationale>   </rationale>\n")
         p = _run_migrate(empty, "--to", target, "--quiet")
-        assert p.returncode == 1 and "R7" in p.stderr, (
+        assert p.returncode == 2 and "R7" in p.stderr, (
             f"an empty <rationale> was accepted (exit {p.returncode}). An element with nothing "
             f"in it records that somebody knew a reason was wanted, and nothing else")
 
@@ -4785,7 +5003,7 @@ def _():
         dangling = _mini_prd(os.path.join(root, "c"), "superseded",
                              '  <superseded-by slug="other"/>\n', index_entry=False)
         p = _run_migrate(dangling, "--to", target, "--quiet")
-        assert p.returncode == 1 and "does not exist" in p.stderr, (
+        assert p.returncode == 2 and "does not exist" in p.stderr, (
             f"a `superseded` feature naming a successor that does not exist was accepted "
             f"(exit {p.returncode}). Without a resolving pointer the feature is merely "
             f"missing, and nothing says what absorbed it:\n{p.stderr}")
@@ -4793,7 +5011,7 @@ def _():
         still_listed = _mini_prd(os.path.join(root, "d"), "superseded",
                                  '  <superseded-by slug="one"/>\n')
         p = _run_migrate(still_listed, "--to", target, "--quiet")
-        assert p.returncode == 1 and "index.md still points at it" in p.stderr, (
+        assert p.returncode == 2 and "index.md still points at it" in p.stderr, (
             "a `superseded` feature still listed in index.md was accepted. The index is the "
             "planning view and a merged feature is no longer a unit of planning -- leaving the "
             "entry makes the feature count wrong")

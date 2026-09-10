@@ -325,6 +325,24 @@ for a decision it was not present for. What it can do is **refuse to finish** wh
 missing, which turns *"somebody will notice"* into an exit code at the moment the file is being
 touched anyway.
 
+**The exit code is 2, and for a while it was 1.** That was the wrong half of the interface: exit
+1 means a rule broke its own postcondition, and it is paired everywhere with *"a defect in the
+rule, not in the artefact"* and *"never work around it by editing a file by hand."* Both are
+exactly backwards for a missing rationale — the artefact is what is incomplete, and a person
+writing the sentence is the fix rather than a way past the check. This guide had already settled
+the identical question one rule along: a `wont-have` requirement escalates *"using machinery that
+already exists"*, because it too is a decision about the change rather than about its format. The
+same reasoning reaches the same code here, and the reported line says which of the three kinds of
+exit 2 it is.
+
+**The routing depended on a dual read that was not implemented, which is why this was found late.**
+Core §3 says a reader finding `<status>` where it expects `<definition>` treats it as that element.
+`migrate.py` read only the new spelling, so an `excluded` feature that had not been renamed yet
+slipped past the check on the way in and was caught on the way out, after R1 had renamed the tag
+for it — and on the way out, a gap the artefact **arrived with** is indistinguishable from a gap
+the migration **created**. An unimplemented compatibility read looks like a missing read and was
+in fact a misrouting.
+
 **Index removal is the half that is easy to forget.** A superseded feature stays on disk as a
 record and leaves the index, because the index is the *planning* view and a merged feature is no
 longer a unit of planning. Leaving the entry there makes the feature count wrong and gives
@@ -391,11 +409,19 @@ python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py <path> --to schema-4 --ch
 including which schema it starts from, so a tree holding artefacts of three vintages migrates in
 one pass and each one takes only the steps it needs.
 
+**The walk takes every `.md` file, and most corpora hold some that are not artefacts.** A file
+carrying none of the five root elements is reported `SKIPPED` and changes no exit code. It was an
+escalation once, which meant a single `README.md` beside `docs/prd/` halted the migration before
+it began — and worse, gave the operator no way to tell that harmless case from a `<feature>` in
+no recognised schema, since both arrived as exit 2 under the same word. They are different
+questions and now have different answers. `SKIPPED` files are still **named**, because the one
+case this must not swallow is a real artefact whose root element somebody broke.
+
 | Exit | Means |
 |---|---|
 | **0** | every file reached the target, or reached `PARTIAL` and the half the script may do is done |
 | **1** | a postcondition failed, or `--check` found a file short of the target. Nothing partly written survives |
-| **2** | escalation — one or more files matched no precondition, **or could not be decoded as UTF-8**. Nothing was written for those, and each is named |
+| **2** | escalation — a file matched no precondition, could not be decoded as UTF-8, or is **missing something only a person can write** (R7, R8). Nothing was written for those, and each is named |
 | **3** | usage error |
 
 | Per-file verdict | Means |
@@ -404,7 +430,8 @@ one pass and each one takes only the steps it needs.
 | `PARTIAL` | the mechanical half is done and judgements are outstanding — `--check` will refuse |
 | `ALREADY` | the file is at or beyond the target |
 | `UNCHANGED` | the target's steps do not touch this kind of artefact |
-| `ESCALATE` | the file matched no precondition. **Nothing was written** |
+| `ESCALATE` | the file matched no precondition, could not be decoded, or is missing what only a person can write. **Nothing was written** |
+| `SKIPPED` | the file carries no artefact root element. It is not an artefact, it stops nothing, and it is listed rather than dropped |
 
 **`--check` writes nothing** and asserts the postconditions against files as they are. It is what
 makes *"the migration ran"* a different claim from *"the migration finished"*, and it is what the

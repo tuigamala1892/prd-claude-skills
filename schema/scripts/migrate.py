@@ -300,11 +300,22 @@ def crd_problems(text):
 
 
 def _definition(text):
+    """A feature's definition completeness, in EITHER spelling.
+
+    Core section 3: a reader that finds <status> where it expects <definition> treats it as that
+    element and carries on, because a hard cutover strands the artefacts that are only old. This
+    reader did not, and the consequence was not a missed read -- it was a MISROUTED one. An
+    `excluded` feature still carrying the old tag slipped past the convention check on the way in
+    and was caught on the way out, after R1 had renamed the tag for it; and on the way out, a gap
+    the artefact arrived with is indistinguishable from a gap the migration created. One is a
+    sentence nobody has written yet and the other is a bug in this file, so telling them apart is
+    the whole point of routing them to different exit codes.
+    """
     m = META.search(text)
     if not m:
         return None
-    d = re.search(r"<definition>\s*([a-z-]+)\s*</definition>", m.group(1))
-    return d.group(1) if d else None
+    d = re.search(r"<(definition|status)>\s*([a-z-]+)\s*</\1>", m.group(1))
+    return d.group(2) if d else None
 
 
 def convention_problems(text, path=None, index_slugs=None):
@@ -320,18 +331,25 @@ def convention_problems(text, path=None, index_slugs=None):
     """
     problems = []
     definition = _definition(text)
+    # The TAG THE FILE ACTUALLY USES, so the message quotes something greppable. These lines
+    # named <definition> unconditionally, which was harmless while only migrated files could
+    # reach them and became misleading the moment the dual read let an unmigrated one through:
+    # an operator told their file says <definition>excluded</definition> will not find that
+    # string in a file that says <status>excluded</status>.
+    tag = "status" if re.search(r"<status>\s*[a-z-]+\s*</status>", META.search(text).group(1)) \
+        else "definition"
 
     if definition == "excluded":
         body = re.search(r"<rationale>(.*?)</rationale>", text, re.S)
         if not body or not body.group(1).strip():
-            problems.append("R7: <definition>excluded</definition> with no <rationale>. A "
+            problems.append(f"R7: <{tag}>excluded</{tag}> with no <rationale>. A "
                             "feature nobody will build is a decision, and a decision nobody "
                             "can reconstruct is a gap in the record")
 
     if definition == "superseded":
         successor = re.search(r'<superseded-by\s+slug="([^"]*)"', text)
         if not successor or not successor.group(1).strip():
-            problems.append("R8: <definition>superseded</definition> with no "
+            problems.append(f"R8: <{tag}>superseded</{tag}> with no "
                             "<superseded-by slug=>. Without the pointer the feature is merely "
                             "missing, and nothing says what absorbed it")
         elif path:
@@ -679,7 +697,7 @@ def main():
             print(f"usage: unknown schema {args.target}. Known: {VERSIONS}", file=sys.stderr)
             return 3
 
-    escalations, failures, short = [], [], []
+    escalations, failures, short, skipped = [], [], [], []
     migrated = already = partial = 0
     root = args.path if os.path.isdir(args.path) else (os.path.dirname(args.path) or ".")
     index_slugs = _index_slugs(root)
@@ -699,7 +717,13 @@ def main():
         kind = kind_of(text)
 
         if kind is None:
-            escalations.append(f"{rel}: no artefact root element -- cannot select a migration")
+            # NOT an escalation. `docs/prd/` holds a README, and a README is not an artefact the
+            # migration failed to understand -- it is not an artefact. Giving the two the same
+            # exit code halted every corpus that documents itself, and left the operator no way
+            # to tell the harmless case from the alarming one, which is the whole purpose of
+            # exit 2. Still NAMED and counted, because the one case this must not swallow is a
+            # real artefact whose root element somebody broke.
+            skipped.append(f"{rel}: no artefact root element -- not an artefact; left alone")
             continue
 
         current = detect(text, kind)
@@ -720,7 +744,16 @@ def main():
         if kind == "feature":
             broken = convention_problems(text, path, index_slugs)
             if broken:
-                failures.append(f"{rel}: " + "; ".join(broken) + " -- NOT WRITTEN")
+                # ESCALATION, not a failure. R7 and R8 transform nothing, so they cannot fail the
+                # way a transformation does: what is missing is a sentence a person has to write,
+                # and exit 1 carries `a defect in the rule, not in the artefact` along with
+                # `never work around it by editing a file by hand`. Both are exactly backwards
+                # here. The guide had already settled the identical question one rule along --
+                # a `wont-have` requirement escalates `using machinery that already exists` --
+                # because it too is a decision about the feature rather than about its format.
+                escalations.append(
+                    f"{rel}: " + "; ".join(broken)
+                    + " -- NOT WRITTEN. A person supplies this; the migration cannot")
                 continue
 
         # Asserted before the steps rather than inside R10, so that `detect` stays honest: a CRD
@@ -766,14 +799,22 @@ def main():
             print(f"  {verb:<10} {rel}  [{', '.join(applied) or '-'}]")
 
     if args.detect:
+        for line in skipped:
+            print(f"  SKIPPED    {line}")
         for line in escalations:
             print(f"  ESCALATE   {line}", file=sys.stderr)
         return 2 if escalations else 0
 
     if not args.quiet:
         print(f"\n{migrated} migrated, {partial} partial, {already} already in {args.target}, "
-              f"{len(escalations)} escalated, {len(failures)} failed")
+              f"{len(escalations)} escalated, {len(failures)} failed, "
+              f"{len(skipped)} not artefacts")
 
+    # Named rather than merely counted. A file this tool has no claim on is uninteresting
+    # exactly until it is a feature file whose root element somebody broke, and a count cannot
+    # tell those apart -- so the operator gets the list and can.
+    for line in skipped:
+        print(f"  SKIPPED    {line}")
     for line in short:
         print(f"  PARTIAL    {line}", file=sys.stderr)
     for line in failures:

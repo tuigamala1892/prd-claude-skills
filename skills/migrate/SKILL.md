@@ -28,8 +28,15 @@ more files could not be placed** — report those first, by name, and do not mig
 the person you are working with has seen them. A file the migration cannot place is a file whose
 meaning would be guessed at.
 
-Say the totals plainly: *"N files, M already current, K in schema-1, J that could not be
-placed."* A migration that starts without that sentence is one nobody can tell is finished.
+**`SKIPPED` is not that, and does not stop anything.** A file carrying no artefact root element
+is not an artefact this migration failed to understand; it is a README, and a corpus that
+documents itself is the normal case. It is listed so that the one thing this must not swallow — a
+real feature file whose root element somebody broke — is in front of you rather than in a count.
+Read the list; it is usually two lines and it is occasionally the whole problem.
+
+Say the totals plainly: *"N artefacts, M already current, K in schema-1, J that could not be
+placed, and S files that are not artefacts."* A migration that starts without that sentence is
+one nobody can tell is finished.
 
 ## Phase 2 — The mechanical rules, per file
 
@@ -45,10 +52,24 @@ postconditions, and restores any file whose postconditions fail.
 |---|---|---|
 | 0 | every file is in the target schema | continue to Phase 3 |
 | 1 | a postcondition failed; **that file was restored** | **stop.** Report it verbatim. This is a defect in the rule, not in the artefact |
-| 2 | one or more files matched no precondition, or could not be decoded as UTF-8 | **stop.** Report each by name |
+| 2 | a file matched no precondition, could not be decoded as UTF-8, or is **missing something only a person can write** | **stop.** Report each by name, and say which of the three it is |
 
-**Never work around exit 1 or 2 by editing a file by hand.** Both mean the specification and the
-artefact disagree, and the resolution is a decision about the schema, not an edit.
+**Exit 2 covers three things, and only two of them are the migration failing to understand a
+file.** The third is R7 and R8: an `excluded` feature with no `<rationale>`, a `superseded` one
+with no resolving `<superseded-by>`, or a superseded feature the index still points at. Those
+rules transform nothing by design — a migration cannot invent a rationale for a decision it was
+not present for — so what they do instead is refuse to finish while one is missing. The line
+says so: *"A person supplies this; the migration cannot."*
+
+**Never work around exit 1, or the first two kinds of exit 2, by editing a file by hand.** Those
+mean the specification and the artefact disagree, and the resolution is a decision about the
+schema, not an edit.
+
+**The third kind is the opposite, and it is the one people get wrong.** Nothing is broken and
+nothing is being worked around: a sentence is missing, somebody knows what it should say, and
+writing it in is the fix rather than a way past the check. Take it to the person whose decision
+it records. What you must not do is supply it yourself — the rationale for a feature nobody will
+build is a record of a decision, and inventing one is worse than leaving the gap.
 
 ## Phase 3 — The judgements, one file at a time
 
