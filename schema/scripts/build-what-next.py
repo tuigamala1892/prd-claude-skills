@@ -49,7 +49,15 @@ import re
 import sys
 
 FEATURE_SLUG = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
-DEFINITION = re.compile(r"<definition>\s*([a-z-]+)\s*</definition>")
+# EITHER spelling, per core section 3: a reader that finds <status> where it expects
+# <definition> treats it as that element and carries on, because a hard cutover strands the
+# artefacts that are only old. Matching the new name alone made this the worst possible place to
+# have missed the rule -- the miss fell through to `tbd` below, so a corpus written before item
+# 45 derived as entirely unfinished, which is indistinguishable from a PRD that genuinely is,
+# and got written into the file as derived truth in a run that exited 0.
+#
+# The backreference is what stops <definition>x</status> being read as either.
+DEFINITION = re.compile(r"<(definition|status)>\s*([a-z-]+)\s*</\1>")
 GAP = re.compile(r'<gap\b([^>]*)>')
 BLOCK = re.compile(r"( *)<authoring-gaps>.*?</authoring-gaps>", re.S)
 META_CLOSE = re.compile(r"( *)</meta>")
@@ -81,7 +89,9 @@ def derive(prd_dir, indent="  "):
         slug = FEATURE_SLUG.search(text)
         slug = slug.group(1) if slug else os.path.basename(path)[:-3]
         definition = DEFINITION.search(text)
-        definition = definition.group(1) if definition else "tbd"
+        # group(2), not group(1): the pattern accepts either spelling, so group 1 is the TAG NAME
+        # and the value is the one after it.
+        definition = definition.group(2) if definition else "tbd"
         counts[definition] = counts.get(definition, 0) + 1
 
         gaps = GAP.findall(text)
