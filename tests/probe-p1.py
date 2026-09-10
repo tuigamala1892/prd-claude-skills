@@ -337,9 +337,11 @@ def baseline(prd_dir):
         print(f"{os.path.basename(path):<22} {words:>6} {criteria:>9} {elements:>9}")
         totals = [totals[0] + words, totals[1] + criteria, totals[2] + elements]
     print(f"{'TOTAL':<22} {totals[0]:>6} {totals[1]:>9} {totals[2]:>9}")
-    print("\nThis is the size half only. The question item 21 actually asks -- *is this still "
-          "tolerable to write?* -- is a stopwatch against a person, and no script can take it. "
-          "Re-run this after items 33/34 land and record both numbers beside a human timing.")
+    print("\nThis is the size. `--decisions` is the other measured half: what a template asks a "
+          "person to\ndecide. The timing -- a stopwatch against someone authoring -- was "
+          "WITHDRAWN on 2026-09-10\nwithout being taken: those judgements were asked for and "
+          "their cost accepted, and the protocol\ntimed hand-authoring, which is not what `/prd` "
+          "does. Nothing here is outstanding.")
     return 0
 
 
@@ -373,9 +375,15 @@ AUTHOR_JUDGEMENTS = [
 def decisions(prd_dir):
     """Item 21's other half: how many judgements a person must make, not how long it takes.
 
-    THIS IS NOT THE STOPWATCH and does not stand in for it. It counts the decisions a template
-    demands that a machine is forbidden to make for you -- the thing that drives the stopwatch
-    and survives being measured by a script. Whoever takes the timing records it beside this.
+    THIS IS NOT A TIMING. It counts the decisions a template demands that a machine is forbidden
+    to make for you -- the thing a stopwatch would have been explaining, and the half that
+    survives being measured by a script.
+
+    AND IT IS NOW THE WHOLE OF THE ANSWER. The timing was withdrawn on 2026-09-10 without being
+    taken: the judgements were asked for and their cost accepted in exchange for fidelity, so a
+    stopwatch would have priced a decision already made. It also timed the wrong activity --
+    `/prd` writes the feature files, and a person supplies these judgements in an interview
+    rather than by typing XML.
     """
     features = sorted(glob.glob(os.path.join(prd_dir, "features", "*.md")))
     texts = [open(f, encoding="utf-8", errors="replace").read() for f in features]
@@ -388,8 +396,10 @@ def decisions(prd_dir):
         total += n
         print(f"{label:<30} {n:>6}   {why}")
     print(f"{'TOTAL':<30} {total:>6}")
-    print("\nNot a timing. The stopwatch is a person authoring the same features under both "
-          "templates, and no script can take it -- see item 21's protocol.")
+    print("\nNot a timing, and no timing is owed. Item 21's stopwatch was withdrawn on "
+          "2026-09-10 without\nbeing taken -- these judgements were asked for and their cost "
+          "accepted. This count is the\nanswer to `where does the time go`; see item 21 for the "
+          "withdrawn protocol and its reason.")
     return 0
 
 

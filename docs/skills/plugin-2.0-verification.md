@@ -18,8 +18,9 @@ and it landed as Phase 12 and item 73 along with a second finding, P52, left own
 21, and asserted against `probe-p1.py --baseline` rather than left as prose. The headline is the
 opposite of what the plan feared: **item 33's EARS change made features smaller** — 8 words and 24
 elements out — and what doubled the prose is the content the bar asks for, not the syntax. The
-**timing half remains genuinely outstanding** and cannot be scripted: it is a stopwatch against a
-person authoring the same features under both templates.
+**timing half was withdrawn on 2026-09-10 without being taken** — the 32 judgements were asked
+for and their cost accepted in exchange for fidelity, so a stopwatch would have priced a decision
+already made. It also timed the wrong activity: `/prd` writes the feature files.
 
 **Its second clause is taken, and it inverts the first result.** Item 21 asks for the time *"and
 where the time goes"*. Where it goes is now measured — `probe-p1.py --decisions` counts the
@@ -28,9 +29,9 @@ across four features. `schema-3`, the version that made features *smaller*, intr
 every judgement the author now owes: item 33 is at once the largest saving in bytes and the joint
 largest cost in decisions, which the size table alone scored as a clear win.
 
-**The stopwatch is still a person's**, but it is no longer undefined: item 21 carries a five-step
-protocol, so the reason it sat undone through thirteen phases — *"time the authoring"* does not
-say what to do — no longer holds.
+**The stopwatch was never taken and is no longer owed.** Item 21's five-step protocol is kept at
+the item, marked withdrawn, in the idiom `parity.md` uses for a resolved row — a decision is
+easier to revisit than to reconstruct. **V6 is closed.**
 
 **V7 is decided.** The three `open` rows were not three of a kind:
 
@@ -277,7 +278,9 @@ records which graph was used. The experiment that decides what ships *alongside*
 fixture arm and `/breakdown` owes a report line; on the convention outcome, neither.
 
 **V6 — item 21's authoring after-measurement was never taken.**
-*Verification: against repository. Grade: Measured.*
+*Verification: against repository. Grade: Measured. **Closed 2026-09-10**: size and judgement
+halves taken; timing half withdrawn without being taken — the cost was requested and accepted,
+and the protocol timed hand-authoring, which is not what `/prd` does.*
 
 `probe-p1.py --baseline` recorded 394 words, 8 criteria and 64 elements across four features, on
 what is now `schema-1`. Items 33, 34, 1, 2, 27, 29 and 35 then changed exactly what it measures.
@@ -360,6 +363,11 @@ already specified, and inventing items for them would be a second producer for o
 line on OQ7 and on item 21 saying *unrun as of 2026-09-08*, in the idiom of `parity.md`'s `open`
 verdict and `SCHEMAS.json`'s `content_work` — a named-but-undone thing written down where somebody
 will meet it.
+
+> **Done, and both are now closed rather than recorded-as-open.** OQ7's experiment ran as Phase 12
+> (item 73). V6's timing half was **withdrawn on 2026-09-10** with its reason written at item 21
+> and in the ledger — which is what this bullet asked for, arriving as a decision rather than a
+> status line.
 
 **B6. One editing pass over the plan and the ledger** (V8–V11). Header, seven summary rows,
 Phases 8 and 9 in §6's sequence with item 67 placed, and Phase 3's four commit hashes.

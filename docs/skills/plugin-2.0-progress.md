@@ -541,6 +541,9 @@ criteria, 64 elements across four features — which is the instrument the after
 against. *"Is this still tolerable to write?"* is a stopwatch against a person and no script can
 take it. Recorded in the plan's item 21 rather than reported as done.
 
+> **Resolved 2026-09-10.** The size half and the judgement count were taken at V6; the timing half
+> was **withdrawn without being taken** — the cost was asked for and accepted. See V6's entry.
+
 **And a datum for item 18:** a **four-feature** PRD did not finish `/breakdown` in 45 minutes. P5
 says `analyze-prd` is handed 174k tokens of corpus; this is what the small end already costs.
 
@@ -4617,12 +4620,32 @@ move — a stale anchor, another mutant's collateral, a layer renamed to somethi
 declares, and now a comment inside a tag-stripping counter. **All four look identical to a check
 with no teeth, and all four are the site-counting rule in other clothes.**
 
-### What is still owed
+### What was owed, and is now withdrawn
 
-**The timing half, and no script can take it.** *Is this tolerable to write?* is a stopwatch
-against a person authoring the same four features under both templates. One caveat for whoever
-takes it: `schema-6`'s +237 words includes the fixture's own content debt being paid — four
-features that failed the bar and were fixed — so part of that is not a per-feature cost.
+**The timing half. Withdrawn 2026-09-10, never taken, and that is an answer rather than a gap.**
+*Is this tolerable to write?* was a proxy for *did we accept too much cost*, and the owner has
+answered it directly: **the 32 judgements were asked for, and the time they take is an accepted
+consequence of the fidelity they buy.** A stopwatch would have priced a decision already made.
+
+**Two things surfaced in the conversation that withdrew it, and both are recorded because they
+outlive the decision.**
+
+The protocol timed the wrong activity. **`/prd` writes the feature files** — a person supplies
+judgements in an interview and never types XML — so timing a person hand-authoring under two
+templates measures work the toolchain performs. And this was not drift: **the sample corpus was
+itself produced by the original commands**, so machine authorship was already the case when item
+21 was written. *The plan's evidence base was machine output from the start.*
+
+And I asserted the opposite in that conversation, from a number that does not support it: *44 of
+64 corpus features named no user* was read as evidence of a person forgetting. If a machine
+produced them it says the **earlier template did not ask** — a fact about the old command. The
+figure does not distinguish the two readings, and it was presented as though it did. Corrected by
+the owner, and the plan corroborates them — *"a policy written for another project built with the
+original commands"*, *"adopted wholesale from the corpus project"*.
+
+The caveat that would have mattered, kept in case the question is reopened: `schema-6`'s +237
+words includes the fixture's own content debt being paid — four features that failed the bar and
+were fixed — so part of that is not a per-feature cost.
 
 ---
 

@@ -1497,6 +1497,10 @@ move it. The *timing* is a stopwatch against a person and no script can take it;
 in its own output rather than reporting the size half as though it were the whole. Whoever runs
 the after-measurement records both numbers together.
 
+> **The two paragraphs above are the specification as written, and the timing half of it was
+> withdrawn on 2026-09-10 without being taken** — see the dated note below. The size half and the
+> judgement count were both taken and stand.
+
 **The probe's third exit code is the one to keep.** A run that generates no tasks, or none from
 the must-have, exits `INVALID` rather than clean: *"no won't-have tasks"* is vacuous when nothing
 was generated at all. That guard is not hypothetical — two checks in Phase 1 passed against
@@ -1532,11 +1536,20 @@ nothing before it was added to them.
 > So the size half answers: **the tagging got cheaper and the thinking got dearer.** That is the
 > trade item 40 exists to make, and it is now measured rather than assumed.
 >
-> **The timing half is still owed and still cannot be scripted.** *Is this tolerable to write?* is
-> a stopwatch against a person authoring the same four features under both templates. The numbers
-> above are what it would be recorded beside. One caveat for whoever takes it: `schema-6`'s
-> increase includes the fixture's own content work — four features that failed the bar and were
-> fixed — so part of that 237 words is a debt being paid, not a per-feature cost.
+> **The timing half is WITHDRAWN, 2026-09-10, and was never taken.** *Is this tolerable to
+> write?* was a proxy for *did we accept too much cost*, and the person who bears the cost has
+> answered it directly: **the 32 judgements were asked for, and the time they take is an accepted
+> consequence of the fidelity they buy.** A stopwatch would have priced a decision already made.
+>
+> Two things about the protocol below, which is kept rather than deleted. It was never a
+> measurement of the activity anybody performs — **`/prd` writes the feature files**, so a person
+> hand-authoring XML under two templates is timing work the toolchain does. And the mismatch was
+> not something that crept in: **the sample corpus was itself produced by the original commands**,
+> so machine authorship was the case on the day item 21 was written, not a later development.
+>
+> The caveat that would have mattered, recorded in case the question is ever reopened:
+> `schema-6`'s increase includes the fixture's own content work — four features that failed the
+> bar and were fixed — so part of that 237 words is a debt being paid, not a per-feature cost.
 >
 > ---
 >
@@ -1568,9 +1581,11 @@ nothing before it was added to them.
 >
 > ---
 >
-> **The protocol for the timing half, written so it can be taken cheaply rather than left open.**
-> The reason this has sat undone through thirteen phases is that *"time the authoring"* does not
-> say what to do. It does now:
+> **The protocol for the timing half — WITHDRAWN 2026-09-10, kept for the record.** It is left
+> here in the idiom `parity.md` uses for a resolved row: a decision is easier to revisit than to
+> reconstruct, and *"we chose not to measure this, and why"* is a fact worth being able to check.
+> **Nothing below is outstanding.** Were the question ever reopened, step 1 is the one to rewrite
+> first — it times hand-authoring, which is not the activity `/prd` performs.
 >
 > 1. **Author `staff-service`'s four features from the same brief**, twice: once against
 >    `schema/prd-format.md` as it stood at `schema-1` (`git show` the frozen fixture's templates),
@@ -1586,10 +1601,11 @@ nothing before it was added to them.
 > 5. **Record it beside the two tables above**, which is what item 21 asks for and why they are
 >    kept here rather than in the ledger.
 >
-> **What would change the answer.** If the after-timing is within noise of the before, the schema
-> changes were free and this is closed. If it is materially longer, the question is *which* of the
+> **What would have changed the answer, had it been taken.** If the after-timing were within noise
+> of the before, the schema changes were free. If materially longer, the question is *which* of the
 > 32 judgements bought it — and item 8's `prd-criteria-author` agent already exists to propose
-> exactly those, which makes the finding actionable rather than a complaint.
+> exactly those, which is the lever that remains available whether or not anybody ever holds a
+> stopwatch.
 
 **22. One artefact schema check, shared by producer and consumer.**
 P10 is a general failure: the spec says XML, the run produced markdown, and nothing noticed for
