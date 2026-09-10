@@ -10715,6 +10715,68 @@ def _():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+@check("every finding the plan names has a status, and a closed one names where it was settled",
+       finding="P68")
+def _():
+    """Item 85. The one registry this project never built, for the thing it is organised around.
+
+    `readers.md` distinguishes an element with no reader from one with a recorded reason it has
+    none. `checks.md` distinguishes an assertion with an owner from an ownerless row kept
+    deliberately. `parity.md` distinguishes a settled asymmetry from an `open` one. Every one of
+    those exists because *absent* and *deliberately absent* must be told apart.
+
+    **Findings had no such file**, and they are what the whole plan is organised around. Measured
+    before this was built: P9 was explicitly RETRACTED, P13 was measured and CLOSED, and P22 was
+    never settled at all -- and all three were indistinguishable, because all three were simply
+    missing from every index.
+
+    AND THE MOST RECENT WORK IS THE WORST OFFENDER. P58-P67 -- the ten findings from the sixth
+    crossing and the items that closed it -- exist as `finding=` tags in this file and as words in
+    commit messages, and are DEFINED nowhere. A finding whose claim is only in a commit message
+    is one nobody can look up.
+
+    WHAT THIS DOES NOT ASSERT. Not that every finding has a check: `P9` was retracted and a check
+    for it would be a check on nothing, and several were settled by reading rather than by code.
+    It asserts that every finding has a STATUS, and that a status which claims settlement names
+    something that exists.
+    """
+    path = os.path.join(REPO, "docs", "skills", "plugin-2.0-findings.md")
+    assert os.path.isfile(path), (
+        "docs/skills/plugin-2.0-findings.md does not exist. The plan names 56 findings and the "
+        "ledger adds ten more, and nothing anywhere records which are closed, which were "
+        "retracted and which were never settled")
+
+    script = os.path.join(REPO, "tests", "check-findings.py")
+    assert os.path.isfile(script), "tests/check-findings.py does not exist"
+
+    p = subprocess.run([sys.executable, script, "--json"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert p.returncode in (0, 1), (
+        f"check-findings.py could not run (exit {p.returncode}):\n{p.stderr[:400]}")
+    try:
+        result = json.loads(p.stdout)
+    except ValueError:
+        raise AssertionError(f"--json did not emit JSON:\n{p.stdout[:400]}")
+
+    assert not result["findings"], (
+        "the findings registry does not describe the findings:\n    "
+        + "\n    ".join(result["findings"]))
+
+    # The instrument must be doing work. A registry that lists nothing reports nothing wrong.
+    assert result["rows"] >= 60, (
+        f"the registry carries only {result['rows']} rows. The plan defines findings by a "
+        f"`**PN -- claim**` heading and there are more than that")
+    assert result["cited"] >= 60, (
+        f"only {result['cited']} finding ids were found cited across the plan, the ledger and "
+        f"the suite, so the check is not reading the corpus it audits")
+
+    # Every value in the enum must actually occur, or the column is decoration. `retracted` in
+    # particular: P9 is the reason this file distinguishes retracted from unsettled at all.
+    for status in ("closed", "retracted"):
+        assert result["by_status"].get(status), (
+            f"no row is `{status}`. P9 was retracted and P13 was closed by measurement; a "
+            f"registry that cannot tell those apart is the one that already existed")
+
 # ------------------------------------------------------------------------ runner
 
 def main():

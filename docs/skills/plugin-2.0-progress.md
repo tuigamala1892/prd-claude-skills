@@ -5505,6 +5505,72 @@ and the misplaced `name` — while `<files>`, which the producer got right, is c
 
 ---
 
+## Phase 22 — Item 85: the one registry this project never built.
+
+**Suite 154 → 155.** `readers.md` tells an element with no reader from one with a recorded reason.
+`checks.md` tells an assertion with an owner from an ownerless row kept deliberately. `parity.md`
+tells a settled asymmetry from an `open` one. **Findings had no such file** — and they are what
+the whole plan is organised around.
+
+### What the measurement found before anything was built
+
+| | |
+|---|---:|
+| ids in `P1..P68` | 68 |
+| defined by a `**PN — claim**` heading in the plan | 57 |
+| guarded by a `finding=` check in the suite | 57 |
+| needing a judgement — no check at all | 10 |
+
+**P9 was retracted, P13 was closed by measurement, and both were simply absent from every
+index.** Nothing could tell a decision from an omission.
+
+**And the most recent work was the worst offender.** P58–P68 — the sixth crossing's findings and
+the items that closed them — existed only as `finding=` tags and words in commit messages. Eleven
+findings with no definition anywhere, created in two days, by the work that has spent this whole
+phase closing exactly that shape of defect elsewhere.
+
+### Two corrections to the proposal that produced this
+
+**P22 is not unsettled.** The proposal cited it as never settled; it is closed by item 32's
+rendered task summary. What was never taken is the volume *projection* its paragraph rests on,
+which is a different thing from the finding, and the registry says so.
+
+**And the population was inflated.** The first count said 58 findings, from a bare grep for
+`\bP\d+\b` — which matches `priority="P0"`. **`P0`, `P1` and `P2` are also core §4's criterion
+priority levels.** The auditor screens the levels by the shapes they appear in and excludes `P0`
+by name, and a mutant that removes that screen is in the round.
+
+### What landed
+
+`docs/skills/plugin-2.0-findings.md` — 68 rows: id, claim, status in
+`closed · retracted · open · superseded`, and what settled it. **57 rows derive from the record
+and cannot be mistyped**; the ten judgements were each verified against evidence rather than
+inferred — `check-status.py`'s `<rationale>` assertion for P13, the absent `<priority>` in every
+schema-6 feature file for P14, the ledger's own *"the pipeline stops discarding the document"* for
+P2.
+
+`tests/check-findings.py` owns it. **No `checks.md` row**, deliberately: that table is *every
+assertion the toolchain makes about an artefact*, and this asserts nothing about a PRD, a CRD or a
+task — it audits the project's own record-keeping. `mutate.py` and `probe-p1.py` live in `tests/`
+on the same basis.
+
+Its load-bearing assertion is the one that decays without help: **a row naming a regression check
+must name one that exists**, because a check renamed in the suite leaves a row pointing at nothing
+and the row still reads as guarded.
+
+### Verification
+
+**6 mutants, 6 caught**, baseline green either side: a deleted row while the finding is still
+cited, a status outside the enum, a row that claims settlement and says nothing, a renamed check,
+an item the plan does not define, and the priority-level screen removed.
+
+**A seventh was dropped as invalid, and the reason is the useful part.** Disabling the *cited but
+has no row* rule against a **complete** registry has nothing to find — the mutant cannot tell a
+live rule from a dead one. Mutant 1 is that rule's actual positive control: it deletes P9's row,
+and the rule catches it. *MISSED has two meanings, and this was the mutant's.*
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
