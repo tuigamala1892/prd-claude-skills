@@ -65,7 +65,7 @@ skills/                       # Skills, each a directory holding SKILL.md
 ├── breakdown/                # PRD or CRD → tasks (orchestrator)
 │   ├── references/           # layer-definitions, task-format-spec, review-criteria,
 │   │                         # layer0-templates, architecture-format
-│   └── scripts/              # 18 of them; schema/checks.md says which assertion each owns
+│   └── scripts/              # schema/checks.md says which assertion each owns
 ├── breakdown-analyze-prd/    # ┐
 ├── breakdown-plan-layers/    # ├ breakdown sub-skills, in phase order
 ├── breakdown-generate-tasks/ # │
@@ -99,20 +99,20 @@ agents/                       # Agent definitions for the Task tool
 
 docs/skills/                  # The only docs directory that exists
 ├── toolchain-assessment-and-plan.md
-├── plugin-2.0-plan.md        # The specification: 71 items
+├── plugin-2.0-plan.md        # The specification
 ├── plugin-2.0-progress.md    # The ledger: what landed, and where it departed
-├── plugin-2.0-plan-review.md # R1-R17, on the plan's executability
-├── plugin-2.0-verification.md# V1-V13, on the implementation's fidelity
+├── plugin-2.0-plan-review.md # R-numbered findings on the plan's executability
+├── plugin-2.0-verification.md# V-numbered findings on the implementation's fidelity
 ├── target-state-data-flow.md
 ├── sdd-comparison.md
 ├── resumable-execution-proposal.md
 └── probes/                   # Phase 0 measurement harness
 
 tests/                        # Regression suite; run before and after any skill change
-├── test_toolchain.py         # 137 checks
+├── test_toolchain.py         # Every check, in one file
 ├── mutate.py                 # Break one thing, confirm the NAMED check fails, restore
 ├── mutants/                  # One file per phase
-└── fixture/prd/              # schema-1 .. schema-6; SCHEMAS.json says which is current
+└── fixture/prd/              # One per schema version; SCHEMAS.json says which is current
 ```
 
 ---

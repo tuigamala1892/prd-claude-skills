@@ -5590,6 +5590,117 @@ and the rule catches it. *MISSED has two meanings, and this was the mutant's.*
 
 ---
 
+## Phase 23 — Six derived counts in `CLAUDE.md`, deleted rather than corrected.
+
+**Suite 155 → 155.** No check added, none removed, none changed — and that is the point of the
+entry rather than an omission from it.
+
+`CLAUDE.md`'s Key Directories tree carried numbers that nothing reads. All of them were wrong.
+
+| Line | Said | Measured 2026-09-10 |
+|---|---|---:|
+| `skills/breakdown/scripts/` | `18 of them` | **21** |
+| `plugin-2.0-plan.md` | `The specification: 71 items` | **85**, or 65, depending on where the specification is held to end |
+| `test_toolchain.py` | `137 checks` | **155** |
+| `plugin-2.0-plan-review.md` | `R1-R17` | R1–R17, correct today |
+| `plugin-2.0-verification.md` | `V1-V13` | V1–V13, correct today |
+| `tests/fixture/prd/` | `schema-1 .. schema-6` | correct today |
+
+The first three were found stale. The last three were found *accurate*, and were deleted anyway,
+which is the whole argument: a count is not made safe by being right on the day it is read.
+
+### Why deleting, and not correcting, and not checking
+
+**Correcting buys weeks.** V13 asked for exactly this tree to be refreshed; Phase 11 refreshed it
+at `d603c74`. **Eighteen checks later** — 137 → 155 across Phases 12–22, and items 73 through 85 —
+two of the three were stale again. `137` went stale the moment Phase 12 added its one check, and
+`71` went stale in the plan's own appendices, where every item from 66 onward is defined.
+
+**Checking makes a worthless number an enforced worthless number.** The test to apply is item 23's,
+one level up from an element: *who reads this?* No skill, no script and no check consults any of
+them, and nobody needs a total to work here. A check would create the only reader a number has ever
+had — the check itself — and every future item that adds a script or a check would then have to
+edit `CLAUDE.md` to stay green. That is a maintenance obligation manufactured to protect a fact
+nobody wanted.
+
+**And `71` could not have been checked even in principle.** Section 5, *Remediation items*, defines
+1–65. Items 66–85 are defined in appendices L–U, one per episode of discovery, under the
+extend-don't-reframe rule this ledger states at the top. So *the specification* is 65 items or 85
+items depending on whether the appendices are part of the specification or the record of what the
+specification missed — a boundary that is deliberately soft. **There is no correct value to
+assert**, which is the sharpest available demonstration that the number was never carrying
+information.
+
+### The counterexample, because `README.md`'s counts *are* checked
+
+Item 72 added an assertion that `README.md`'s `15 skills` / `10 subagent definitions` /
+`3 slash commands` match the disk, and two mutants in `tests/mutants/documents.py` guard it. That
+is correct and stays.
+
+**The difference is what the number replaces.** `README.md` states a count *instead of* a listing:
+a reader gets `15 skills` and no names, so the number is the only thing they have and it must be
+true. `CLAUDE.md` gives the listing — every skill and every agent on its own line, which item 72's
+check already compares against disk in both directions. The count sat beside a list that answers
+the same question better. `18 of them` is the one that replaced nothing, and there the pointer
+carries the value: **`schema/checks.md` says which assertion each script owns** is what a reader
+needs, and it survives.
+
+That same line is already drawn inside the check. It reads `CLAUDE.md` and `ARCHITECTURE.md` by
+**enumeration** and `README.md` by **count**, and the difference was deliberate when it was
+written. This change removes the counts the check had, correctly, declined to read.
+
+### What was left alone in the same file, and why
+
+Not everything numeric is a derived figure.
+
+| Kept | Because |
+|---|---|
+| `measured 2026-08-26` on the `--add-dir` note, and finding F6 | dated measurements. Evidence, not inventory — and both are guarded |
+| `` `pattern` — one of six `` | core §2's fixed vocabulary, enumerated in a table the suite scopes to and enforced as a set by `check-definition.py` and `check-artefacts.py`. Adding a seventh is a schema change, not drift |
+| *Four things used to be called `status`; three were renamed* | closed history, and the sentence enumerates all four beside itself |
+| `<files-to-create>` — *max 3* | a rule the task format enforces, not a population |
+| item numbers in parentheses — `(item 66)`, `(items 8, 40)` | cross-references. They resolve or they do not; `check-findings.py` and `check-references.py` are the readers |
+
+**`R1-R17` and `V1-V13` went even though both are currently right.** Both documents are live —
+V6 was rewritten this week, across `2603d2b` and `106ecfb` — so the upper bound is a count of a
+growing population with no registry behind it. What a reader needs from that line is the *scheme*,
+which is why the entries now read `R-numbered findings` and `V-numbered findings`.
+`plugin-2.0-findings.md` gives P-findings a registry; R and V have none, and this change does not
+create one for them.
+
+**`schema-1 .. schema-6` went for the same reason, and it was the clearest case in the file:** the
+note *already named its own authority*. `SCHEMAS.json says which is current` is the sentence that
+does the work, and the range in front of it was a second, unmaintained copy of a fact the file
+beside it owns. It now reads `One per schema version`.
+
+### One thing found and deliberately not fixed
+
+`docs/skills/plugin-2.0-findings.md` — added last phase, item 85 — **is missing from the tree.** It
+is an omission of the kind item 72 calls worse than a ghost, and item 72's check does not catch it
+because that check enumerates `skills/` and `agents/`, not `docs/skills/`. It is left for whoever
+takes it up as a change of its own: this commit removes numbers and adds no rows, so that the
+argument in it is not diluted by a content refresh that would need its own justification.
+
+The ledger's own preamble is in the same position. *"The plan specifies 59 items"*, at line 13,
+carries a third value for a population this entry has just shown has no single correct one. It is
+load-bearing for an argument rather than a label on a tree, and it was left in place.
+
+### Verification
+
+`python tests/test_toolchain.py` before and after: **`passed 155  failed 0  known 0  fixed 0`**,
+and the two runs are identical check for check — not merely equal in total, diffed line by line.
+
+**That identity is the evidence, and it is a mutation result read in the direction this ledger
+usually calls a defect.** Six figures were changed in a tracked document and no check noticed.
+Everywhere else in this project a MISSED mutant means the check is hollow; here it is the positive
+result — the deletion *is* the mutant, and nothing catching it is precisely the claim being made.
+*MISSED has two meanings, and this was the other one.*
+
+No mutant was added. A mutant for a rule that does not exist has nothing to prove, which is the
+same reason Phase 22's seventh mutant was dropped as invalid.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
