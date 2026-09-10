@@ -4485,6 +4485,115 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("the whole chain composes: one pass equals every step, and lands on the fixture "
+       "-- by running it", finding="P28")
+def _():
+    """Item 41's steps verified as a SEQUENCE, which is the only way a real corpus meets them.
+
+    Every other migration check starts from a frozen fixture and takes one step. That leaves the
+    composition unexercised in both directions at once: no check feeds a step its PREDECESSOR'S
+    OUTPUT rather than an authored file, and no check runs the whole distance in one invocation
+    the way `--to schema-6` does on a corpus written years ago. A defect that only appears when
+    steps compose is invisible to a suite of single steps, and the corpus that meets it is the
+    real one.
+
+    Two assertions, and the first is the strong one.
+
+    **Chain equals stepwise, byte for byte, whole files.** Migrating oldest -> current in one
+    invocation must produce exactly what walking the versions one at a time produces, feeding
+    each output into the next. Nothing is stripped for this comparison, so it covers every
+    element including the ones the migration is forbidden to write -- if the order of application
+    changes any byte, this is what says so. It has already been wrong once: a rule that could not
+    be re-entered was RESTORED partway along the stepwise walk and never ran, so the two legs
+    disagreed about a document status.
+
+    **And both land on the current fixture**, modulo the judgement elements the steps between are
+    forbidden to produce -- accumulated across every step, since a chain crosses several mixed
+    ones. That comparison covers about three fifths of the corpus by line, all of `index.md` and
+    a smaller share of a feature file, because a feature's criteria and notes are exactly what a
+    machine may not write. Stated rather than glossed: it is a real golden comparison over what
+    the script is responsible for, and it says nothing about what it is forbidden to touch.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    versions = list(reg.get("versions") or {})
+    target = reg["current"]
+    oldest = versions[0]
+    assert versions.index(target) - versions.index(oldest) >= 2, (
+        f"{oldest} -> {target} is not a chain, so composition is whatever the single-step checks "
+        f"already assert and this check is exercising nothing")
+
+    root = tempfile.mkdtemp(prefix="prd-chain-")
+    try:
+        chain = os.path.join(root, "chain")
+        step = os.path.join(root, "step")
+        src = os.path.join(REPO, "tests", "fixture", "prd", oldest)
+        shutil.copytree(src, chain)
+        shutil.copytree(src, step)
+
+        p = _run_migrate(chain, "--to", target, "--quiet")
+        assert p.returncode == 0, (
+            f"{oldest} -> {target} in one pass exited {p.returncode}. That is the invocation a "
+            f"corpus written against an old schema actually makes:\n{p.stdout}\n{p.stderr}")
+
+        # The stepwise leg feeds each step its PREDECESSOR'S output, never a frozen fixture.
+        # Starting each step from the authored file is what the per-step checks already do, and
+        # it is precisely the thing that cannot catch a composition defect.
+        for version in versions[versions.index(oldest) + 1:versions.index(target) + 1]:
+            p = _run_migrate(step, "--to", version, "--quiet")
+            assert p.returncode == 0, (
+                f"stepwise walk failed at {version} (exit {p.returncode}). Every step but the "
+                f"first is being handed the output of the one before it, which is the state a "
+                f"resumed migration is always in:\n{p.stdout}\n{p.stderr}")
+
+        produced = {}
+        for tree, label in ((chain, "chain"), (step, "step")):
+            for dirpath, _d, filenames in os.walk(tree):
+                for name in sorted(filenames):
+                    full = os.path.join(dirpath, name)
+                    produced.setdefault(os.path.relpath(full, tree), {})[label] = \
+                        open(full, "rb").read()
+
+        for rel, both in sorted(produced.items()):
+            assert "chain" in both and "step" in both, (
+                f"{rel} exists on only one leg: one route produced a file the other did not")
+            assert both["chain"] == both["step"], (
+                f"{rel} differs between the one-pass migration and the stepwise walk. The steps "
+                f"do not compose: which route a corpus takes to {target} changes what it ends up "
+                f"holding, and only one of the two answers can be right")
+
+        # And the composition lands where the authored fixture says it should.
+        judgement = set()
+        for version in versions[versions.index(oldest) + 1:versions.index(target) + 1]:
+            judgement.update(reg["versions"][version].get("judgement_elements") or [])
+        assert judgement, (
+            "no step between the two versions names a judgement element, so nothing records what "
+            "the script was forbidden to write and this comparison cannot be scoped honestly")
+
+        expected_root = os.path.join(REPO, "tests", "fixture", "prd", target)
+        compared = 0
+        for rel in sorted(produced):
+            expected = os.path.join(expected_root, rel)
+            assert os.path.isfile(expected), (
+                f"the chain produced {rel}, which the {target} fixture does not have")
+            got = _strip_judgement(open(os.path.join(chain, rel), encoding="utf-8").read(),
+                                   judgement)
+            want = _strip_judgement(open(expected, encoding="utf-8").read(), judgement)
+            assert got == want, (
+                f"{rel}: migrating {oldest} -> {target} does not land on the {target} fixture.\n"
+                f"--- produced ---\n{got[:900]}\n--- fixture ---\n{want[:900]}")
+            compared += len(want.splitlines())
+
+        assert compared > 100, (
+            f"only {compared} lines survived the judgement strip, so this comparison is asserting "
+            f"almost nothing. Either the fixture has shrunk or judgement_elements has grown to "
+            f"cover the corpus, and both make the check a green light over an empty room")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule
