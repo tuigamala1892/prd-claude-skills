@@ -4,7 +4,7 @@
 > `docs/skills/plugin-2.0-plan.md` landed without this file being touched. What that cost is
 > recorded as findings V12 and V13 in
 > [`docs/skills/plugin-2.0-verification.md`](docs/skills/plugin-2.0-verification.md), and it is
-> the reason four regression checks now read this file: **an onboarding document that nothing
+> the reason regression checks now read this file: **an onboarding document that nothing
 > checks describes the project as it was on the day somebody wrote it.**
 >
 > **Layout.** Skills, agents and commands live at the repository **root** as a Claude Code
@@ -50,8 +50,8 @@ This document describes the system architecture for developers who want to under
      │            │                   │                    │
      │            ▼                   │                    │
      │      ┌─────────────┐           │                    │
-     │      │  8-Phase    │           │                    │
-     │      │  Workflow   │           │                    │
+     │      │  Phased     │           │                    │
+     │      │  Interview  │           │                    │
      │      └──────┬──────┘           │                    │
      │             │                  │                    │
      │             ▼                  │                    │
@@ -282,7 +282,7 @@ schema/                           the single definition both paths cite (item 44
 ├── core.md                       every shared element: criteria, gaps, definition, review
 ├── prd-format.md                 what /prd writes; cites core.md
 ├── decision-record.md            the ADR template and its **Drives:** convention (item 36)
-├── migration.md                  schema-1 .. schema-6, and who may judge what (item 41)
+├── migration.md                  one section per version step, and who may judge what (item 41)
 ├── checks.md                     one assertion, one owning script, every caller (item 58)
 ├── readers.md                    the elements with no reader, and why (item 23)
 ├── parity.md                     where the two paths differ, and whether that is settled
@@ -292,8 +292,8 @@ schema/                           the single definition both paths cite (item 44
     ├── check-readers.py          every element has a reader, or a recorded reason
     └── build-what-next.py        what-next.md is derived, never hand-maintained
 │
-commands/                         the three user-invocable entry points
-├── prd.md                        /prd -- a nine-phase interview
+commands/                         the user-invocable entry points
+├── prd.md                        /prd -- a phased interview
 ├── crd.md                        /crd -- change request against an existing codebase
 └── crd-context.md                /crd-context -- build and maintain PROJECT.md
 │
@@ -301,7 +301,7 @@ skills/
 ├── breakdown/                    PRD or CRD -> tasks (orchestrator)
 │   ├── references/               layer-definitions · layer0-templates · review-criteria
 │   │                             task-format-spec · architecture-format
-│   └── scripts/                  18 guards and generators; see schema/checks.md for which
+│   └── scripts/                  guards and generators; see schema/checks.md for which
 │                                 assertion each one owns
 ├── breakdown-analyze-prd/        per feature after item 18, never per corpus
 ├── breakdown-plan-layers/        assigns work to the layer graph it was handed

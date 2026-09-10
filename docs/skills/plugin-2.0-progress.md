@@ -5893,6 +5893,146 @@ consumer reads the file I measured**, which is the question the `Invoked by` col
 
 ---
 
+## Phase 25 — Six more derived counts, in `ARCHITECTURE.md`, and two the table did not have.
+
+**Suite 156 → 156.** No check added, none removed, none changed. Phase 23 made that identity the
+result rather than an omission from it, and this phase is the same argument applied to the file
+Phase 23 deliberately did not open.
+
+Four instances were handed to this phase already measured. **A sweep of the file for numbers found
+two more, and one of those was the sharpest in it.**
+
+| Line | Said | Measured 2026-09-10 |
+|---|---|---:|
+| the `/prd` box in the ASCII diagram | `8-Phase` | **9** — `commands/prd.md` runs Phase 1..Phase 9 |
+| `commands/prd.md` | `/prd -- a nine-phase interview` | 9, correct today |
+| `skills/breakdown/scripts/` | `18 guards and generators` | **22** |
+| `schema/migration.md` | `schema-1 .. schema-6` | correct today |
+| **the preamble** *(not in the table)* | `four regression checks now read this file` | **3** |
+| **`commands/`** *(not in the table)* | `the three user-invocable entry points` | 3, correct today |
+
+Three were stale; three were accurate and went anyway, which is Phase 23's argument rather than a
+new one.
+
+### The file contradicted itself about one number, eight lines apart
+
+`8-Phase` in the diagram and `nine-phase` in the prose describe the same interview and disagree.
+Neither has a reader, so nothing was ever going to reconcile them: **two unread copies of one
+derived fact drift independently, and the file ends up asserting both values at once.** That is the
+strongest demonstration available that a second copy is a liability rather than redundancy, and it
+is why the fix is not to make the diagram say `9`.
+
+### What each number stood in front of, which is what survives
+
+Phase 23's test is *what does the number replace?* Not one of the six replaced a listing.
+
+| Was | Now | The pointer already doing the work |
+|---|---|---|
+| `18 guards and generators; see schema/checks.md for which assertion each one owns` | `guards and generators; see …` | `schema/checks.md`. Phase 23 met this exact line in `CLAUDE.md` and reached the same place |
+| `schema-1 .. schema-6, and who may judge what` | `one section per version step, and …` | `migration.md` — the file being described on that very line — owns its own version list, one `##` section per step |
+| `8-Phase` / `Workflow` | `Phased` / `Interview` | the *scheme* stays, the count goes: the move Phase 23 made turning `R1-R17` into `R-numbered findings` |
+| `/prd -- a nine-phase interview` | `/prd -- a phased interview` | the same, and the two now agree because neither carries a number to disagree about |
+| `four regression checks now read this file` | `regression checks now read this file` | the bolded clause after the colon **is** the argument |
+| `the three user-invocable entry points` | `the user-invocable entry points` | the three lines directly beneath it |
+
+**`22` would have gone stale in the phase immediately before this one.** Phase 24 added
+`check-project-size.py` to that directory. Had the number been checked rather than deleted, item 86
+would have had to edit `ARCHITECTURE.md` to stay green — the manufactured maintenance obligation
+Phase 23 declined to create, demonstrated one phase later on the same line it declined it for.
+
+**And `22` has no single correct value, in the small way `71` had none.** `ls | wc -l` on that
+directory returns **23**; the twenty-third entry is `__pycache__`. The count depends on a
+convention nobody wrote down and no check could have picked for them.
+
+### The one that was not in the table, and why it is the sharpest in the file
+
+The preamble read *"…and it is the reason four regression checks now read this file: **an
+onboarding document that nothing checks describes the project as it was on the day somebody wrote
+it.**"*
+
+**Three checks read this file, not four** — `nothing references the pre-plugin .claude/ paths`,
+item 72's enumeration, and P50's frontmatter example. The sentence explaining why this file is now
+checked was itself an unchecked, stale fact. **It had gone wrong in precisely the manner it
+describes.**
+
+**The equivalent was kept in the ledger's preamble, and that was right.** Phase 23 kept *"The plan
+specifies 59 items"* as *"load-bearing for an argument rather than a label on a tree."* That
+distinction holds, and it decides this one the other way: there the population **was** the
+argument; here the argument is `checks read it now` against `nothing checks`, and `four` is
+decoration on a clause that carries the point without it.
+
+### The counterexample, unchanged
+
+`README.md` states `15 skills` / `10 subagent definitions` / `3 slash commands` **instead of** a
+listing, item 72 asserts each against a disk scan, and two mutants in `tests/mutants/documents.py`
+guard them. They stay, and nothing here extends to them.
+
+The pair is worth stating plainly, because this phase happens to hold both halves at once:
+`ARCHITECTURE.md`'s `the three user-invocable entry points` and `README.md`'s `3 slash commands`
+are **the same number about the same population**, and exactly one of them is worth keeping — the
+one that is not sitting on top of the list it summarises. A count with a reader is inventory; a
+count without one is decoration.
+
+### What was left alone in the same file, and why
+
+| Kept | Because |
+|---|---|
+| `Reconciled with the repository 2026-09-08`, and `after nine phases … landed without this file being touched` | a dated measurement and closed history: what had happened by a stated date, not a live population. Phase 23 kept `measured 2026-08-26` on the same grounds |
+| `0-setup/ … 4-integration/` in the sample output tree | layer *names* from `layer-definitions.md`'s fixed set. Renaming one is a schema change, not drift |
+| the numbered lists — `1. A new, isolated context is created` … | list ordinals |
+| the Model Selection Strategy table | one row per skill, enumerated rather than counted; P50's check reads that section |
+| `README.md`'s three counts | checked, and the counterexample above |
+
+### Two adjacent findings, both omissions rather than counts — and they are not the same shape
+
+Neither is in this commit, for the reason Phase 23 gave in its own words: *this commit removes
+numbers and adds no rows.* But they are two findings, not one, and the difference matters to
+whoever takes them up.
+
+**`schema/scripts/` enumerates four scripts and there are five.** `check-enforcement.py`, item 79,
+is missing. This is the real thing — a listing with a row absent, which item 72 calls *worse than a
+ghost, because there is nothing to look up and no way to notice*. Item 72's check does not catch it
+because it enumerates `skills/` and `agents/`, not `schema/scripts/`. It joins `CLAUDE.md`'s
+missing `plugin-2.0-findings.md`, still open from Phase 23: **two enumerations, two absent rows,
+one unguarded direction**, which is now enough for a change of its own rather than a footnote.
+
+**`docs/skills/` is a gloss and was never an enumeration.** `the plan, the ledger, the reviews, the
+probes` describes a directory holding nine `.md` files plus `probes/`; besides
+`plugin-2.0-findings.md` it does not name `target-state-data-flow.md`, `sdd-comparison.md` or
+`resumable-execution-proposal.md`. **Phase 23's instruction to leave this one "the same way" does
+not transfer, because it is not the same finding.** In `CLAUDE.md`, `docs/skills/` is a listing —
+one line per file — missing exactly one row. Here it is a four-noun summary that never undertook to
+name anything. A gloss omitting four files either is fine as it stands or wants rewriting into a
+listing; it is not a row that fell out.
+
+### Verification
+
+`python tests/test_toolchain.py` before and after: **`passed 156  failed 0  known 0  fixed 0`**,
+and the two runs are **identical check for check** — 156 result lines each, diffed line by line,
+zero differing.
+
+**That identity is the evidence, and here it is the claim rather than a defect.** Six figures were
+changed in a tracked document and nothing noticed. *MISSED has two meanings, and this is the other
+one.* No check was added and no mutant: a mutant for a rule that does not exist has nothing to
+prove, which is Phase 22's reason for dropping its seventh and Phase 23's for adding none.
+
+The one constraint with a real failure mode was the diagram, since alignment is not something the
+suite reads. The box interior is 13 characters and `CLAUDE.md`'s documentation rule is that
+alignment is preserved: `  Phased     ` and `  Interview  ` are both 13, and all four rows of that
+box are 60 characters, matching the borders above and below.
+
+### What this got wrong on the way
+
+**The measured table was treated as the scope, and it was not exhaustive.** Four rows arrived
+already measured, and the sweep for the file's remaining numbers was an afterthought that nearly
+did not happen. It found the preamble's `four` — both the **only stale instance nobody had
+spotted** and the one sitting inside the sentence about why this file is checked at all. Taking a
+measured table as a boundary would have left a false statement in the file while writing a ledger
+entry about deleting false statements from it. *Reconcile the corpus rather than trusting its
+figures* applies to a table of findings exactly as it applies to a corpus of artefacts.
+
+---
+
 ## What the machine sleeping taught, which was not about sleep
 
 A mutation round launched on the evening of 2026-08-26 was suspended overnight and resumed on
