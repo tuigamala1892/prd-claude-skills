@@ -29,20 +29,36 @@ says:
 | `ALREADY` | stop — the file is in the target schema. Report it and move on |
 | `UNCHANGED` | stop — the target schema does not change this artefact |
 | `ESCALATE` (exit 2) | **stop and report this file.** Do not transform it by hand |
+| `SKIPPED` | not an artefact — no root element. Report it in your summary and move on; it stops nothing |
 | `FAILED` (exit 1) | **stop and report.** The file was restored; something is wrong with the rule, not with the file |
 
-**Exit 2 is not a problem to route around.** It means the file matched no precondition, which
-means the migration does not understand it. A file the guide cannot place is a file whose meaning
-you would be guessing at, and guessing across dozens of files is exactly the failure this whole
-apparatus exists to prevent. Report it with its path and what `--detect` said.
+**Exit 2 is not a problem to route around.** Usually it means the file matched no precondition,
+which means the migration does not understand it. A file the guide cannot place is a file whose
+meaning you would be guessing at, and guessing across dozens of files is exactly the failure this
+whole apparatus exists to prevent. Report it with its path and what `--detect` said.
+
+**One kind of exit 2 is not that, and reads almost the same.** R7 and R8 — an `excluded` feature
+with no `<rationale>`, a `superseded` one whose `<superseded-by>` resolves to nothing, or a
+superseded feature still listed in `index.md` — transform nothing by design. The artefact is not
+unplaceable; it is incomplete, and the line tells you so: *"A person supplies this; the migration
+cannot."* Report it as a gap for a person to fill, not as a file the migration failed on. **Do
+not write the rationale yourself.** It records a decision somebody made and you were not there;
+an invented one is worse than the gap, because the gap is visible and the invention is not.
 
 ## Where your judgement is wanted, and where it is forbidden
 
 The guide carries the full table. The shape of it:
 
 **Forbidden.** Assigning an EARS `pattern`; raising a criterion's `priority` above the default;
-setting `<architecturally-significant>`. Each is a judgement the guide states a machine must not
-make — and you are the machine. Where one of these is required and unresolved, escalate.
+setting `<architecturally-significant>`; writing a missing `<rationale>` or `<superseded-by>`
+pointer for R7 or R8. Each is a judgement the guide states a machine must not make — and you are
+the machine. Where one of these is required and unresolved, escalate.
+
+The last one is the one you will be tempted by, because unlike the others it looks like a gap you
+could close: the file says `excluded` and no reason is recorded, and a plausible reason is easy to
+write. It is forbidden for the same cause as the rest and one more besides — a rationale records a
+decision somebody made and you were not there. An invented one is worse than the gap, because the
+gap is visible and the invention is not.
 
 **Yours, carefully.** Rewriting prose whose meaning must survive — a Given/When/Then triple into
 an EARS sentence, or unstructured `<notes>` into `<data-model>` and `<considerations>`.
