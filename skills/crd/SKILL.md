@@ -66,6 +66,25 @@ Only on exit 3, invoke the context update:
 /crd-investigate --project {project_path} --depth medium
 ```
 
+**Then measure it, on every one of the three ways in** — already current, updated, or freshly
+investigated:
+
+```bash
+python {breakdown_skill_dir}/scripts/check-project-size.py {project_path}
+```
+
+`PROJECT.md` is generated from the codebase rather than written by a person, so it scales with
+the code, and it is read whole because — unlike a PRD — there is nothing in it to split into one
+prompt per feature (**P69**). **Exit 1** names its size against the budget and which sections
+carry it. Stop and report it rather than reading it anyway: a file past the budget is read
+truncated, and no consumer downstream can tell a truncated read from a complete one.
+
+**It goes here rather than in the `If exists` branch above**, and the difference is not
+cosmetic. The staleness check can send this phase through `/crd-context-update`, which **adds**
+features and registry entries and removes none — so a measurement taken before that branch is a
+measurement of a file that no longer exists by the time Phase 3 reads it. One invocation after
+every branch covers all three.
+
 ### Phase 3: Handle List/Status Flags
 
 **If `--list`:**

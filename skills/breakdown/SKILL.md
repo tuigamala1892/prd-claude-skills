@@ -258,6 +258,17 @@ Execute these phases in order:
 **For CRD input:**
 - Require `--project-path` argument (CRDs always target existing projects)
 - Verify PROJECT.md exists at `{project-path}/PROJECT.md`
+- **Measure it before loading it:**
+
+  ```bash
+  python {skill_dir}/scripts/check-project-size.py {project-path}
+  ```
+
+  `PROJECT.md` is the CRD path's `check-prd-size.py` case (**P69**): it is generated from a
+  codebase, so it scales with the code rather than with an author, and it is read whole because
+  there is nothing in it to split. **Exit 1** names its size against the budget — stop and report
+  it rather than loading it anyway, because nothing downstream can tell a complete read of this
+  file from a truncated one.
 - Load PROJECT.md context for use in task generation
 
 ### Phase 2: Analyze Input

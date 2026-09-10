@@ -61,12 +61,15 @@ that mentions it; half the repository names these scripts in a docstring.
 built is a fact about the project; the defect this file exists to prevent is one nobody wrote
 down. Those rows were what Phase 6 was.
 
-**There is one, and it arrived the way this paragraph said it would.** Item 22 was the last of
-Phase 6's, and its row now names `check-artefacts.py`. The `PROJECT.md` row below has no owner
-because filling in the `Paths` column produced it: `check-prd-size.py` is `prd-only` for a good
-reason, and asking *why* surfaced that the unbounded input on the CRD path is a different
-document that nothing measures. It is written down on the day it was found rather than on the
-day somebody remembers it, which is the whole of the rule above.
+**There are none today, and the last one shows what the rule bought.** Item 22 was the last of
+Phase 6's, and its row names `check-artefacts.py`. The `PROJECT.md` size row was written ownerless
+at item 79, because filling in the `Paths` column produced it: `check-prd-size.py` is `prd-only`
+for a good reason, and asking *why* surfaced that the unbounded input on the CRD path is a
+different document that nothing measured. It was written down on the day it was found rather than
+on the day somebody remembered it, and item 86 built it — **with the reachability measured first**,
+because a row kept for a year is also a row that might turn out not to be worth building. The
+count is a state, not a rule: the next assertion somebody specifies and does not build belongs
+here the same day.
 
 ---
 
@@ -80,8 +83,8 @@ day somebody remembers it, which is the whole of the rule above.
 | `PROJECT.md` parses; at least one `*-registry` | `check-project-md.py` | `skills/crd/SKILL.md` · `skills/execute/SKILL.md` · `commands/crd-context.md` | crd-only | A greenfield PRD has no existing codebase to have described. Counterpart of the row above | 26 |
 | Output paths resolve, and are not inside a plugin | `resolve-output.sh` | `skills/breakdown/SKILL.md` · `skills/breakdown-generate-tasks/SKILL.md` | n/a | Resolves where output goes. It reads a path, never a document | — |
 | One repository, or refuse early and say what is missing | `check-repo-structure.py` | `skills/breakdown/SKILL.md` | both | — | 53 |
-| The PRD fits the model's context, per prompt rather than per corpus | `check-prd-size.py` | `skills/breakdown/SKILL.md` | prd-only | A PRD is a corpus fanned into one prompt per feature, and this guard is what makes that split honest. A CRD is one authored document read whole -- one prompt, nothing to split. **Measured 2026-09-09**: the unbounded input on the CRD path is `PROJECT.md`, which scales with the codebase rather than with an author, and that is the ownerless row below rather than this script's job | 18 |
-| `PROJECT.md` fits the prompt it is about to be sent in | — | — | crd-only | **Measured 2026-09-09, and nothing owns it.** `PROJECT.md` carries one `<feature>` per feature and one entry per registry item, so it scales with the codebase and not with an author. The format spec sets no ceiling and the investigator's checklist sets only a floor (*at least 5 features*). On the reference fixture it is ~1,382 chars per feature, so ~156 features crosses `check-prd-size.py`'s 60k budget and ~521 exhausts a 200k window. No script measures it. P5 is the same failure -- a silently truncated read that everything downstream is built from | 18 |
+| The PRD fits the model's context, per prompt rather than per corpus | `check-prd-size.py` | `skills/breakdown/SKILL.md` | prd-only | A PRD is a corpus fanned into one prompt per feature, and this guard is what makes that split honest. A CRD is one authored document read whole -- one prompt, nothing to split. **Measured 2026-09-09**: the unbounded input on the CRD path is `PROJECT.md`, which scales with the codebase rather than with an author, and that is the row below rather than this script's job | 18 |
+| `PROJECT.md` fits the prompt it is about to be sent in | `check-project-size.py` | `commands/crd.md` · `commands/crd-context.md` · `skills/crd/SKILL.md` · `skills/breakdown/SKILL.md` | crd-only | A PRD has `check-prd-size.py`; this is the same assertion about the other path's unbounded input, and it is a different document. `PROJECT.md` is generated from a codebase — one `<feature>` per feature, one entry per registry item, and a markdown half carrying the component tree — so it scales with the code and not with an author, and unlike a PRD it is read whole because there is nothing in it to split. Reachability was measured before it was built (**P69**): `crd-investigate`'s own error table already carries *Very large codebase → limit scope, note truncation*, and `project-context-finalizer` appends after every `/execute` and never compacts | 18, 86 |
 | Which features may be built, and every reason each one may not | `select-features.py` | `skills/breakdown/SKILL.md` | both | — | 13, 14, 15 |
 | The predicted change size has a reader | `check-scope.py` | `skills/breakdown/SKILL.md` | n/a | Reads `analysis.json` and the generated task set. The document's shape was resolved upstream | 49 |
 | `<rules>` parses; `<layers>` acyclic and reachable | `check-architecture.py` | `skills/breakdown/SKILL.md` · `commands/prd.md` | n/a | Reads the project's `architecture.md`, not a requirements document | 28, 31 |

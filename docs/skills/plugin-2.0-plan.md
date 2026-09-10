@@ -3884,6 +3884,75 @@ the row still reads as guarded.
 
 ---
 
+## V. The row the registry kept, and what it cost to decide
+
+**`checks.md` has carried an ownerless row since item 79, and it is the only one.** The rule that
+put it there is that an assertion this plan specifies and does not build is a fact about the
+project rather than an omission from it. The rule that takes it out is the other half of the
+same idea: a row kept deliberately is also a row that might turn out not to be worth building,
+so the question is answered by measurement rather than by the row's continued existence.
+
+**P69 — the CRD path's unbounded input is generated, and nothing measures it.**
+*Verification: measured against the live sixth-crossing artefact, and against both producers.*
+
+Item 18 split the PRD into one prompt per feature and gave `check-prd-size.py` the job of making
+the split honest. Item 79's `Paths` column asked why that script refuses a CRD, and the answer
+moved the question: **the unbounded input on the CRD path is not the CRD.** A CRD is authored by
+a person in an interview and is as long as a person writes. `PROJECT.md` is generated from a
+codebase, and it is read whole because — unlike a PRD — there is nothing in it to split.
+
+**Three measurements, and the first two are the ones that make it reachable rather than
+arithmetical.**
+
+- `crd-investigate/SKILL.md`'s Error Handling table already carries the row
+  **`Very large codebase | Limit scope, note truncation`**. The situation is anticipated *in the
+  producer's own instructions*, and the entire mitigation is a prose instruction to a model to
+  truncate and mention it, with nothing measuring whether it did. **That is P5's shape one
+  artefact over**, and it was written down before this finding was.
+- `project-context-finalizer` is **additive and unconditional**: it runs after every `/execute`,
+  adds one `<feature>` per implemented feature, one `<endpoint>` per api export and one `<model>`
+  per schema export, and preserves what is there. Nothing compacts. So the file grows with the
+  number of runs a project has had — which is why no single generation's output limit bounds it,
+  and why the greenfield path is a producer of the brownfield path's input.
+- On the live artefact: **13,803 chars for 7 features, 7 endpoints and 4 models** — 3,834
+  estimated tokens, about 300 entries of headroom against the 60k budget. And **40% of it is the
+  markdown half**, the component tree and the pattern list, which grow with *files*. The row's own
+  arithmetic counted only features and registry entries, so it understated the rate.
+
+**What nothing measured**: a `PROJECT.md` of 77,006 estimated tokens — 28% past the budget —
+passes `check-project-md.py` with `exit 0` and the words *PROJECT.md valid*, and
+`check-prd-size.py` exits 2 rather than looking at it. Measured 2026-09-10, before the check
+existed.
+
+---
+
+**86. `PROJECT.md` fits the prompt it is about to be sent in.**
+*Addresses P69. Depends on item 79 for the row, and on item 18 for the estimator.*
+
+`check-project-size.py`, beside `check-prd-size.py` and taking the divisor and the budget **from
+it by import** — 3.6 chars per token is this repository's own corpus measurement and there is to
+be one copy of it. It measures the whole file, because the whole file is what every consumer
+loads, and reports the decomposition — markdown half, `<features>`, each `<*-registry>` — plus
+what one more entry costs, so that an author over the ceiling can see which term grew.
+
+**A new owner rather than either script that already reads this file.** Extending
+`check-prd-size.py` would contradict the `prd-only` cell item 79 decided and wrote a reason for.
+Extending `check-project-md.py` would give one script two assertions, which
+`tests/test_toolchain.py` already refuses — *"two assertions share an owner … a script that owns
+two assertions has two reasons to exit 1"* — and that script's own docstring draws the line:
+*well-formedness is this script's job*.
+
+**Four callers, because four files load `PROJECT.md` into a prompt.** `commands/crd-context.md`
+is the write side and the only one where a person can act on the answer; `commands/crd.md`,
+`skills/crd/SKILL.md` and `skills/breakdown/SKILL.md` are the read sides. A guard wired into one
+of them measures one of four reads.
+
+**An absent `PROJECT.md` is exit 0**, following `check-project-md.py`: greenfield has none and
+never will. It prints no measurement, so a run that measured nothing cannot be read as a run that
+measured and was content.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
