@@ -61,6 +61,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from keep_awake import keep_awake  # noqa: E402
@@ -92,6 +93,37 @@ def run_suite(suite):
     return p.stdout + p.stderr
 
 
+def restore(keep, path, before, attempts=3, pause=0.5):
+    """Put `path` back from `keep` and SAY what went wrong, never raise.
+
+    A function rather than four lines inside the loop, because the failure path is the whole
+    point and a failure path that cannot be exercised is a hope. Called from a `finally`, an
+    exception raised in here escapes the finally and ends the run: no hash verification, no
+    restore of the files after this one, and no report naming what is broken. The operator gets
+    a traceback and a mutated tree.
+
+    That is the worst shape this harness has. The one time it happened, the mutation left behind
+    was to a constant the suite reads, so the WEAKENED CHECK went on passing -- a green suite
+    over a tree nobody had put back.
+
+    Returns None when the file is byte-identical to `before`, else a sentence saying why not.
+    The retries are for Windows, where a concurrent reader -- a second suite run, an editor, a
+    live `claude` session holding --add-dir on this tree -- makes copyfile raise EINVAL for as
+    long as it holds the handle. Usually transient, which is why it is worth asking twice more
+    before giving up, and never silent, which is why giving up is reported.
+    """
+    why = None
+    for attempt in range(attempts):
+        try:
+            shutil.copyfile(keep, path)
+        except OSError as e:
+            why = e
+            time.sleep(pause * (attempt + 1))
+            continue
+        return None if sha(path) == before else "restored, but the bytes differ from before"
+    return f"copy failed after {attempts} attempts: {why}"
+
+
 def failing_checks(output):
     return {m.group(1).strip() for m in re.finditer(r"^  FAIL\s+(.*?)\s{2,}", output, re.M)}
 
@@ -117,6 +149,7 @@ def main():
 
         stash = tempfile.mkdtemp(prefix="mutate-")
         results, restore_problems, seen_failures = [], [], set()
+        aborted = False
 
         for label, rel, find, replace, must_fail in mutants:
             path = os.path.join(REPO, rel)
@@ -145,11 +178,31 @@ def main():
                           else f"NOT CAUGHT. suite reported: {sorted(failed) or 'nothing'}")
             finally:
                 # GUARD 3 -- restore from the copy and PROVE it.
-                shutil.copyfile(keep, path)
-                if sha(path) != before:
-                    restore_problems.append(rel)
+                #
+                # THE COPY ITSELF CAN FAIL, and until it was allowed to, that killed the run.
+                # `shutil.copyfile` raises EINVAL on Windows when another process holds the
+                # file -- a second suite run, an editor, a live `claude` session with
+                # --add-dir on this tree. An exception raised HERE escapes the finally and
+                # ends the process before the hash verification below, before the remaining
+                # files are put back, and before the report that would name what is broken.
+                # What the operator gets is a traceback naming no remedy, and what the tree
+                # gets is a mutated file.
+                #
+                # That is the worst shape this harness can fail in. The mutation that was left
+                # behind the one time it happened was to a constant the suite reads, so the
+                # weakened check went on passing: a green suite over a tree nobody had
+                # restored. So a failed restore is RECORDED rather than raised, and the run
+                # stops rather than mutating further on top of a file it could not put back.
+                problem = restore(keep, path, before)
+                if problem:
+                    restore_problems.append((rel, keep, problem))
+                    aborted = True
 
             results.append((label, detail, ok))
+            if aborted:
+                print(f"\nABORTED after {label!r}: {rel} could not be restored, and mutating "
+                      f"further would compound it.")
+                break
 
         print()
         print("=" * 100)
@@ -164,7 +217,15 @@ def main():
         # GUARD 2 -- a check that fired but matched no expectation is almost always a rename,
         # and it makes a working check report as a missed one.
         expected = {m[4] for m in mutants}
-        orphans = {c for c in seen_failures if not any(e in c for e in expected)}
+        # One check fails in EVERY round by construction and is not an orphan: applying any
+        # mutant destroys that mutant's own anchor text, so the anchor sweep is one above its
+        # ceiling for the duration. Filtered here rather than tolerated in the check itself --
+        # a `+1` allowance there cannot tell `broke its own anchor` from `broke somebody
+        # else's`, and the second is what the check is for.
+        inevitable = ("every mutant anchor resolves",)
+        orphans = {c for c in seen_failures
+                   if not any(e in c for e in expected)
+                   and not any(i in c for i in inevitable)}
         if orphans:
             print("\nWARNING: these checks failed but matched no mutant's expectation. If one "
                   "was renamed, a MISSED above belongs to a check that actually fired:")
@@ -172,11 +233,12 @@ def main():
                 print(f"  {o}")
 
         if restore_problems:
-            print("\nRESTORE INCOMPLETE -- these do not match their pre-mutation bytes:")
-            for r in restore_problems:
-                print(f"  {r}")
-            print("Recover them from the stash before doing anything else:")
-            print(f"  {stash}")
+            print("\nRESTORE INCOMPLETE -- the working tree is NOT as this run found it:")
+            for rel, keep, why in restore_problems:
+                print(f"  {rel}\n      {why}\n      recover with: copy \"{keep}\" \"{rel}\"")
+            print("\nThe stash is kept for exactly this. Do not run anything else against this "
+                  "tree until every line above is resolved -- a mutation left in place can be a "
+                  "WEAKENED CHECK, which the suite then passes.")
             return 2
 
         print("every file restored byte-for-byte (verified by hash, not assumed)")
