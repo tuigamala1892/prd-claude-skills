@@ -9853,35 +9853,70 @@ def _():
 # ------------------------------------------------------------------- behavioural
 
 def behaviour_checks():
-    """Read-only: confirm the plugin registers everything on disk. Needs `claude`."""
-    expected_skills = {n for n, _p in skill_files()}
-    expected_agents = {n for n, _p in agent_files()}
-    expected_cmds = {n for n, _p in command_files()}
+    """Read-only: confirm the plugin registers everything on disk, and nothing it does not.
+
+    THIS USED TO ASK A MODEL, and the model was the whole problem. The prompt listed every
+    skill, agent and command by name and asked for `NAME = PRESENT` or `NAME = ABSENT` per line;
+    the reply was regex-parsed. When the model dropped a line -- which it did on roughly two runs
+    in three -- the check reported `on disk but not registered by the plugin`, which is a plugin
+    defect that had not happened. Neither colour meant anything: a red said the list came back
+    incomplete, and a green said it happened to come back complete. A decoy name guarded against
+    the answer being an echo of the question, which was a real failure mode and not this one.
+
+    `claude plugin details` reports the loader's own component inventory. Measured: byte-identical
+    across three consecutive runs, and 0.6s against roughly a minute for the model round-trip.
+
+    BOTH DIRECTIONS, which the old shape could not do. Asking `is NAME present` can only find
+    things missing from the plugin. An inventory can also be compared the other way -- a name the
+    plugin registers that is not on disk -- and that is the half that catches a stale install or
+    a component resolved from somewhere other than this checkout.
+
+    Commands are folded into the inventory's `Skills` line, so the comparison is over the union
+    rather than per-kind: `crd` is both a skill and a command and appears twice there.
+    """
+    expected = ({n for n, _p in skill_files()} | {n for n, _p in agent_files()}
+                | {n for n, _p in command_files()})
     plugin = json.load(open(os.path.join(REPO, ".claude-plugin", "plugin.json"),
                             encoding="utf-8"))["name"]
 
-    names = sorted(expected_skills | expected_agents | expected_cmds)
-    prompt = ("No tools, no preamble. Some names below are fake - be truthful. For each "
-              "line output \"NAME = PRESENT\" or \"NAME = ABSENT\" according to your real "
-              "available skills, agents and commands.\n"
-              + "\n".join(f"{plugin}:{n}" for n in names)
-              + f"\n{plugin}:zzz-not-a-real-entry")
-
     proc = subprocess.run(
-        ["claude", "-p", prompt, "--model", "sonnet", "--plugin-dir", REPO],
-        capture_output=True, text=True, timeout=300, encoding="utf-8", errors="replace")
+        ["claude", "--plugin-dir", REPO, "plugin", "details", plugin],
+        capture_output=True, text=True, timeout=180, encoding="utf-8", errors="replace")
     out = proc.stdout or ""
 
-    present = {m.group(1) for m in
-               re.finditer(rf"{re.escape(plugin)}:([A-Za-z0-9_-]+)\s*=\s*PRESENT", out, re.I)}
-    # The decoy proves the answer is a real lookup rather than an echo of the question.
-    assert "zzz-not-a-real-entry" not in present, (
-        "the decoy name reported PRESENT, so this answer is an echo, not a lookup:\n" + out[:500])
+    # Both the exit code and the header, because they fail differently. `plugin details` exits 1
+    # when it cannot find the plugin -- measured, after a first reading of `it exits 0 either
+    # way` turned out to be `head`'s exit code arriving through a pipe. The header is the
+    # separate claim that what came back is an INVENTORY rather than some other success, and it
+    # is what the parsing below depends on: any zero-exit output without it parses as an empty
+    # inventory, and the failure then reads as `everything is missing`.
+    assert proc.returncode == 0, (
+        f"`claude plugin details {plugin}` exited {proc.returncode}:\n"
+        f"{out[:400]}\n{proc.stderr[:400]}")
+    assert "Component inventory" in out, (
+        f"`claude plugin details {plugin}` succeeded and produced no inventory, so the "
+        f"comparison below would be against nothing:\n{out[:400]}")
 
-    missing = sorted((expected_skills | expected_agents | expected_cmds) - present)
+    registered = set()
+    for kind in ("Skills", "Agents"):
+        m = re.search(rf"^\s*{kind} \(\d+\)\s+(.*)$", out, re.M)
+        assert m, f"the inventory has no {kind} line:\n{out[:600]}"
+        registered |= {n.strip() for n in m.group(1).split(",") if n.strip()}
+
+    missing = sorted(expected - registered)
     assert not missing, ("on disk but not registered by the plugin:\n    "
-                         + "\n    ".join(missing) + f"\n\nraw:\n{out[:800]}")
-    return len(present)
+                         + "\n    ".join(missing) + f"\n\ninventory:\n{out[:800]}")
+
+    # The other direction. A name the plugin registers and the checkout does not have means the
+    # inventory came from somewhere other than this tree -- an installed copy, a stale marketplace
+    # entry -- and every other assertion in this suite is then about files nobody is running.
+    unknown = sorted(registered - expected)
+    assert not unknown, (
+        "registered by the plugin and not on disk:\n    " + "\n    ".join(unknown)
+        + "\n\nThe inventory is not describing this checkout, so nothing else this suite "
+          "asserts about these files describes what runs")
+
+    return len(registered)
 
 
 @check("the review the gate requires has a producer on the authoring path -- by running it",
