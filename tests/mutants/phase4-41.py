@@ -113,8 +113,9 @@ MUTANTS = [
     # This one removes the phrase, which is what the check actually asserts is there.
     ("the skill loses the instruction to stop on an unplaceable file",
      "skills/migrate/SKILL.md",
-     "| 2 | one or more files matched no precondition, or could not be decoded as UTF-8 | "
-     "**stop.** Report each by name |",
+     "| 2 | a file matched no precondition, could not be decoded as UTF-8, or is **missing "
+     "something only a person can write** | **stop.** Report each by name, and say which of the "
+     "three it is |",
      "| 2 | some files were skipped | carry on with the rest |",
      "the migration guide has an executor"),
 ]
