@@ -88,8 +88,8 @@ MUTANTS = [
 
     ("PARTIAL stops being reported, so a half-done tree reads as done",
      MIGRATE,
-     '    return text, applied, problems, ("PARTIAL" if partial else "MIGRATED")',
-     '    return text, applied, problems, "MIGRATED"',
+     '    return text, report, problems, ("PARTIAL" if partial else "MIGRATED")',
+     '    return text, report, problems, "MIGRATED"',
      "a migration it may not finish does the half it can"),
 
     ("--check accepts a PARTIAL tree",

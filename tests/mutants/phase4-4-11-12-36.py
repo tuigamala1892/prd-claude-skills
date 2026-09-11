@@ -51,8 +51,8 @@ MUTANTS = [
 
     ("a refused file is written anyway instead of left alone",
      MIGRATE,
-     '                failures.append(f"{rel}: " + "; ".join(broken) + " -- NOT WRITTEN")',
-     '                failures.append(f"{rel}: " + "; ".join(broken) + " -- rewritten")',
+     '                    + " -- NOT WRITTEN. A person supplies this; the migration cannot")',
+     '                    + " -- rewritten")',
      "a feature that will not be built says why"),
 
     ("the guide stops recording that reclassification derives a ceiling",
