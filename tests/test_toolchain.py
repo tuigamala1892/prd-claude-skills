@@ -4969,6 +4969,90 @@ def _():
         f"result is not about this run:\n  {validator.strip()}")
 
 
+# The number of mutant anchors that do not currently resolve. A CEILING, not a target: the
+# check below fails if it grows AND if it shrinks without this number coming down with it, so
+# the backlog is visible and can only move one way. Measured 2026-09-11 against a worktree at
+# the session's starting commit and again after: 29 before, 21 after eight repairs and three
+# regressions.
+STALE_ANCHOR_CEILING = 21
+
+
+def _mutant_anchors():
+    """Every (file, label, path, resolves) across tests/mutants, by loading each MUTANTS list."""
+    import importlib.util
+
+    out = []
+    directory = os.path.join(REPO, "tests", "mutants")
+    for fn in sorted(os.listdir(directory)):
+        if not fn.endswith(".py"):
+            continue
+        spec = importlib.util.spec_from_file_location("anchors_" + fn[:-3].replace("-", "_"),
+                                                      os.path.join(directory, fn))
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:                       # a mutants file that will not load is worse
+            out.append((fn, f"<file does not import: {e}>", "", 0))
+            continue
+        for label, path, old, _new, _check in getattr(module, "MUTANTS", []):
+            try:
+                body = open(os.path.join(REPO, path), encoding="utf-8", errors="replace").read()
+                count = body.count(old)
+            except OSError:
+                count = 0
+            out.append((fn, label, path, count))
+    return out
+
+
+@check("every mutant anchor resolves, so `MISSED` has one meaning -- by resolving them all",
+       finding="P28")
+def _():
+    """`MISSED` has two meanings and only one of them is about the check.
+
+    `mutate.py` finds its anchor by exact text match. When the anchor no longer resolves, the
+    mutant is never applied -- and the harness reports that as MISSED, which is indistinguishable
+    in the output from a check that ran and failed to catch a real defect. The score comes back
+    wrong in the direction that looks like rigour, and nothing anywhere says so.
+
+    Anchors go stale because they are a dependency on somebody else's source text, and it is the
+    only kind this repository keeps that nothing validates. `phase4-41.py` had nine inert mutants
+    through every round anybody ran, against a shape `migrate.py` had stopped having. Three more
+    were broken in the session that repaired those nine -- including one repaired that same
+    session and broken again by the next change to the same line, by the person who had just
+    written a docstring about how this happens. Remembering is not a mechanism.
+
+    **A CEILING rather than a target.** Twenty-one anchors do not resolve today and repairing
+    them is its own piece of work; a check that failed until then would be red for weeks and
+    teach everyone to ignore it, which is the failure mode the suite's own header names. So this
+    fails when the count GROWS -- catching the regression that has now happened three times --
+    and equally when it SHRINKS without the ceiling coming down, so a repair cannot quietly
+    restore slack for the next person to spend. Same discipline as `expect_fail`, one number
+    along.
+    """
+    anchors = _mutant_anchors()
+    assert len(anchors) > 300, (
+        f"only {len(anchors)} mutants were loaded, so this check is not reading the mutant files "
+        f"it claims to sweep")
+
+    stale = [(fn, label, path, n) for fn, label, path, n in anchors if n != 1]
+
+    if len(stale) > STALE_ANCHOR_CEILING:
+        listing = "\n    ".join(
+            f"{fn}: {label}  (resolves {n} times in {path})"
+            for fn, label, path, n in stale)
+        raise AssertionError(
+            f"{len(stale)} mutant anchors do not resolve, and the ceiling is "
+            f"{STALE_ANCHOR_CEILING}. An anchor that does not resolve is a mutant that is never "
+            f"applied, and `mutate.py` reports that as MISSED -- identical in its output to a "
+            f"check that ran and caught nothing. Fix the anchor against the current source, or "
+            f"delete the mutant if what it modelled is gone:\n    " + listing)
+
+    assert len(stale) == STALE_ANCHOR_CEILING, (
+        f"{len(stale)} mutant anchors do not resolve and the ceiling is still "
+        f"{STALE_ANCHOR_CEILING}. Repairing anchors is the point -- lower STALE_ANCHOR_CEILING "
+        f"to {len(stale)} so the slack cannot be spent by the next change that breaks one")
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule
