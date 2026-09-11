@@ -4868,6 +4868,107 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("every caller a row names actually runs its owner -- the other direction of the registry",
+       finding="P24")
+def _():
+    """checks.md was enforced one way, and a registry checked one way drifts the other.
+
+    The existing check walks the repository and fails when a file runs an owning script without
+    appearing in its `Invoked by` column -- reality to registry. Nothing walked the column and
+    asked whether the caller it names still does the thing. So a row could outlive the call it
+    describes: delete the command from a skill and the table goes on claiming the assertion
+    reaches there, which is the same false claim the first direction exists to prevent, arriving
+    from the other side.
+
+    That is not hypothetical for this row. `/migrate` was added as a caller of
+    `check-artefacts.py` precisely because the validation was NOT happening there, and the whole
+    value of the entry is that it keeps happening. A row asserting a call nobody makes is how a
+    reader concludes an artefact was validated when it was not.
+
+    Measured before it was written: all 31 rows with a script owner already pass, so this adds a
+    guard rather than a backlog.
+
+    **Mention, not invocation, deliberately.** Whether a markdown file `runs` a script is not
+    decidable from its text -- a skill names a command in a fenced block, a reference cites one
+    in prose, and both are real callers by this table's definition (`a skill, a command, a
+    reference, or another script`). Requiring the basename to appear is the strongest claim that
+    is true of all four, and it is exactly the claim that fails when somebody deletes the call.
+    """
+    _path, _text, rows = _checks_table()
+    assert rows, "checks.md yielded no rows"
+
+    broken, checked = [], 0
+    for assertion, owner, callers, _item in rows:
+        owner = owner.strip("`")
+        if not owner.endswith((".py", ".sh")):
+            continue
+        for caller in re.findall(r"`([^`]+\.(?:md|py|sh))`", callers):
+            path = os.path.join(REPO, caller)
+            if not os.path.isfile(path):
+                broken.append(f"{caller} is named as a caller of {owner} and does not exist")
+                continue
+            body = open(path, encoding="utf-8", errors="replace").read()
+            if os.path.basename(owner) not in body:
+                broken.append(f"{caller} is named as a caller of {owner} and never mentions it")
+            checked += 1
+
+    assert checked > 20, (
+        f"only {checked} caller/owner pairs were examined, so this check is not reaching the "
+        f"table it claims to read")
+    assert not broken, (
+        "checks.md claims a caller that does not call:\n    " + "\n    ".join(broken)
+        + "\n\nA row is the claim that the assertion REACHES those files. One that names a caller "
+          "which no longer runs the script is how a reader concludes an artefact was validated "
+          "when nothing validated it")
+
+
+@check("/migrate's Phase 4 RUNS the validator rather than naming it -- by parsing the phase",
+       finding="P24")
+def _():
+    """The registry's reverse check asks whether a caller mentions its owner, and mention is the
+    strongest claim that is true of all four kinds of caller it recognises. For this row it is
+    not enough: Phase 4 both runs `check-artefacts.py` and talks about it, so deleting the
+    command leaves the basename sitting in the prose and the registry satisfied. Count the sites
+    -- two mention it, one runs it, and only one of those is the assertion.
+
+    So this is scoped to the phase and keyed on an INVOCATION: a `python` line naming the script
+    under the plugin root. That is what a skill executing a step looks like, and it is what stops
+    existing when somebody deletes the step.
+
+    Both invocations are required, because the phase makes two different claims and dropping
+    either leaves a Phase 4 that still looks complete. `--check` says the migration finished;
+    the validator says the artefacts are the shape their schema describes. An artefact that
+    arrived malformed satisfies the first and fails the second, which is the entire reason the
+    second was added here.
+    """
+    path = os.path.join(SKILLS, "migrate", "SKILL.md")
+    body = open(path, encoding="utf-8").read()
+
+    assert "## Phase 4" in body, "skills/migrate/SKILL.md has no Phase 4 to read"
+    phase = body[body.index("## Phase 4"):]
+
+    for script, why in (
+            ("migrate.py",
+             "`--check` is what separates `the migration ran` from `the migration finished`"),
+            ("check-artefacts.py",
+             "an artefact that arrived malformed satisfies every postcondition the rules assert, "
+             "and nothing else on this path ever looks at whether it is valid")):
+        invocations = [ln for ln in phase.splitlines()
+                       if ln.strip().startswith("python ") and script in ln]
+        assert invocations, (
+            f"Phase 4 never RUNS {script}. It may still name it -- this check exists because "
+            f"the prose does -- but a phase that mentions a script and does not invoke it is a "
+            f"step nobody takes: {why}")
+
+    # The validator runs over the same tree the migration touched. A phase that validated some
+    # other path would satisfy the assertion above and assert nothing about this migration.
+    validator = [ln for ln in phase.splitlines()
+                 if ln.strip().startswith("python ") and "check-artefacts.py" in ln][0]
+    assert "{path}" in validator, (
+        f"Phase 4 runs the validator over something other than the path it migrated, so its "
+        f"result is not about this run:\n  {validator.strip()}")
+
+
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
 def _():
     """Item 41: the guide is 'a specification with a consumer', so it is held to the same rule

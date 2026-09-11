@@ -121,12 +121,27 @@ not** — everything else is reconstructable from the diff.
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py {path} --to {target} --check
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/check-artefacts.py {path}
 ```
 
 `--check` writes nothing and asserts the postconditions against the tree as it now stands. Report
 its exit code. *"The migration ran"* and *"the migration finished"* are different claims, and
 this is the only one of the two you are in a position to make.
 
-Report, in this order: files migrated, files already current, **files escalated and why**, and
-the `--check` result. The escalations are the half a reader most needs, so they are never the
-half that gets summarised away.
+**`check-artefacts.py` answers the third question, and it is not the same as either.** `--check`
+asserts the postconditions of the rules that ran — *no `<status>` in `<meta>`*, *every criterion
+carries a `priority`*. That is narrower than *the artefact is the shape its schema describes*,
+and the gap between them is where an artefact that arrived malformed passes straight through: a
+migration applies its rules correctly to a file that was already wrong, every postcondition
+holds, and nothing on this path ever says so. The validator owns that assertion
+([`schema/checks.md`](../../schema/checks.md)), and until it was called here the only thing
+standing between a malformed corpus and a task set was somebody remembering to run it — which is
+the hand-maintenance this plan removes everywhere else it finds it.
+
+**Report the two exit codes separately and never merge them.** *The migration did not finish* and
+*the artefacts are not valid for their schema* are different problems with different fixes, and a
+run that reports one number for both has thrown away which one it met.
+
+Report, in this order: files migrated, files already current, **files escalated and why**, the
+`--check` result, and the validator's. The escalations are the half a reader most needs, so they
+are never the half that gets summarised away.
