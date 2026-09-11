@@ -25,11 +25,11 @@ MUTANTS = [
      "cat {target_dir}/architecture.md > {tasks_dir}/architecture.json",
      "the declared layer graph reaches plan-layers"),
 
-    ("Phase 3 stops passing architecture.json to plan-layers",
-     "skills/breakdown/SKILL.md",
-     "**and, when it exists,\n`{tasks_dir}/architecture.json`**",
-     "**and nothing else**",
-     "the declared layer graph reaches plan-layers"),
+    ('Phase 3 stops passing architecture.json to plan-layers',
+     'skills/breakdown/SKILL.md',
+     "**and, when it exists, `{tasks_dir}/architecture.json`** — the validated form of the project's",
+     '**and nothing else**',
+     'the layer graph plan-layers documents is the one the validator emits'),
 
     ("plan-layers stops naming the field that carries the graph",
      "skills/breakdown-plan-layers/SKILL.md",

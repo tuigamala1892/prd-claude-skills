@@ -47,13 +47,11 @@ MUTANTS = [
      "| (removed) | — |",
      "a criterion is one EARS sentence"),
 
-    ("the two priority levels collapse into one vocabulary",
-     CORE,
-     "| Requirement | `priority=` on each `<criterion>` | `P0` · `P1` · `P2` | which criteria "
-     "within them are built |",
-     "| Requirement | `priority=` on each `<criterion>` | `must-have` · `should-have` · "
-     "`could-have` | which criteria within them are built |",
-     "the two priority levels stay in two vocabularies"),
+    ('the two priority levels collapse into one vocabulary',
+     'schema/core.md',
+     '| Requirement | `priority=` on each `<criterion>`, both paths | `P0` · `P1` · `P2` | which criteria within them are built |',
+     '| Requirement | `priority=` on each `<criterion>`, both paths | `must-have` · `should-have` · `could-have` | which criteria within them are built |',
+     'the two priority levels stay in two vocabularies'),
 
     ("the filter stops saying which of the two runs first",
      "skills/breakdown/SKILL.md",

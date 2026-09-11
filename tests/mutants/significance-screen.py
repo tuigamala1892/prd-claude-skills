@@ -38,8 +38,8 @@ MUTANTS = [
 
     ("the criterion-priority spread stops being reported",
      "skills/breakdown/scripts/check-definition.py",
-     '          f"{len(edges)} one-way edges to triage; criterion priority: {spread}")',
-     '          f"{len(edges)} one-way edges to triage")',
+     '          f"{applied - len(reviews)} of {applied} reviewed, {len(edges)} one-way edges to "\n          f"triage; criterion priority: {spread}")',
+     '          f"{applied - len(reviews)} of {applied} reviewed, {len(edges)} one-way edges to "\n          f"triage")',
      "each mechanical test of the well-defined bar fires"),
 
     ("the spread is computed once and never updated, so it stops tracking the file",

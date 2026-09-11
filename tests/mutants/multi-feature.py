@@ -42,11 +42,20 @@ MUTANTS = [
      '        slug = (el.get("slug") or "").strip()',
      "a task names every feature it descends from"),
 
-    ("the manifest shape changes and its version does not",
+    # The version is moved UP, and it used to be moved down. Lowering it is not guarded, and
+    # that is deliberate rather than a gap: the check owning these two constants asserts
+    # `reader minor >= producer minor`, which guards the producer OUTRUNNING the reader -- the
+    # direction that makes every manifest warn against a reader in its own toolchain. Lowering
+    # the producer makes that assertion MORE true, so the old mutant modelled a drift nothing
+    # was ever written to catch, and survived for the right reason.
+    #
+    # Raising it past the reader is the drift that actually happened: the producer moved to 1.3
+    # at item 65 and the reader stayed at 1.2. That is what this models now.
+    ("the producer's manifest version outruns the reader's",
      "skills/breakdown/scripts/build-manifest.py",
-     'MANIFEST_SCHEMA_VERSION = "1.3"',
-     'MANIFEST_SCHEMA_VERSION = "1.2"',
-     "a task names every feature it descends from"),
+     'MANIFEST_SCHEMA_VERSION = "1.4"',
+     'MANIFEST_SCHEMA_VERSION = "1.9"',
+     "the manifest carries what /execute reads"),
 
     ("the reviewable summary shows one feature for a task that walks three",
      "skills/breakdown/scripts/build-manifest.py",

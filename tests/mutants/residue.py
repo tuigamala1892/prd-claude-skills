@@ -89,11 +89,11 @@ MUTANTS = [
      "what-next.md records what wrote it, once, and something reads it"),
 
     # ---------------------------------------------------------------- item 38
-    ("the switch gates the CHECKING rather than the STOPPING, so `off` reports nothing",
-     "skills/breakdown/scripts/check-gate.py",
-     "    gaps, gap_err = [], None\n    if os.path.isdir(args.document):",
-     "    gaps, gap_err = [], None\n    if track[\"enabled\"] and os.path.isdir(args.document):",
-     "the gate asserts three things by name"),
+    ('the switch gates the CHECKING rather than the STOPPING, so `off` reports nothing',
+     'skills/breakdown/scripts/check-gate.py',
+     '    gaps, gap_err = blocking_gaps(args.document, built)',
+     '    gaps, gap_err = ([], None) if not track["enabled"] else blocking_gaps(args.document, built)',
+     'the gate asserts three things by name'),
 
     ("a `decision` gap stops blocking, so an undecided question builds in silence",
      "skills/breakdown/scripts/check-gate.py",

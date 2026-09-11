@@ -74,9 +74,9 @@ MUTANTS = [
      'file=sys.stderr)\n        return 0',
      "declines work it was told not to do"),
 
-    ("/breakdown stops running the selector and goes back to building everything",
-     "skills/breakdown/SKILL.md",
-     "python {skill_dir}/scripts/select-features.py {prd_dir} --priority {threshold}",
-     "# analyse every feature the index names",
-     "declines work it was told not to do"),
+    ('/breakdown stops running the selector and goes back to building everything',
+     'skills/breakdown/SKILL.md',
+     'python {skill_dir}/scripts/select-features.py {document} --priority {threshold}',
+     '# analyse every feature the index names',
+     'declines work it was told not to do'),
 ]

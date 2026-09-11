@@ -14,15 +14,15 @@ CORE = "schema/core.md"
 MUTANTS = [
     ("the core's version drifts from the fixture registry",
      CORE,
-     '<schema-core version="schema-1"/>',
-     '<schema-core version="schema-2"/>',
+     '<schema-core version="schema-6"/>',
+     '<schema-core version="schema-5"/>',
      "the schema core is one definition"),
 
-    ("a link out of the core dangles",
-     CORE,
-     "| [`prd-format.md`](prd-format.md) | identity, criteria, status, priority |",
-     "| [`prd-format.md`](prd-formats.md) | identity, criteria, status, priority |",
-     "the schema core is one definition"),
+    ('a link out of the core dangles',
+     'schema/core.md',
+     '| [`prd-format.md`](prd-format.md) | identity, criteria, status, priority, significance |',
+     '| [`prd-format.md`](prd-formats.md) | identity, criteria, status, priority, significance |',
+     'the schema core is one definition'),
 
     ("a directly-citing document stops citing the core",
      "skills/breakdown/references/task-format-spec.md",

@@ -50,13 +50,11 @@ MUTANTS = [
      '    if False:',
      "every artefact is the shape its own schema version describes"),
 
-    ("the pre-rename spelling is REFUSED, stranding every artefact written before item 45",
-     "schema/scripts/check-artefacts.py",
-     '            if at_least(version, "schema-2"):\n'
-     '                warnings.append(f"<meta> still spells it <status>{legacy}</status>; "',
-     '            if at_least(version, "schema-2"):\n'
-     '                problems.append(f"<meta> still spells it <status>{legacy}</status>; "',
-     "every artefact is the shape its own schema version describes"),
+    ('the pre-rename spelling is REFUSED, stranding every artefact written before item 45',
+     'schema/scripts/check-artefacts.py',
+     '            if at_least(current_schema(), "schema-2"):\n                warnings.append(f"<meta> still spells it <status>{legacy}</status>; "\n                                f"<definition> is the name since item 45. Accepted on read")',
+     '            if at_least(current_schema(), "schema-2"):\n                problems.append(f"<meta> still spells it <status>{legacy}</status>; "\n                                f"<definition> is the name since item 45. Accepted on read")',
+     'every artefact is the shape its own schema version describes'),
 
     ("/breakdown stops running the artefact check on its input",
      "skills/breakdown/SKILL.md",

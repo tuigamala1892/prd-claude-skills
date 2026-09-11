@@ -32,18 +32,18 @@ MUTANTS = [
      "**defined** | `tbd`, `partly-specified`, `defined` |",
      "three status vocabularies, three distinct names"),
 
-    ("the rename reaches the prose but not the template",
-     "schema/prd-format.md",
-     "    <definition>defined|tbd|in-progress</definition>",
-     "    <status>defined|tbd|in-progress</status>",
-     "three status vocabularies, three distinct names"),
+    ('the rename reaches the prose but not the template',
+     'schema/prd-format.md',
+     '    <definition>tbd|in-progress|defined|excluded|superseded</definition>',
+     '    <status>tbd|in-progress|defined|excluded|superseded</status>',
+     'three status vocabularies, three distinct names'),
 
     # ONE of four entries, deliberately. The first version of this assertion used any() and
     # the other three satisfied it while this one carried the old attribute.
     ("one PROJECT.md entry of four keeps the old attribute",
      "skills/crd/references/project-format.md",
-     '  <feature id="auth" built="complete">',
-     '  <feature id="auth" status="complete">',
+     '<features>\n  <feature id="auth" built="complete">\n',
+     '<features>\n  <feature id="auth" status="complete">\n',
      "three status vocabularies, three distinct names"),
 
     ("the backward-read policy is dropped, so each reader decides for itself",
@@ -72,7 +72,7 @@ MUTANTS = [
 
     ("the core's declared version drifts from the registry after the bump",
      CORE,
-     '<schema-core version="schema-2"/>',
+     '<schema-core version="schema-6"/>',
      '<schema-core version="schema-1"/>',
      "the schema core is one definition"),
 ]
