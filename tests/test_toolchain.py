@@ -5036,6 +5036,14 @@ def _():
 
     stale = [(fn, label, path, n) for fn, label, path, n in anchors if n != 1]
 
+    # NO ALLOWANCE FOR A ROUND IN PROGRESS, and that was tried. Applying any mutant destroys
+    # that mutant's own anchor, so the count sits one above the ceiling for the duration of
+    # every round and this check lands in guard 2's orphan list. Tolerating `+1` cleans that
+    # up -- and blunts the check, because `the mutant broke its own anchor` and `the mutant
+    # broke somebody else's` differ by exactly one and cannot be told apart by a count. The
+    # second is the regression that happened three times in one session and is the whole
+    # reason this exists. So the noise is handled where it belongs, in mutate.py's orphan
+    # report, and the assertion keeps its teeth.
     if len(stale) > STALE_ANCHOR_CEILING:
         listing = "\n    ".join(
             f"{fn}: {label}  (resolves {n} times in {path})"
@@ -5047,10 +5055,96 @@ def _():
             f"check that ran and caught nothing. Fix the anchor against the current source, or "
             f"delete the mutant if what it modelled is gone:\n    " + listing)
 
-    assert len(stale) == STALE_ANCHOR_CEILING, (
+    assert len(stale) >= STALE_ANCHOR_CEILING, (
         f"{len(stale)} mutant anchors do not resolve and the ceiling is still "
         f"{STALE_ANCHOR_CEILING}. Repairing anchors is the point -- lower STALE_ANCHOR_CEILING "
         f"to {len(stale)} so the slack cannot be spent by the next change that breaks one")
+
+
+@check("a failed restore is reported, not raised -- by failing one", finding="P28")
+def _():
+    """`mutate.py`'s third guard, on the path where it used to stop being a guard.
+
+    The restore runs in a `finally` and verifies itself by hash, which is right. What it could
+    not survive was the copy ITSELF failing: `shutil.copyfile` raises EINVAL on Windows while
+    another process holds the file, and an exception raised inside that `finally` ends the run
+    before the hash verification, before the remaining files are put back, and before the report
+    that would name what is broken. The operator gets a traceback naming no remedy.
+
+    **That is the worst shape this harness can fail in, and it is not hypothetical.** It happened
+    once, to a run whose mutation was a ceiling constant the suite reads -- so the check left
+    weakened went on passing, and the only evidence was `MM` in `git status`. A green suite over
+    a tree nobody had restored is precisely the false green this whole apparatus exists to
+    prevent, arriving through the apparatus itself.
+
+    The three outcomes are exercised rather than asserted about: a clean restore, a copy that
+    cannot happen, and a copy that happens and produces the wrong bytes. The middle one is the
+    regression -- what matters is that it RETURNS a sentence rather than raising, because the
+    caller can only record what it is handed.
+    """
+    import hashlib
+    import shutil
+    import sys as _sys
+    import tempfile
+
+    tests_dir = os.path.join(REPO, "tests")
+    if tests_dir not in _sys.path:
+        _sys.path.insert(0, tests_dir)
+    import mutate
+
+    assert hasattr(mutate, "restore"), (
+        "mutate.py has no `restore` function. The restore lived inline in the loop and could not "
+        "be exercised, which is how its failure path went unnoticed until it fired")
+
+    root = tempfile.mkdtemp(prefix="prd-restore-")
+    try:
+        target = os.path.join(root, "target.txt")
+        keep = os.path.join(root, "keep.txt")
+        open(target, "w", encoding="utf-8", newline="\n").write("original\n")
+        shutil.copyfile(target, keep)
+        before = mutate.sha(target)
+
+        # 1. The ordinary case.
+        open(target, "w", encoding="utf-8", newline="\n").write("MUTATED\n")
+        assert mutate.restore(keep, target, before) is None, (
+            "a restore that works reported a problem")
+        assert open(target, encoding="utf-8").read() == "original\n", (
+            "the file was not actually put back")
+
+        # 2. The regression: the copy cannot happen. It must come back as a SENTENCE.
+        open(target, "w", encoding="utf-8", newline="\n").write("MUTATED\n")
+        os.remove(keep)
+        try:
+            problem = mutate.restore(keep, target, before, attempts=2, pause=0)
+        except Exception as e:                            # noqa: BLE001 -- the whole point
+            raise AssertionError(
+                f"restore RAISED {type(e).__name__} instead of reporting. Raised from the "
+                f"`finally` it is called in, this ends the run with a traceback, leaves the "
+                f"file mutated, and never reaches the report that would name it") from None
+        assert problem and isinstance(problem, str), (
+            f"a restore that could not happen returned {problem!r}. The caller records what it "
+            f"is handed, so a falsy answer here is a failure that reports as a success")
+
+        # And the caller has to be able to act on it: the message must say what went wrong.
+        assert "copy failed" in problem, (
+            f"the problem does not say the copy failed, so the operator cannot tell it from a "
+            f"content mismatch: {problem!r}")
+
+        # 3. The copy happens and the bytes are wrong -- the case the hash guard was written for.
+        open(keep, "w", encoding="utf-8", newline="\n").write("SOMETHING ELSE\n")
+        open(target, "w", encoding="utf-8", newline="\n").write("MUTATED\n")
+        problem = mutate.restore(keep, target, before, attempts=1, pause=0)
+        assert problem and "bytes" in problem, (
+            f"a restore that produced the wrong bytes was accepted: {problem!r}. This is the "
+            f"guard that says `verified by hash, never assumed`")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # The caller must STOP rather than mutate further on top of a file it could not put back.
+    body = open(os.path.join(REPO, "tests", "mutate.py"), encoding="utf-8").read()
+    assert "aborted = True" in body and "if aborted:" in body, (
+        "a failed restore no longer stops the run. Continuing mutates on top of a file that was "
+        "not put back, so every result after it is measured against a tree nobody understands")
 
 
 @check("the migration guide has an executor, and the executor cites the guide", finding="P24")
