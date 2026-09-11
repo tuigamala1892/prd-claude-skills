@@ -103,7 +103,7 @@ here the same day.
 | A rename finishes across every reference, or rolls back | `rename-feature.py` | `commands/prd.md` | prd-only | Renames a feature across an index, a feature file and every citation. A CRD is one document and its slug is its filename | 42 |
 | An artefact moves exactly one schema version forward, or escalates | `migrate.py` | `skills/migrate/SKILL.md` · `agents/schema-migrator.md` · `schema/migration.md` | both | — | 41 |
 | `what-next.md` is derived from the PRD, never hand-maintained, and stamped once | `build-what-next.py` | `schema/prd-format.md` · `commands/prd.md` | prd-only | `parity.md` settles deferral beyond a single document as prd-only: a CRD is one document about one change, and its deferral belongs in its own `<gaps>` | 11, 12, 24 |
-| Every artefact is the shape its schema version describes | `check-artefacts.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` | both | — | 22 |
+| Every artefact is the shape its schema version describes | `check-artefacts.py` | `commands/prd.md` · `skills/breakdown/SKILL.md` · `skills/migrate/SKILL.md` | both | — | 22 |
 | A task file is the one this run was dispatched with, or the run stops | `task-integrity.py` | `skills/execute/SKILL.md` · `skills/execute-layer/SKILL.md` | n/a | Reads a task file against the ledger that dispatched it | 63, 67 |
 | Which layers this run executes, derived from the plan rather than recited | `resolve-layers.py` | `skills/execute/SKILL.md` | n/a | Reads the layer plan | 66 |
 | Every element the schema defines has a reader, or a recorded reason it has none | `check-readers.py` | `tests/test_toolchain.py` | n/a | Audits the schema's elements against their readers | 23 |
