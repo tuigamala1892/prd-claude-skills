@@ -4971,10 +4971,17 @@ def _():
 
 # The number of mutant anchors that do not currently resolve. A CEILING, not a target: the
 # check below fails if it grows AND if it shrinks without this number coming down with it, so
-# the backlog is visible and can only move one way. Measured 2026-09-11 against a worktree at
-# the session's starting commit and again after: 29 before, 21 after eight repairs and three
-# regressions.
-STALE_ANCHOR_CEILING = 21
+# the backlog is visible and can only move one way. It has only ever moved down -- 29 at the
+# start of the session that added this check, 21 once three regressions of its own were undone,
+# and 0 once every one of those was re-derived against current source and RUN to prove it still
+# bites. Re-anchoring text is not repair; a mutant that applies cleanly and changes nothing
+# interesting is the same inert file with a fresh coat on it.
+#
+# At zero this fires during every round, because applying any mutant destroys that mutant's own
+# anchor. That is expected and handled in mutate.py's orphan report, which names it inevitable
+# rather than pretending it did not fire. Guard 1 is unaffected: the baseline suite runs before
+# anything is applied, and sees zero.
+STALE_ANCHOR_CEILING = 0
 
 
 def _mutant_anchors():

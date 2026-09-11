@@ -41,17 +41,17 @@ MUTANTS = [
      "producer on the authoring path"),
 
     # ---------------------------------------------------------------- item 69
-    ("task-integrity.py loses the row it never had until this item",
-     "schema/checks.md",
-     "| A task file is the one this run was dispatched with, or the run stops | `task-integrity.py` | `skills/execute/SKILL.md` · `skills/execute-layer/SKILL.md` | 63, 67 |\n",
-     "",
-     "every file that runs an owning script"),
+    ('task-integrity.py loses the row it never had until this item',
+     'schema/checks.md',
+     '| A task file is the one this run was dispatched with, or the run stops | `task-integrity.py` | `skills/execute/SKILL.md` · `skills/execute-layer/SKILL.md` | n/a | Reads a task file against the ledger that dispatched it | 63, 67 |\n',
+     '',
+     'every file that runs an owning script'),
 
-    ("resolve-layers.py loses its row, so the layer refusal owns nothing",
-     "schema/checks.md",
-     "| Which layers this run executes, derived from the plan rather than recited | `resolve-layers.py` | `skills/execute/SKILL.md` | 66 |\n",
-     "",
-     "every file that runs an owning script"),
+    ('resolve-layers.py loses its row, so the layer refusal owns nothing',
+     'schema/checks.md',
+     '| Which layers this run executes, derived from the plan rather than recited | `resolve-layers.py` | `skills/execute/SKILL.md` | n/a | Reads the layer plan | 66 |\n',
+     '',
+     'every file that runs an owning script'),
 
     ("the CRD caller group 8b wired in is dropped from the column again",
      "schema/checks.md",

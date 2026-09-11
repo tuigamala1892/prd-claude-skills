@@ -31,11 +31,11 @@ MUTANTS = [
      "**Write a minimal `architecture.md`.**",
      "architecture.md has a producer"),
 
-    ("declining the phase is no longer recorded",
-     "commands/prd.md",
-     "**But record that the phase ran**, in `what-next.md`:",
-     "**Move on.**",
-     "architecture.md has a producer"),
+    ('declining the phase is no longer recorded',
+     'commands/prd.md',
+     '**But record that the phase ran**, in `what-next.md` — the `<step kind= status=>` shape defined',
+     '**Move on.**',
+     'architecture.md has a producer'),
 
     ("the blank-page interview returns for a repo that describes itself",
      "commands/prd.md",

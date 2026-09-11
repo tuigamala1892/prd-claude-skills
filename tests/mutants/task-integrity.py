@@ -43,15 +43,15 @@ MUTANTS = [
 
     ("the edit record goes into the ledger, where an entry with no commit reads as a lost task",
      "skills/execute/scripts/task-integrity.py",
-     '    edits = os.path.join(run_dir(args.project_path, args.slug), "task-edits.jsonl")',
-     '    edits = os.path.join(run_dir(args.project_path, args.slug), "ledger.jsonl")',
+     '    edits = os.path.join(run, "task-edits.jsonl")',
+     '    edits = os.path.join(run, "ledger.jsonl")',
      "a task file edited mid-run is a stop with a diff"),
 
-    ("a task file that appeared mid-run stops counting as an edit",
-     "skills/execute/scripts/task-integrity.py",
-     "    for rel in sorted(present - set(recorded)):\n        added.append(rel)",
-     "    pass",
-     "a task file edited mid-run is a stop with a diff"),
+    ('a task file that appeared mid-run stops counting as an edit',
+     'skills/execute/scripts/task-integrity.py',
+     '    added = sorted(present - set(recorded))',
+     '    added = []',
+     'a task file edited mid-run is a stop with a diff'),
 
     # ------------------------------------------------------------------ the wiring
     ("/execute stops taking the snapshot, so there is nothing to compare against",

@@ -15,21 +15,15 @@ MUTANTS = [
     # ------------------------------------------------------------------ items 16, 17
     ("the task format stops declaring <moscow>, so the tier has nowhere to travel",
      "skills/breakdown/references/task-format-spec.md",
-     "  <moscow>must-have</moscow>                          <!-- item 16: that feature's tier -->\n",
-     "",
+     '  <source-feature slug="save-link" moscow="must-have"',
+     '  <source-feature slug="save-link"',
      "a task names the feature and criteria it came from"),
 
-    ("<priority> is overloaded with MoSCoW, which is P3 exactly",
-     "skills/breakdown/references/task-format-spec.md",
-     "  <priority>1</priority>              <!-- Execution order within layer (1 = first) -->\n"
-     "  <estimated-files>2</estimated-files> <!-- Number of files to create/modify -->\n"
-     "  <cwd>packages/billing</cwd>         <!-- Optional; where commands run. See below -->\n\n"
-     "  <source-feature>",
-     "  <priority>must-have</priority>      <!-- Execution order within layer (1 = first) -->\n"
-     "  <estimated-files>2</estimated-files> <!-- Number of files to create/modify -->\n"
-     "  <cwd>packages/billing</cwd>         <!-- Optional; where commands run. See below -->\n\n"
-     "  <source-feature>",
-     "a task names the feature and criteria it came from"),
+    ('<priority> is overloaded with MoSCoW, which is P3 exactly',
+     'skills/breakdown/references/task-format-spec.md',
+     '  <priority>1</priority>              <!-- Execution order within layer (1 = first) -->',
+     '  <priority>must-have</priority>              <!-- Execution order within layer (1 = first) -->',
+     'a task names the feature and criteria it came from'),
 
     ("the criteria go back to being excerpted as prose, which is how P2 happens",
      "skills/breakdown/references/task-format-spec.md",
@@ -83,7 +77,7 @@ MUTANTS = [
 
     ("preflight stops refusing won't-have work, and item 20 protects nothing",
      "skills/execute/scripts/preflight.sh",
-     'wont=$(grep -rl "<moscow>wont-have</moscow>" "$tasks_abs" 2>/dev/null | sort)',
+     'wont=$(grep -rlE \'<moscow>wont-have</moscow>|moscow="wont-have"\' "$tasks_abs" 2>/dev/null | sort)',
      'wont=""',
      "/execute reports the tier it built"),
 ]

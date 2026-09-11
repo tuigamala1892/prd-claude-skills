@@ -31,7 +31,7 @@ MUTANTS = [
     # by raising the ceiling, which is the edit somebody actually makes when they want a red
     # suite to go green.
     #
-    # THE NUMBER IS 30 AND IT USED TO BE 22, WHICH SURVIVED.
+    # THE NUMBER MATTERS, AND AN EARLIER ONE SURVIVED.
     #
     # This mutant's own anchor is the line it mutates, so applying it stops that anchor
     # resolving and adds exactly one to the count being tested. With a ceiling of 22 the
@@ -39,12 +39,13 @@ MUTANTS = [
     # branches went quiet. The mutant perturbed the very quantity it was measuring, and 21 + 1
     # == 22 by coincidence rather than by design.
     #
-    # 30 breaks the coincidence: stale 22 against a ceiling of 30 satisfies neither branch, so
-    # the equality assertion fires. Recorded rather than silently renumbered, because a mutant
-    # that cannot fail looks exactly like a check that works.
+    # Any ceiling the count cannot reach breaks the coincidence. At a ceiling of 0 the count
+    # rises to 1 when this mutant lands, and 1 >= 9 is false, so the shrink branch fires.
+    # Recorded rather than silently renumbered, because a mutant that cannot fail looks exactly
+    # like a check that works.
     ("the ceiling is raised instead of the anchor being fixed",
      SUITE,
-     "STALE_ANCHOR_CEILING = 21",
-     "STALE_ANCHOR_CEILING = 30",
+     "STALE_ANCHOR_CEILING = 0",
+     "STALE_ANCHOR_CEILING = 9",
      "every mutant anchor resolves"),
 ]

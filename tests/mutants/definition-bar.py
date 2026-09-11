@@ -19,11 +19,11 @@ MUTANTS = [
      "| Index ↔ `features/` reconcile; no reference to a slug that has no file | `check-status.py` |",
      "every assertion has one owning script"),
 
-    ("a row claims a caller that never names the script",
-     "schema/checks.md",
-     "| The mechanical half of the well-defined bar | `check-definition.py` | `commands/prd.md` | 40 |",
-     "| The mechanical half of the well-defined bar | `check-definition.py` | `commands/crd.md` | 40 |",
-     "every assertion has one owning script"),
+    ('a row claims a caller that never names the script',
+     'schema/checks.md',
+     "| The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/prd.md` · `schema/migration.md` | prd-only | The bar is about a PRD feature's `<definition>` ladder, and [core](core.md) section 3 makes a CRD's `<workflow>` a process position rather than a degree of definition | 40, 34 |",
+     "| The mechanical half of the well-defined bar, and the criterion-priority spread | `check-definition.py` | `commands/crd.md` · `schema/migration.md` | prd-only | The bar is about a PRD feature's `<definition>` ladder, and [core](core.md) section 3 makes a CRD's `<workflow>` a process position rather than a degree of definition | 40, 34 |",
+     'every assertion has one owning script'),
 
     # ----------------------------------------------------------------- item 3
     ("the ceiling becomes a value: a feature held BELOW what its content supports is a defect",
