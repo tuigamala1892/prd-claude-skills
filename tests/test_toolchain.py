@@ -10342,11 +10342,21 @@ def _():
 def _():
     """Item 72's third half, and the only one a new user meets in their first minute.
 
-    `--plugin-dir` loads the plugin; it does not make the plugin's own scripts readable. Without
-    `--add-dir` on the same checkout, `/breakdown` stops in Phase 1 because `resolve-output.sh`,
-    `check-references.py` and `build-manifest.py` are outside the session's allowed directories.
-    That was MEASURED on 2026-08-26 and written into CLAUDE.md; README.md kept the one-flag form,
-    so the file a new reader opens first is the one that does not work.
+    `--plugin-dir` loads the plugin; it does not make the plugin's own files readable. Without
+    `--add-dir` on the same checkout, `/breakdown` stops partway through because the skills read
+    their `references/*.md` and each other's `SKILL.md` with `Read`, and those paths are outside
+    the session's allowed directories. That was MEASURED on 2026-08-26 and written into
+    CLAUDE.md; README.md kept the one-flag form, so the file a new reader opens first was the one
+    that did not work.
+
+    The REASON was wrong in all three documents until DP2. It named the bundled scripts, and
+    `Bash` is gated by the session's permission mode rather than by the directory allowlist --
+    measured four ways, the script ran with and without `--add-dir` under `bypassPermissions` and
+    was denied with and without it under the default mode. The flag is still required; what
+    requires it is the reads. See docs/skills/distribution-and-install-analysis.md DP2.
+
+    The assertion is unchanged, because it was never the part that was wrong: every line that
+    gives `--plugin-dir` must also give `--add-dir`.
     """
     # EVERY line that gives the flag, fenced or inline. The first version of this check read
     # only fenced blocks and a mutant walked straight past it: CLAUDE.md gives the command in
@@ -10361,8 +10371,9 @@ def _():
             seen += 1
             assert "--add-dir" in line, (
                 f"{name} documents `{line.strip()[:90]}`. `--plugin-dir` loads the plugin and "
-                f"does not make its bundled scripts readable -- measured 2026-08-26, and without "
-                f"`--add-dir` /breakdown stops in Phase 1")
+                f"does not make the plugin's own files readable -- without `--add-dir` the skills "
+                f"cannot read their own references/*.md and /breakdown stops partway through "
+                f"(DP2; it is the reads, not the scripts)")
     assert seen >= 2, (
         f"only {seen} line(s) documenting --plugin-dir were found across README.md and CLAUDE.md. "
         f"Both give the command; a check that finds fewer has stopped reading one of them")

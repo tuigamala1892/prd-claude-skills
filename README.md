@@ -57,9 +57,16 @@ During development, load the plugin from a checkout:
 claude --plugin-dir /path/to/prd-claude-skills --add-dir /path/to/prd-claude-skills
 ```
 
-**Both flags, and they do different jobs.** `--plugin-dir` loads the plugin; `--add-dir` makes its
-bundled scripts readable. Without the second, `/breakdown` cannot run `resolve-output.sh`,
-`check-references.py` or `build-manifest.py`, and stops in Phase 1 — measured 2026-08-26.
+**Both flags, and they do different jobs.** `--plugin-dir` loads the plugin; `--add-dir` makes the
+plugin's own files **readable**. Without the second, `/breakdown` stops partway through: the skills
+read their `references/*.md` and each other's `SKILL.md` with the `Read` tool, and those reads are
+refused.
+
+The bundled scripts are not what needs the flag. `Bash` is gated by the session's permission mode,
+not by the directory allowlist, so `resolve-output.sh`, `check-references.py` and
+`build-manifest.py` run with or without `--add-dir`. Measured both ways —
+[`distribution-and-install-analysis.md`](docs/skills/distribution-and-install-analysis.md) **DP2**
+has the table.
 
 The skills, agents and commands then resolve without copying anything into the
 target project.

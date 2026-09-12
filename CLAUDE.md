@@ -7,9 +7,12 @@ Instructions for Claude when working in this repository.
 > - **Layout:** `skills/`, `agents/` and `commands/` are at the repository root as a Claude
 >   Code plugin, not under `.claude/`. Load with
 >   `claude --plugin-dir <checkout> --add-dir <checkout>`. **Both flags, and they do
->   different jobs**: `--plugin-dir` loads the plugin, `--add-dir` makes its bundled scripts
->   readable. Without the second, `/breakdown` cannot run `resolve-output.sh`,
->   `check-references.py` or `build-manifest.py`, and stops in Phase 1 — measured 2026-08-26.
+>   different jobs**: `--plugin-dir` loads the plugin, `--add-dir` makes the plugin's own files
+>   **readable**. Without the second, `/breakdown` stops partway through, because the skills read
+>   their `references/*.md` and each other's `SKILL.md` with `Read` and those reads are refused.
+>   **Not the scripts** — `Bash` is gated by the permission mode, not the directory allowlist, so
+>   they run either way. Measured both ways; see `docs/skills/distribution-and-install-analysis.md`
+>   DP2. An *installed* plugin needs neither flag: its cache is readable (DP3–DP5).
 > - **Context fork works as of item 4.11.** It is described below as the key innovation,
 >   and it now is one — but it did not function at all until that item landed, because
 >   every skill also declared `allowed-tools`, a *command* key that stopped `context: fork`
