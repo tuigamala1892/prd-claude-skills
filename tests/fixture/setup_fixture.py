@@ -124,7 +124,10 @@ def validate_prd():
             problems.append(f"{rel} has no acceptance criteria")
 
     wn = ET.parse(os.path.join(PRD_SRC, SLUG, "what-next.md")).getroot()
-    if (wn.findtext("status") or "").strip() != "in-progress":
+    # Under <meta> since schema-4's skeleton, directly under <what-next> before it. Both are
+    # accepted on read, as test_toolchain.py and run_5_2.py already do -- checking only the
+    # pre-schema-4 position is what made this refuse every current fixture.
+    if (wn.findtext("meta/status") or wn.findtext("status") or "").strip() != "in-progress":
         problems.append("what-next.md has no <status>in-progress</status> "
                         "-- /prd --resume greps for exactly that (F3)")
 
