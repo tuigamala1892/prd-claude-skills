@@ -49,13 +49,47 @@ the remediation item that will fix them; they report as known and do not break t
 build, but fail the run once they start passing, so the marker gets removed and the
 check becomes a permanent guard. See [`tests/README.md`](tests/README.md).
 
-## Use
+## Install
 
-During development, load the plugin from a checkout:
+```
+/plugin marketplace add tuigamala1892/prd-claude-skills
+/plugin install prd-claude-skills@prd-claude-skills
+```
+
+Pick **project** scope to enable it for everyone who clones the repository you are working in — it
+writes `enabledPlugins` into that project's `.claude/settings.json` — or **user** scope for
+yourself across every project. Either way the files land in Claude Code's own plugin cache, which
+is readable with no further grant, so **an install needs no flags at all.** That is the difference
+between this route and the checkout below, and it is the reason to prefer it.
+
+The commands arrive namespaced: `/prd-claude-skills:prd`, `/prd-claude-skills:breakdown`, and so
+on for the five in the table above.
+
+**Measured end to end, not assumed.** `/breakdown` ran all five phases against an installed copy
+with no flags, reading 31 of its own bundled files — the `references/*.md` and four sub-skill
+`SKILL.md` files — and produced 13 task files across 4 layers. The same read is *refused* on the
+two flag-driven routes. See
+[`distribution-and-install-analysis.md`](docs/skills/distribution-and-install-analysis.md),
+**DP3–DP5**.
+
+One usage note that bites immediately: **give `--output-dir` and `--project-path` absolute
+paths.** `resolve-output.sh` refuses a relative one rather than guess between the caller's
+directory and its own.
+
+## Develop from a checkout
+
+To work on the toolchain itself, load it from a clone instead:
 
 ```bash
-claude --plugin-dir /path/to/prd-claude-skills --add-dir /path/to/prd-claude-skills
+claude --plugin-dir "/path/to/prd-claude-skills" --add-dir "/path/to/prd-claude-skills"
 ```
+
+**Quote the path, and on Windows write it with forward slashes** —
+`"C:/path/to/prd-claude-skills"`. An *unquoted* backslash path fails **silently** in Git Bash: the
+shell strips the separators, the session starts exit 0 with no warning, and the plugin is simply
+absent. Forward slashes in double quotes are the one form that survives PowerShell, Git Bash and
+`cmd.exe` alike — `cmd.exe` does not treat an apostrophe as a quote character at all, so a
+single-quoted path containing a space splits into two arguments.
 
 **Both flags, and they do different jobs.** `--plugin-dir` loads the plugin; `--add-dir` makes the
 plugin's own files **readable**. Without the second, `/breakdown` stops partway through: the skills
