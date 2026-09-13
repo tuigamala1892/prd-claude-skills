@@ -7708,6 +7708,120 @@ def _():
         "those is true and worthless")
 
 
+@check("a migrated criterion is signed off by a person in /prd --resume, and the sign-off "
+       "reaches --check -- by running it", finding="P28")
+def _():
+    """Core section 2: `derived-from` lasts "until sign-off", and for six schema versions nothing
+    performed one. After a migration every criterion in a corpus carried it and no `pattern`, and
+    no step anywhere was shaped to finish them. `prd-criteria-author` was forbidden to propose a
+    pattern for an existing criterion, and `/prd` only assigned patterns while a criterion was
+    being written.
+
+    Three parts. The agent may propose for a MIGRATED sentence and still not for an authored one.
+    The resume step removes `derived-from` in the same edit as the pattern arrives, on every row
+    but deferral. And the documented procedure, performed on a migrated fixture, is one that
+    `--check` accepts. A procedure that ends PARTIAL would be a sign-off that never finishes.
+    """
+    import shutil
+    import tempfile
+
+    # --- the agent ---------------------------------------------------------------------------
+    agent = open(os.path.join(AGENTS, "prd-criteria-author.md"), encoding="utf-8").read()
+    assert "| `sign-off` |" in agent, "the challenger's mode table has no sign-off mode"
+    assert "## Mode 3" in agent and "## What you return" in agent, "no Mode 3 section to read"
+    mode3 = agent[agent.index("## Mode 3"):agent.index("## What you return")]
+    assert "derived-from" in mode3, "sign-off mode does not say its subject is `derived-from`"
+    assert re.search(r"\bdo not rewrite a sentence\b", prose(mode3), re.I), (
+        "sign-off mode no longer forbids rewriting. It proposes patterns and names unsound "
+        "sentences; the person rewrites them")
+    start = "### `pattern` is proposed, never assumed"
+    assert start in agent, "Mode 1's pattern rule has no section to read"
+    rule = agent[agent.index(start):]
+    rule = rule[:rule.index("\n### ", 1)]
+    assert re.search(r"may not propose one for a criterion a person wrote", prose(rule)), (
+        "the challenger may now propose a pattern for an AUTHORED criterion. The exception is "
+        "for sentences a migration wrote, which nobody has agreed to; a person's sentence is "
+        "still theirs to classify")
+
+    # --- the resume step -----------------------------------------------------------------------
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    s, e = "### If the PRD was migrated, offer the sign-off", "### Then ask what the repository"
+    assert s in prd and e in prd, "commands/prd.md has no sign-off step to read"
+    step = prd[prd.index(s):prd.index(e)]
+    assert "migrate.py" in step and "--check" in step, (
+        "the sign-off step does not ask the migration what is unsigned")
+    assert re.search(r'subagent_type:\s*"prd-criteria-author"[^)]*mode: sign-off[^)]*'
+                     r'run_in_background: false', step, re.S), (
+        "the sign-off step does not dispatch the challenger in sign-off mode, blocking")
+    assert re.search(r"one feature at a time", prose(step)), "sign-off is no longer per feature"
+    rows = [ln for ln in step.splitlines()
+            if ln.startswith("| ") and not ln.startswith("| The person") and "---" not in ln]
+    assert len(rows) == 4, f"the sign-off table has {len(rows)} rows, expected four"
+    for row in rows:
+        removes = re.search(r"remove `derived-from`", row)
+        if row.startswith("| defers"):
+            assert not removes, "deferring a criterion now removes its derived-from"
+        else:
+            assert removes, f"a sign-off row writes a pattern and leaves derived-from: {row}"
+    assert step.index("--record-review") > step.index("| accepts"), (
+        "the review is recorded before the criteria are signed off, so every sign-off edit "
+        "leaves it STALE")
+
+    # --- the procedure, performed ---------------------------------------------------------------
+    _path, reg = schema_registry()
+    oldest, current = list(reg["versions"])[0], reg["current"]
+    root = tempfile.mkdtemp(prefix="prd-signoff-")
+    try:
+        work = os.path.join(root, "link-shelf")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", oldest, "link-shelf"), work)
+        p = _run_migrate(work, "--to", current, "--quiet")
+        assert p.returncode == 0, f"migrating the fixture exited {p.returncode}:\n{p.stderr}"
+
+        feats = os.path.join(work, "features")
+        chosen = None
+        for name in sorted(os.listdir(feats)):
+            text = open(os.path.join(feats, name), encoding="utf-8").read()
+            if "derived-from=" in text and re.search(r"<definition>\s*defined\s*<", text):
+                chosen = name
+                break
+        assert chosen, ("no migrated `defined` feature carries derived-from, so there is nothing "
+                        "to sign off and this check cannot run")
+        path = os.path.join(feats, chosen)
+
+        p = _run_migrate(path, "--to", current, "--quiet", "--check")
+        assert p.returncode == 1, (
+            f"--check accepted {chosen} before sign-off (exit {p.returncode}), so the check below "
+            f"proves nothing")
+
+        # What the person does, per core section 2: accept, assign, remove -- in one edit.
+        text = open(path, encoding="utf-8", newline="").read()
+        signed = re.sub(r'(<criterion\b[^>]*?)\s+derived-from="[^"]*"',
+                        r'\1 pattern="event-driven"', text)
+        assert signed.count('pattern="event-driven"') == text.count("derived-from="), (
+            "the sign-off did not reach every migrated criterion")
+        if "<user-story>" not in signed:
+            signed = signed.replace(
+                "<description>", "<user-story>As a reader, I want this feature, so that the "
+                                 "check can run.</user-story>\n  <description>", 1)
+        open(path, "w", encoding="utf-8", newline="").write(signed)
+
+        slug = os.path.splitext(chosen)[0]
+        rec = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
+                                                           "check-definition.py"),
+                              work, "--record-review", "--by", "suite", "--feature", slug],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert rec.returncode == 0 and "recorded 1" in rec.stdout, (
+            f"recording the review failed (exit {rec.returncode}):\n{rec.stdout}{rec.stderr}")
+
+        p = _run_migrate(path, "--to", current, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a feature signed off exactly as core section 2 describes is still refused by "
+            f"--check (exit {p.returncode}), so the documented sign-off never finishes:"
+            f"\n{p.stdout}{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------- the residue (10/24/32/38, group 5e)
 
 

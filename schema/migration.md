@@ -165,6 +165,14 @@ to do and not otherwise.
 off, and it is the only way a reader can check a rewritten sentence against the triple it came
 from.
 
+**Sign-off is not this file's step, and nothing here performs it.** A person does it in
+`/prd --resume`, per feature, following the procedure in [core §2](core.md#2-acceptance-criteria).
+`prd-criteria-author` proposes a `pattern` for each migrated sentence, the person accepts or
+corrects each one, and `derived-from` goes as the `pattern` arrives. `/migrate` never dispatches
+that agent. A proposal nobody is present to accept is the unattended judgement this file forbids,
+however it is labelled. **The CRD path has no sign-off yet.** A migrated CRD's criteria keep
+`derived-from` until `/crd` gains the same step.
+
 **R4 and R5 are vacuously satisfied by an artefact with no criteria**, and that is correct rather
 than convenient. A feature carrying zero criteria is `excluded` or `superseded`; requiring at
 least one would turn a rule about criteria into a rule about features and escalate a legitimate

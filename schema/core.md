@@ -130,7 +130,17 @@ rather than a report.
 
 **`pattern` is assigned by a person, never derived.** A pattern inferred by the same heuristics
 it exists to replace is circular. This is why a migration must not assign it — see
-[`migration.md`](migration.md).
+[`migration.md`](migration.md). An agent may **propose** one; a person who accepts the proposal
+has assigned it, exactly as an author accepts a drafted criterion in `/prd`. What no agent does is
+write it unaccepted.
+
+**Sign-off is what ends `derived-from`, and it happens in `/prd --resume`.** A migrated criterion
+carries `derived-from` and no `pattern`. It is a sentence the migration wrote, which no person
+has agreed to yet. Signing it off is one act, per criterion: a person reads the sentence, accepts
+it or corrects it, and assigns its `pattern`. Then `derived-from` is removed. Both edits land
+together or neither does. A `pattern` beside a surviving `derived-from` would claim a sign-off
+that never happened. A removed `derived-from` with no `pattern` would erase the only sign that a
+migration wrote the sentence.
 
 **One criterion, one behaviour.** A body joined by *and* is two criteria that have not been
 separated yet, and it reaches `/breakdown` as one test requirement covering two things.
