@@ -57,6 +57,19 @@ MUTANTS = [
      "  description: \"Sign off migrated criteria for {slug}\"",
      CHECK),
 
+    # --- R6's story: owed by `defined` only, in both halves of the rule -------------------------
+    ("R6's postcondition asks every feature for a story again",
+     "schema/scripts/migrate.py",
+     '               and (not _is_defined(t) or "<user-story>" in t)),',
+     '               and "<user-story>" in t),',
+     "R6 owes a user story to `defined` features only -- by running it"),
+
+    ("R6 stops asking a defined feature for its story",
+     "schema/scripts/migrate.py",
+     '               and (not _is_defined(t) or "<user-story>" in t)),',
+     '               and True),',
+     "R6 owes a user story to `defined` features only -- by running it"),
+
     # --- the procedure: a sign-off --check would never accept ----------------------------------
     ("R4's postcondition demands derived-from, so a signed-off file is never finished",
      "schema/scripts/migrate.py",

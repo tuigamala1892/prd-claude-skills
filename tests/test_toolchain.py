@@ -7708,6 +7708,64 @@ def _():
         "those is true and worthless")
 
 
+@check("R6 owes a user story to `defined` features only -- by running it", finding="P28")
+def _():
+    """Core section 2 and migration.md both say a story is required for `defined` and not for
+    `tbd`. R6's code asked every feature, so a migrated `tbd` feature could never pass `--check`:
+    it stayed PARTIAL on R6 for a story no one owed it. Found on sample data, where every `tbd`
+    feature was stuck.
+
+    Both directions, on the same migrated tree. A `tbd` feature with patterns assigned and no story
+    is finished. A `defined` one in exactly that state is still PARTIAL, and on R6.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    oldest, current = list(reg["versions"])[0], reg["current"]
+    root = tempfile.mkdtemp(prefix="prd-r6-")
+    try:
+        work = os.path.join(root, "link-shelf")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", oldest, "link-shelf"), work)
+        feats = os.path.join(work, "features")
+        names = sorted(n for n in os.listdir(feats) if n.endswith(".md"))
+        assert len(names) >= 2, "the fixture needs two features for both directions"
+        tbd, defined = names[0], names[1]
+
+        # Demote one BEFORE migrating, in whichever spelling the oldest schema uses, so the
+        # migration meets a `tbd` feature as an author left it.
+        path = os.path.join(feats, tbd)
+        text = open(path, encoding="utf-8", newline="").read()
+        demoted = re.sub(r"<(status|definition)>\s*defined\s*</\1>", r"<\1>tbd</\1>", text, 1)
+        assert demoted != text, f"{tbd} was not `defined` to begin with, so nothing was demoted"
+        open(path, "w", encoding="utf-8", newline="").write(demoted)
+
+        p = _run_migrate(work, "--to", current, "--quiet")
+        assert p.returncode == 0, f"migrating the fixture exited {p.returncode}:\n{p.stderr}"
+
+        for name in (tbd, defined):
+            fp = os.path.join(feats, name)
+            t = open(fp, encoding="utf-8", newline="").read()
+            assert "<user-story>" not in t, f"{name} already has a story; the check needs none"
+            # The person's half: every criterion gets a pattern.
+            t = re.sub(r"<criterion\b(?![^>]*\bpattern=)", '<criterion pattern="event-driven"', t)
+            open(fp, "w", encoding="utf-8", newline="").write(t)
+
+        p = _run_migrate(os.path.join(feats, tbd), "--to", current, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a `tbd` feature with every pattern assigned and no story is refused by --check "
+            f"(exit {p.returncode}). A story is owed on promotion to `defined`, not before:"
+            f"\n{p.stdout}{p.stderr}")
+
+        p = _run_migrate(os.path.join(feats, defined), "--to", current, "--check")
+        out = p.stdout + p.stderr
+        assert p.returncode == 1 and re.search(r"\[[^\]]*R6[^\]]*\]", out), (
+            f"a `defined` feature with no story was not held on R6 (exit {p.returncode}), so the "
+            f"fix relaxed the case the story is owed in:\n{out}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("a migrated criterion is signed off by a person in /prd --resume, and the sign-off "
        "reaches --check -- by running it", finding="P28")
 def _():
