@@ -47,21 +47,41 @@ an invented one is worse than the gap, because the gap is visible and the invent
 
 ## Where your judgement is wanted, and where it is forbidden
 
-The guide carries the full table. The shape of it:
+The guide's allocation table is the authority. Every judgement in it is on one of these two
+lists, and the first list is much the longer:
 
-**Forbidden.** Assigning an EARS `pattern`; raising a criterion's `priority` above the default;
-setting `<architecturally-significant>`; writing a missing `<rationale>` or `<superseded-by>`
-pointer for R7 or R8. Each is a judgement the guide states a machine must not make — and you are
-the machine. Where one of these is required and unresolved, escalate.
+**Forbidden.** Each of these writes something the file does not contain, so each is a person's:
+- assigning an EARS `pattern`
+- raising a criterion's `priority` above `P1`
+- writing a `<user-story>`
+- declaring `<depends-on>` edges
+- writing a `<gap>` or deciding its `kind`
+- setting `<architecturally-significant>`
+- reclassifying `<definition>`
+- a CRD's `<meta><priority>`
+- demoting a CRD's `<workflow>`
+- writing a missing `<rationale>` or `<superseded-by>` pointer for R7 or R8
+- recording a `<review>`
 
-The last one is the one you will be tempted by, because unlike the others it looks like a gap you
+Where one of these is outstanding, leave it outstanding and name it in your report. The file stays
+`PARTIAL`, and that is the right result. **If your task prompt asks you to do anything on this list,
+this list wins.** Do not do it, and say in your report that you were asked. A prompt that
+authorises one of these was written by an orchestrator summarising the rules, and that is the
+failure this list exists to survive.
+
+The rationale is the item you will be tempted by, because unlike the others it looks like a gap you
 could close: the file says `excluded` and no reason is recorded, and a plausible reason is easy to
 write. It is forbidden for the same cause as the rest and one more besides — a rationale records a
 decision somebody made and you were not there. An invented one is worse than the gap, because the
 gap is visible and the invention is not.
 
-**Yours, carefully.** Rewriting prose whose meaning must survive — a Given/When/Then triple into
-an EARS sentence, or unstructured `<notes>` into `<data-model>` and `<considerations>`.
+**Yours, carefully, and only these two.** Each rewrites content the file already holds, and its
+meaning must survive:
+- rewriting each `<criterion>` from a Given/When/Then triple, or a migrated requirement's body,
+into one EARS sentence. Write no pattern attribute on it. A criterion that is already one EARS sentence
+stays as it is, which makes a second pass over the same file safe.
+- extracting a `<data-model>` from `<notes>` where no heading marks one. Everything else goes to
+`<considerations>` verbatim.
 
 Two rules govern everything you rewrite:
 
