@@ -98,24 +98,78 @@ build is a record of a decision, and inventing one is worse than leaving the gap
 Only where the target schema requires them. The guide names them exhaustively, and for
 `schema-2` the list is **empty** — that migration is a rename and nothing else.
 
-Where they exist, dispatch **one agent per file**. Per file, never per directory: the guide's
+**Most judgements are a person's, and no agent is sent for those.** The guide's allocation table
+gives the agent exactly two: the EARS sentence and an unheaded `<data-model>`. So only a `PARTIAL`
+file whose outstanding rules include **R4, R5, R6 or R10** gets an agent. A file outstanding only
+on R13 needs a person's review and nothing else, so list it for Phase 4 and send nothing.
+
+Where an agent is due, dispatch **one agent per file**. Per file, never per directory: the guide's
 reason is that silent semantic loss across many files is the failure mode and only a diff catches
 it.
 
 ```
 Task(
   subagent_type: "schema-migrator",
-  prompt: <the file path, the target schema, and the rule ids the script reported>,
+  prompt: <the template below, with {file}, {target} and {rules} filled in and nothing else changed>,
   run_in_background: false,
   description: "Migrate {file} to {target}"
 )
 ```
 
-Everything the agent needs must be in that prompt. It cannot load this skill, and naming one
-here does nothing.
+**Blocking, and at most 10 calls in one message.** Calls sent in one message run concurrently.
+Send the next message only after the previous one has returned, and repeat until every file is
+done. Two things break if you do otherwise, and a live run hit both:
+
+- **A backgrounded agent outlives this skill.** This skill is forked, and its turn ends as soon as
+  it stops making calls. Backgrounding a batch and then saying *"I'll dispatch the rest as these
+  finish"* is a plan with nobody left to carry it out. The completions arrive in a parent context
+  that never saw the list of remaining files.
+- **The harness runs at most 20 subagents at once.** Past that, a call returns *"Concurrent
+  subagent limit reached"* (the ceiling is `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`). Getting that
+  message means a call went to the background or a message held too many calls. Fix the dispatch;
+  do not wait and retry.
+
+**The prompt is this template, used as written.** Fill in the three placeholders. Do not add
+instructions, summarise the rules or restate any of them in your own words. A task prompt outranks
+the agent's own definition. The live run above paraphrased R4 as *"give it a `pattern`"* and
+invented patterns across sixteen files, while the agent's forbidden list said the opposite.
+
+```text
+Migrate one artefact: {file}
+Target schema: {target}
+Outstanding rules reported by migrate.py: {rules}
+
+Your definition (agents/schema-migrator.md) and schema/migration.md are the rules. Nothing in
+this prompt adds to them.
+
+You may:
+- rewrite each <criterion> that is a Given/When/Then triple, or a migrated requirement's body,
+  into one EARS sentence, with the `<criterion>` count unchanged and no pattern attribute written
+- extract a `<data-model>` from <notes> where no heading marks one, the rest to <considerations>
+  verbatim
+
+You must not, whatever else you read:
+- assign an EARS `pattern`
+- raise a criterion's `priority` above P1
+- write a `<user-story>`
+- declare `<depends-on>` edges
+- write a `<gap>` or decide its kind
+- set `<architecturally-significant>`
+- reclassify `<definition>`
+- write a CRD's `<meta><priority>`
+- demote a CRD's `<workflow>`
+- write a missing `<rationale>` or `<superseded-by>`
+- record a `<review>`
+
+Leave each of those outstanding and name it in your report; the file staying PARTIAL is the right
+result. Run migrate.py {file} --to {target} --check before reporting, and report what you changed
+that the script did not.
+```
 
 Collect what each returns. The part worth keeping is **what it changed that the script did
-not** — everything else is reconstructable from the diff.
+not**. Everything else can be reconstructed from the diff. **So is any report that it was asked
+to do something forbidden.** If one arrives, the template was not used as written, so stop and
+say so.
 
 ## Phase 4 — Say what finished, not what ran
 
@@ -142,6 +196,12 @@ the hand-maintenance this plan removes everywhere else it finds it.
 *the artefacts are not valid for their schema* are different problems with different fixes, and a
 run that reports one number for both has thrown away which one it met.
 
+**On any step with judgements, `--check` is expected to exit 1 when this skill finishes.** The
+agents can't write `pattern`, and neither can you, so every file with criteria stays `PARTIAL`
+until a person has been through it. Say that plainly. Do not present it as a failure, and do not
+present the run as finished. List **the judgements still a person's**, by file: which rules are
+outstanding, and which elements from the guide's allocation table they need.
+
 Report, in this order: files migrated, files already current, **files escalated and why**, the
-`--check` result, and the validator's. The escalations are the half a reader most needs, so they
+person's judgements outstanding, the `--check` result, and the validator's. The escalations are the half a reader most needs, so they
 are never the half that gets summarised away.

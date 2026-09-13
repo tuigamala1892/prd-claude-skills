@@ -5210,6 +5210,81 @@ def _():
             f"{name}'s escalation instruction no longer says to stop:\n      "
             + "\n      ".join(ln.strip() for ln in lines)
             + "\n    'Transform it anyway' is the failure this path exists to prevent")
+
+
+@check("the agent's judgements are exactly two, and the skill's prompt, the agent and the guide "
+       "agree on which", finding="P24")
+def _():
+    """A live /migrate run summarised the rules into its agents' prompts and told them to assign
+    `pattern`. The agent's own Forbidden list said otherwise and lost, because a task prompt
+    outranks an agent definition. So the prompt is a template in the skill, and it has to carry the
+    same allocation the guide and the agent do.
+
+    Three lists of element tokens, compared as SETS in both directions. A check that only asked
+    "is every person row in the forbidden list" would pass a template that ALSO permitted one. The
+    permitted half is the direction that failed live.
+    """
+    guide = open(os.path.join(SCHEMA, "migration.md"), encoding="utf-8").read()
+    header = "| Judgement | Element | Made by |"
+    assert header in guide, "migration.md has no allocation table, so nothing says who judges what"
+    rows = guide[guide.index(header):].split("\n\n")[0].splitlines()[2:]
+    alloc = {}
+    for row in rows:
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        assert len(cells) == 3, f"allocation row is not three cells: {row}"
+        el = re.fullmatch(r"`([^`]+)`", cells[1])
+        assert el, f"allocation row names no single backticked element: {row}"
+        assert el.group(1) not in alloc, f"{el.group(1)} is allocated twice"
+        assert cells[2] in ("agent", "person"), f"allocated to neither agent nor person: {row}"
+        alloc[el.group(1)] = cells[2]
+    agent_els = {e for e, who in alloc.items() if who == "agent"}
+    person_els = {e for e, who in alloc.items() if who == "person"}
+    # Pinned, not derived. Moving a judgement to the agent is a decision about the schema, and it
+    # should have to come through here rather than arrive as a one-word edit to a table cell.
+    assert agent_els == {"<criterion>", "<data-model>"}, (
+        f"the agent is allocated {sorted(agent_els)}; the decision was the EARS sentence and an "
+        f"unheaded <data-model>, and nothing else")
+    assert {"pattern", "<user-story>", "<depends-on>", "<gap>"} <= person_els, (
+        "a judgement the live run wrongly authorised is no longer a person's")
+
+    def tokens(region):
+        return {t for t in re.findall(r"`([^`]+)`", region) if t in alloc}
+
+    def between(body, start, end, what):
+        assert start in body, f"{what}: no `{start}` to read from, so this cannot run"
+        rest = body[body.index(start) + len(start):]
+        assert end in rest, f"{what}: no `{end}` after `{start}`, so this cannot run"
+        return rest[:rest.index(end)]
+
+    skill = open(os.path.join(SKILLS, "migrate", "SKILL.md"), encoding="utf-8").read()
+    phase3 = between(skill, "## Phase 3", "## Phase 4", "migrate skill")
+    template = between(phase3, "```text\n", "```", "migrate Phase 3 prompt template")
+    agent = open(os.path.join(AGENTS, "schema-migrator.md"), encoding="utf-8").read()
+
+    lists = {
+        "the skill's prompt template, permitted": (
+            tokens(between(template, "You may:", "You must not", "template")), agent_els),
+        "the skill's prompt template, forbidden": (
+            tokens(between(template, "You must not", "\n\n", "template")), person_els),
+        "the agent's Yours list": (
+            tokens(between(agent, "**Yours, carefully", "\n\n", "agent")), agent_els),
+        "the agent's Forbidden list": (
+            tokens(between(agent, "**Forbidden.**", "\n\n", "agent")), person_els),
+    }
+    for name, (got, want) in lists.items():
+        assert got == want, (
+            f"{name} disagrees with migration.md's allocation table:"
+            f"\n      missing: {sorted(want - got)}\n      extra:   {sorted(got - want)}")
+
+    # The dispatch. F17 already refuses `run_in_background: true` anywhere; what it cannot see is a
+    # message holding more calls than the harness will run at once, which is the other half of how
+    # the live run lost 43 files.
+    assert "run_in_background: false" in phase3, "Phase 3 no longer dispatches blocking"
+    bound = re.search(r"at most (\d+) calls in one message", phase3)
+    assert bound, "Phase 3 sets no bound on calls per message"
+    assert int(bound.group(1)) < 20, (
+        f"Phase 3 allows {bound.group(1)} calls per message; the harness runs at most 20 "
+        f"subagents at once and refuses the rest")
 # ----------------------------------------------------------- EARS criteria (33/34)
 
 EARS_PATTERNS = {"ubiquitous", "state-driven", "event-driven", "optional-feature",

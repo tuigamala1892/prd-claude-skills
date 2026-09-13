@@ -63,8 +63,7 @@ MUTANTS = [
     # is where `do not invent a rationale` now lives, and what this mutant removes.
     ("the agent stops being told not to invent the rationale it is missing",
      "agents/schema-migrator.md",
-     "setting `<architecturally-significant>`; writing a missing `<rationale>` or "
-     "`<superseded-by>`\npointer for R7 or R8.",
-     "setting `<architecturally-significant>`.",
+     "- writing a missing `<rationale>` or `<superseded-by>` pointer for R7 or R8\n",
+     "",
      "an artefact missing what only a person can write is escalated"),
 ]

@@ -36,6 +36,43 @@ drift from it.
 semantic loss across dozens of files is the failure mode, and only a diff catches it. The script
 writes one file at a time and prints one summary line per file.
 
+**Who makes each judgement is fixed here, and almost all of them are a person's.** Every table
+below headed *"never the script's"* says what a script must not do. It does not hand the rest to
+an agent. `schema-migrator` is a machine too, and a judgement a script must not make because it
+would be guessed is guessed just the same by a model. This table is the whole allocation. Every
+judgement named anywhere in this file is one row of it, and only two rows go to the agent:
+
+| Judgement | Element | Made by |
+|---|---|---|
+| rewriting a Given/When/Then triple, or a migrated requirement's body, into one EARS sentence | `<criterion>` | agent |
+| extracting a `<data-model>` from `<notes>` where no heading marks one | `<data-model>` | agent |
+| assigning an EARS `pattern` | `pattern` | person |
+| raising a criterion's `priority` above `P1` | `priority` | person |
+| writing a `<user-story>` | `<user-story>` | person |
+| declaring `<depends-on>` edges | `<depends-on>` | person |
+| writing a `<gap>` or deciding its `kind` | `<gap>` | person |
+| setting `<architecturally-significant>` | `<architecturally-significant>` | person |
+| reclassifying `<definition>` | `<definition>` | person |
+| a CRD's document-level `<meta><priority>` | `<meta><priority>` | person |
+| demoting a CRD's `<workflow>` | `<workflow>` | person |
+| writing a missing `<rationale>` (R7) | `<rationale>` | person |
+| writing a missing `<superseded-by>` pointer (R8) | `<superseded-by>` | person |
+| recording a `<review>` (R13) | `<review>` | person |
+
+**The two agent rows are the ones that transform content already there.** The sentence is in the
+triple and the data model is in the notes; the agent rewrites them and nothing is added. Every
+person row writes something the file does not contain: a classification, a claim about
+importance, a relationship or a decision. That is the line, not a list of hard cases. A file
+with the agent's half done still has no `pattern`, so it is still `PARTIAL` and `--check` still
+refuses it. That is the correct end of a run, not an unfinished one.
+
+**An orchestrator must not restate this allocation in its own words.** A live run of
+`/migrate` on sample data summarised the rules into its agents' prompts and told them to assign
+`pattern`. A task prompt outranks an agent's definition, so the agents did as told, and sixteen
+files came back with invented patterns. Nothing in the agent's own forbidden list
+could stop it. The skill carries a prompt used as
+written, and the suite holds that prompt, the agent's lists and this table to the same rows.
+
 **Versioned, and the version is selected by the artefact rather than by the tool.** An artefact
 stamped by an older toolchain selects the *right* migration, not the newest one. Until item 24
 stamps `toolchain_version`, the shape does the selecting: `migrate.py --detect` reports which
