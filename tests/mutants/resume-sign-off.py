@@ -3,8 +3,11 @@
 Core section 2 had said since item 41 that `derived-from` lasts "until sign-off", and nothing
 performed one. After a live migration, every criterion in a corpus had no pattern and no step to
 reach it. The exception this adds is narrow on purpose: the challenger may propose a pattern for a
-sentence a MIGRATION wrote, and still not for one a person wrote. Most of these mutants widen that
-exception or loosen the pairing of `pattern` with the removal of `derived-from`.
+sentence a MIGRATION wrote, and still not for one a person wrote.
+
+Sign-off has two steps. A person classifies, and `derived-from` stays for the reviewer. Recording
+the review then removes it from exactly the classified criteria. Most of these mutants move the
+removal to the wrong moment or apply it to the wrong criteria.
 """
 
 AGENT = "agents/prd-criteria-author.md"
@@ -33,16 +36,35 @@ MUTANTS = [
      CHECK),
 
     # --- the resume step -------------------------------------------------------------------------
-    ("accepting a pattern leaves derived-from in place",
+    ("accepting a pattern removes derived-from before the reviewer has used it",
      PRD,
-     "| accepts the sentence and the pattern | the `pattern`, and **remove `derived-from` in the same edit** |",
      "| accepts the sentence and the pattern | the `pattern` |",
+     "| accepts the sentence and the pattern | the `pattern`, and remove `derived-from` |",
      CHECK),
 
-    ("deferring a criterion removes its derived-from anyway",
+    ("the resume step stops saying the review is the sign-off",
      PRD,
-     "| defers it | nothing. The criterion keeps `derived-from` and stays unsigned |",
-     "| defers it | remove `derived-from`, and leave the pattern for later |",
+     "**Recording it is the sign-off.**",
+     "**Recording it is the final step.**",
+     CHECK),
+
+    # --- the sign-off itself, in the review writer ------------------------------------------------
+    ("recording a review signs nothing off",
+     "skills/breakdown/scripts/check-definition.py",
+     '    stripped, signed = sign_off(REVIEW.sub("", text))',
+     '    stripped, signed = REVIEW.sub("", text), 0',
+     CHECK),
+
+    ("the review signs off criteria nobody classified",
+     "skills/breakdown/scripts/check-definition.py",
+     "        if not re.search(r'\\bpattern=\"', attrs):\n            return m.group(0)\n",
+     "",
+     CHECK),
+
+    ("the review hashes the file before signing it off, so it is born STALE",
+     "skills/breakdown/scripts/check-definition.py",
+     '        by, time.strftime("%Y-%m-%d"), content_sha(stripped))',
+     '        by, time.strftime("%Y-%m-%d"), content_sha(REVIEW.sub("", text)))',
      CHECK),
 
     ("sign-off is offered across the whole PRD at once",

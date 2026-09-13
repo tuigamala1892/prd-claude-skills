@@ -134,13 +134,20 @@ it exists to replace is circular. This is why a migration must not assign it —
 has assigned it, exactly as an author accepts a drafted criterion in `/prd`. What no agent does is
 write it unaccepted.
 
-**Sign-off is what ends `derived-from`, and it happens in `/prd --resume`.** A migrated criterion
-carries `derived-from` and no `pattern`. It is a sentence the migration wrote, which no person
-has agreed to yet. Signing it off is one act, per criterion: a person reads the sentence, accepts
-it or corrects it, and assigns its `pattern`. Then `derived-from` is removed. Both edits land
-together or neither does. A `pattern` beside a surviving `derived-from` would claim a sign-off
-that never happened. A removed `derived-from` with no `pattern` would erase the only sign that a
-migration wrote the sentence.
+**A migrated criterion passes through three states, and each one is visible in its attributes:**
+
+| Attributes | State | Reached by |
+|---|---|---|
+| `derived-from`, no `pattern` | the migration's sentence, unread | `/migrate` |
+| `derived-from` and `pattern` | classified, not yet signed off | a person accepting or assigning a `pattern` in `/prd --resume` |
+| `pattern`, no `derived-from` | signed off | recording the feature's `<review>` |
+
+**The review is the sign-off.** `derived-from` outlives the pattern on purpose. It is how a
+reviewer checks the sentence against where it came from, so it has to still be there when they
+look. `check-definition.py --record-review` removes it from every criterion carrying a `pattern`,
+in the same write that records the review. A criterion with no `pattern` keeps `derived-from`
+through a review, because nobody has classified it yet. A `tbd` feature is never reviewed, so its
+criteria keep `derived-from` until it is promoted. That is the true state of them, not a gap.
 
 **One criterion, one behaviour.** A body joined by *and* is two criteria that have not been
 separated yet, and it reaches `/breakdown` as one test requirement covering two things.

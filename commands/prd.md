@@ -132,14 +132,15 @@ Walk them with the person, **criterion by criterion**:
 
 | The person | You write |
 |---|---|
-| accepts the sentence and the pattern | the `pattern`, and **remove `derived-from` in the same edit** |
-| corrects the pattern | their `pattern`, and remove `derived-from` |
-| rewrites the sentence | their sentence and the `pattern` they give it, and remove `derived-from` |
-| defers it | nothing. The criterion keeps `derived-from` and stays unsigned |
+| accepts the sentence and the pattern | the `pattern` |
+| corrects the pattern | their `pattern` |
+| rewrites the sentence | their sentence, and the `pattern` they give it |
+| defers it | nothing. The criterion stays unclassified |
 
-**`pattern` and the removal of `derived-from` are one edit.** One without the other is a false
-record, and [core §2](../schema/core.md#2-acceptance-criteria) says why both ways round. Never
-remove `derived-from` from a criterion the person did not look at.
+**Leave `derived-from` in place, on every row.** It is how the reviewer checks each sentence
+against where it came from, so removing it now would take that away before the review uses it.
+Recording the review removes it, from exactly the criteria that carry a `pattern`
+([core §2](../schema/core.md#2-acceptance-criteria)). Never remove it by hand.
 
 **Splitting a criterion in two is the author's decision, not a formatting fix.** Give the new
 criterion the next free id, and keep the original id on whichever half still says what it said.
@@ -148,17 +149,21 @@ Then, for a `defined` feature only:
 
 - **No `<user-story>`?** Offer the challenger in `propose-criteria` mode, as in Phase 3, and paste
   only what the person accepts.
-- **Record the review last,** after every edit to the file. The review hashes the content, so
-  anything written after it leaves it `STALE`:
+- **Record the review last,** after every edit to the file. **Recording it is the sign-off.** It
+  removes `derived-from` from each criterion the person classified and reports how many. The
+  review hashes the content, so anything written after it leaves the review `STALE`:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py {prd_dir} \
   --record-review --by <name> --feature {slug}
 ```
 
-Re-run `migrate.py {prd_dir} --check` when the person stops, and report what is still unsigned. A
-sign-off left half done is ordinary. The markers are in the file, so the next `--resume` finds
-the rest.
+**A `tbd` feature is classified but never signed off,** because it is not reviewed. Its criteria
+keep `derived-from` until it is promoted, and that is correct.
+
+Re-run `migrate.py {prd_dir} --check` when the person stops, and report what is still
+unclassified. A sign-off left half done is ordinary. The attributes record where each criterion
+stands, so the next `--resume` finds the rest.
 
 ### Then ask what the repository already knows about itself
 

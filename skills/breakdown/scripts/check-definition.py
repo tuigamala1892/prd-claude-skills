@@ -27,6 +27,10 @@ prevent, committed deliberately.
 producing a record and checking one cannot drift apart -- an agent computing a digest by hand is
 the kind of thing that is right four times and wrong on the fifth.
 
+**Recording a review is also the migration's sign-off** (core section 2). Before hashing, it removes
+`derived-from` from every criterion that carries a `pattern`. A criterion with no pattern keeps
+the attribute, because nobody has classified that sentence yet.
+
 THE EIGHT TESTS, AND WHERE EACH ONE LANDS
 
   1  scope states what the feature owns AND what it does not          judgement
@@ -266,10 +270,41 @@ def review_of(text):
     return ("reviewed" if attrs.get("sha") == content_sha(text) else "stale"), attrs
 
 
+CRITERION_TAG = re.compile(r"<criterion\b([^>]*)>")
+
+
+def sign_off(text):
+    """Remove `derived-from` from every criterion that carries a `pattern`; return (text, n).
+
+    Recording a review IS the sign-off (core section 2). A migrated criterion keeps `derived-from`
+    after a person assigns its pattern, so the reviewer can still check the sentence against where
+    it came from. The review is the moment that check has happened. A criterion with NO pattern
+    keeps the attribute: nobody has classified it, so it is still the migration's sentence and
+    not yet anyone's.
+    """
+    count = [0]
+
+    def one(m):
+        attrs = m.group(1)
+        if not re.search(r'\bpattern="', attrs):
+            return m.group(0)
+        signed = re.sub(r'\s+derived-from="[^"]*"', "", attrs)
+        if signed != attrs:
+            count[0] += 1
+        return "<criterion%s>" % signed
+
+    return CRITERION_TAG.sub(one, text), count[0]
+
+
 def record_review(path, by):
-    """Write or replace a <review> in the feature's <meta>, and return the line written."""
+    """Sign off, then write or replace a <review> in the feature's <meta>.
+
+    Returns (the line written, criteria signed off), or None when there is no </meta>. The sign-off
+    comes BEFORE the hash, because the review describes the file as signed off. The other order
+    would leave every freshly recorded review STALE.
+    """
     text = read(path)
-    stripped = REVIEW.sub("", text)
+    stripped, signed = sign_off(REVIEW.sub("", text))
     line = '  <review by="%s" at="%s" sha="%s"/>\n' % (
         by, time.strftime("%Y-%m-%d"), content_sha(stripped))
     m = re.search(r"([ \t]*)</meta>", stripped)
@@ -278,7 +313,7 @@ def record_review(path, by):
     out = stripped[:m.start()] + line.replace("  ", m.group(1) + "  ", 1) + stripped[m.start():]
     with io.open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(out)
-    return line.strip()
+    return line.strip(), signed
 
 
 def main():
@@ -319,14 +354,16 @@ def main():
             path = os.path.join(prd_dir, r["file"].replace("/", os.sep))
             if not os.path.isfile(path):
                 continue
-            line = record_review(path, args.by)
-            if line is None:
+            result = record_review(path, args.by)
+            if result is None:
                 print(f"REFUSED  {r['file']} has no </meta> to record a review in",
                       file=sys.stderr)
                 return 2
+            line, signed = result
             wrote += 1
             if not args.quiet:
-                print(f"  recorded  {r['file']}: {line}")
+                tail = f"; signed off {signed} migrated criteria" if signed else ""
+                print(f"  recorded  {r['file']}: {line}{tail}")
         print(f"recorded {wrote} review(s) as `{args.by}`")
         return 0
 

@@ -165,10 +165,12 @@ to do and not otherwise.
 off, and it is the only way a reader can check a rewritten sentence against the triple it came
 from.
 
-**Sign-off is not this file's step, and nothing here performs it.** A person does it in
-`/prd --resume`, per feature, following the procedure in [core §2](core.md#2-acceptance-criteria).
-`prd-criteria-author` proposes a `pattern` for each migrated sentence, the person accepts or
-corrects each one, and `derived-from` goes as the `pattern` arrives. `/migrate` never dispatches
+**Sign-off is not this file's step, and nothing here performs it.** It happens in two steps, both
+a person's, per [core §2](core.md#2-acceptance-criteria). In `/prd --resume`,
+`prd-criteria-author` proposes a `pattern` for each migrated sentence, and the person accepts or
+corrects each one while `derived-from` stays. Recording the feature's review then removes
+`derived-from` from every classified criterion. That is why the fixtures from schema-3 onward
+carry both attributes: they are classified and not yet signed off. `/migrate` never dispatches
 that agent. A proposal nobody is present to accept is the unattended judgement this file forbids,
 however it is labelled. **The CRD path has no sign-off yet.** A migrated CRD's criteria keep
 `derived-from` until `/crd` gains the same step.

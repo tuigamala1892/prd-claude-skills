@@ -7776,9 +7776,14 @@ def _():
     being written.
 
     Three parts. The agent may propose for a MIGRATED sentence and still not for an authored one.
-    The resume step removes `derived-from` in the same edit as the pattern arrives, on every row
-    but deferral. And the documented procedure, performed on a migrated fixture, is one that
-    `--check` accepts. A procedure that ends PARTIAL would be a sign-off that never finishes.
+    The resume step leaves `derived-from` alone on every row, because the reviewer needs it, and
+    records the review last. And the procedure, performed on a migrated fixture, reaches `--check`
+    exit 0. Recording the review removes `derived-from` from exactly the classified criteria,
+    keeps it on an unclassified one, and the review it writes is not STALE.
+
+    The fixtures from schema-3 on carry `pattern` and `derived-from` together, and that is the
+    classified-not-signed-off state core section 2 names. A first draft removed `derived-from` in
+    the same edit as the pattern, and that contradicted every one of them.
     """
     import shutil
     import tempfile
@@ -7816,13 +7821,14 @@ def _():
             if ln.startswith("| ") and not ln.startswith("| The person") and "---" not in ln]
     assert len(rows) == 4, f"the sign-off table has {len(rows)} rows, expected four"
     for row in rows:
-        removes = re.search(r"remove `derived-from`", row)
-        if row.startswith("| defers"):
-            assert not removes, "deferring a criterion now removes its derived-from"
-        else:
-            assert removes, f"a sign-off row writes a pattern and leaves derived-from: {row}"
+        assert "derived-from" not in row, (
+            f"a classification row now touches derived-from: {row}. The reviewer checks each "
+            f"sentence against it, so it has to survive until the review is recorded")
+    assert re.search(r"recording it is the sign-off", prose(step), re.I), (
+        "the resume step no longer says recording the review is the sign-off, so nothing tells "
+        "a reader when derived-from goes")
     assert step.index("--record-review") > step.index("| accepts"), (
-        "the review is recorded before the criteria are signed off, so every sign-off edit "
+        "the review is recorded before the criteria are classified, so every classification "
         "leaves it STALE")
 
     # --- the procedure, performed ---------------------------------------------------------------
@@ -7836,46 +7842,70 @@ def _():
         assert p.returncode == 0, f"migrating the fixture exited {p.returncode}:\n{p.stderr}"
 
         feats = os.path.join(work, "features")
-        chosen = None
-        for name in sorted(os.listdir(feats)):
-            text = open(os.path.join(feats, name), encoding="utf-8").read()
-            if "derived-from=" in text and re.search(r"<definition>\s*defined\s*<", text):
-                chosen = name
-                break
-        assert chosen, ("no migrated `defined` feature carries derived-from, so there is nothing "
-                        "to sign off and this check cannot run")
-        path = os.path.join(feats, chosen)
+        chosen = [n for n in sorted(os.listdir(feats))
+                  if "derived-from=" in open(os.path.join(feats, n), encoding="utf-8").read()
+                  and re.search(r"<definition>\s*defined\s*<",
+                                open(os.path.join(feats, n), encoding="utf-8").read())]
+        assert len(chosen) >= 2, ("fewer than two migrated `defined` features carry derived-from, "
+                                  "so both halves of the sign-off cannot be exercised")
+        whole, part = chosen[0], chosen[1]
 
-        p = _run_migrate(path, "--to", current, "--quiet", "--check")
+        p = _run_migrate(os.path.join(feats, whole), "--to", current, "--quiet", "--check")
         assert p.returncode == 1, (
-            f"--check accepted {chosen} before sign-off (exit {p.returncode}), so the check below "
+            f"--check accepted {whole} before sign-off (exit {p.returncode}), so the check below "
             f"proves nothing")
 
-        # What the person does, per core section 2: accept, assign, remove -- in one edit.
-        text = open(path, encoding="utf-8", newline="").read()
-        signed = re.sub(r'(<criterion\b[^>]*?)\s+derived-from="[^"]*"',
-                        r'\1 pattern="event-driven"', text)
-        assert signed.count('pattern="event-driven"') == text.count("derived-from="), (
-            "the sign-off did not reach every migrated criterion")
-        if "<user-story>" not in signed:
-            signed = signed.replace(
-                "<description>", "<user-story>As a reader, I want this feature, so that the "
-                                 "check can run.</user-story>\n  <description>", 1)
-        open(path, "w", encoding="utf-8", newline="").write(signed)
+        # The person's half: classify. `whole` gets every pattern and `part` all but its first.
+        # derived-from is left exactly where the migration put it.
+        for name, skip_first in ((whole, False), (part, True)):
+            fp = os.path.join(feats, name)
+            text = open(fp, encoding="utf-8", newline="").read()
+            seen = [0]
 
-        slug = os.path.splitext(chosen)[0]
-        rec = subprocess.run([sys.executable, os.path.join(SKILLS, "breakdown", "scripts",
-                                                           "check-definition.py"),
-                              work, "--record-review", "--by", "suite", "--feature", slug],
+            def classify(m, skip_first=skip_first, seen=seen):
+                seen[0] += 1
+                if skip_first and seen[0] == 1:
+                    return m.group(0)
+                return '<criterion pattern="event-driven"' + m.group(1)
+            text = re.sub(r"<criterion\b([^>]*>)", classify, text)
+            if "<user-story>" not in text:
+                text = text.replace(
+                    "<description>", "<user-story>As a reader, I want this feature, so that the "
+                                     "check can run.</user-story>\n  <description>", 1)
+            open(fp, "w", encoding="utf-8", newline="").write(text)
+            assert "derived-from=" in text, f"classifying {name} removed derived-from by itself"
+
+        cd = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+        rec = subprocess.run([sys.executable, cd, work, "--record-review", "--by", "suite"],
                              capture_output=True, text=True, encoding="utf-8", errors="replace")
-        assert rec.returncode == 0 and "recorded 1" in rec.stdout, (
-            f"recording the review failed (exit {rec.returncode}):\n{rec.stdout}{rec.stderr}")
+        assert rec.returncode == 0 and "signed off" in rec.stdout, (
+            f"recording the reviews did not sign anything off (exit {rec.returncode}):"
+            f"\n{rec.stdout}{rec.stderr}")
 
-        p = _run_migrate(path, "--to", current, "--quiet", "--check")
+        after = open(os.path.join(feats, whole), encoding="utf-8").read()
+        assert "derived-from=" not in after, (
+            f"{whole} was reviewed with every criterion classified and still carries derived-from, "
+            f"so the review signed nothing off")
+        tags_ = re.findall(r"<criterion\b[^>]*>", open(os.path.join(feats, part),
+                                                         encoding="utf-8").read())
+        assert "derived-from=" in tags_[0] and "pattern=" not in tags_[0], (
+            f"the unclassified criterion in {part} lost derived-from at review. Nobody has read "
+            f"that sentence, and removing the marker hides that a migration wrote it")
+        assert all("derived-from=" not in t for t in tags_[1:]), (
+            f"a classified criterion in {part} kept derived-from through its review")
+
+        p = _run_migrate(os.path.join(feats, whole), "--to", current, "--quiet", "--check")
         assert p.returncode == 0, (
-            f"a feature signed off exactly as core section 2 describes is still refused by "
-            f"--check (exit {p.returncode}), so the documented sign-off never finishes:"
-            f"\n{p.stdout}{p.stderr}")
+            f"a feature classified and reviewed as core section 2 describes is still refused by "
+            f"--check (exit {p.returncode}), so the sign-off never finishes:\n{p.stdout}{p.stderr}")
+
+        report = subprocess.run([sys.executable, cd, work], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace").stdout
+        slug = os.path.splitext(whole)[0]
+        stale = [ln for ln in report.splitlines() if slug in ln and "STALE" in ln]
+        assert not stale, (
+            f"the review recorded with the sign-off is already STALE -- the hash was taken before "
+            f"derived-from was removed:\n" + "\n".join(stale))
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

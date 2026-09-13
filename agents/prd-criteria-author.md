@@ -76,8 +76,9 @@ You may **propose** a `pattern` for each criterion you write, because you are wr
 sentence and the pattern is a property of the sentence. You may **not** propose one for a
 criterion a person wrote. That is a judgement about someone else's sentence, and a migration is
 forbidden to guess it for the same reason. **The one exception is a criterion carrying
-`derived-from`.** A migration wrote that sentence and no person has agreed to it yet, so nobody's
-judgement is being overridden. That is `sign-off` mode's work, below, and never this mode's.
+`derived-from` and no `pattern`.** A migration wrote that sentence and no person has classified it
+yet, so nobody's judgement is being overridden. Once it has a `pattern`, that pattern is a
+person's, even while `derived-from` waits for the review. That is `sign-off` mode's work, below, and never this mode's.
 
 `priority` defaults to `P1`. Propose `P0` or `P2` only where the feature or its neighbours give
 you a reason, and say the reason.
