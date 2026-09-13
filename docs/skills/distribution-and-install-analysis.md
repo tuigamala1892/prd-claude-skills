@@ -26,6 +26,17 @@ V, C, S, A, B, E, L, U, OQ or D1–D3, all of which are in use elsewhere in `doc
 `~` is the user's home directory. The runs behind these findings used real paths; those do not
 belong in a committed file.
 
+**What has happened since the first draft**, kept here rather than folded silently into the
+findings:
+
+| Finding | Since |
+|---|---|
+| DP1, DP11 | **Landed.** `marketplace.json` added, `plugin.json` filled out — commit `ee7a9fb`. |
+| DP13 | **Fixed.** `setup_fixture.py` reads `meta/status` — commit `10ab174`. |
+| DP5 | **Closed.** The open cell was measured; see the finding. |
+| DP2 | **Corrected, and it had a fourth site.** See the finding. |
+| DP15 | **Withdrawn.** It was already fixed before this document claimed it. |
+
 ---
 
 ## 1. The read gate, which decides everything else
@@ -76,9 +87,13 @@ at any scope. A single repository may serve as both marketplace and plugin via a
 
 ### DP2 — `--add-dir` gates `Read`, not the scripts. The documented reason is wrong. *Correctness. Measured.*
 
-[`README.md`](../../README.md) §Use, `CLAUDE.md`, and a check in `tests/test_toolchain.py` all
-state that without `--add-dir` the skills cannot *run* `resolve-output.sh`,
-`check-references.py` or `build-manifest.py`. Four runs, varying one thing at a time:
+**Four sites, not the three the first draft named.** [`README.md`](../../README.md) §Use,
+`CLAUDE.md`, the P50 check in `tests/test_toolchain.py`, and — found later, while fixing DP13 —
+the guidance [`setup_fixture.py`](../../tests/fixture/setup_fixture.py#L184) *prints to the
+operator at the start of every §5.2 run*, which is the one a person actually reads before a
+measured run. All four stated that without `--add-dir` the skills cannot *run*
+`resolve-output.sh`, `check-references.py` or `build-manifest.py`. Four runs, varying one thing at
+a time:
 
 | Flags | Permission mode | A bundled script via `Bash` |
 |---|---|---|
@@ -93,6 +108,11 @@ of runs against the `Read` tool inverted cleanly: `<checkout>/schema/core.md` wa
 
 **The advice is right and the explanation is wrong.** Both flags are needed. The reason is the
 reference files the skills read, not the scripts they shell out to.
+
+P50's *assertion* was never the wrong part and is unchanged: every line that gives
+`--plugin-dir` must also give `--add-dir`. Only its stated reason moved. All four sites now say
+so, and each says that `Bash` is gated by the permission mode rather than the directory
+allowlist, so a reader who meets any one of them meets the whole distinction.
 
 ### DP3 — An installed plugin's cache is readable. A skills-directory plugin's is not. *Measured.*
 
@@ -141,11 +161,19 @@ cache regardless, and the cache is what carries the read access.
 |---|---|---|
 | `github` | Anthropic | OK — `superpowers` 6.3.0 |
 | `directory` | third party | OK — the probe |
-| `git` / `https` | third party | **Unmeasured** |
+| `git` / `https` | third party | **OK** — see below |
 
-Both axes pass independently; only the intersection is open. It cannot be closed locally —
-`marketplace add` rejects a `file://` URL with *"Invalid marketplace source format. Try:
-owner/repo, https://..., or ./path"* — so it needs a real remote. See §5.
+The last row was open in the first draft and could not be closed locally: `marketplace add`
+rejects a `file://` URL with *"Invalid marketplace source format. Try: owner/repo,
+https://..., or ./path"*, so it needed a real remote. **It is now closed.** With this
+repository's own `marketplace.json` pushed to a branch and added as
+`https://github.com/<owner>/<repo>.git#<branch>`, Claude Code recorded it as `"source": "git"`,
+cloned it, installed to `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` with a
+`gitCommitSha`, and both `schema/core.md` and `skills/breakdown/references/layer-definitions.md`
+read **OK** under default permissions with no flags.
+
+All three rows now pass. The grant tracks the cache, and neither the marketplace's owner nor its
+source type changes that.
 
 ### DP6 — Relative reference citations do not lift the gate. *Measured, with a control.*
 
@@ -232,7 +260,7 @@ to guess between the caller's working directory and its own. The refusal is corr
 message explains itself, but a first-time user types a relative path, so it belongs in whatever
 install documentation is written.
 
-### DP13 — The fixture cannot be built from clean. *Blocking. Measured. Unrelated to distribution.*
+### DP13 — ~~The fixture cannot be built from clean.~~ **Fixed** (`10ab174`). *Blocking. Measured. Unrelated to distribution.*
 
 `python tests/fixture/setup_fixture.py --clean` refuses:
 
@@ -242,11 +270,19 @@ install documentation is written.
 The fixture is correct: the current schema fixture's `what-next.md` carries exactly that element,
 inside `<meta>`. [`setup_fixture.py:127`](../../tests/fixture/setup_fixture.py#L127) reads
 `wn.findtext("status")`, which searches only direct children of `<what-next>`. It needs
-`meta/status`. `git log -L` on that line shows it arrived with the fixture's first commit and has
+`meta/status`. `git log -L` on that line shows it arrived with the fixture's first commit and had
 never been edited — so this broke when the fixture moved the element into `<meta>` at schema-4,
 and stayed invisible because the built fixture persists in `%TEMP%` across runs and nothing
-rebuilt from clean. One word. It is recorded here because it blocked this investigation and will
-block the next one.
+rebuilt from clean.
+
+**Fixed in `10ab174`, and it was not the one-word fix it looked like.** Two sibling readers
+already accepted both positions — `test_toolchain.py:2374` as `meta/status or status`,
+`run_5_2.py:161` as `status or meta/status`, the former's message even spelling out "under
+`<meta>` or directly under `<what-next>`". This was the only site reading one position, and the
+wrong one; it now matches its siblings rather than merely moving to the current position.
+Verified three ways: provoked (value changed to `complete`, exit 1 with the check's own named
+message, so it is still live rather than permissive), enumerated (both positions accepted,
+element-absent and wrong-value both rejected), and built (`--clean` completes, exit 0).
 
 ### DP14 — There are no installation instructions, which is currently correct. *Measured.*
 
@@ -255,11 +291,21 @@ anywhere in the repository. Given DP1 that is honest rather than an omission —
 installed path to document — but it becomes the gap the moment a marketplace exists, and per DP3
 the instructions will need more than an install command on at least two of the routes.
 
-### DP15 — `README.md` §Status understates the suite by a factor of five. *Consistency. Measured.*
+### DP15 — ~~`README.md` §Status understates the suite by a factor of five.~~ **Withdrawn. It was already fixed.**
 
-It claims **31 checks**; `tests/test_toolchain.py` defines **163** `@check` functions. The same
-class of stale derived count that commit `da8f6ae` deleted from `CLAUDE.md` rather than
-correcting.
+The claim was that §Status said **31 checks** against **163** `@check` functions. Both numbers
+were real when read and neither was current when written. Commit `b94e9e8`, *"Four derived counts
+in README.md, outside the carve-out that keeps three"*, had already replaced the count with
+"every check verified to fail when its fix is reverted" — the numberless form this finding was
+about to propose. The suite now reports **170**, and `@check` now counts 170 too, so the second
+number had moved as well.
+
+**The error was a failure to reconcile, not a failure to measure.** Both counts were read early
+in the session; five commits landed in the repository between that reading and this document
+being written, and nothing re-read the file. A count measured against a tree that has since moved
+is a ghost, and this is the finding that proves the rule rather than an exception to it. It is
+recorded rather than deleted because a withdrawn finding is the only evidence the finding was ever
+checked — the convention `tests/fixture/prd/SCHEMAS.json` uses for its wrong predictions.
 
 ---
 
@@ -283,10 +329,9 @@ self-report was wrong, and the finding in DP3 comes from the transcripts.**
 
 ## 5. What is not measured
 
-1. **A `git`-sourced third-party marketplace** (DP5). Both axes pass separately and the grant
-   demonstrably tracks the cache path, so the risk is low — but it is an inference, and it is the
-   load-bearing one for the recommendation in §6. Closing it means pushing a `marketplace.json`
-   to a real remote and installing from it.
+1. ~~**A `git`-sourced third-party marketplace** (DP5).~~ **Closed.** Measured by pushing this
+   repository's own `marketplace.json` to a branch and installing from it over GitHub. It was the
+   load-bearing inference behind §6 and it held.
 2. **Whether `additionalDirectories` in settings supplies a permanent read grant.** `--add-dir` is
    measured to lift the refusal; its settings equivalent is untested. This matters only if the
    skills-directory route is to be documented rather than dropped.
@@ -298,18 +343,22 @@ self-report was wrong, and the finding in DP3 comes from the transcripts.**
 
 ## 6. Remediation, in dependency order
 
-1. **Add `.claude-plugin/marketplace.json`**, this repository serving as its own marketplace via
-   `"source": "./"`. This is the whole of DP1 and, per DP3–DP5, it is also the fix for the read
-   gate — not merely a distribution mechanism. Run `claude plugin validate` on it.
-2. **Close §5 item 1** by installing from that marketplace over a real remote, before any install
-   text is written. The recommendation in this document depends on it.
-3. **Correct DP2's explanation** in `README.md` §Use, in `CLAUDE.md`, and in the wording of the
-   check in `tests/test_toolchain.py` that encodes it. Both flags stay; the reason changes from
-   the scripts to the reference files.
-4. **Write the install section**, leading with the marketplace at project scope, and carrying the
-   `cmd.exe`-safe quoting convention from DP9 and the absolute-path requirement from DP12.
-5. **Fill in `plugin.json`** (DP11) — `license`, `repository`, `homepage`, `displayName`.
-6. **Fix `setup_fixture.py:127`** (DP13) — `meta/status`.
-7. **Delete or recompute the `31 checks` claim** (DP15).
+1. ~~**Add `.claude-plugin/marketplace.json`**~~ — **done, `ee7a9fb`.** This repository serves as
+   its own marketplace via `"source": "./"`, modelled on `superpowers` 6.3.0, which ships exactly
+   that beside its own `plugin.json`. Per DP3–DP5 this is the fix for the read gate, not merely a
+   distribution mechanism. `claude plugin validate` passes with no warnings.
+2. ~~**Close §5 item 1**~~ — **done.** Pushed to a branch, added over GitHub, installed, read.
+3. ~~**Correct DP2's explanation**~~ — **done**, in all **four** sites, one more than this
+   document originally named. Both flags stay; the reason changes from the scripts to the reads,
+   and each site now also states that `Bash` is gated by the permission mode.
+4. **Write the install section.** Leading with the marketplace, and carrying the `cmd.exe`-safe
+   quoting convention from DP9 and the absolute-path requirement from DP12. The only item still
+   open.
+5. ~~**Fill in `plugin.json`**~~ — **done, `ee7a9fb`.** `license`, `repository`, `homepage`,
+   `displayName`.
+6. ~~**Fix `setup_fixture.py:127`**~~ — **done, `10ab174`**, and see DP13 for why it was not the
+   one-word fix it appeared to be.
+7. ~~**Delete or recompute the `31 checks` claim**~~ — **withdrawn.** Already done in `b94e9e8`
+   before this document claimed otherwise. See DP15.
 
-Items 3–7 are independent of each other. Item 4 depends on 1 and 2.
+**Still open:** item 4, plus §5 items 2, 3 and 4 — none of which block an install.

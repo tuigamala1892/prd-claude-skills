@@ -70,10 +70,13 @@ MUTANTS = [
      "frontmatter example is one a skill"),
 
     # ------------------------------------------------- the load command
-    ("README.md gives the one-flag load command again, and /breakdown stops in Phase 1",
+    # The anchor carries the quotes the install section added (DP9: an unquoted backslash path
+    # fails silently in Git Bash). What the mutant models is unchanged -- dropping --add-dir,
+    # which is the state README.md actually shipped.
+    ("README.md gives the one-flag load command again, and /breakdown stops partway through",
      "README.md",
-     "claude --plugin-dir /path/to/prd-claude-skills --add-dir /path/to/prd-claude-skills",
-     "claude --plugin-dir /path/to/prd-claude-skills",
+     'claude --plugin-dir "/path/to/prd-claude-skills" --add-dir "/path/to/prd-claude-skills"',
+     'claude --plugin-dir "/path/to/prd-claude-skills"',
      "way to load the plugin"),
 
     ("CLAUDE.md loses --add-dir from its own measured instruction",
