@@ -43,10 +43,21 @@ EXIT CODES
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import re
 import sys
+
+# What counts as an open gap has ONE answer, and it is select-features.py's -- the same parser
+# the gate, selection and check-status.py read. A second regex here listed closed gaps as
+# authoring gaps the day `closed` existed, which is the drift one parser prevents.
+_sspec = importlib.util.spec_from_file_location(
+    "select_features", os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                                    os.pardir, "skills", "breakdown", "scripts",
+                                    "select-features.py"))
+_sel = importlib.util.module_from_spec(_sspec)
+_sspec.loader.exec_module(_sel)
 
 FEATURE_SLUG = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
 # EITHER spelling, per core section 3: a reader that finds <status> where it expects
@@ -58,7 +69,6 @@ FEATURE_SLUG = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
 #
 # The backreference is what stops <definition>x</status> being read as either.
 DEFINITION = re.compile(r"<(definition|status)>\s*([a-z-]+)\s*</\1>")
-GAP = re.compile(r'<gap\b([^>]*)>')
 BLOCK = re.compile(r"( *)<authoring-gaps>.*?</authoring-gaps>", re.S)
 META_CLOSE = re.compile(r"( *)</meta>")
 STAMP = re.compile(r"<toolchain-version>\s*[^<]*</toolchain-version>")
@@ -94,13 +104,14 @@ def derive(prd_dir, indent="  "):
         definition = definition.group(2) if definition else "tbd"
         counts[definition] = counts.get(definition, 0) + 1
 
-        gaps = GAP.findall(text)
-        for attrs in gaps:
-            a = dict(re.findall(r'([\w-]+)="([^"]*)"', attrs))
+        # OPEN gaps only (core 6). A closed gap is a question already answered, and this is the
+        # list of what is not yet specified.
+        gaps = [a for a in _sel.gap_attrs_of(text) if not _sel.is_closed(a)]
+        for a in gaps:
             rows.append(f'{indent}  <gap slug="{slug}" id="{a.get("id", "")}" '
                         f'kind="{a.get("kind", "")}" raised="{a.get("raised", "")}"/>')
 
-        # A feature short of `defined` with nothing to point at. `excluded` and `superseded`
+        # A feature short of `defined` with nothing OPEN to point at -- closed gaps included. `excluded` and `superseded`
         # are NOT shortfalls -- they are decisions, and listing them as authoring gaps would
         # put a resolved thing on a list of unresolved ones.
         if not gaps and definition in ("tbd", "in-progress"):

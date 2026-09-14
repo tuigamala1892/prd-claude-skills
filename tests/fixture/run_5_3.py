@@ -33,6 +33,13 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
+
+import importlib.util  # noqa: E402 -- needs REPO
+
+_sspec = importlib.util.spec_from_file_location(
+    "select_features", os.path.join(REPO, "skills", "breakdown", "scripts", "select-features.py"))
+_sel = importlib.util.module_from_spec(_sspec)
+_sspec.loader.exec_module(_sel)
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 SLUG = "archive-links"
 P = json.load(open(os.path.join(REPO, ".claude-plugin", "plugin.json"),
@@ -221,11 +228,13 @@ def build_steps(ws):
                           text)
         if not crit:
             return False, "no <criterion> carries both `pattern` and `priority` (items 33, 46)"
-        gaps = re.findall(r'<gap\b[^>]*\bkind="([a-z]+)"', text)
+        # OPEN gaps, by the toolchain's own parser: the count is set beside the AGE lines, which
+        # are open gaps only, and a third copy of the gap regex counted closed ones too.
+        gaps = _sel.gaps_of(text)
         sig = re.search(r'architecturally-significant[^>]*because="([a-z-]+)"', text)
         ages = len([ln for ln in sout.splitlines() if "AGE" in ln])
-        return True, (f"{len(crit)} EARS criteria, {len(gaps)} gap(s) ({ages} aged by the new "
-                      f"check), significance {sig.group(1) if sig else 'not declared'}")
+        return True, (f"{len(crit)} EARS criteria, {len(gaps)} open gap(s) ({ages} aged by the "
+                      f"new check), significance {sig.group(1) if sig else 'not declared'}")
 
     def s3(r):
         """Step 3: /breakdown turns the CRD into tasks.

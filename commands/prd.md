@@ -470,9 +470,9 @@ first refusal is not evidence about the other three. Report the combined output.
 
 | Line | Owner | What it means, and what you do |
 |---|---|---|
-| `CONTRADICTION` | `check-status.py` | The label claims more than the file supports. Report it and offer to fix the **content** |
+| `CONTRADICTION` | `check-status.py` | The label claims more than the file supports, or a `<gap>`'s `closed` / `closed-by` is malformed — a bad closure leaves the gap open everywhere. Report it and offer to fix the **content** |
 | `ESCALATE` | `check-status.py` | The content supports a higher label than the author set. Mention it once. **Never relabel** — an author may hold a feature low for reasons the file cannot express |
-| `AGE` | `check-status.py` | How old each gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday |
+| `AGE` | `check-status.py` | How old each **open** gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday. Closed gaps are counted in the summary line and never aged |
 | `DANGLING` | `check-rename.py`, `check-references.py` | A reference resolves to nothing. Fix it here, while the person who knows the answer is present |
 | `RETIRED` | `check-rename.py` | A `superseded` pointer nothing references any more. Offer to remove it; it is housekeeping, not a defect |
 | `STALE` | `check-references.py` | A citation of a record that has been superseded, or a significant feature no record drives |

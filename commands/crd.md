@@ -379,9 +379,11 @@ After writing the CRD file:
    python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {project_path}/docs/crd/{slug}.md
    ```
 
-   - **Exit 0**: report the `AGE` lines — id, kind and how long each has been open.
+   - **Exit 0**: report the `AGE` lines — id, kind and how long each **open** gap has been open —
+     and the closed count from the summary line. A closed gap is never reported as open.
    - **Exit 1**: `CONTRADICTION` names a `kind` outside [core §6](../schema/core.md)'s enum, a
-     repeated id, a missing or unreal `raised` date, or a `ready` CRD still carrying an open
+     repeated id, a missing or unreal `raised` date, a malformed `closed` or `closed-by` (the gap
+     stays open until it is fixed), or a `ready` CRD still carrying an open
      `specification` gap — which is `draft`, and say so. **Report it and fix the document.** A
      `kind` one letter wrong is not a gap that does not block — it is a gap nothing can
      classify, and `/breakdown`'s gate dispatches on exactly that value.

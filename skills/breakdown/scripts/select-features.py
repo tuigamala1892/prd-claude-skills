@@ -47,6 +47,7 @@ USAGE
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -87,8 +88,51 @@ def definition_of(text):
     return None
 
 
-def gaps_of(text):
-    return re.findall(r'<gap\b[^>]*\bkind="([a-z]+)"', text)
+GAP = re.compile(r"<gap\b([^>]*)>", re.S)
+GAP_ATTR = re.compile(r'(\w[\w-]*)="([^"]*)"')
+GAP_KIND = re.compile(r"[a-z]+")
+GAP_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def gap_attrs_of(text):
+    """Every `<gap>`'s attributes, open and closed, in document order, valid or not.
+
+    The one gap parser in the toolchain. `check-status.py` validates these rows and
+    `build-what-next.py` points at them; every other reader wants `gaps_of()`.
+    """
+    return [dict(GAP_ATTR.findall(attrs)) for attrs in GAP.findall(text)]
+
+
+def gap_date(value):
+    """A gap's `raised` or `closed` as a date, or None when it is not a real YYYY-MM-DD."""
+    if not value or not GAP_DATE.fullmatch(value):
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def is_closed(attrs, today=None):
+    """Whether a gap is closed -- core section 6 -- by a closure this reader can TRUST.
+
+    `closed` must be a real date, not earlier than `raised` and not later than today. Anything
+    else leaves the gap OPEN. That is deliberate and it is the safe direction: `/breakdown` never
+    runs `check-status.py`, which is where a bad closure is refused, so a `closed="soon"` treated
+    as closed here would open item 29's stop on a typo. A gap wrongly held open blocks a run; a
+    gap wrongly read as closed waves one through.
+    """
+    closed = gap_date(attrs.get("closed"))
+    raised = gap_date(attrs.get("raised"))
+    if closed is None or raised is None:
+        return False
+    return raised <= closed <= (today or datetime.date.today())
+
+
+def gaps_of(text, today=None):
+    """The kinds of the OPEN gaps. A closed gap is kept as a record and counts toward nothing."""
+    return [a["kind"] for a in gap_attrs_of(text)
+            if GAP_KIND.fullmatch(a.get("kind", "")) and not is_closed(a, today)]
 
 
 def judge(tier, definition, gaps, threshold, include_tbd):
