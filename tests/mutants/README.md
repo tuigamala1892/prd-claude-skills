@@ -57,3 +57,13 @@ checks caught nothing while the suite was green.**
 checks printed on adjacent lines of the report, and `failing_checks()` never saw the second: its
 `\s{2,}` matched the line break. The same mutant was caught run alone and through a one-check
 suite, which is what located it. Two more mutants came from the live run.
+
+## What the gap-closure run reported
+
+| Spec | Item | Result |
+|---|---|---|
+| `run-residue.py` | P72 step 11's project path, P73 `check-resume.py` and the skips it underwrites, P74 the `gaps` shape | 15/15 |
+
+**Two orphans, both expected.** Renaming `check-resume.py`'s caller in `checks.md` to a file that
+does not run it also fails the registry's two other direction checks, which is the registry doing
+its job three ways rather than a renamed check.

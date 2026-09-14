@@ -13284,6 +13284,257 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+
+def _documented_argv(command, known):
+    """A documented invocation as the argv a model filling in what it has would run.
+
+    Unbracketed tokens are required and every placeholder in them must be known. A bracketed group
+    is kept when every placeholder it holds is known and dropped when it holds none -- `[--adr-dir
+    DIR]` is an option the run may not have, `[--project-path {target_dir}]` is one it does.
+    """
+    argv = []
+    for group, bare in re.findall(r"\[([^\]]*)\]|(\S+)", command):
+        tokens = group.split() if group else [bare]
+        holes = [h for t in tokens for h in re.findall(r"\{([a-z_]+)\}", t)]
+        if group and not holes:
+            continue
+        missing = [h for h in holes if h not in known]
+        assert not missing or group, (
+            f"the documented command needs {missing}, which this check cannot supply:\n  {command}")
+        if missing:
+            continue
+        argv += [re.sub(r"\{([a-z_]+)\}", lambda m: known[m.group(1)], t) for t in tokens]
+    return argv
+
+
+def _crd_project(root):
+    """The current fixture's CRD, laid out as a project has it: PROJECT.md at the root and the
+    CRD two directories down, which is where `<project-ref>PROJECT.md</project-ref>` misresolves."""
+    current = json.load(open(os.path.join(REPO, "tests", "fixture", "prd", "SCHEMAS.json"),
+                             encoding="utf-8"))["current"]
+    fixture = os.path.join(REPO, "tests", "fixture", "prd", current, "link-shelf")
+    crd = os.path.join(root, "docs", "crd", "archive-links.md")
+    os.makedirs(os.path.dirname(crd))
+    from shutil import copy as shutil_copy
+    shutil_copy(os.path.join(fixture, "crd", "archive-links.md"), crd)
+    text = open(crd, encoding="utf-8").read()
+    prd_ref = re.search(r"<prd-ref>\s*(.*?)\s*</prd-ref>", text)
+    if prd_ref:
+        target = os.path.join(root, *prd_ref.group(1).split("/"))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil_copy(os.path.join(fixture, "index.md"), target)
+    ids = re.findall(r'<feature-ref\b[^>]*\bid="([^"]+)"', text)
+    with open(os.path.join(root, "PROJECT.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("<project-context>\n  <features>\n"
+                + "".join(f'    <feature id="{i}" built="complete">{i}</feature>\n' for i in ids)
+                + "  </features>\n</project-context>\n")
+    return crd, fixture
+
+
+@check("/breakdown hands check-references.py the project a CRD is against -- by running it",
+       finding="P72")
+def _():
+    """The gap-closure run's first unverified report, verified.
+
+    Phase 1 step 11 ran `check-references.py {document}` and nothing else. The script resolves a
+    CRD's references against `--project-path` when it is given and against the CRD's OWN
+    directory when it is not -- so `<project-ref>PROJECT.md</project-ref>`, the spelling every
+    CRD template writes, becomes `docs/crd/PROJECT.md`. Measured on the current fixture's CRD:
+    five DANGLING and exit 1 without the flag, zero and exit 0 with it. Followed literally, step
+    11 stopped `/breakdown` on every well-formed CRD. The run got through by passing the flag the
+    instruction did not name -- P62's shape, one argument further along.
+
+    `check-gate.py` and `crd-format.md` both pass it. The skill was the one caller that did not.
+
+    BY RUNNING THE DOCUMENTED COMMAND, not by searching for the flag: the command is lifted out
+    of step 11, its placeholders filled for the CRD path, and run. A control runs first without
+    the flag, so a fixture that stopped exercising the misresolution fails here rather than
+    passing vacuously.
+    """
+    import shutil
+    import tempfile
+
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    region = skill.split("**Validate the references that leave the PRD", 1)
+    assert len(region) == 2, "/breakdown's step 11 is gone"
+    region = region[1].split("**For CRD input:**", 1)[0]
+    commands = re.findall(r"^\s*python \{skill_dir\}/scripts/check-references\.py (.*)$",
+                          region, re.M)
+    assert len(commands) == 1, f"step 11 documents {len(commands)} check-references commands"
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="p72-")
+    try:
+        crd, fixture = _crd_project(root)
+
+        def run(argv):
+            p = subprocess.run([sys.executable, script, *argv], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", cwd=root)
+            return p.returncode, p.stdout + p.stderr
+
+        code, out = run([crd])
+        assert code == 1 and "project-ref" in out, (
+            f"the control did not misresolve: without --project-path the fixture CRD's "
+            f"<project-ref> was found, so nothing below measures step 11:\n{out[:500]}")
+
+        argv = _documented_argv(commands[0], {"document": crd, "target_dir": root})
+        code, out = run(argv)
+        assert code == 0 and "DANGLING" not in out, (
+            f"step 11's command, run on a well-formed CRD in a project's layout, reports what "
+            f"resolves against the project as dangling -- /breakdown stops on every CRD:\n"
+            f"  argv: {argv}\n{out[:600]}")
+
+        # And on the PRD path the same command must mean what it meant before: a project path
+        # the PRD branch does not read changes nothing.
+        prd_code, _ = run([fixture])
+        code, _ = run(_documented_argv(commands[0], {"document": fixture, "target_dir": root}))
+        assert code == prd_code, (
+            f"step 11's command answers differently on a PRD directory once the project path is "
+            f"filled in (exit {code}, {prd_code} without)")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a resumed /breakdown resumes from the documents it was given, or refuses -- by running it",
+       finding="P73")
+def _():
+    """The gap-closure run's second unverified report, verified.
+
+    Phase 2 skipped because `analysis.json` existed, Phase 3 because `layer_plan.json` did, and
+    Phase 4 each layer with a `.done`. None asked what the file was built from, so a CRD edited
+    between two runs was analysed once, as it used to be, and the two criteria the edit added
+    reached no task. Nothing downstream could say so: coverage reads the manifest those same
+    skipped phases produced.
+
+    Both halves, by running: the script in its four states, and the command step 8 documents --
+    run before any phase reads the document, and before step 11 reads it.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-resume.py")
+    assert os.path.isfile(script), "skills/breakdown/scripts/check-resume.py is missing"
+
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase1 = skill.split("### Phase 1: Validate Input", 1)[1].split("### Phase 2", 1)[0]
+    commands = re.findall(r"^\s*python \{skill_dir\}/scripts/check-resume\.py (.*)$", phase1, re.M)
+    assert len(commands) == 1, (
+        f"Phase 1 documents {len(commands)} check-resume commands; a resume that is not checked "
+        f"before the phases that skip is P73 reopened")
+    resume_at = phase1.index("check-resume.py")
+    for later in ("check-architecture.py", "check-references.py"):
+        assert resume_at < phase1.index(later), (
+            f"check-resume.py runs after {later}, so a document is read before anything has "
+            f"said the run may resume from it")
+    for skip, phase in (("If analysis.json exists, skip this phase", "### Phase 2"),
+                        ("If layer_plan.json exists, skip this phase", "### Phase 3")):
+        body = skill.split(phase, 1)[1].split("\n### ", 1)[0]
+        line = next((ln for ln in body.splitlines() if skip in ln), None)
+        assert line and "check-resume.py" in line, (
+            f"{phase}'s skip does not say what makes it sound: {line!r}. A skip on existence "
+            f"alone is the defect")
+
+    root = tempfile.mkdtemp(prefix="p73-")
+    try:
+        crd, _ = _crd_project(root)
+        tasks = os.path.join(root, "docs", "tasks", "archive-links")
+        os.makedirs(tasks)
+        argv = _documented_argv(commands[0], {"document": crd, "tasks_dir": tasks,
+                                              "target_dir": root})
+
+        def run():
+            p = subprocess.run([sys.executable, script, *argv], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        code, out = run()
+        assert code == 0 and os.path.isfile(os.path.join(tasks, "sources.json")), (
+            f"a fresh run recorded nothing to resume against:\n{out[:400]}")
+        recorded = json.load(open(os.path.join(tasks, "sources.json"), encoding="utf-8"))
+        assert "project/PROJECT.md" in recorded["sources"], (
+            f"the step 8 command recorded the CRD and not PROJECT.md, which Phase 2 reads the "
+            f"tech stack from: {sorted(recorded['sources'])}")
+
+        open(os.path.join(tasks, "analysis.json"), "w", encoding="utf-8").write("{}")
+        code, out = run()
+        assert code == 0 and "resuming" in out, f"an unchanged resume was refused:\n{out[:400]}"
+
+        original = open(crd, encoding="utf-8").read()
+        edited = original.replace("</acceptance-criteria>",
+                                  '  <criterion id="99" pattern="ubiquitous" priority="P0">\n'
+                                  "      The system shall keep a record.\n    </criterion>\n"
+                                  "  </acceptance-criteria>", 1)
+        assert edited != original, "the fixture CRD has no </acceptance-criteria> to extend"
+        open(crd, "w", encoding="utf-8", newline="\n").write(edited)
+        code, out = run()
+        assert code == 1 and "REFUSED" in out and "archive-links.md" in out, (
+            f"a CRD that gained a criterion since its analysis was resumed from anyway:\n"
+            f"{out[:500]}")
+
+        # A done layer is a resume too, and the one furthest from the document.
+        os.remove(os.path.join(tasks, "analysis.json"))
+        os.makedirs(os.path.join(tasks, "2-backend"))
+        open(os.path.join(tasks, "2-backend", ".done"), "w").close()
+        code, out = run()
+        assert code == 1 and "2-backend/.done" in out, (
+            f"a layer marked done was resumed from a changed CRD:\n{out[:500]}")
+
+        # Unrecorded artefacts: the question cannot be answered, so it is not guessed.
+        open(crd, "w", encoding="utf-8", newline="\n").write(original)
+        os.remove(os.path.join(tasks, "sources.json"))
+        code, out = run()
+        assert code == 1 and "sources.json" in out, (
+            f"artefacts with no record of their sources were resumed from:\n{out[:500]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("analysis.json's gaps are one shape, named where the analysis is written", finding="P74")
+def _():
+    """The gap-closure run's third unverified report, verified -- and it was two drifts.
+
+    The PRD run wrote `"gaps": {"open": [...], "closed_count": 2}`, its rows copied from
+    `check-status.py --json`: `file`, `days`, `blocking`, and **no gap text**. The CRD run wrote a
+    list, with the text under `text`. `breakdown-analyze-prd` documents a list of
+    `{feature, id, kind, raised, body}`, and `/breakdown` -- which writes the merged file on both
+    paths -- named neither the key list nor that shape. P65 again: an unnamed destination is one
+    the next run invents.
+
+    No script reads the field, which is why nothing failed. Its reader is the task generator,
+    which carries each gap's text into `<context>`; a row with no `body` is a gap carried as a
+    kind and a date. It did not bite only because the PRD run's gap was in an excluded feature.
+
+    PARSED, NOT SEARCHED: the analyzer's documented example is the shape, and each place
+    `/breakdown` writes `gaps` must name that same key set.
+    """
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    examples = [json.loads(b) for b in re.findall(r"```json\n(.*?)```", analyzer, re.S)
+                if '"gaps"' in b]
+    assert len(examples) == 1, f"the analyzer documents {len(examples)} examples carrying gaps"
+    rows = examples[0]["gaps"]
+    assert isinstance(rows, list) and rows, "the analyzer's documented gaps are not a list"
+    documented = set(rows[0])
+
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase2 = skill.split("### Phase 2: Analyze Input", 1)[1].split("### Phase 3", 1)[0]
+    regions = {
+        "the PRD merge (Step 4)": phase2.split("**Step 4 — merge.**", 1)[1].split("**For CRD:**", 1)[0],
+        "the CRD block": phase2.split("**For CRD:**", 1)[1].split("Save the analysis", 1)[0],
+    }
+    for where, body in regions.items():
+        # One SENTENCE, not one line: a wrapped bullet is the same claim.
+        named = re.findall(r"`gaps`[^.]*?`\{([a-z_, ]+)\}`", " ".join(body.split()))
+        assert named, (
+            f"/breakdown's {where} writes analysis.json and never names the shape of `gaps` -- "
+            f"the PRD run wrote an object of check-status rows with no gap text")
+        for keys in named:
+            got = {k.strip() for k in keys.split(",")}
+            assert got == documented, (
+                f"/breakdown's {where} names gaps as {sorted(got)}; the analyzer documents "
+                f"{sorted(documented)}. Two shapes for one field is the drift itself")
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():

@@ -455,3 +455,13 @@ It found two defects, both fixed with a check or a mutant:
   dropped the two new criteria.
 - The PRD run wrote `analysis.json`'s `gaps` as `{open, closed_count}` rather than the documented
   list. No script reads the field.
+
+**Since verified, and all three fixed in 2.1.1.** Each is a finding now. See
+[`plugin-2.0-plan.md`](plugin-2.0-plan.md) §X.
+
+- **P72.** Worse than reported. Without `--project-path` a well-formed CRD gets five `DANGLING`
+  lines and exit 1, so step 11, followed literally, stopped `/breakdown`.
+- **P73.** Wider than reported. Phase 3's `layer_plan.json` and every layer's `.done` skip on the
+  same test. `check-resume.py` now runs at step 8, and refuses a resume whose sources changed.
+- **P74.** Two drifts, not one. The CRD run wrote the gap text as `text`. The PRD run's rows had
+  no text at all, and the task generator reads that text.

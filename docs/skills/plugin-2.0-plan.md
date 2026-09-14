@@ -3988,6 +3988,55 @@ it also hides an adjacent orphan, the thing guard 2 exists to show. Closed by ma
 
 ---
 
+## X. What the gap-closure run reported and nobody verified
+
+**Found by a run, verified afterwards.** The gap-closure live run
+([`gap-closure-plan.md`](gap-closure-plan.md) §12) reported three things outside its change and
+recorded them unverified. Each was then reproduced before it was given an id, and each turned out
+to be at least as bad as reported.
+
+**P72 — `/breakdown` resolves a CRD's references against the CRD's directory, and stops on every
+well-formed CRD.**
+*Verification: `check-references.py` run on the current fixture's CRD laid out as a project has
+it: five `DANGLING` and exit 1 without `--project-path`, zero and exit 0 with it.*
+
+Phase 1 step 11 documented `check-references.py {document}` and nothing else. The script's
+`resolve()` tries the project only when one is given, so `<project-ref>PROJECT.md</project-ref>`,
+the spelling every CRD template writes, became `docs/crd/PROJECT.md`, and every `<feature-ref>`
+went unresolved with it. The run reported a misresolution. **Followed literally, the instruction
+stopped the run.** The run got past it by passing a flag the instruction never named, which is
+P62's shape one argument along. `check-gate.py` and `crd-format.md` already passed the flag; the
+skill was the one caller that did not. Closed by naming it in step 11, with a check that runs the
+documented command.
+
+**P73 — every resume in `/breakdown` skips on existence, so a changed document is never
+re-analysed.**
+*Verification: the skip conditions in Phases 2, 3 and 4 read, and every script under
+`skills/breakdown/scripts/` searched for a record of what an artefact was built from; none
+exists.*
+
+The report named Phase 2. The same test guards Phase 3's `layer_plan.json` and every layer's
+`.done`, so a stale analysis carries through all three. Coverage cannot catch it, because it
+reads the manifest those same skipped phases wrote. Closed by `check-resume.py`, run at step 8
+before anything reads the document. It records the sources' hashes on a fresh run, and refuses to
+resume from artefacts whose sources changed or were never recorded. **It refuses rather than
+regenerating**: the artefacts may be a task set somebody reviewed.
+
+**P74 — `analysis.json`'s `gaps` has no named shape where it is written, and a run wrote it
+without the gap text.**
+*Verification: both runs' `analysis.json` read. The PRD run's is `{open: [...], closed_count: 2}`
+with rows copied from `check-status.py --json`, which have no `body`. The CRD run's is a list with
+the text under `text`.*
+
+The report said *"no script reads the field"*, which is true and is why nothing failed. Its reader
+is the task generator, which carries each gap's text into `<context>`. A row with no `body`
+reaches a task as a kind and a date. It did no harm only because that run's one gap sat in an
+excluded feature. P65 again: `breakdown-analyze-prd` documents the shape, and `/breakdown`, which
+writes the merged file, never named it. Closed by naming `{feature, id, kind, raised, body}` at
+both writers, checked against the analyzer's parsed example.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
