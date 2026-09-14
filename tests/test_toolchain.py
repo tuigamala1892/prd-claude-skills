@@ -2295,9 +2295,15 @@ def _():
         ws = os.path.join(root, "ws")
         os.makedirs(ws)
 
-        # A relative tasks directory is allowed, and comes back absolute.
-        rc, out = run("docs/tasks/link-shelf")
-        assert rc == 0, f"refused a relative tasks dir, which is the documented default: {out[:200]}"
+        # The tasks directory is derived from the document's location and comes back absolute.
+        # It is no longer resolved against the working directory: P75 measured a /breakdown
+        # fork calling this from three different ones for one command.
+        doc = os.path.join(ws, "docs", "crd", "link-shelf.md")
+        os.makedirs(os.path.dirname(doc))
+        open(doc, "w").write("<crd/>")
+        base = ("--from", doc, "--slug", "link-shelf")
+        rc, out = run(*base)
+        assert rc == 0, f"refused a document in the conventional layout: {out[:200]}"
         line = [l for l in out.splitlines() if l.startswith("tasks_dir=")]
         assert line, f"no tasks_dir on stdout: {out[:200]}"
         got = line[0].split("=", 1)[1]
@@ -2318,7 +2324,7 @@ def _():
 
         for label, given in (("an existing parent", os.path.join(root, "app")),
                              ("a path not created yet", os.path.join(root, "nope", "app"))):
-            rc, out = run("docs/tasks/link-shelf", given)
+            rc, out = run(*base, given)
             assert rc == 0, f"refused an absolute target ({label}): {out[:200]}"
             got = [l for l in out.splitlines() if l.startswith("target_dir=")]
             assert got, f"no target_dir echoed for {label}: {out[:200]}"
@@ -2327,7 +2333,7 @@ def _():
                 f"target_dir resolved to somewhere the caller did not name ({label}):\n"
                 f"    given: {given}\n    got:   {got}")
 
-        rc, out = run("docs/tasks/link-shelf", "./relative-out")
+        rc, out = run(*base, "./relative-out")
         assert rc != 0, "a relative --output-dir was ACCEPTED (§5.2 test 5)"
         assert "REFUSED" in out, f"refusal does not say REFUSED: {out[:200]}"
         assert not os.path.isdir(os.path.join(ws, "relative-out")), (
@@ -2338,8 +2344,9 @@ def _():
         os.makedirs(os.path.join(plug, ".claude-plugin"))
         open(os.path.join(plug, ".claude-plugin", "plugin.json"), "w").write("{}")
         for label, args in (
-            ("a tasks dir inside a plugin", (os.path.join(plug, "skills", "x", "output"),)),
-            ("a target inside a plugin", ("docs/tasks/link-shelf", os.path.join(plug, "app"))),
+            ("a tasks dir inside a plugin",
+             (*base, "--tasks-dir", os.path.join(plug, "skills", "x", "link-shelf"))),
+            ("a target inside a plugin", (*base, os.path.join(plug, "app"))),
         ):
             rc, out = run(*args)
             assert rc != 0, f"ACCEPTED {label} -- this is F4"
@@ -13533,6 +13540,118 @@ def _():
             assert got == documented, (
                 f"/breakdown's {where} names gaps as {sorted(got)}; the analyzer documents "
                 f"{sorted(documented)}. Two shapes for one field is the drift itself")
+
+
+@check("the tasks directory is derived from the document, whatever directory it is resolved from -- by running it",
+       finding="P75")
+def _():
+    """Found by the live run that verified P73, and the reason that run could not see a refusal.
+
+    `/breakdown` resolved its default tasks directory, `docs/tasks/{slug}`, against the working
+    directory of the process running `resolve-output.sh` -- documented there as *"the caller's"*.
+    The caller is a fork that changes directory freely. One command, three runs, three answers:
+    the plugin checkout (refused), the workspace, and the target app. So a changed CRD's second
+    run found an empty directory, said `nothing to resume`, and regenerated beside the first set
+    -- P73's refusal bypassed rather than tripped, and output written into the user's project on
+    some runs and not others.
+
+    The brownfield harness had passed because its fork IGNORED the default and chose
+    `{project}/docs/tasks/<slug>` itself, which is what the harness graded. The model's
+    improvisation and the grader agreed; the instruction was never followed.
+
+    THE CHECK IS THE ONE A SINGLE-DIRECTORY TEST CANNOT BE: step 5's documented command, lifted
+    out of the skill and run from three working directories -- the workspace, the project and the
+    plugin checkout -- on both paths. Every run must give the same directory, and it must be the
+    convention `/crd`'s hand-off and the greenfield fixture already use.
+    """
+    import shutil
+    import tempfile
+
+    assert shutil.which("sh"), "no `sh` -- run the suite from Git Bash"
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    phase1 = skill.split("### Phase 1: Validate Input", 1)[1].split("### Phase 2", 1)[0]
+    commands = re.findall(r"^\s*sh \{skill_dir\}/scripts/resolve-output\.sh (.*)$", phase1, re.M)
+    assert len(commands) == 1, f"Phase 1 documents {len(commands)} resolve-output commands"
+    assert "{slug}" in commands[0] and "docs/tasks" not in commands[0], (
+        f"step 5 still hands the script a tasks path rather than the document it derives one "
+        f"from:\n  {commands[0]}")
+    script = os.path.join(SKILLS, "breakdown", "scripts", "resolve-output.sh")
+
+    def norm(p):
+        return p.replace("\\", "/").rstrip("/").lower()
+
+    root = tempfile.mkdtemp(prefix="p75-")
+    try:
+        ws = os.path.join(root, "ws")
+        app = os.path.join(ws, "app")
+        crd = os.path.join(app, "docs", "crd", "archive-links.md")
+        prd = os.path.join(ws, "docs", "prd", "link-shelf", "index.md")
+        for f in (crd, prd):
+            os.makedirs(os.path.dirname(f))
+            open(f, "w").write("<x/>")
+
+        def resolve(document, slug, cwd, target=app, extra=()):
+            argv = _documented_argv(commands[0], {"input_path": document, "slug": slug,
+                                                  "target_dir": target})
+            p = subprocess.run(["sh", script, *argv, *extra], cwd=cwd, capture_output=True,
+                               text=True, timeout=60)
+            got = [ln.split("=", 1)[1] for ln in p.stdout.splitlines()
+                   if ln.startswith("tasks_dir=")]
+            return p.returncode, (got[0] if got else None), p.stdout + p.stderr
+
+        for label, document, slug, expected in (
+                ("CRD", crd, "archive-links", os.path.join(app, "docs", "tasks", "archive-links")),
+                ("PRD", prd, "link-shelf", os.path.join(ws, "docs", "tasks", "link-shelf"))):
+            seen = {}
+            for where in (ws, app, REPO):
+                code, got, out = resolve(document, slug, where)
+                assert code == 0 and got, (
+                    f"{label}: step 5's command failed from {where}:\n{out[:400]}")
+                seen[where] = norm(got)
+            assert len(set(seen.values())) == 1, (
+                f"{label}: one command resolved to {len(set(seen.values()))} tasks directories "
+                f"depending on the working directory -- P75:\n    "
+                + "\n    ".join(f"from {k}: {v}" for k, v in seen.items()))
+            assert set(seen.values()) == {norm(expected)}, (
+                f"{label}: resolved to {seen[ws]}, not the convention {expected}")
+
+        # Outside the convention the answer is not guessed: refused, naming the override.
+        odd = os.path.join(ws, "notes", "change.md")
+        os.makedirs(os.path.dirname(odd))
+        open(odd, "w").write("<crd/>")
+        code, got, out = resolve(odd, "change", ws)
+        assert code == 1 and got is None and "--tasks-dir" in out, (
+            f"a document outside docs/crd or docs/prd was given a tasks directory anyway:\n"
+            f"{out[:400]}")
+        # `crd/` alone is not the convention: without the `docs/` above it, the derived
+        # directory would be a sibling of whatever happens to be called crd.
+        loose = os.path.join(ws, "archive", "crd", "change.md")
+        os.makedirs(os.path.dirname(loose))
+        open(loose, "w").write("<crd/>")
+        code, got, out = resolve(loose, "change", ws)
+        assert code == 1 and got is None, (
+            f"a crd/ directory not under docs/ was treated as the convention -> {got}:\n"
+            f"{out[:400]}")
+        chosen = os.path.join(root, "elsewhere", "change")
+        code, got, out = resolve(odd, "change", ws, extra=("--tasks-dir", chosen))
+        assert code == 0 and got and norm(got) == norm(chosen), (
+            f"an absolute --tasks-dir was not used as given:\n{out[:400]}")
+        # build-manifest.py reads the slug from the basename and keys the ledger on it.
+        code, got, out = resolve(odd, "change", ws,
+                                 extra=("--tasks-dir", os.path.join(root, "elsewhere", "tasks")))
+        assert code == 1 and "REFUSED" in out, (
+            f"a --tasks-dir not ending in the slug was accepted, so the manifest's slug and the "
+            f"ledger it keys would be the directory's name:\n{out[:400]}")
+        # Ends in the slug, so the basename rule below cannot be what refuses it.
+        code, got, out = resolve(odd, "change", app, extra=("--tasks-dir", "rel/change"))
+        assert code == 1 and "REFUSED" in out, (
+            f"a relative --tasks-dir was accepted, which is P75 by the override:\n{out[:400]}")
+        code, got, out = resolve(crd, "../../escape", ws)
+        assert code == 1 and "REFUSED" in out, (
+            f"a slug that is a path was accepted, so the derived directory can be anywhere:\n"
+            f"{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 # ------------------------------------------------------------------------ runner

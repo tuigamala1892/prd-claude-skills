@@ -16,6 +16,9 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 - `--review-only`: Only run review pass on existing tasks (optional)
 - `--output-dir <path>`: Target directory for greenfield projects (overrides default)
 - `--project-path <path>`: Existing project path for brownfield/CRD (overrides PRD value)
+- `--tasks-dir <path>`: Absolute directory for the task files, ending in the slug, when the
+  input is not under `docs/crd/` or `docs/prd/<slug>/` (optional; derived from the input's
+  location otherwise)
 - `--auto-setup`: Automatically execute Layer 0 tasks after generation (greenfield only)
 - `--priority <must-have|should-have|could-have>`: Lowest **feature** tier to build (default
   `could-have` — all three)
@@ -83,7 +86,7 @@ Two different directories, and they are resolved by a script rather than assembl
 
 | | What | Default |
 |---|---|---|
-| `{tasks_dir}` | Where task XML is written | `docs/tasks/<prd-slug>/` |
+| `{tasks_dir}` | Where task XML is written (`--tasks-dir`) | `tasks/<slug>/` beside the document's `crd/` or `prd/`, under the same `docs/` |
 | `{target_dir}` | Where code will be built (`--output-dir` / `--project-path`) | none — must be given |
 
 For greenfield with `--output-dir`:
@@ -132,11 +135,22 @@ Execute these phases in order:
 5. **Resolve both output paths, before creating anything:**
 
    ```bash
-   sh {skill_dir}/scripts/resolve-output.sh docs/tasks/{slug} [{--output-dir or --project-path value}]
+   sh {skill_dir}/scripts/resolve-output.sh --from {input_path} --slug {slug} [--tasks-dir {tasks_dir_given}] [{target_dir_given}]
    ```
 
    `{skill_dir}` is the base directory given at the top of this skill — the one ending in
-   `skills/breakdown`.
+   `skills/breakdown`. `{input_path}` is the input file as the absolute path step 1 read.
+   `{tasks_dir_given}` is `--tasks-dir` if the operator passed one, and `{target_dir_given}` is
+   the `--output-dir` or `--project-path` value; omit either when it was not given.
+
+   **The tasks directory is derived from where the document sits, never from a working
+   directory:** up to the `docs/` holding `crd/` or `prd/`, then `tasks/{slug}`. A CRD at
+   `<project>/docs/crd/<slug>.md` gives `<project>/docs/tasks/<slug>` — where `/crd`'s hand-off
+   tells the operator to run `/execute` — and a PRD at `<ws>/docs/prd/<slug>/index.md` gives
+   `<ws>/docs/tasks/<slug>`. This used to pass a relative tasks path and let the script resolve it
+   against its working directory; this skill `cd`s freely, so one command resolved to the
+   plugin checkout, the workspace and the target app on three runs, and step 8's resume check
+   found an empty directory each time it moved (**P75**).
 
    - **Exit 0**: stdout is `tasks_dir=<absolute>` and, when a target was given,
      `target_dir=<absolute>`. Use those two values everywhere below — in your own file writes,
@@ -146,8 +160,9 @@ Execute these phases in order:
      no directory, no analysis, no tasks. In particular do not "helpfully" convert the path
      yourself and carry on; the refusal exists because the right answer was not knowable.
 
-   What it refuses: a relative `--output-dir`/`--project-path`, and either path resolving
-   inside a Claude Code plugin. The second is F4 directly, and is pointless as well as wrong —
+   What it refuses: a relative `--output-dir`/`--project-path`/`--tasks-dir`, a document outside
+   `docs/crd/` or `docs/prd/<slug>/` with no `--tasks-dir`, and either path resolving inside a
+   Claude Code plugin. The second is F4 directly, and is pointless as well as wrong —
    `/execute` refuses a plugin as a target, so tasks generated there could never be run.
 
 6. **Echo both resolved paths** in your first line of output, before writing anything:
@@ -967,5 +982,5 @@ Breakdown complete!
 - 4-integration: 1 task
 
 To execute:
-  /execute docs/tasks/dark-mode-toggle/ --project-path /existing/project
+  /execute /existing/project/docs/tasks/dark-mode-toggle/ --project-path /existing/project
 ```

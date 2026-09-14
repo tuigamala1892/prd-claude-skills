@@ -62,8 +62,13 @@ suite, which is what located it. Two more mutants came from the live run.
 
 | Spec | Item | Result |
 |---|---|---|
-| `run-residue.py` | P72 step 11's project path, P73 `check-resume.py` and the skips it underwrites, P74 the `gaps` shape | 15/15 |
+| `run-residue.py` | P72 step 11's project path, P73 `check-resume.py` and the skips it underwrites, P74 the `gaps` shape, P75 the derived tasks directory | 21/21 |
 
 **Two orphans, both expected.** Renaming `check-resume.py`'s caller in `checks.md` to a file that
 does not run it also fails the registry's two other direction checks, which is the registry doing
 its job three ways rather than a renamed check.
+
+**P75's first round was 20/21, and the miss was two sites satisfying one assertion.** The check
+tried a relative `--tasks-dir` named `rel/tasks` against the slug `change`, so the new rule that an
+override must end in the slug refused it whether or not the absolute-path rule existed. Naming it
+`rel/change` left the absolute-path rule as the only thing that could refuse it.

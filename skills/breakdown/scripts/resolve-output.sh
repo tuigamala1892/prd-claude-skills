@@ -16,11 +16,13 @@
 # more emphatic prose is not a fix." F15 is the evidence -- a correct, present, ignored guard.
 #
 # Usage:
-#   resolve-output.sh <tasks-dir> [target-dir]
+#   resolve-output.sh --from <input-document> --slug <slug> [--tasks-dir <absolute>] [target-dir]
 #
-#   <tasks-dir>   where task XML is written; usually `docs/tasks/<slug>`. MAY be relative --
-#                 it is resolved here, against this process's working directory, which is the
-#                 caller's. That is the whole point.
+#   --from        the PRD (`index.md`, or its directory) or the CRD file /breakdown was given
+#   --slug        the document's `<meta><slug>`. Letters, digits and hyphens: it becomes a path
+#                 segment, and a slug that is a path would put the output anywhere
+#   --tasks-dir   where task XML is written, when the document's location does not say. MUST be
+#                 absolute, for the same reason as the target
 #   [target-dir]  the value of --output-dir or --project-path: where code will be written.
 #                 MUST be absolute; see below.
 #
@@ -31,24 +33,48 @@
 # On failure, prints `REFUSED: <reason>` to stderr and exits 1. It creates nothing, ever --
 # in particular it does not create the directory it just refused.
 #
-# WHY THE TARGET MUST BE ABSOLUTE AND THE TASKS DIR NEED NOT
+# THE TASKS DIRECTORY IS DERIVED FROM THE DOCUMENT, NEVER FROM A WORKING DIRECTORY (P75)
 #
-# They differ in whether a wrong answer is recoverable. `docs/tasks/<slug>` is the documented
-# default, is always relative, and resolving it wrongly produces files in a visible place that
-# can be deleted. `--output-dir` names where an entire codebase gets built and where /execute
-# will later create branches and merge them; resolving *that* wrongly does real damage, and
-# `./relative-out` gives no clue which directory the author had in mind. Refusing costs the
-# caller one absolute path and removes the ambiguity entirely.
+# This used to take `docs/tasks/<slug>` and resolve it against "this process's working
+# directory, which is the caller's". The caller is /breakdown, and /breakdown is a fork that
+# changes directory freely: one command, run three times on the same files, resolved from the
+# plugin checkout (refused), the workspace and the target app. A resume keyed on that directory
+# then found an empty one and regenerated beside the first set. The brownfield harness passed
+# only because its fork ignored the default and chose the project itself.
+#
+# Both paths already have a convention, and both follow from where the document sits:
+#
+#   <project>/docs/crd/<slug>.md          ->  <project>/docs/tasks/<slug>    /crd's hand-off, F22
+#   <ws>/docs/prd/<slug>/index.md         ->  <ws>/docs/tasks/<slug>         the greenfield layout
+#
+# i.e. up to the `docs/` holding `crd/` or `prd/`, then `tasks/<slug>`. A document anywhere else
+# is refused and `--tasks-dir` named: a layout this cannot read is not one to guess at.
+#
+# WHY THE TARGET MUST BE ABSOLUTE
+#
+# `--output-dir` names where an entire codebase gets built and where /execute will later create
+# branches and merge them; resolving it wrongly does real damage, and `./relative-out` gives no
+# clue which directory the author had in mind. Refusing costs the caller one absolute path and
+# removes the ambiguity entirely. P75 is the same argument arriving late for the tasks directory.
 
 set -eu
 
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-    echo "usage: $0 <tasks-dir> [target-dir]" >&2
+usage() {
+    echo "usage: $0 --from <input-document> --slug <slug> [--tasks-dir <absolute>] [target-dir]" >&2
     exit 2
-fi
+}
 
-tasks_in=$1
-target_in=${2:-}
+from_in='' slug='' tasks_in='' target_in=''
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from)      [ $# -ge 2 ] || usage; from_in=$2; shift 2 ;;
+        --slug)      [ $# -ge 2 ] || usage; slug=$2; shift 2 ;;
+        --tasks-dir) [ $# -ge 2 ] || usage; tasks_in=$2; shift 2 ;;
+        --*)         usage ;;
+        *)           [ -z "$target_in" ] || usage; target_in=$1; shift ;;
+    esac
+done
+[ -n "$from_in" ] && [ -n "$slug" ] || usage
 
 refuse() {
     echo "REFUSED: $1" >&2
@@ -137,7 +163,36 @@ if [ -n "$target_in" ]; then
     target_abs=$(abspath "$target_in") || refuse "cannot resolve target path: $target_in"
 fi
 
-tasks_abs=$(abspath "$tasks_in") || refuse "cannot resolve tasks path: $tasks_in"
+# ----------------------------------------------------------------- the tasks directory (P75)
+case "$slug" in
+    ''|*[!a-z0-9-]*) refuse "slug \`$slug\` is not letters, digits and hyphens -- it becomes a path segment" ;;
+esac
+
+if [ -n "$tasks_in" ]; then
+    is_absolute "$tasks_in" || refuse "--tasks-dir must be an absolute path, not \`$tasks_in\`. Relative to what? This skill forks, so its working directory is not yours."
+    tasks_abs=$(abspath "$tasks_in") || refuse "cannot resolve tasks path: $tasks_in"
+    # build-manifest.py takes the slug from this directory's basename, and the ledger is keyed
+    # on it -- an override named otherwise would point a resumed /execute at another ledger.
+    [ "${tasks_abs##*/}" = "$slug" ] || refuse "--tasks-dir must end in the slug: \`$tasks_in\` ends in \`${tasks_abs##*/}\`, and the slug is \`$slug\`"
+else
+    is_absolute "$(slashes "$from_in")" || refuse "the input document must be an absolute path, not \`$from_in\`"
+    _d=$(abspath "$from_in") || refuse "cannot resolve input document: $from_in"
+    tasks_abs=''
+    # Two steps up at most: a CRD file sits directly in `crd/`; a PRD's `index.md` sits in
+    # `prd/<slug>/`, and the PRD directory itself directly in `prd/`.
+    for _step in 1 2; do
+        _d=$(parent_of "$_d"); _d=${_d%/}
+        case "${_d##*/}" in
+            crd|prd)
+                _docs=$(parent_of "$_d"); _docs=${_docs%/}
+                if [ "${_docs##*/}" = docs ]; then
+                    tasks_abs="$_docs/tasks/$slug"
+                    break
+                fi ;;
+        esac
+    done
+    [ -n "$tasks_abs" ] || refuse "cannot derive a tasks directory from $from_in: it is not under docs/crd/ or docs/prd/<slug>/. Pass --tasks-dir <absolute path>."
+fi
 
 # ---------------------------------------------------------------- never inside the toolchain
 # F4 is exactly this: output written into a plugin's own tree. It is also pointless as well as

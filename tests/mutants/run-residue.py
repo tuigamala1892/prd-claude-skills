@@ -1,4 +1,4 @@
-"""What the gap-closure run reported and nobody verified: P72, P73, P74.
+"""What the gap-closure run reported and nobody verified: P72, P73, P74 -- and P75, found verifying them.
 
 P72: `/breakdown` step 11 now hands `check-references.py` the project a CRD is against. P73:
 `check-resume.py` refuses to resume from artefacts built from different documents, and every skip
@@ -9,12 +9,14 @@ treating a missing record as a fresh run, dropping a key nobody seemed to read.
 
 SKILL = "skills/breakdown/SKILL.md"
 RESUME = "skills/breakdown/scripts/check-resume.py"
+OUTPUT = "skills/breakdown/scripts/resolve-output.sh"
 
 P72 = "/breakdown hands check-references.py the project a CRD is against"
 P73 = "a resumed /breakdown resumes from the documents it was given, or refuses"
 P74 = "analysis.json's gaps are one shape, named where the analysis is written"
 PROBED = "every assertion says which paths it reaches, and each `both` is probed by running it"
 CALLERS = "every file that runs an owning script is listed as its caller"
+P75 = "the tasks directory is derived from the document, whatever directory it is resolved from"
 
 MUTANTS = [
     # --- P72 ------------------------------------------------------------------------------------
@@ -113,4 +115,41 @@ MUTANTS = [
      '      "body": "Retention period for archived links is unspecified."',
      '      "text": "Retention period for archived links is unspecified."',
      P74),
+
+    # --- P75: found by the live run of the above ------------------------------------------------
+    ("step 5 goes back to a relative tasks path",
+     SKILL,
+     "resolve-output.sh --from {input_path} --slug {slug} [--tasks-dir {tasks_dir_given}]",
+     "resolve-output.sh --from {input_path} --slug {slug} --tasks-dir docs/tasks/{slug}",
+     P75),
+
+    ("a relative --tasks-dir is resolved against the working directory again",
+     OUTPUT,
+     '    is_absolute "$tasks_in" || refuse "--tasks-dir must be an absolute path',
+     '    is_absolute "$tasks_in" || true "--tasks-dir must be an absolute path',
+     P75),
+
+    ("any directory named crd or prd is a conventional home, docs/ or not",
+     OUTPUT,
+     '                if [ "${_docs##*/}" = docs ]; then',
+     "                if true; then",
+     P75),
+
+    ("a document outside the convention gets a tasks directory beside it instead of a refusal",
+     OUTPUT,
+     '    [ -n "$tasks_abs" ] || refuse "cannot derive a tasks directory',
+     '    [ -n "$tasks_abs" ] || tasks_abs="$(parent_of "$(abspath "$from_in")")/tasks/$slug" || refuse "cannot derive a tasks directory',
+     P75),
+
+    ("a slug that is a path is accepted",
+     OUTPUT,
+     "    ''|*[!a-z0-9-]*) refuse",
+     "    '') refuse",
+     P75),
+
+    ("an override may be named anything, so the manifest's slug is the directory's name",
+     OUTPUT,
+     '    [ "${tasks_abs##*/}" = "$slug" ] || refuse',
+     '    true || refuse',
+     P75),
 ]

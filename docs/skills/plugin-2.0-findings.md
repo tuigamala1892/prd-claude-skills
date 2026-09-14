@@ -133,6 +133,7 @@ substitutes for the other.
 | **P72** | `/breakdown` resolves a CRD's references against the CRD's directory, and stops on every well-formed CRD | closed | `/breakdown hands check-references.py the project a CRD is against -- by running it` |
 | **P73** | every resume in `/breakdown` skips on existence, so a changed document is never re-analysed | closed | `a resumed /breakdown resumes from the documents it was given, or refuses -- by running it` |
 | **P74** | `analysis.json`'s `gaps` has no named shape where it is written, and a run wrote it without the gap text | closed | `analysis.json's gaps are one shape, named where the analysis is written` |
+| **P75** | `/breakdown`'s tasks directory is resolved against whatever directory its fork is in | closed | `the tasks directory is derived from the document, whatever directory it is resolved from -- by running it` |
 
 ---
 

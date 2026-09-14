@@ -4035,6 +4035,32 @@ excluded feature. P65 again: `breakdown-analyze-prd` documents the shape, and `/
 writes the merged file, never named it. Closed by naming `{feature, id, kind, raised, body}` at
 both writers, checked against the analyzer's parsed example.
 
+**P75 — `/breakdown`'s tasks directory is resolved against whatever directory its fork is in.**
+*Verification: `resolve-output.sh` calls extracted from the transcripts of five live runs of one
+command. Each resolved `docs/tasks/<slug>` from a different directory: the plugin checkout
+(refused), the workspace twice, and the target app twice.*
+
+**Found by the live run that verified P73, and the reason it could not measure P73's refusal.**
+The run edited the CRD between runs. The next run's tasks directory had moved, so the resume
+check found an empty directory, reported `nothing to resume`, and every phase regenerated.
+`resolve-output.sh` stated its premise as *"this process's working directory, which is the
+caller's"*. That premise was never measured, and it is false: the caller is itself a fork that
+changes directory freely. F4 was a sub-skill resolving a relative path against its own
+directory; its fix moved the resolution one fork up and kept the assumption.
+
+**Why nothing saw it.** The F4 check runs the script from a working directory the test sets
+itself, so it tests the arithmetic and not the call. The brownfield harness started `/breakdown`
+from the workspace and graded `app/docs/tasks/<slug>`. It passed because its fork **ignored the
+documented default** and chose the project convention itself. The model's improvisation and the
+grader agreed. And before P73 nothing depended on the directory staying put: a task set in the
+other place was still a complete, valid one.
+
+Closed by deriving the tasks directory from where the document sits. From the `docs/` holding
+`crd/` or `prd/`, it is `tasks/<slug>`. That is `/crd`'s hand-off convention on the CRD path and
+the fixture layout on the PRD path. A document anywhere else is refused unless `--tasks-dir`
+names an absolute directory ending in the slug. The check runs step 5's documented command from
+three working directories on both paths.
+
 ---
 
 ## 6. Summary
