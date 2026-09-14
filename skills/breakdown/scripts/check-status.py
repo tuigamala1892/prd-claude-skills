@@ -135,6 +135,18 @@ def ceiling(text):
     return "defined", f"{criteria} criteria, a user story, and no specification gap"
 
 
+def workflow_of(text):
+    """A CRD's `<workflow>`, accepting the pre-item-45 `<status>` on read. Core section 3.
+
+    The backreference is what stops `<workflow>x</status>` being read as either.
+    """
+    meta = re.search(r"<meta>(.*?)</meta>", text, re.S)
+    if not meta:
+        return None
+    m = re.search(r"<(workflow|status)>\s*([a-z-]+)\s*</\1>", meta.group(1))
+    return m.group(2) if m else None
+
+
 def gap_rows(text):
     """Every `<gap>` with its attributes, in document order, whether or not they are valid."""
     return [dict(ATTR.findall(attrs)) for attrs in GAP.findall(text)]
@@ -279,7 +291,18 @@ def main():
     # path-agnostic, so this is a dispatch rather than a second copy of core section 6's enum.
     if not os.path.isdir(prd_dir):
         bad, ages = [], []
-        check_gaps(os.path.basename(prd_dir), gap_rows(read(prd_dir)), today, bad, ages)
+        text = read(prd_dir)
+        rel = os.path.basename(prd_dir)
+        # Core section 6's rule for <workflow>, which is <definition>'s with one word changed. The
+        # prose called it mechanical from item 48 and nothing ran it: this branch validated the
+        # gaps and never compared them with the workflow (P70). One way only, as the ladder is --
+        # a `draft` CRD with no gap is never promoted.
+        if workflow_of(text) == "ready" and "specification" in _sel.gaps_of(text):
+            bad.append(f'{rel}: <workflow>ready</workflow> while carrying an open '
+                       f'<gap kind="specification"> -- ready for implementation and the '
+                       f'specification is incomplete cannot both be true (core 6). It is `draft` '
+                       f'until the gap is closed')
+        check_gaps(rel, gap_rows(text), today, bad, ages)
         return report(bad, [], ages, 1, "change request(s)",
                       args.json, args.quiet, args.strict)
 

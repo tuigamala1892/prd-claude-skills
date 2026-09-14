@@ -11561,6 +11561,75 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a ready CRD carrying a specification gap is a contradiction the script reports -- by running it",
+       finding="P70")
+def _():
+    """Core section 6's rule for `<workflow>`, which the prose called mechanical and no script ran.
+
+    Item 48 gave the CRD `<gaps>` and, with it, the one-way test `<definition>` already had: a CRD
+    marked `ready` must not carry a `specification` gap. Core section 6 says so, `crd-format.md`
+    says so, and `commands/crd.md` tells the model to demote the document. `check-status.py`'s CRD
+    branch validated the gaps' shape and passed an empty escalation list; nothing compared
+    `<workflow>` with them. The rule was enforced by an instruction and asserted by a sentence
+    check, which is P61's shape: the element on both paths, the check over it on one.
+
+    Downstream still stopped it -- `select-features.py` refuses a specification gap whatever the
+    workflow says -- so the defect was never a run waved through. It was a contradiction nobody
+    reported, at the one point a person is there to fix it.
+
+    CONTROLS, BOTH DIRECTIONS. A `draft` CRD with the same gap must pass, and a `ready` CRD with a
+    gap that does not bar `ready` must pass, or a script refusing every CRD with a gap would
+    satisfy the assertion. And the pre-item-45 `<status>` spelling must reach the same rule,
+    because core section 3 accepts it on read.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="p70-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+
+        def run(workflow, kind, tag="workflow"):
+            open(crd, "w", encoding="utf-8", newline="\n").write(
+                "<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+                f"    <{tag}>{workflow}</{tag}>\n    <priority>must-have</priority>\n  </meta>\n"
+                "  <gaps>\n"
+                f"    <gap id=\"1\" kind=\"{kind}\" raised=\"2026-09-01\">Deferred</gap>\n"
+                "  </gaps>\n</crd>\n")
+            p = subprocess.run(
+                [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-status.py"),
+                 crd, "--today", "2026-09-09", "--quiet"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        code, out = run("draft", "specification")
+        assert code == 0, (
+            f"a DRAFT CRD with a specification gap was refused. That is the honest state of a "
+            f"change request with deferred behaviour, and refusing it means the check below "
+            f"would pass against a script that refuses every gap:\n{out[:400]}")
+
+        code, out = run("ready", "decision")
+        assert code == 0, (
+            f"a ready CRD with a decision gap was refused. Only `specification` bars `ready` "
+            f"(core section 6); the other four kinds block execution, not readiness:\n{out[:400]}")
+
+        code, out = run("ready", "specification")
+        assert code == 1, (
+            f"a CRD marked ready while carrying a <gap kind=\"specification\"> exited {code}. "
+            f"Core section 6 calls that a contradiction with a mechanical test, and the test "
+            f"did not run:\n{out[:400]}")
+        assert "CONTRADICTION" in out or "1 contradictions" in out, (
+            f"exit 1 without a contradiction the operator can read:\n{out[:400]}")
+
+        code, out = run("ready", "specification", tag="status")
+        assert code == 1, (
+            f"the pre-item-45 <status>ready</status> spelling escaped the rule (exit {code}). "
+            f"Core section 3 accepts that spelling on read, so a CRD not yet migrated is the "
+            f"same claim:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("the gate never reports `blocked OK` for an assertion it could not make -- by running it",
        finding="P59")
 def _():

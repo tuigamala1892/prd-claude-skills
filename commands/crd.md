@@ -381,7 +381,8 @@ After writing the CRD file:
 
    - **Exit 0**: report the `AGE` lines — id, kind and how long each has been open.
    - **Exit 1**: `CONTRADICTION` names a `kind` outside [core §6](../schema/core.md)'s enum, a
-     repeated id, or a missing or unreal `raised` date. **Report it and fix the document.** A
+     repeated id, a missing or unreal `raised` date, or a `ready` CRD still carrying an open
+     `specification` gap — which is `draft`, and say so. **Report it and fix the document.** A
      `kind` one letter wrong is not a gap that does not block — it is a gap nothing can
      classify, and `/breakdown`'s gate dispatches on exactly that value.
 

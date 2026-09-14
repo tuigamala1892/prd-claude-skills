@@ -3953,6 +3953,29 @@ measured and was content.
 
 ---
 
+## W. The rule the prose called mechanical
+
+**Found while planning gap closure** ([`gap-closure-plan.md`](gap-closure-plan.md) §2.1), not by a
+run: the plan needed a script on the CRD path to test, and there was none.
+
+**P70 — a CRD's `ready` rule is stated as mechanical, and no script runs it.**
+*Verification: every script under `schema/` and `skills/` searched for a comparison of `<workflow>`
+with gaps; none exists.*
+
+Item 48 gave the CRD `<gaps>` and, with it, the one-way test `<definition>` already had: a CRD
+marked `ready` must not carry a `specification` gap. Core §6 says the CRD *"now has the same
+one-way mechanical test"*. What existed was an instruction in `commands/crd.md` telling the model
+to demote the document, a suite check that the sentence was written, and `check-status.py`'s CRD
+branch, which validated gap shape and passed an empty escalation list. **P61's shape again**: the
+element on both paths, the check over it on one.
+
+Downstream still stopped the run — `select-features.py` refuses a `specification` gap whatever the
+workflow says — so nothing was ever waved through. What was lost is the report at the one point a
+person is there to act on it. Closed by `check-status.py`'s CRD branch, which now reports the
+contradiction, accepting the pre-item-45 `<status>` spelling on read.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |
