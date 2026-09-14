@@ -11999,6 +11999,78 @@ def _():
         f"were all resolved would report as one that declared none")
 
 
+@check("a person closes a gap in /prd and in /crd, and the challenger is handed the closures")
+def _():
+    """`closed` has readers in five scripts; this is its producer, on both paths.
+
+    A reader with no producer is P46's shape, and it is the defect this project has found most
+    often: without these steps `closed` is written by hand or not at all, and every gap annotated
+    "resolved" under the old rule stays open for good.
+
+    Three things per path, each scoped to the step that carries it:
+      1. the walk -- a table whose rows are the three answers a person gives, so a table with
+         `resolved` and no `partly resolved` (the partial state core section 6 forbids writing
+         as one gap) fails;
+      2. the boundary -- only the person closes a gap;
+      3. the review -- the challenger's dispatch carries the closed gaps, by the script that
+         lists them (`--closed-since` on the PRD path, which has a review date; every closed gap
+         on the CRD path, which does not).
+    """
+    def region(text, start, end):
+        assert start in text, f"no {start!r} to read"
+        tail = text.split(start, 1)[1]
+        assert end in tail, f"{start!r} has no {end!r} after it"
+        return tail.split(end, 1)[0]
+
+    def walk_rows(step):
+        rows = [ln for ln in step.splitlines() if ln.startswith("| ") and "|---" not in ln]
+        return {prose(ln.strip("|").split("|")[0]).strip() for ln in rows}
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    crd = open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read()
+
+    for label, step in (
+            ("/prd Phase 3", region(prd, "#### A feature that already carries open gaps",
+                                    "#### Offer the challenger")),
+            ("/crd Phase 5", region(crd, "On a resume, walk the gaps already there",
+                                    "### Phase 6"))):
+        answers = walk_rows(step)
+        assert {"still open", "resolved", "partly resolved"} <= answers, (
+            f"{label}'s gap walk has answers {sorted(answers)}. Without all three a partial "
+            f"resolution has nowhere to go but a gap closed early or never")
+        flat = prose(step)
+        assert re.search(r'closed="\{today\}"', flat) and "closed-by" in flat, (
+            f"{label}'s walk no longer says what a resolved gap is written as")
+        assert re.search(r"new gap with the next unused id", flat), (
+            f"{label}'s walk does not raise the remainder of a partly resolved gap under a new id")
+        assert re.search(r"(Never write closed on your own judgement|Only the person closes a gap)",
+                         flat), (
+            f"{label}'s walk no longer says only the person closes a gap")
+
+    review = region(prd, "**The judgement half of the bar is not here.**",
+                    "**Record the review, once the author accepts it.**")
+    assert re.search(r"mode: review-definition[^)]*the gaps closed since its last review", review), (
+        "/prd's review-definition dispatch does not carry the gaps closed since the last review")
+    assert re.search(r"check-status\.py \{prd_dir\} \\\s*--closed-since", review), (
+        "/prd does not take the closed gaps from check-status.py --closed-since")
+
+    phase7 = region(crd, "### Phase 7: Interactive Review", "### Phase 8")
+    assert re.search(r'subagent_type:\s*"prd-criteria-author"[^)]*mode: review-closures', phase7), (
+        "/crd's review does not dispatch the challenger in review-closures mode")
+    assert "check-status.py" in phase7 and "--json" in phase7, (
+        "/crd's closure review does not take its list from check-status.py")
+
+    agent = open(os.path.join(REPO, "agents", "prd-criteria-author.md"), encoding="utf-8").read()
+    assert "| `review-closures` |" in agent, "the challenger's mode table has no review-closures"
+    section = prose(region(agent, "## Closed gaps", "## Mode 3"))
+    for verdict in ("answered", "not answered", "cannot tell"):
+        assert f"{verdict} —" in section or f"{verdict} -" in section, (
+            f"the challenger's closed-gap section has no `{verdict}` verdict")
+    assert re.search(r"Never propose removing closed", section), (
+        "the challenger may propose removing `closed`, which rewrites the dates core section 6 "
+        "says never change")
+
+
 @check("the gate never reports `blocked OK` for an assertion it could not make -- by running it",
        finding="P59")
 def _():

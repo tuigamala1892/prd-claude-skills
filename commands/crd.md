@@ -307,6 +307,20 @@ later"* left no trace and reached `/breakdown` as a task with nothing to build.
 
 A `specification` gap bars `<workflow>ready</workflow>`. If one is open, the CRD is `draft`.
 
+**On a resume, walk the gaps already there before asking for new ones.** Put each open gap to the
+person by id and kind — the list is `check-status.py`'s `AGE` lines, not the file:
+
+| The person says | You write |
+|---|---|
+| still open | nothing |
+| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="{their ids}"` when criteria resolved it, and one line in the body saying how |
+| partly resolved | close it as above, and raise the rest as a **new** gap with the next unused id and `raised="{today}"`, its body citing the old id |
+
+**Only the person closes a gap**, and nothing is ever deleted or reopened: a closure that turns
+out wrong is answered by a new gap citing the closed one ([core
+§6](../schema/core.md#6-gaps--what-a-document-knows-it-is-missing)). A CRD whose last open
+`specification` gap closes may become `ready` — ask, never promote it yourself.
+
 ### Phase 6: CRD Generation
 
 **Check what you are about to overwrite, before writing anything.**
@@ -362,6 +376,28 @@ Present a summary:
 Show key sections. Ask: *"Would you like to revise anything?"*
 
 If yes, make revisions interactively.
+
+**If the CRD carries closed gaps, offer to have the closures checked.** A gap is recorded before it
+is filled so the filling can be reviewed against what was owed. A CRD has no `<review>`, so there
+is no date to compare against: the challenger gets **every** closed gap, which for one document
+about one change is a short list. Take it from the script, not the file:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {project_path}/docs/crd/{slug}.md --json
+```
+
+```
+Task(
+  subagent_type: "prd-criteria-author",
+  prompt: <mode: review-closures; the CRD file path; the `closed` list from the command above;
+           the PROJECT.md <feature> entries its <related-features> names>,
+  run_in_background: false,
+  description: "Check the closed gaps in {slug}"
+)
+```
+
+It returns, per closed gap, whether its criteria answer the question the gap asked. **A finding is
+answered by a new gap, never by removing `closed`** — offer to raise one, citing the old id.
 
 ### Phase 8: Completion
 
