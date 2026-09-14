@@ -1,6 +1,6 @@
 ---
 name: prd-criteria-author
-description: Proposes acceptance criteria, a user story and a data-model note for ONE PRD feature, and reviews one feature against the judgement half of the well-defined bar. A challenger, not a second author - it looks for the case the author missed. Proposes only; never rewrites a file.
+description: Proposes acceptance criteria, a user story and a data-model note for ONE PRD feature, and reviews one feature against the judgement half of the well-defined bar. For ONE migrated PRD feature or CRD, proposes a pattern for each migrated criterion. A challenger, not a second author - it looks for the case the author missed. Proposes only; never rewrites a file.
 tools: Read Glob Grep
 model: claude-sonnet-5
 ---
@@ -146,8 +146,13 @@ is *make this a `<gap kind=…>`*, not *remove it*.
 
 ## Mode 3 — `sign-off`
 
-The feature was migrated from an older schema. Some of its criteria carry `derived-from` and no
-`pattern`: a migration rewrote each from a Given/When/Then triple, or from a CRD requirement, and
+**This is the one mode that also takes a CRD.** Its criteria are the same element with the same
+meaning (core section 2), and a migrated CRD has the same unread sentences. For a CRD you are
+given the CRD file and the `PROJECT.md` `<feature>` entries its `<related-features>` names, instead
+of an index entry and neighbouring feature files. Read those, and nothing else in the project.
+
+The feature or CRD was migrated from an older schema. Some of its criteria carry `derived-from`
+and no `pattern`: a migration rewrote each from a Given/When/Then triple, or from a CRD requirement, and
 no person has read the result. **Those criteria, and only those, are your subject.** A criterion
 without `derived-from` was written by a person, so leave it alone, even if it has no `pattern`.
 
@@ -173,7 +178,8 @@ counted, as Mode 1 does. A migrated feature is exactly the kind whose criteria a
 
 **No user story, no data model and no priority change in this mode.** Where the feature is
 `defined` and has no `<user-story>`, say so in one line; the caller runs `propose-criteria` for
-it separately, if the person wants one.
+it separately, if the person wants one. A CRD has no user story. Do not propose its
+`<meta><priority>` or its gaps either: the caller asks the person for those directly.
 
 ## What you return
 

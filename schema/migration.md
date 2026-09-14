@@ -172,8 +172,10 @@ corrects each one while `derived-from` stays. Recording the feature's review the
 `derived-from` from every classified criterion. That is why the fixtures from schema-3 onward
 carry both attributes: they are classified and not yet signed off. `/migrate` never dispatches
 that agent. A proposal nobody is present to accept is the unattended judgement this file forbids,
-however it is labelled. **The CRD path has no sign-off yet.** A migrated CRD's criteria keep
-`derived-from` until `/crd` gains the same step.
+however it is labelled. **A CRD signs off in `/crd --resume`.** The person classifies the same way,
+and also supplies what R10 leaves on the document: `<meta><priority>`, and any `<gap>` a CRD from
+before item 48 never recorded. `schema/scripts/sign-off.py` then does the edit a PRD's review does,
+from the same code.
 
 **R4 and R5 are vacuously satisfied by an artefact with no criteria**, and that is correct rather
 than convenient. A feature carrying zero criteria is `excluded` or `superseded`; requiring at

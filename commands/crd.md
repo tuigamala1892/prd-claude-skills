@@ -85,6 +85,75 @@ because inside the document the word had to stop being shared with three other t
 the flag would change a published interface to fix a collision that only ever existed between
 elements. A CRD written before item 45 carries `<status>` — read it as `<workflow>`.
 
+**If `--resume` flag, and the CRDs were migrated: offer the sign-off first.**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py {project_path}/docs/crd --check
+```
+
+**Exit 0 means nothing is outstanding, so say nothing about it and continue.** Exit 1 lists every
+`PARTIAL` CRD and the rules it is outstanding on. R5 and R10 are this step's work. Their migrated
+criteria carry `derived-from` and no `pattern`, because `/migrate` rewrote the sentences and no
+person has read them. R10 may also be missing the document's `<meta><priority>`. Report the count
+of CRDs and migrated criteria.
+
+**A `complete` or `abandoned` CRD is not offered.** It is a record of something that already
+happened, and [migration.md](../schema/migration.md) keeps its `derived-from` permanently. Name
+those CRDs separately, so nobody mistakes them for work left undone.
+
+**Then offer the rest, one CRD at a time, and let the person choose which.** Never across every
+CRD in one pass, for the reason `/prd --resume` gives: a person accepting a long list of
+proposed patterns has approved a list, not read the sentences.
+
+```
+Task(
+  subagent_type: "prd-criteria-author",
+  prompt: <mode: sign-off; the CRD file path; the PROJECT.md <feature> entries its
+           <related-features> names>,
+  run_in_background: false,
+  description: "Sign off migrated criteria for {slug}"
+)
+```
+
+It returns a proposed `pattern` for each migrated criterion, or `needs a person` with the reason.
+Walk them with the person, **criterion by criterion**:
+
+| The person | You write |
+|---|---|
+| accepts the sentence and the pattern | the `pattern` |
+| corrects the pattern | their `pattern` |
+| rewrites the sentence | their sentence, and the `pattern` they give it |
+| defers it | nothing. The criterion stays unclassified |
+
+**Leave `derived-from` in place, on every row.** It is how the person checks each sentence against
+the requirement it came from, until the sign-off below. Never remove it by hand.
+
+Then the judgements R10 leaves on the document itself. Each is a person's, and each is asked
+rather than derived ([migration.md](../schema/migration.md)'s allocation table):
+
+- **No `<meta><priority>`?** Ask once, exactly as Phase 5 does: *"Against everything else waiting,
+  is this a must, a should or a could?"* Never take the highest criterion priority. That merges
+  the two levels item 47 separated.
+- **Anything deferred?** A CRD migrated from before item 48 recorded its deferrals nowhere, so the
+  absence of a `<gap>` is not evidence there were none. Ask. Write what the person names, per
+  core §6. **If a `specification` gap is written into a `ready` CRD, it becomes `draft`**, and say so.
+
+**Sign off last, after Phase 7's review of the document:**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/sign-off.py {project_path}/docs/crd/{slug}.md
+```
+
+It removes `derived-from` from every criterion that carries a `pattern`, and names the ones still
+unclassified. It refuses a `complete` or `abandoned` CRD, and a CRD that still holds
+`<requirements>`. It is the same implementation `/prd --resume` runs through
+`check-definition.py --record-review`, so the two paths cannot disagree about which criteria a
+sign-off touches.
+
+Re-run `migrate.py {project_path}/docs/crd --check` when the person stops, and report what is
+still outstanding. A sign-off left half done is ordinary. The attributes record where each
+criterion stands, so the next `--resume` finds the rest.
+
 ## Workflow Phases
 
 ### Phase 1: Context Check

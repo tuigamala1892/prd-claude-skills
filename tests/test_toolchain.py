@@ -7910,6 +7910,161 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a migrated CRD is signed off in /crd --resume by the same code as a PRD feature "
+       "-- by running it", finding="P28")
+def _():
+    """The CRD half of core section 2's sign-off. Until now it was stated as missing.
+
+    A CRD has no <review>, so the PRD path's trigger does not exist here. The sign-off is a script
+    run at the end of /crd --resume's review, and it has to be the SAME code check-definition.py
+    runs, or the two paths could disagree about which criteria a sign-off touches. That is the
+    drift item 44 was extracted to prevent, reintroduced by the fix for parity.
+
+    Run on a fixture CRD that still holds <requirements>: migrate it, classify all but one
+    criterion, supply the document priority, sign off. The unclassified criterion keeps
+    derived-from and --check still refuses. Classify it, sign off again, and --check passes. And
+    the three refusals: a complete CRD, a PRD feature file, an unmigrated CRD.
+    """
+    import shutil
+    import tempfile
+
+    # --- the step ------------------------------------------------------------------------------
+    crd = open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read()
+    s, e = "**If `--resume` flag, and the CRDs were migrated", "## Workflow Phases"
+    assert s in crd and e in crd, "commands/crd.md has no sign-off step to read"
+    step = crd[crd.index(s):crd.index(e)]
+    assert "migrate.py" in step and "--check" in step, "the CRD step never asks what is unsigned"
+    assert re.search(r'subagent_type:\s*"prd-criteria-author"[^)]*mode: sign-off[^)]*'
+                     r'run_in_background: false', step, re.S), (
+        "the CRD step does not dispatch the challenger in sign-off mode, blocking")
+    assert re.search(r"one CRD at a time", prose(step)), "CRD sign-off is no longer per CRD"
+    assert re.search(r"complete.{0,20}abandoned.{0,20}is not offered", prose(step)), (
+        "the step offers a record of the past for sign-off")
+    rows = [ln for ln in step.splitlines()
+            if ln.startswith("| ") and not ln.startswith("| The person") and "---" not in ln]
+    assert len(rows) == 4, f"the CRD sign-off table has {len(rows)} rows, expected four"
+    assert all("derived-from" not in r for r in rows), "a CRD classification row touches derived-from"
+    assert "sign-off.py" in step and step.index("sign-off.py") > step.index("| accepts"), (
+        "the CRD step does not run sign-off.py after classifying")
+    assert re.search(r"never take the highest criterion priority", prose(step), re.I), (
+        "the CRD step no longer forbids deriving <meta><priority> from the criteria. That merges "
+        "the two levels item 47 separated")
+
+    agent = open(os.path.join(AGENTS, "prd-criteria-author.md"), encoding="utf-8").read()
+    mode3 = agent[agent.index("## Mode 3"):agent.index("## What you return")]
+    assert re.search(r"the one mode that also takes a CRD", prose(mode3)), (
+        "sign-off mode does not take a CRD, so the CRD step dispatches an agent that refuses it")
+
+    # --- one implementation ----------------------------------------------------------------------
+    so_path = os.path.join(SCHEMA, "scripts", "sign-off.py")
+    cd_path = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+    cd_src = open(cd_path, encoding="utf-8").read()
+    assert "def sign_off" not in cd_src and '"sign-off.py"' in cd_src, (
+        "check-definition.py carries its own sign-off instead of importing sign-off.py, so the "
+        "two paths can disagree about which criteria a sign-off touches")
+
+    # --- the procedure, performed ----------------------------------------------------------------
+    _path, reg = schema_registry()
+    versions, current = list(reg["versions"]), reg["current"]
+    source = None
+    for v in versions:
+        p_ = os.path.join(REPO, "tests", "fixture", "prd", v, "link-shelf", "crd", "archive-links.md")
+        if os.path.isfile(p_) and "<requirements>" in open(p_, encoding="utf-8").read():
+            source = p_
+            break
+    assert source, "no fixture CRD still holds <requirements>, so there is nothing to migrate"
+
+    def run_so(path):
+        return subprocess.run([sys.executable, so_path, path], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    root = tempfile.mkdtemp(prefix="crd-signoff-")
+    try:
+        # Refusal: not migrated yet.
+        raw = os.path.join(root, "raw.md")
+        shutil.copy(source, raw)
+        before = open(raw, encoding="utf-8").read()
+        p = run_so(raw)
+        assert p.returncode == 2 and open(raw, encoding="utf-8").read() == before, (
+            f"sign-off.py ran on a CRD still holding <requirements> (exit {p.returncode})")
+
+        work = os.path.join(root, "archive-links.md")
+        shutil.copy(source, work)
+        p = _run_migrate(work, "--to", current, "--quiet")
+        assert p.returncode == 0, f"migrating the fixture CRD exited {p.returncode}:\n{p.stderr}"
+        text = open(work, encoding="utf-8", newline="").read()
+        migrated = re.findall(r"<criterion\b[^>]*derived-from=[^>]*>", text)
+        assert len(migrated) >= 2 and not any("pattern=" in t for t in migrated), (
+            "the migration did not leave at least two unread criteria to sign off")
+
+        # The person: classify all but the first migrated criterion, and supply the tier.
+        seen = [0]
+
+        def classify(m):
+            if "derived-from=" not in m.group(0) or "pattern=" in m.group(0):
+                return m.group(0)
+            seen[0] += 1
+            return m.group(0) if seen[0] == 1 else '<criterion pattern="event-driven"' + m.group(1)
+        text = re.sub(r"<criterion\b([^>]*>)", classify, text)
+        if not re.search(r"<meta>.*?<priority>", text, re.S):
+            text = text.replace("</meta>", "  <priority>should-have</priority>\n  </meta>", 1)
+        open(work, "w", encoding="utf-8", newline="").write(text)
+
+        p = run_so(work)
+        assert p.returncode == 0 and f"signed off {len(migrated) - 1} criteria" in p.stdout, (
+            f"sign-off.py did not sign off the {len(migrated) - 1} classified criteria "
+            f"(exit {p.returncode}):\n{p.stdout}{p.stderr}")
+        tags_ = [t for t in re.findall(r"<criterion\b[^>]*>", open(work, encoding="utf-8").read())]
+        kept = [t for t in tags_ if "derived-from=" in t]
+        assert len(kept) == 1 and "pattern=" not in kept[0], (
+            f"after sign-off, derived-from is on {kept}; it belongs on the unclassified criterion "
+            f"alone")
+        assert _run_migrate(work, "--to", current, "--quiet", "--check").returncode == 1, (
+            "--check accepted a CRD with an unclassified criterion")
+
+        text = open(work, encoding="utf-8", newline="").read()
+        text = re.sub(r"<criterion\b(?![^>]*\bpattern=)", '<criterion pattern="ubiquitous"', text)
+        open(work, "w", encoding="utf-8", newline="").write(text)
+        p = run_so(work)
+        assert p.returncode == 0 and "derived-from=" not in open(work, encoding="utf-8").read(), (
+            f"a fully classified CRD kept derived-from through sign-off:\n{p.stdout}{p.stderr}")
+        p = _run_migrate(work, "--to", current, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a CRD classified and signed off as /crd --resume describes is still refused by "
+            f"--check (exit {p.returncode}):\n{p.stdout}{p.stderr}")
+
+        # Refusal: a record of the past keeps derived-from permanently.
+        past = os.path.join(root, "past.md")
+        shutil.copy(source, past)
+        _run_migrate(past, "--to", current, "--quiet")
+        text = open(past, encoding="utf-8", newline="").read()
+        text = re.sub(r"<workflow>\s*[a-z-]+\s*</workflow>", "<workflow>complete</workflow>", text, 1)
+        text = re.sub(r"<criterion\b(?![^>]*\bpattern=)", '<criterion pattern="ubiquitous"', text)
+        open(past, "w", encoding="utf-8", newline="").write(text)
+        p = run_so(past)
+        assert p.returncode == 2 and "derived-from=" in open(past, encoding="utf-8").read(), (
+            f"sign-off.py signed off a `complete` CRD (exit {p.returncode}). migration.md keeps a "
+            f"record of the past's derived-from permanently")
+
+        # Refusal: a PRD feature's sign-off is its review, and only its review.
+        feature = os.path.join(root, "feature.md")
+        open(feature, "w", encoding="utf-8").write(
+            '<feature>\n  <meta><name>x</name><slug>x</slug><definition>defined</definition></meta>\n'
+            '  <acceptance-criteria>\n    <criterion id="1" pattern="ubiquitous" priority="P1" '
+            'derived-from="1">The system shall x.</criterion>\n  </acceptance-criteria>\n</feature>\n')
+        p = run_so(feature)
+        assert p.returncode == 2 and "derived-from=" in open(feature, encoding="utf-8").read(), (
+            f"sign-off.py signed off a PRD feature (exit {p.returncode}), a second route to an "
+            f"edit whose only trigger is the review")
+        # The generic `not a CRD` refusal would also exit 2 here, so the exit code alone is held by
+        # two sites and no single edit breaks it. What only the feature refusal does is send the
+        # reader to the route that exists, so assert that.
+        assert "--record-review" in p.stderr, (
+            f"a PRD feature is refused without naming its sign-off route:\n{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------- the residue (10/24/32/38, group 5e)
 
 
