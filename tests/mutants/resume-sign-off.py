@@ -51,14 +51,14 @@ MUTANTS = [
     # --- the sign-off itself, in the review writer ------------------------------------------------
     ("recording a review signs nothing off",
      "skills/breakdown/scripts/check-definition.py",
-     '    stripped, signed = sign_off(REVIEW.sub("", text))',
-     '    stripped, signed = REVIEW.sub("", text), 0',
+     '    stripped, signed, _unclassified = _so.sign_off(REVIEW.sub("", text))',
+     '    stripped, signed, _unclassified = REVIEW.sub("", text), 0, []',
      CHECK),
 
-    ("the review signs off criteria nobody classified",
-     "skills/breakdown/scripts/check-definition.py",
-     "        if not re.search(r'\\bpattern=\"', attrs):\n            return m.group(0)\n",
-     "",
+    ("the sign-off touches criteria nobody classified",
+     "schema/scripts/sign-off.py",
+     "            return m.group(0)\n        without = ",
+     "            pass\n        without = ",
      CHECK),
 
     ("the review hashes the file before signing it off, so it is born STALE",
@@ -95,8 +95,8 @@ MUTANTS = [
     # --- the procedure: a sign-off --check would never accept ----------------------------------
     ("R4's postcondition demands derived-from, so a signed-off file is never finished",
      "schema/scripts/migrate.py",
-     '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),\n\n    ("R5"',
+     '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),\n',
      '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")\n'
-     '               and not _criteria_lacking(t, "derived-from")),\n\n    ("R5"',
+     '               and not _criteria_lacking(t, "derived-from")),\n',
      CHECK),
 ]

@@ -139,8 +139,12 @@ write it unaccepted.
 | Attributes | State | Reached by |
 |---|---|---|
 | `derived-from`, no `pattern` | the migration's sentence, unread | `/migrate` |
-| `derived-from` and `pattern` | classified, not yet signed off | a person accepting or assigning a `pattern` in `/prd --resume` |
-| `pattern`, no `derived-from` | signed off | recording the feature's `<review>` |
+| `derived-from` and `pattern` | classified, not yet signed off | a person accepting or assigning a `pattern` in `/prd --resume` or `/crd --resume` |
+| `pattern`, no `derived-from` | signed off | a PRD feature: recording its `<review>`. A CRD: `sign-off.py`, after `/crd --resume`'s review |
+
+**A CRD has no `<review>`, so it signs off by script.** `schema/scripts/sign-off.py` is the one
+implementation of the edit, and `check-definition.py` imports it. It refuses a `complete` or
+`abandoned` CRD, whose `derived-from` stays permanently as a record of the past.
 
 **The review is the sign-off.** `derived-from` outlives the pattern on purpose. It is how a
 reviewer checks the sentence against where it came from, so it has to still be there when they

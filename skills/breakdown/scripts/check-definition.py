@@ -270,30 +270,14 @@ def review_of(text):
     return ("reviewed" if attrs.get("sha") == content_sha(text) else "stale"), attrs
 
 
-CRITERION_TAG = re.compile(r"<criterion\b([^>]*)>")
-
-
-def sign_off(text):
-    """Remove `derived-from` from every criterion that carries a `pattern`; return (text, n).
-
-    Recording a review IS the sign-off (core section 2). A migrated criterion keeps `derived-from`
-    after a person assigns its pattern, so the reviewer can still check the sentence against where
-    it came from. The review is the moment that check has happened. A criterion with NO pattern
-    keeps the attribute: nobody has classified it, so it is still the migration's sentence and
-    not yet anyone's.
-    """
-    count = [0]
-
-    def one(m):
-        attrs = m.group(1)
-        if not re.search(r'\bpattern="', attrs):
-            return m.group(0)
-        signed = re.sub(r'\s+derived-from="[^"]*"', "", attrs)
-        if signed != attrs:
-            count[0] += 1
-        return "<criterion%s>" % signed
-
-    return CRITERION_TAG.sub(one, text), count[0]
+# Recording a review IS the sign-off (core section 2), and the sign-off has one implementation,
+# which the CRD path runs as a script. Imported, never copied: two copies of "which criteria does a
+# sign-off touch" is how the two paths would come to disagree about it.
+_so_spec = importlib.util.spec_from_file_location(
+    "sign_off", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..",
+                             "schema", "scripts", "sign-off.py"))
+_so = importlib.util.module_from_spec(_so_spec)
+_so_spec.loader.exec_module(_so)
 
 
 def record_review(path, by):
@@ -304,7 +288,7 @@ def record_review(path, by):
     would leave every freshly recorded review STALE.
     """
     text = read(path)
-    stripped, signed = sign_off(REVIEW.sub("", text))
+    stripped, signed, _unclassified = _so.sign_off(REVIEW.sub("", text))
     line = '  <review by="%s" at="%s" sha="%s"/>\n' % (
         by, time.strftime("%Y-%m-%d"), content_sha(stripped))
     m = re.search(r"([ \t]*)</meta>", stripped)
