@@ -1,6 +1,6 @@
 # Gap Closure — Plan
 
-**Status:** agreed in discussion; nothing built
+**Status:** built on branch `gap-closed`; see §12 for where it departed from this plan
 **Date:** 2026-09-14
 **Subject:** a `closed` date on `<gap>`, an optional `closed-by`, and every reader counting only
 open gaps, on both paths. Released as plugin **2.1.0**
@@ -398,3 +398,60 @@ note, as it has been for every 2.0.x release.
   compare a gap's attributes against `git log -p`, but nothing here requires it.
 - **A "not later than today" check on `raised`.** See the asymmetry note in §3.3.
 - **A migration step for gaps annotated under the old rule.** §6.4.
+
+---
+
+## 12. Outcome
+
+Built as the plan describes, on branch `gap-closed`. The suite went from 175 checks to 183, all
+passing, and `tests/mutants/gap-closed.py` caught 31 of 31. This section records only where the
+build departed from the plan, and what a live run showed that the checks could not.
+
+### Where the build departed from the plan
+
+- **A closure a reader cannot trust is no closure.** D2 said a `closed` attribute that is present
+  means closed. The readers go further: `select-features.is_closed()` counts a gap as closed only
+  when `closed` is a real date between `raised` and today. Anything else stays open. `/breakdown`
+  never runs `check-status.py`, so if presence were enough, `closed="soon"` would open the gate.
+- **The gate does not validate `kind` on closed gaps.** §4 said it would. It reads open gaps only,
+  and `check-status.py` still validates every gap.
+- **The CRD challenger got a mode of its own, `review-closures`.** §6.3 said the review mode. A CRD
+  has no `review-definition`, so the closed-gap check is a section that both modes share.
+- **`/breakdown` became a caller of `check-status.py`.** Its report takes the closed count from
+  `--json`, because `analysis.json` carries open gaps only. The caller-registry check caught the
+  missing `checks.md` entry.
+- **Two findings got ids.** §2.1's unchecked `ready` rule is **P70**. **P71** was found by the
+  first mutation round, which scored 28/29: `mutate.py`'s `failing_checks()` dropped a failing
+  check printed on the line directly below another. It could only produce false MISSED results.
+
+### What the live run showed
+
+The run used headless `claude -p` against a workspace under `%TEMP%`.
+
+| Step | Result |
+|---|---|
+| `/prd --resume` on a feature with three open gaps | one gap closed, one partly resolved and closed with the rest raised as gap 4 citing it, one left open; `<authoring-gaps>` rebuilt to the two open gaps |
+| `/crd --resume` on a `draft` CRD | the `specification` gap closed; the challenger dispatched in `review-closures` with `check-status.py`'s list; `ready` only because the answers authorised it |
+| `/breakdown` on both | `analysis.json` and every task held open gaps only; the report counted the closed ones; `tag-links` refused for its open gap, not its closed ones |
+| 2.0.3's scripts on the same files | 4 gaps open where 2 are; the CRD refused under item 15 and 2 blocking gaps at the gate where there is 1. That is over-blocking, the safe direction, and neither a crash nor a pass |
+
+It found two defects, both fixed with a check or a mutant:
+
+- The model wrote `closed-by="8,9"`. The walk tables showed a placeholder rather than the
+  separator, and the refusal said the criteria did not exist when both did. The tables now show
+  `closed-by="5 6"`, and the refusal names the separator.
+- `breakdown-analyze-prd` mentioned `check-status.py` without a path, and a fork guessed
+  `schema/scripts/`. That analyzer runs no scripts, so the sentence now names none.
+
+**Not exercised by the run:** the `--closed-since` hand-off in `/prd`'s `review-definition`.
+`/prd` offers that step only for a feature about to be labelled `defined`, and `tag-links` stayed
+`in-progress`, correctly. The hand-off is covered by check and mutant only.
+
+**Reported by the runs and not verified or fixed here.** None of these is part of this change.
+
+- `/breakdown` Phase 1 step 11 runs `check-references.py` on a CRD without `--project-path`, which
+  the run says resolves `PROJECT.md` against the CRD's directory.
+- Phase 2's *"if analysis.json exists, skip"* has no staleness test. On a changed CRD it would have
+  dropped the two new criteria.
+- The PRD run wrote `analysis.json`'s `gaps` as `{open, closed_count}` rather than the documented
+  list. No script reads the field.

@@ -46,3 +46,14 @@ Phase 3. Write it with an editor or a Python script.
 Each figure is the round that passed; the rounds before it are in
 `docs/skills/plugin-2.0-progress.md`, and they are the interesting ones — **five of the first ten
 checks caught nothing while the suite was green.**
+
+## Gap closure
+
+| Spec | Item | Result |
+|---|---|---|
+| `gap-closed.py` | `closed` on `<gap>`, one parser, P70, carrying, the producers, P71 | 31/31 |
+
+**The first round was 28/29, and the miss was the harness, not a check** (P71). A mutant broke two
+checks printed on adjacent lines of the report, and `failing_checks()` never saw the second: its
+`\s{2,}` matched the line break. The same mutant was caught run alone and through a one-check
+suite, which is what located it. Two more mutants came from the live run.
