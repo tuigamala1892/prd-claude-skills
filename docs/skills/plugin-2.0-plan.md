@@ -3974,6 +3974,18 @@ workflow says — so nothing was ever waved through. What was lost is the report
 person is there to act on it. Closed by `check-status.py`'s CRD branch, which now reports the
 contradiction, accepting the pre-item-45 `<status>` spelling on read.
 
+**P71 — the mutation harness drops a failing check printed directly below another.**
+*Verification: one mutant reproduced as MISSED through the harness with the full suite, as CAUGHT
+with a one-check suite, and the suite's raw output shown to contain both FAIL lines while
+`failing_checks()` returned one.*
+
+Found by the same work's mutation round. `failing_checks()` matched `^  FAIL\s+(.*?)\s{2,}` in
+multiline mode, and `\s` matches a newline: the trailing run consumed the line break and the next
+line's indent, so a second FAIL on the very next line had no `^` left to match. A `closed="soon"`
+mutant broke two neighbouring checks and the one it expected was dropped. **It can only
+under-count** — false MISSED, never false CAUGHT — which is why no earlier round looked wrong; but
+it also hides an adjacent orphan, the thing guard 2 exists to show. Closed by matching `[ \t]`.
+
 ---
 
 ## 6. Summary

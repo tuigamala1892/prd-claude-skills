@@ -60,10 +60,10 @@ USAGE
   --closed-since
              list the gaps closed on or after this date, with the criteria that closed them --
              what a review of the fill is checked against (core 6)
+  --strict   exit non-zero on escalations too, not only on contradictions
 
 A gap carrying a trusted `closed` date is CLOSED: validated, counted, and never aged. Only open
 gaps reach the ceiling, the CRD `ready` rule and the `AGE` lines.
-  --strict   exit non-zero on escalations too, not only on contradictions
 
 EXIT CODES
 

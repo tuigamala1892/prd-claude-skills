@@ -125,7 +125,11 @@ def restore(keep, path, before, attempts=3, pause=0.5):
 
 
 def failing_checks(output):
-    return {m.group(1).strip() for m in re.finditer(r"^  FAIL\s+(.*?)\s{2,}", output, re.M)}
+    # `[ \t]`, never `\s`: `\s` matches a newline, so the trailing run swallowed the line break and
+    # the next line's indent, and a failure on the line directly below another was never seen.
+    # It read as a MISSED mutant whose check had in fact fired (P71).
+    return {m.group(1).strip()
+            for m in re.finditer(r"^  FAIL[ \t]+(.*?)[ \t]{2,}", output, re.M)}
 
 
 def main():

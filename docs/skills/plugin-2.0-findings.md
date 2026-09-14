@@ -129,6 +129,7 @@ substitutes for the other.
 | **P68** | the findings have no registry, and the plan is organised around them | closed | `every finding the plan names has a status, and a closed one names where it was settled` |
 | **P69** | the CRD path's unbounded input is generated from a codebase, and nothing measures it | closed | `PROJECT.md fits the prompt it is about to be sent in -- by running it` |
 | **P70** | a CRD's `ready` rule is stated as mechanical, and no script runs it | closed | `a ready CRD carrying a specification gap is a contradiction the script reports -- by running it` |
+| **P71** | the mutation harness drops a failing check printed directly below another | closed | `the mutation harness sees every failing check, adjacent ones included -- by parsing two` |
 
 ---
 

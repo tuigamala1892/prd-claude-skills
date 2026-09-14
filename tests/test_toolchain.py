@@ -5068,6 +5068,60 @@ def _():
         f"to {len(stale)} so the slack cannot be spent by the next change that breaks one")
 
 
+@check("the mutation harness sees every failing check, adjacent ones included -- by parsing two",
+       finding="P71")
+def _():
+    """`failing_checks()` read a suite report with `^  FAIL\\s+(.*?)\\s{2,}` in multiline mode.
+
+    `\\s` matches a newline. The trailing `\\s{2,}` therefore ran on past the end of one FAIL line,
+    through the line break and into the next line's two leading spaces -- so when two checks
+    failed on ADJACENT lines, the second line no longer began at a `^` the next match could use,
+    and it was never seen.
+
+    Found by the gap-closure round, where it read as a missed mutant: `closed="soon"` broke both
+    the closure-shape check and the count check, which sit next to each other in the suite, and
+    the count check -- the one the mutant expected -- was dropped. Run on its own, or through the
+    harness with a one-check suite, the same mutant was caught.
+
+    It can only UNDER-count, so it produces false MISSED results and never false CAUGHT ones --
+    which is why no earlier round looked wrong. It also hides an adjacent ORPHAN, the failure
+    guard 2 exists to surface, and it thins guard 1: a baseline red on two adjacent checks
+    reports one.
+
+    ASSERTED ON THE SHAPE THE RUNNER PRINTS, taken from the runner's own format string rather than
+    typed here, with a control: a single failure must still parse, and a `pass` line must not.
+    """
+    import sys as _sys
+
+    tests_dir = os.path.join(REPO, "tests")
+    if tests_dir not in _sys.path:
+        _sys.path.insert(0, tests_dir)
+    import mutate
+
+    width = 40
+    names = ["first failing check -- by running it", "second failing check, right below it"]
+
+    def line(status, name):
+        # The runner's own layout: `f"  {status:<12} {r['name']:<{width}} {tag}"`.
+        return f"  {status:<12} {name:<{width}} {''}"
+
+    report = "\n".join([
+        line("pass", "a check that passed"),
+        line("FAIL", names[0]),
+        line("FAIL", names[1]),
+        line("pass", "another check that passed"),
+    ]) + "\n"
+
+    found = mutate.failing_checks(report)
+    assert found == set(names), (
+        f"two failures on adjacent lines parsed as {sorted(found)}. The second is dropped, so a "
+        f"mutant caught by it reports MISSED and an orphan beside another failure is invisible")
+
+    lone = line("pass", "x") + "\n" + line("FAIL", names[0]) + "\n" + line("pass", "y") + "\n"
+    assert mutate.failing_checks(lone) == {names[0]}, (
+        "the control failed: a single failure between two passes does not parse")
+
+
 @check("a failed restore is reported, not raised -- by failing one", finding="P28")
 def _():
     """`mutate.py`'s third guard, on the path where it used to stop being a guard.
