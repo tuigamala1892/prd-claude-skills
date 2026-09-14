@@ -5490,6 +5490,54 @@ def _():
                 f"compliant answer (item 29)")
 
 
+@check("a resolved gap is closed rather than deleted, and the bar counts open gaps only")
+def _():
+    """Core section 6's closure, as the schema states it.
+
+    Before `closed`, section 6 said a resolved gap is *annotated, not deleted* -- in the body --
+    while every reader counted every `<gap>` whatever its body said. So the rule could not be
+    followed: a kept specification gap capped `defined` for good, and deleting it was the only way
+    through. The attribute is what makes the rule followable, and OPEN in both statements of the
+    bar is what makes a closed gap stop counting.
+
+    Scoped to section 6 and to the attribute TABLE -- the rows before `### The five kinds` -- so
+    that `closed` appearing in the example, or in a sentence, cannot satisfy it.
+    """
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("## 6. Gaps", 1)
+    assert len(region) == 2, "core.md defines no <gaps> element"
+    region = region[1].split("\n## ", 1)[0]
+    table = region.split("### The five kinds", 1)[0]
+
+    parts = {}
+    for row in table.splitlines():
+        if not row.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        m = re.fullmatch(r"`([a-z-]+)`", cells[0])
+        if m and len(cells) >= 3:
+            parts[m.group(1)] = (cells[1], cells[2])
+
+    for name in ("closed", "closed-by"):
+        assert name in parts, (
+            f"core §6's attribute table has no `{name}` row (it declares {sorted(parts)}). "
+            f"Without it a resolved gap has nowhere to say so, and every reader counts it as open")
+        assert re.fullmatch(r"no", prose(parts[name][0]), re.I), (
+            f"core §6 makes `{name}` {parts[name][0]!r}. It must be optional: an open gap is "
+            f"the ordinary case, and a required closure date would put a false one on every gap")
+    assert re.search(r"YYYY-MM-DD", parts["closed"][1]), (
+        f"`closed` is not declared as a date: {parts['closed'][1]!r}. It sits beside `raised`, "
+        f"and the two dates together are what show how long a gap was open")
+
+    flat = prose(region)
+    assert re.search(r"defined artefact must not carry an open specification gap", flat), (
+        "core §6 states the `defined` bar without OPEN, so a closed specification gap still "
+        "bars the feature it was closed in")
+    assert re.search(r"A resolved gap is closed, not deleted", flat), (
+        "core §6 no longer says a resolved gap is closed rather than deleted. A deleted gap "
+        "turns every citation of its id into nothing")
+
+
 @check("feature dependencies are declared edges, and ordering is derived from them",
        finding="P11")
 def _():
@@ -6215,13 +6263,17 @@ def _():
     # a check can later become.
     fmt = prose(open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
                      encoding="utf-8").read())
-    assert re.search(r'ready must not carry a <gap kind="specification">', fmt), (
-        "crd-format.md never states the draft/ready test. Before item 48 the distinction rested "
-        "entirely on the author's say-so, which is what <definition> had before item 29")
+    # OPEN is part of the rule since gaps could be closed: a closed specification gap is the
+    # record of a question answered, and a rule that still counted it would make `ready`
+    # unreachable for any CRD that followed core section 6 and kept its closed gaps.
+    assert re.search(r'ready must not carry an open <gap kind="specification">', fmt), (
+        "crd-format.md never states the draft/ready test, or states it without OPEN. Before item "
+        "48 the distinction rested entirely on the author's say-so, which is what <definition> "
+        "had before item 29")
     core = prose(open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read())
-    assert re.search(r"CRD marked ready must not carry a specification gap", core), (
-        "core §6 states the rule for <definition> and not for <workflow>, so the two rows are "
-        "checked by two rules that can drift")
+    assert re.search(r"CRD marked ready must not carry an open specification gap", core), (
+        "core §6 states the rule for <workflow> without OPEN, or not at all -- so the two rows "
+        "are checked by two rules that can drift, or a closed gap bars ready")
     crd = prose(open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read())
     assert "kind=\"specification\"" in crd or 'kind="specification"' in crd, (
         "/crd never tells the interview to record a deferral as a gap, so 'we'll define that "

@@ -291,12 +291,19 @@ tests beside a list of obligations, but the obligations themselves.
   Restoring depends on the soft-delete column added by change request `soft-delete-links`,
   which is not merged.
   </gap>
+  <gap id="3" kind="decision" raised="2026-01-12" closed="2026-01-19" closed-by="4">
+  Whether an archived link is still found by search was undecided.
+
+  Closed by criterion 4: it is not, unless the search is scoped to the archive.
+  </gap>
 </gaps>
 ```
 
 **Defined in [core §6](../../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing),
 identically to the PRD path's.** Same element, same five kinds, same rules about what blocks and
-what warns. The examples above are examples.
+what warns — and the same closure: `closed` and `closed-by`, and **only an open gap counts**. A
+closed gap stays in the file as the record of what was owed, and is never carried into a task.
+The examples above are examples.
 
 **Arrived at item 48, and what it replaced was nothing at all.** Before it, a CRD interview that
 ended with *"we'll define that later"* left no trace: a change request that had deferred half its
@@ -391,7 +398,7 @@ CRD format is designed to be processable by `/breakdown`:
 | `<acceptance-criteria>` | **Both** the requirements a task implements and its test requirements — one list, since item 46 |
 | `<meta><priority>` | `--priority <threshold>`: whether this change request is broken down at all |
 | `<criterion priority=>` | `--requirement-level <P0\|P1\|P2>`: which criteria within it are built |
-| `<gaps>` | Reported, and a `specification` gap blocks; core §6 says which kinds warn |
+| `<gaps>` | Open gaps are reported, and an open `specification` gap blocks; core §6 says which kinds warn. Closed gaps are counted and never carried |
 | `<impact-analysis>` | Layer planning (which files/features affected) |
 | `<context>` | Project context for task generation |
 | `<affected-files>` | File scope for tasks |
@@ -429,8 +436,9 @@ draft → ready → in-progress → complete
 | `abandoned` | Cancelled, not implemented |
 
 **`draft` versus `ready` has a mechanical test since item 48**, and it is core §6's rule with one
-word changed: **a CRD marked `ready` must not carry a `<gap kind="specification">`.** *Ready for
-implementation* and *the specification is incomplete* cannot both be true.
+word changed: **a CRD marked `ready` must not carry an open `<gap kind="specification">`.** *Ready
+for implementation* and *the specification is incomplete* cannot both be true. A closed one is the
+record of a question answered, and does not count. `check-status.py` reports the contradiction.
 
 It runs one way only, exactly as the `<definition>` rule does. The absence of a gap proves
 nothing, so nothing is ever promoted **to** `ready` by this check — an author holding a change at
