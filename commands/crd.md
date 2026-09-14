@@ -313,7 +313,7 @@ person by id and kind — the list is `check-status.py`'s `AGE` lines, not the f
 | The person says | You write |
 |---|---|
 | still open | nothing |
-| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="{their ids}"` when criteria resolved it, and one line in the body saying how |
+| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="5 6"` naming their ids, **space-separated**, when criteria resolved it, and one line in the body saying how |
 | partly resolved | close it as above, and raise the rest as a **new** gap with the next unused id and `raised="{today}"`, its body citing the old id |
 
 **Only the person closes a gap**, and nothing is ever deleted or reopened: a closure that turns

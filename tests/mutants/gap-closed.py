@@ -123,6 +123,12 @@ MUTANTS = [
      "        if False:",
      SHAPE),
 
+    ("a comma-separated closed-by is reported as missing criteria again",
+     STATUS,
+     '        if "," in by or ";" in by:',
+     "        if False:",
+     SHAPE),
+
     ("a remainder may reuse the closed gap's id",
      STATUS,
      "        elif gid in seen:",

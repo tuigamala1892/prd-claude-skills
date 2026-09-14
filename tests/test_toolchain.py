@@ -11783,6 +11783,16 @@ def _():
                 f"{label} was refused without naming {named!r}, so an operator cannot find "
                 f"which value to fix:\n{out[:500]}")
 
+        # Found by the live run: the model wrote closed-by="8,9", the refusal said criteria "8,9"
+        # did not exist -- true, and no help. The separator is what is wrong, so it is what the
+        # refusal names.
+        code, out = run('<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02" '
+                        'closed-by="1,2">X</gap>')
+        assert code == 1 and "space-separated" in out, (
+            f"closed-by=\"1,2\" was not refused by naming the separator (exit {code}). Both "
+            f"criteria exist; the list is written wrong, and saying they do not exist sends the "
+            f"author looking for the wrong fault:\n{out[:500]}")
+
         # Equal dates are legitimate: a gap raised and answered in one sitting.
         code, out = run('<gap id="1" kind="decision" raised="2026-09-01" '
                         'closed="2026-09-01">Same day</gap>')

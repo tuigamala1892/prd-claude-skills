@@ -290,7 +290,7 @@ for it.
 | The person says | You write |
 |---|---|
 | still open | nothing |
-| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="{their ids}"` when criteria resolved it, and one line in the body saying how |
+| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="5 6"` naming their ids, **space-separated**, when criteria resolved it, and one line in the body saying how |
 | partly resolved | close it as above, and raise the rest as a **new** gap with the next unused id and `raised="{today}"`, its body citing the old id |
 
 **Never write `closed` on your own judgement**, however plainly the criteria answer the gap — the

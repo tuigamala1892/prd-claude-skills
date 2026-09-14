@@ -248,6 +248,12 @@ def check_closure(where, attrs, today, bad, criteria):
                        f"resolved by anything")
         if not ids:
             bad.append(f"{where} has an empty closed-by -- name the criteria, or omit it")
+        if "," in by or ";" in by:
+            # The first live run wrote "8,9". Reported as the separator rather than as criteria
+            # that do not exist, because the criteria did exist.
+            bad.append(f'{where} has closed-by={by!r} -- the ids are space-separated: write '
+                       f'closed-by="{" ".join(re.split(r"[,; ]+", by.strip(",; ")))}"')
+            ids = [i for i in re.split(r"[,; ]+", by) if i]
         missing = [i for i in ids if i not in criteria]
         if missing:
             bad.append(f"{where} has closed-by naming criteria {' '.join(missing)}, which this "
