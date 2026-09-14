@@ -3953,6 +3953,41 @@ measured and was content.
 
 ---
 
+## W. The rule the prose called mechanical
+
+**Found while planning gap closure** ([`gap-closure-plan.md`](gap-closure-plan.md) §2.1), not by a
+run: the plan needed a script on the CRD path to test, and there was none.
+
+**P70 — a CRD's `ready` rule is stated as mechanical, and no script runs it.**
+*Verification: every script under `schema/` and `skills/` searched for a comparison of `<workflow>`
+with gaps; none exists.*
+
+Item 48 gave the CRD `<gaps>` and, with it, the one-way test `<definition>` already had: a CRD
+marked `ready` must not carry a `specification` gap. Core §6 says the CRD *"now has the same
+one-way mechanical test"*. What existed was an instruction in `commands/crd.md` telling the model
+to demote the document, a suite check that the sentence was written, and `check-status.py`'s CRD
+branch, which validated gap shape and passed an empty escalation list. **P61's shape again**: the
+element on both paths, the check over it on one.
+
+Downstream still stopped the run — `select-features.py` refuses a `specification` gap whatever the
+workflow says — so nothing was ever waved through. What was lost is the report at the one point a
+person is there to act on it. Closed by `check-status.py`'s CRD branch, which now reports the
+contradiction, accepting the pre-item-45 `<status>` spelling on read.
+
+**P71 — the mutation harness drops a failing check printed directly below another.**
+*Verification: one mutant reproduced as MISSED through the harness with the full suite, as CAUGHT
+with a one-check suite, and the suite's raw output shown to contain both FAIL lines while
+`failing_checks()` returned one.*
+
+Found by the same work's mutation round. `failing_checks()` matched `^  FAIL\s+(.*?)\s{2,}` in
+multiline mode, and `\s` matches a newline: the trailing run consumed the line break and the next
+line's indent, so a second FAIL on the very next line had no `^` left to match. A `closed="soon"`
+mutant broke two neighbouring checks and the one it expected was dropped. **It can only
+under-count** — false MISSED, never false CAUGHT — which is why no earlier round looked wrong; but
+it also hides an adjacent orphan, the thing guard 2 exists to show. Closed by matching `[ \t]`.
+
+---
+
 ## 6. Summary
 
 | # | Item | Addresses | Grade |

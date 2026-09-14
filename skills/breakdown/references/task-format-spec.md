@@ -234,7 +234,7 @@ generator produce it systematically.
 
 All background information needed to understand the task.
 
-**Carry the source document's `<gaps>` into `<context>`, unchanged.** A gap the author declared
+**Carry the source document's open `<gaps>` into `<context>`, unchanged.** A gap the author declared
 is the difference between *"this is not specified"* and *"the implementer will decide"*, and a
 task file is self-contained by mandate — an implementer who cannot see the gap fills it in, which
 is exactly the invention [core §6](../../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing)
@@ -252,6 +252,12 @@ Carry only the gaps that reach this task. `kind` travels with the gap: `specific
 `dependency` and `decision` stop execution, `ownership` and `evidence` warn. **A carried gap is
 not a placeholder** — `review-criteria.md` scopes its placeholder scan around this element for
 that reason.
+
+**A closed gap is never carried.** A gap carrying `closed` was answered in the source document and
+its answer is a criterion this task already carries; in `<context>` it would read as a stop
+nobody means, to the one reader who cannot check it against the source. It also costs context a
+small-model implementer never needed. `analysis.json` holds open gaps only, so a generator
+copying from it carries nothing closed.
 
 **`<prd-excerpt>` carries acceptance criteria, and they mean what
 [core §2](../../../schema/core.md#2-acceptance-criteria) says they mean** — a `<criterion>` from

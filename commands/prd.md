@@ -280,6 +280,29 @@ feature can hold a `P2` criterion and usually does.
 
 If "later": Mark as TBD in what-next.md
 
+#### A feature that already carries open gaps: walk them first
+
+On a resume, or whenever a feature you are about to work on carries open gaps, **put each one to
+the person, by id and kind, before proposing anything new.** The list is the `AGE` lines from the
+`check-status.py` run the resume already made — open gaps only, oldest first. Do not read the file
+for it.
+
+| The person says | You write |
+|---|---|
+| still open | nothing |
+| resolved | the criteria that resolve it, first; then on the gap `closed="{today}"`, `closed-by="5 6"` naming their ids, **space-separated**, when criteria resolved it, and one line in the body saying how |
+| partly resolved | close it as above, and raise the rest as a **new** gap with the next unused id and `raised="{today}"`, its body citing the old id |
+
+**Never write `closed` on your own judgement**, however plainly the criteria answer the gap — the
+same boundary as writing a gap ([core §6](../schema/core.md#6-gaps--what-a-document-knows-it-is-missing)).
+**Never delete a gap, and never remove a `closed`.** A closure that turns out to be wrong is
+answered by a new gap citing the closed one. Re-run `check-status.py {prd_dir}` afterwards: a
+malformed `closed` or a `closed-by` naming a criterion that does not exist is a `CONTRADICTION`,
+and until it is fixed every reader holds the gap open.
+
+This is also how a gap annotated *"resolved"* in its body under the old rule gets closed. Nothing
+searches bodies for that word; the person closes it here.
+
 #### Offer the challenger, one feature at a time
 
 Once a feature's criteria are drafted, offer — do not assume — a second pass by an agent whose
@@ -470,9 +493,9 @@ first refusal is not evidence about the other three. Report the combined output.
 
 | Line | Owner | What it means, and what you do |
 |---|---|---|
-| `CONTRADICTION` | `check-status.py` | The label claims more than the file supports. Report it and offer to fix the **content** |
+| `CONTRADICTION` | `check-status.py` | The label claims more than the file supports, or a `<gap>`'s `closed` / `closed-by` is malformed — a bad closure leaves the gap open everywhere. Report it and offer to fix the **content** |
 | `ESCALATE` | `check-status.py` | The content supports a higher label than the author set. Mention it once. **Never relabel** — an author may hold a feature low for reasons the file cannot express |
-| `AGE` | `check-status.py` | How old each gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday |
+| `AGE` | `check-status.py` | How old each **open** gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday. Closed gaps are counted in the summary line and never aged |
 | `DANGLING` | `check-rename.py`, `check-references.py` | A reference resolves to nothing. Fix it here, while the person who knows the answer is present |
 | `RETIRED` | `check-rename.py` | A `superseded` pointer nothing references any more. Offer to remove it; it is housekeeping, not a defect |
 | `STALE` | `check-references.py` | A citation of a record that has been superseded, or a significant feature no record drives |
@@ -498,7 +521,8 @@ a time, for any feature the author intends to label `defined`:
 Task(
   subagent_type: "prd-criteria-author",
   prompt: <mode: review-definition; the feature file path; its index entry; its neighbours;
-           any decision record it cites; the BAR lines already reported for it>,
+           any decision record it cites; the BAR lines already reported for it;
+           the gaps closed since its last review>,
   run_in_background: false,
   description: "Review the definition of {slug}"
 )
@@ -507,6 +531,20 @@ Task(
 Pass the `BAR` lines you already have. The mechanical tests are settled before the agent is
 dispatched, and an agent re-deciding them would produce a second answer to a question that has
 one.
+
+**Pass the gaps closed since the feature was last reviewed.** A gap is recorded before it is filled
+so that the filling can be checked against what was owed, and a closure is the moment that check
+is due:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-status.py {prd_dir} \
+    --closed-since {the date in the feature's <review at=>} --json
+```
+
+Take the `closed` entries whose `file` is this feature's — id, kind, dates and `closed_by`. A
+feature with no `<review>` has never been checked against anything: run it without
+`--closed-since`, and every closed gap is in the list. An empty list is passed as empty, so the
+agent can say it had nothing to check rather than appear to have checked it.
 
 **Record the review, once the author accepts it.** The judgement half has a place to live since
 schema-6, and this is the command that writes it:

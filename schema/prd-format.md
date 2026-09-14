@@ -168,9 +168,10 @@ corpus this schema was measured against listed **zero** TBD items while carrying
 Generating it is the only version of this that stays true.
 
 It **aggregates** rather than re-derives. Each `<gap>` row is a pointer to a feature's own
-`<gap>` — slug, id, kind, date, no body — so there is one place a gap is written and one place
-it is corrected. A `<feature>` row is for a feature with *no* `<gaps>` block that is nonetheless
-short of `defined`: nothing to carry, so the shortfall is named directly.
+**open** `<gap>` — slug, id, kind, date, no body — so there is one place a gap is written and one
+place it is corrected. A closed gap is not an authoring gap and gets no row. A `<feature>` row is
+for a feature with *no open* gap that is nonetheless short of `defined`: nothing to carry, so the
+shortfall is named directly.
 
 `<summary>` counts the `<definition>` values. It is the line a person reads first and the only
 number in the file that is not a pointer.
@@ -295,7 +296,9 @@ element by hand — `check-definition.py --record-review --by NAME` computes the
 and `commands/prd.md` Phase 7 is where `/prd` runs it.
 
 **`<gaps>` is core §6**, and it goes between `</acceptance-criteria>` and `<notes>` — stated,
-because a migration needs somewhere definite to put it.
+because a migration needs somewhere definite to put it. A resolved gap is **closed**, never
+deleted: `closed="YYYY-MM-DD"`, `closed-by` naming the criteria that resolved it, and a line in
+the body saying how. Only open gaps count toward anything.
 
 **`<priority>` is gone from `<meta>`.** It duplicated the index entry with nothing keeping the two
 in step and no check that they agreed. Core §4 has the argument: a ranking has no meaning inside

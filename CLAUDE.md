@@ -353,6 +353,11 @@ When documentation changes on `main`, the `gh-pages` branch should be updated:
   and an optional `<architecturally-significant>` in `<meta>`. `<priority>` is **gone** from the
   feature file — the index entry is the only place it lives. **There is no `<phases>` element**,
   deliberately: phasing is priority plus gaps.
+- **A resolved `<gap>` is closed, never deleted**: `closed="YYYY-MM-DD"` beside `raised`, and an
+  optional `closed-by` naming the criterion ids that resolved it. **Only an open gap counts** —
+  toward `defined`, a CRD's `ready`, the gate, `<authoring-gaps>` and every report — and a closed
+  gap is never carried into `analysis.json` or a task. No partial closure and no reopening: raise a
+  new gap citing the old id. Core §6 is the definition.
 - **A `<criterion>` is one EARS sentence, not a Given/When/Then triple** (item 33). It carries
   `pattern` — one of six — and `priority` in `P0|P1|P2`, which is deliberately not MoSCoW so that
   no flag or report line is ambiguous about which level it means (item 34). `pattern` is assigned

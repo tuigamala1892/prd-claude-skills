@@ -378,7 +378,8 @@ Extract directly from CRD structure:
   *is* a requirement. A CRD written before that carries one, and it is **read** as criteria with
   no `pattern` rather than refused — the same policy the other pre-migration shapes get
 - Document tier from `<meta><priority>` — MoSCoW, what `--priority` thresholds against
-- Open gaps from `<gaps>`, reported with the PRD path's, below
+- Open gaps from `<gaps>`, reported with the PRD path's, below. A closed gap is counted and never
+  carried (core §6)
 - Affected files from `<impact-analysis><affected-files>`
 - Affected features from `<impact-analysis><affected-features>`
 - **Schema contracts from `<impact-analysis><affected-contracts>`, into `data_models`** (item 75)
@@ -403,11 +404,21 @@ Save the analysis to `{tasks_dir}/analysis.json`
 **Then report what the documents said they did not know**, before any task is generated:
 
 ```
-gaps: 4 blocking (2 decision, 1 dependency, 1 specification), 2 warnings (1 ownership, 1 evidence)
+gaps: 4 blocking (2 decision, 1 dependency, 1 specification), 2 warnings (1 ownership, 1 evidence), 3 closed, not carried
   save-link#3     decision      raised 2026-08-18   Whether archived links keep their tags
   ...
 architecturally significant: 2 features (cross-cutting, external-dependency)
 ```
+
+**The closed count is not in `analysis.json`**, which carries open gaps only. Take it from the
+script that decides what counts as closed, never from reading the documents by eye:
+
+```bash
+python {skill_dir}/scripts/check-status.py {document} --json
+```
+
+The length of its `closed` list is the number. Its exit code is not the signal here — a
+contradiction it reports is `/prd`'s or `/crd`'s to fix, not a reason to stop generating.
 
 **Blocking and warning are the author's call, not yours** — [core
 §6](../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing) maps `kind` to which is

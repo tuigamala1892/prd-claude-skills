@@ -347,17 +347,24 @@ do would produce a check that fires constantly and is therefore ignored.
 
 ```xml
 <gaps>
-  <gap id="3" kind="specification" raised="2026-08-18">
+  <gap id="3" kind="specification" raised="2026-08-18" closed="2026-09-02" closed-by="7 8">
   Retention period for archived links is unspecified.
+
+  Closed by criteria 7 and 8: 90 days, then purged.
+  </gap>
+  <gap id="4" kind="decision" raised="2026-09-02">
+  Whether a restore after the purge is offered at all. The remainder of gap 3.
   </gap>
 </gaps>
 ```
 
 | Part | Required | Holds |
 |---|---|---|
-| `id` | Yes | Integer, unique within `<gaps>`; core §1 — citable from a commit or a review |
+| `id` | Yes | Integer, unique within `<gaps>` — open and closed alike; core §1 — citable from a commit or a review |
 | `kind` | Yes | One of the five below |
 | `raised` | Yes | `YYYY-MM-DD`. Without it an open item and a stale one look identical |
+| `closed` | No | `YYYY-MM-DD`. Present means **closed**; absent means **open**. Not earlier than `raised`, not later than today |
+| `closed-by` | No | Space-separated `<criterion>` ids in the same document. Only on a closed gap, and each must resolve |
 | body | Yes | Markdown, including links, exactly as elsewhere |
 
 **Uncertainty is recorded, not banned.** A toolchain that forbids `TBD` outright makes invention
@@ -380,17 +387,21 @@ an earlier design: an overnight run should be halted by a genuine unknown, not b
 item. A boolean `blocking=` could not make that distinction; `kind` can, and it also says *what
 sort of not-knowing this is*, which a boolean never could.
 
-**A `defined` artefact must not carry a `specification` gap.** That is a contradiction — claiming
+**A `defined` artefact must not carry an open `specification` gap.** That is a contradiction — claiming
 to be fully specified while declaring the specification incomplete — and it is the one rule here
 a script can enforce without judgement. It runs one way only: the absence of a gap proves
 nothing, so nothing is ever promoted *to* `defined` by this rule.
 
 **The same rule, one word different, is what `<workflow>` was missing.** A CRD marked `ready`
-must not carry a `specification` gap — *ready for implementation* and *the specification is
+must not carry an open specification gap — *ready for implementation* and *the specification is
 incomplete* cannot both be true. Before item 48 the CRD had no `<gaps>` at all, so `draft` versus
 `ready` rested entirely on the author's say-so; it now has the same one-way mechanical test
 `<definition>` has, and for the same reason. §3's second row and third row are checked by one
-rule with two names for its subject.
+rule with two names for its subject — `check-status.py` runs it on both paths.
+
+**A closed gap counts toward neither.** Nor toward anything else: every check, gate, report and
+derived list in the toolchain reads open gaps only, and a closed gap is never carried into
+`analysis.json` or a task. It stays in the file as the record of what was owed.
 
 **One element, not two.** `<confidence>` (§5) grades a whole analysis; a `<gap>` marks one
 specific unresolved point. They feed the same gate and the same report line, and neither is a
@@ -408,9 +419,27 @@ reason item 48 exists: *"we'll define that later"* used to leave nothing behind 
 that had deferred half its behaviour was indistinguishable from one that had none. It is now a
 `<gap kind="specification">`, which bars `ready` and blocks execution.
 
-**A resolved gap is annotated, not deleted.** The `id` may already have been cited from a commit
-message or a review, and a deleted gap turns those citations into nothing. Say what resolved it
-and when, in the body, and leave it in place.
+**A resolved gap is closed, not deleted.** The `id` may already have been cited from a commit
+message, a review or another gap, and a deleted gap turns those citations into nothing — a reader
+cannot tell a closed gap from a lost one. Write `closed` with the date, `closed-by` when criteria
+resolved it, and say how in the body. Leave it in place.
+
+**It is also what the fill is checked against.** A gap is recorded before it is filled so that the
+writing can be reviewed against what was owed; delete the gap when the criteria arrive and that
+review has nothing to compare with. `/prd` hands the challenger every gap closed since the
+feature's last `<review>`, and `/crd` every closed gap in the CRD.
+
+**Only a person closes a gap.** A command writes `closed` when the person says the gap is
+resolved, never on its own judgement — the same boundary as writing one.
+
+**No partial state.** If only part of a gap can close, close it and raise a new gap, with a new
+`id`, for the rest; its body cites the old id. **No reopening either.** A closure that turns out to
+be wrong is answered by a new gap citing the old one, so `raised` and `closed` never change once
+written. Neither rule is mechanical — one file cannot show a partial closure or a deleted `closed` —
+and both are stated so that the dates can be trusted.
+
+**Two dates make it countable.** `raised` and `closed` together show how long a gap was open, and
+`check-status.py` reports open and closed separately.
 ---
 
 ## 7. `<review>` — the half of the `defined` gate that is not mechanical

@@ -247,9 +247,16 @@ and the implementer had to guess (**P53**).
 
 ### `gaps` are carried, never resolved
 
-Copy each feature's `<gap>` entries out verbatim, adding the feature slug. **Do not judge them,
-do not merge them, and above all do not answer them** — a gap that this pass quietly resolves is
-an invented requirement wearing an author's authority.
+Copy each feature's **open** `<gap>` entries out verbatim, adding the feature slug. **Do not judge
+them, do not merge them, and above all do not answer them** — a gap that this pass quietly
+resolves is an invented requirement wearing an author's authority.
+
+**A closed gap is not copied.** One carrying `closed` is the record of a question already
+answered, and its answer is in the criteria ([core
+§6](../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing)). Copied, it reaches every
+task generated from this analysis as an instruction to stop that nobody means. Whether a gap is
+closed is not yours to judge either: a `closed` that is not a real date between `raised` and today
+is the author's to fix, and this pass runs nothing to check it — copy that gap as open.
 
 `kind` decides what happens downstream and it is the author's, not yours:
 

@@ -147,6 +147,13 @@ Ask for the unwanted case explicitly, or every criterion comes back `event-drive
 core [§6](../../schema/core.md#6-gaps--what-a-document-knows-it-is-missing) has the other four
 and says which block and which only warn.
 
+**On a resume, walk the open gaps first**, by id and kind, from `check-status.py`'s `AGE` lines.
+For each the person says *still open*, *resolved* or *partly resolved*: a resolved gap gets
+`closed="{today}"`, `closed-by` naming the criteria that resolved it, space-separated
+(`closed-by="5 6"`), and a line in the body; a partly resolved one is closed and the rest raised
+as a new gap with a new id. Only the person closes a gap, and a gap is never deleted or reopened.
+`commands/crd.md` Phase 5 has the table.
+
 ### Phase 7: Generate CRD
 
 Create directory if needed:

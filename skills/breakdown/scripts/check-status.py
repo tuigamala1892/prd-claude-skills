@@ -52,11 +52,18 @@ yesterday, and only the date shows it.
 
 USAGE
 
-    check-status.py <prd-dir> [--today YYYY-MM-DD] [--strict] [--quiet] [--json]
+    check-status.py <prd-dir|crd-file> [--today YYYY-MM-DD] [--closed-since YYYY-MM-DD]
+                    [--strict] [--quiet] [--json]
 
   --today    the date gap ages are measured from. Defaults to the system date; passing it is
              what makes an age assertion reproducible
+  --closed-since
+             list the gaps closed on or after this date, with the criteria that closed them --
+             what a review of the fill is checked against (core 6)
   --strict   exit non-zero on escalations too, not only on contradictions
+
+A gap carrying a trusted `closed` date is CLOSED: validated, counted, and never aged. Only open
+gaps reach the ceiling, the CRD `ready` rule and the `AGE` lines.
 
 EXIT CODES
 
@@ -94,8 +101,7 @@ CRITERION = re.compile(r"<criterion\b", re.S)
 USER_STORY = re.compile(r"<user-story>\s*(.*?)\s*</user-story>", re.S)
 RATIONALE = re.compile(r"<rationale>\s*(.*?)\s*</rationale>", re.S)
 SUPERSEDED_BY = re.compile(r'<superseded-by\b[^>]*\bslug="([^"]*)"')
-GAP = re.compile(r"<gap\b([^>]*)>", re.S)
-ATTR = re.compile(r'(\w[\w-]*)="([^"]*)"')
+CRITERION_ID = re.compile(r'<criterion\b[^>]*\bid="([^"]*)"')
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # *What document is this* has ONE answer in this toolchain, and it is `migrate.py`'s ROOTS --
@@ -135,9 +141,30 @@ def ceiling(text):
     return "defined", f"{criteria} criteria, a user story, and no specification gap"
 
 
+def workflow_of(text):
+    """A CRD's `<workflow>`, accepting the pre-item-45 `<status>` on read. Core section 3.
+
+    The backreference is what stops `<workflow>x</status>` being read as either.
+    """
+    meta = re.search(r"<meta>(.*?)</meta>", text, re.S)
+    if not meta:
+        return None
+    m = re.search(r"<(workflow|status)>\s*([a-z-]+)\s*</\1>", meta.group(1))
+    return m.group(2) if m else None
+
+
 def gap_rows(text):
-    """Every `<gap>` with its attributes, in document order, whether or not they are valid."""
-    return [dict(ATTR.findall(attrs)) for attrs in GAP.findall(text)]
+    """Every `<gap>` with its attributes, in document order, whether or not they are valid.
+
+    Parsed by `select-features.py`, which every other gap reader also uses: two regexes for one
+    element is two answers to *what does this file declare*.
+    """
+    return _sel.gap_attrs_of(text)
+
+
+def criterion_ids(text):
+    """The `<criterion id=>` values a `closed-by` may name."""
+    return set(CRITERION_ID.findall(text))
 
 
 def check_feature(row, prd_dir, indexed_slugs):
@@ -190,7 +217,55 @@ def check_feature(row, prd_dir, indexed_slugs):
     return bad, soft, gap_rows(text)
 
 
-def check_gaps(rel, rows, today, bad, ages):
+def check_closure(where, attrs, today, bad, criteria):
+    """Core section 6's closure rules that one file can show. Reports; decides nothing.
+
+    Whether a gap COUNTS as closed is `select-features.is_closed()`, the one definition every
+    reader shares -- so a closure refused here is also a closure every reader treats as open.
+    """
+    closed = attrs.get("closed")
+    by = attrs.get("closed-by")
+
+    if closed is not None:
+        d = _sel.gap_date(closed)
+        raised = _sel.gap_date(attrs.get("raised"))
+        if d is None:
+            bad.append(f"{where} has closed={closed!r}, which is not a real YYYY-MM-DD date -- "
+                       f"every reader holds the gap OPEN until it is")
+        else:
+            if raised and d < raised:
+                bad.append(f"{where} has closed={closed}, before raised={attrs['raised']} -- a "
+                           f"gap cannot be answered before it was asked")
+            if d > today:
+                bad.append(f"{where} has closed={closed}, after {today} -- a closure dated in "
+                           f"the future would open a gate early, so every reader holds the gap "
+                           f"OPEN")
+
+    if by is not None:
+        ids = by.split()
+        if closed is None:
+            bad.append(f"{where} has closed-by={by!r} and no closed -- an open gap has not been "
+                       f"resolved by anything")
+        if not ids:
+            bad.append(f"{where} has an empty closed-by -- name the criteria, or omit it")
+        if "," in by or ";" in by:
+            # The first live run wrote "8,9". Reported as the separator rather than as criteria
+            # that do not exist, because the criteria did exist.
+            bad.append(f'{where} has closed-by={by!r} -- the ids are space-separated: write '
+                       f'closed-by="{" ".join(re.split(r"[,; ]+", by.strip(",; ")))}"')
+            ids = [i for i in re.split(r"[,; ]+", by) if i]
+        missing = [i for i in ids if i not in criteria]
+        if missing:
+            bad.append(f"{where} has closed-by naming criteria {' '.join(missing)}, which this "
+                       f"document does not define (core 6)")
+
+
+def check_gaps(rel, rows, today, bad, ages, closed=None, criteria=()):
+    """Validate every gap, and age the OPEN ones. A trusted closure goes to `closed` instead.
+
+    Ids are unique across open and closed gaps alike, which is what makes *close it and raise the
+    rest as a new gap* enforceable: the remainder cannot reuse the closed gap's id.
+    """
     seen = {}
     for i, attrs in enumerate(rows, start=1):
         where = f"{rel}: <gap> {i}"
@@ -209,6 +284,8 @@ def check_gaps(rel, rows, today, bad, ages):
             bad.append(f"{where} has kind={kind!r}, which is not one of "
                        f"{'|'.join(sorted(GAP_KINDS))} (core 6)")
 
+        check_closure(where, attrs, today, bad, criteria)
+
         if not raised or not ISO_DATE.match(raised):
             bad.append(f"{where} has raised={raised!r} -- without a date an open item and a "
                        f"stale one look identical")
@@ -218,15 +295,31 @@ def check_gaps(rel, rows, today, bad, ages):
         except ValueError:
             bad.append(f"{where} has raised={raised!r}, which is not a real date")
             continue
+        if _sel.is_closed(attrs, today):
+            if closed is not None:
+                shut = _sel.gap_date(attrs["closed"])
+                closed.append(((shut - d).days, rel, gid or "?", kind or "?", raised,
+                               attrs["closed"], attrs.get("closed-by", "")))
+            continue
         ages.append((max((today - d).days, 0), rel, gid or "?", kind or "?", raised))
 
 
-def report(bad, soft, ages, counted, noun, as_json, quiet, strict):
-    """One reporting path for both document shapes, so the two cannot drift apart."""
+def report(bad, soft, ages, counted, noun, as_json, quiet, strict, closed=(), since=None):
+    """One reporting path for both document shapes, so the two cannot drift apart.
+
+    `ages` is the OPEN gaps and `closed` the closed ones; `oldest` measures open gaps only. The
+    closed gaps are listed only when `since` asks for them -- that list is what `/prd` hands the
+    challenger, the gaps closed since a feature's last review -- and counted always, so a document
+    whose gaps were all resolved does not read as one that never declared any.
+    """
+    listed = [c for c in closed if since is None or _sel.gap_date(c[5]) >= since]
     if as_json:
         print(json.dumps({noun: counted, "contradictions": bad, "escalations": soft,
                           "gaps": [{"days": d, "file": f, "id": i, "kind": k, "raised": r}
-                                   for d, f, i, k, r in ages]}, indent=2))
+                                   for d, f, i, k, r in ages],
+                          "closed": [{"days_open": d, "file": f, "id": i, "kind": k, "raised": r,
+                                      "closed": c, "closed_by": b.split()}
+                                     for d, f, i, k, r, c, b in listed]}, indent=2))
     elif not quiet:
         for line in bad:
             print(f"  CONTRADICTION  {line}")
@@ -234,10 +327,15 @@ def report(bad, soft, ages, counted, noun, as_json, quiet, strict):
             print(f"  ESCALATE       {line}")
         for days, rel, gid, kind, raised in sorted(ages, reverse=True):
             print(f"  AGE            {rel}: gap {gid} ({kind}) raised {raised}, {days} days ago")
+    if since is not None and not as_json:
+        for days, rel, gid, kind, raised, shut, by in sorted(listed, key=lambda c: c[5]):
+            by = f", by criteria {by}" if by else ""
+            print(f"  CLOSED         {rel}: gap {gid} ({kind}) raised {raised}, closed {shut} "
+                  f"after {days} days{by}")
 
     oldest = f", oldest gap {max(a[0] for a in ages)} days" if ages else ""
     print(f"{counted} {noun} checked: {len(bad)} contradictions, "
-          f"{len(soft)} escalated, {len(ages)} gaps open{oldest}")
+          f"{len(soft)} escalated, {len(ages)} gaps open, {len(closed)} closed{oldest}")
 
     if bad:
         return 1
@@ -249,10 +347,20 @@ def main():
     ap.add_argument("prd_dir", metavar="prd-dir|crd-file")
     ap.add_argument("--today", default=None,
                     help="date gap ages are measured from (YYYY-MM-DD)")
+    ap.add_argument("--closed-since", default=None,
+                    help="list the gaps closed on or after this date (YYYY-MM-DD)")
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
+
+    since = None
+    if args.closed_since is not None:
+        since = _sel.gap_date(args.closed_since)
+        if since is None:
+            print(f"REFUSED  --closed-since {args.closed_since} is not a real YYYY-MM-DD date",
+                  file=sys.stderr)
+            return 2
 
     prd_dir = args.prd_dir
     if not os.path.exists(prd_dir):
@@ -278,10 +386,21 @@ def main():
     # The `<gaps>` half is the same assertion on both paths, and `check_gaps()` was already
     # path-agnostic, so this is a dispatch rather than a second copy of core section 6's enum.
     if not os.path.isdir(prd_dir):
-        bad, ages = [], []
-        check_gaps(os.path.basename(prd_dir), gap_rows(read(prd_dir)), today, bad, ages)
+        bad, ages, closed = [], [], []
+        text = read(prd_dir)
+        rel = os.path.basename(prd_dir)
+        # Core section 6's rule for <workflow>, which is <definition>'s with one word changed. The
+        # prose called it mechanical from item 48 and nothing ran it: this branch validated the
+        # gaps and never compared them with the workflow (P70). One way only, as the ladder is --
+        # a `draft` CRD with no gap is never promoted.
+        if workflow_of(text) == "ready" and "specification" in _sel.gaps_of(text, today):
+            bad.append(f'{rel}: <workflow>ready</workflow> while carrying an open '
+                       f'<gap kind="specification"> -- ready for implementation and the '
+                       f'specification is incomplete cannot both be true (core 6). It is `draft` '
+                       f'until the gap is closed')
+        check_gaps(rel, gap_rows(text), today, bad, ages, closed, criterion_ids(text))
         return report(bad, [], ages, 1, "change request(s)",
-                      args.json, args.quiet, args.strict)
+                      args.json, args.quiet, args.strict, closed, since)
 
     rows, err = _sel.features_of_prd(prd_dir)
     if err:
@@ -305,16 +424,19 @@ def main():
                          "file": f"features/{name}", "definition": _sel.definition_of(text),
                          "gaps": _sel.gaps_of(text), "missing": False})
 
-    bad, soft, ages = [], [], []
+    bad, soft, ages, closed = [], [], [], []
     for row in rows:
         b, s, gaps = check_feature(row, prd_dir, indexed)
         bad.extend(b)
         soft.extend(s)
         if not row["missing"]:
-            check_gaps(row["file"], gaps, today, bad, ages)
+            # A `closed-by` names criteria in the SAME document, so each feature resolves
+            # against its own file and never against a neighbour's ids.
+            ids = criterion_ids(read(os.path.join(prd_dir, row["file"].replace("/", os.sep))))
+            check_gaps(row["file"], gaps, today, bad, ages, closed, ids)
 
     return report(bad, soft, ages, len(rows), "features",
-                  args.json, args.quiet, args.strict)
+                  args.json, args.quiet, args.strict, closed, since)
 
 
 if __name__ == "__main__":

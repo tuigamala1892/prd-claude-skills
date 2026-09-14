@@ -5068,6 +5068,60 @@ def _():
         f"to {len(stale)} so the slack cannot be spent by the next change that breaks one")
 
 
+@check("the mutation harness sees every failing check, adjacent ones included -- by parsing two",
+       finding="P71")
+def _():
+    """`failing_checks()` read a suite report with `^  FAIL\\s+(.*?)\\s{2,}` in multiline mode.
+
+    `\\s` matches a newline. The trailing `\\s{2,}` therefore ran on past the end of one FAIL line,
+    through the line break and into the next line's two leading spaces -- so when two checks
+    failed on ADJACENT lines, the second line no longer began at a `^` the next match could use,
+    and it was never seen.
+
+    Found by the gap-closure round, where it read as a missed mutant: `closed="soon"` broke both
+    the closure-shape check and the count check, which sit next to each other in the suite, and
+    the count check -- the one the mutant expected -- was dropped. Run on its own, or through the
+    harness with a one-check suite, the same mutant was caught.
+
+    It can only UNDER-count, so it produces false MISSED results and never false CAUGHT ones --
+    which is why no earlier round looked wrong. It also hides an adjacent ORPHAN, the failure
+    guard 2 exists to surface, and it thins guard 1: a baseline red on two adjacent checks
+    reports one.
+
+    ASSERTED ON THE SHAPE THE RUNNER PRINTS, taken from the runner's own format string rather than
+    typed here, with a control: a single failure must still parse, and a `pass` line must not.
+    """
+    import sys as _sys
+
+    tests_dir = os.path.join(REPO, "tests")
+    if tests_dir not in _sys.path:
+        _sys.path.insert(0, tests_dir)
+    import mutate
+
+    width = 40
+    names = ["first failing check -- by running it", "second failing check, right below it"]
+
+    def line(status, name):
+        # The runner's own layout: `f"  {status:<12} {r['name']:<{width}} {tag}"`.
+        return f"  {status:<12} {name:<{width}} {''}"
+
+    report = "\n".join([
+        line("pass", "a check that passed"),
+        line("FAIL", names[0]),
+        line("FAIL", names[1]),
+        line("pass", "another check that passed"),
+    ]) + "\n"
+
+    found = mutate.failing_checks(report)
+    assert found == set(names), (
+        f"two failures on adjacent lines parsed as {sorted(found)}. The second is dropped, so a "
+        f"mutant caught by it reports MISSED and an orphan beside another failure is invisible")
+
+    lone = line("pass", "x") + "\n" + line("FAIL", names[0]) + "\n" + line("pass", "y") + "\n"
+    assert mutate.failing_checks(lone) == {names[0]}, (
+        "the control failed: a single failure between two passes does not parse")
+
+
 @check("a failed restore is reported, not raised -- by failing one", finding="P28")
 def _():
     """`mutate.py`'s third guard, on the path where it used to stop being a guard.
@@ -5488,6 +5542,54 @@ def _():
                 f"{rel} bans placeholders without qualifying it to UNMARKED ones:\n      "
                 f"{ln.strip()}\n    A declared <gap> failing review is what makes invention the "
                 f"compliant answer (item 29)")
+
+
+@check("a resolved gap is closed rather than deleted, and the bar counts open gaps only")
+def _():
+    """Core section 6's closure, as the schema states it.
+
+    Before `closed`, section 6 said a resolved gap is *annotated, not deleted* -- in the body --
+    while every reader counted every `<gap>` whatever its body said. So the rule could not be
+    followed: a kept specification gap capped `defined` for good, and deleting it was the only way
+    through. The attribute is what makes the rule followable, and OPEN in both statements of the
+    bar is what makes a closed gap stop counting.
+
+    Scoped to section 6 and to the attribute TABLE -- the rows before `### The five kinds` -- so
+    that `closed` appearing in the example, or in a sentence, cannot satisfy it.
+    """
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = core.split("## 6. Gaps", 1)
+    assert len(region) == 2, "core.md defines no <gaps> element"
+    region = region[1].split("\n## ", 1)[0]
+    table = region.split("### The five kinds", 1)[0]
+
+    parts = {}
+    for row in table.splitlines():
+        if not row.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        m = re.fullmatch(r"`([a-z-]+)`", cells[0])
+        if m and len(cells) >= 3:
+            parts[m.group(1)] = (cells[1], cells[2])
+
+    for name in ("closed", "closed-by"):
+        assert name in parts, (
+            f"core §6's attribute table has no `{name}` row (it declares {sorted(parts)}). "
+            f"Without it a resolved gap has nowhere to say so, and every reader counts it as open")
+        assert re.fullmatch(r"no", prose(parts[name][0]), re.I), (
+            f"core §6 makes `{name}` {parts[name][0]!r}. It must be optional: an open gap is "
+            f"the ordinary case, and a required closure date would put a false one on every gap")
+    assert re.search(r"YYYY-MM-DD", parts["closed"][1]), (
+        f"`closed` is not declared as a date: {parts['closed'][1]!r}. It sits beside `raised`, "
+        f"and the two dates together are what show how long a gap was open")
+
+    flat = prose(region)
+    assert re.search(r"defined artefact must not carry an open specification gap", flat), (
+        "core §6 states the `defined` bar without OPEN, so a closed specification gap still "
+        "bars the feature it was closed in")
+    assert re.search(r"A resolved gap is closed, not deleted", flat), (
+        "core §6 no longer says a resolved gap is closed rather than deleted. A deleted gap "
+        "turns every citation of its id into nothing")
 
 
 @check("feature dependencies are declared edges, and ordering is derived from them",
@@ -6215,13 +6317,17 @@ def _():
     # a check can later become.
     fmt = prose(open(os.path.join(SKILLS, "crd", "references", "crd-format.md"),
                      encoding="utf-8").read())
-    assert re.search(r'ready must not carry a <gap kind="specification">', fmt), (
-        "crd-format.md never states the draft/ready test. Before item 48 the distinction rested "
-        "entirely on the author's say-so, which is what <definition> had before item 29")
+    # OPEN is part of the rule since gaps could be closed: a closed specification gap is the
+    # record of a question answered, and a rule that still counted it would make `ready`
+    # unreachable for any CRD that followed core section 6 and kept its closed gaps.
+    assert re.search(r'ready must not carry an open <gap kind="specification">', fmt), (
+        "crd-format.md never states the draft/ready test, or states it without OPEN. Before item "
+        "48 the distinction rested entirely on the author's say-so, which is what <definition> "
+        "had before item 29")
     core = prose(open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read())
-    assert re.search(r"CRD marked ready must not carry a specification gap", core), (
-        "core §6 states the rule for <definition> and not for <workflow>, so the two rows are "
-        "checked by two rules that can drift")
+    assert re.search(r"CRD marked ready must not carry an open specification gap", core), (
+        "core §6 states the rule for <workflow> without OPEN, or not at all -- so the two rows "
+        "are checked by two rules that can drift, or a closed gap bars ready")
     crd = prose(open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read())
     assert "kind=\"specification\"" in crd or 'kind="specification"' in crd, (
         "/crd never tells the interview to record a deferral as a gap, so 'we'll define that "
@@ -11507,6 +11613,526 @@ def _():
             f"any file at all:\n{(p.stdout + p.stderr)[:300]}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a ready CRD carrying a specification gap is a contradiction the script reports -- by running it",
+       finding="P70")
+def _():
+    """Core section 6's rule for `<workflow>`, which the prose called mechanical and no script ran.
+
+    Item 48 gave the CRD `<gaps>` and, with it, the one-way test `<definition>` already had: a CRD
+    marked `ready` must not carry a `specification` gap. Core section 6 says so, `crd-format.md`
+    says so, and `commands/crd.md` tells the model to demote the document. `check-status.py`'s CRD
+    branch validated the gaps' shape and passed an empty escalation list; nothing compared
+    `<workflow>` with them. The rule was enforced by an instruction and asserted by a sentence
+    check, which is P61's shape: the element on both paths, the check over it on one.
+
+    Downstream still stopped it -- `select-features.py` refuses a specification gap whatever the
+    workflow says -- so the defect was never a run waved through. It was a contradiction nobody
+    reported, at the one point a person is there to fix it.
+
+    CONTROLS, BOTH DIRECTIONS. A `draft` CRD with the same gap must pass, and a `ready` CRD with a
+    gap that does not bar `ready` must pass, or a script refusing every CRD with a gap would
+    satisfy the assertion. And the pre-item-45 `<status>` spelling must reach the same rule,
+    because core section 3 accepts it on read.
+    """
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="p70-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+
+        def run(workflow, kind, tag="workflow"):
+            open(crd, "w", encoding="utf-8", newline="\n").write(
+                "<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+                f"    <{tag}>{workflow}</{tag}>\n    <priority>must-have</priority>\n  </meta>\n"
+                "  <gaps>\n"
+                f"    <gap id=\"1\" kind=\"{kind}\" raised=\"2026-09-01\">Deferred</gap>\n"
+                "  </gaps>\n</crd>\n")
+            p = subprocess.run(
+                [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-status.py"),
+                 crd, "--today", "2026-09-09", "--quiet"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            return p.returncode, p.stdout + p.stderr
+
+        code, out = run("draft", "specification")
+        assert code == 0, (
+            f"a DRAFT CRD with a specification gap was refused. That is the honest state of a "
+            f"change request with deferred behaviour, and refusing it means the check below "
+            f"would pass against a script that refuses every gap:\n{out[:400]}")
+
+        code, out = run("ready", "decision")
+        assert code == 0, (
+            f"a ready CRD with a decision gap was refused. Only `specification` bars `ready` "
+            f"(core section 6); the other four kinds block execution, not readiness:\n{out[:400]}")
+
+        code, out = run("ready", "specification")
+        assert code == 1, (
+            f"a CRD marked ready while carrying a <gap kind=\"specification\"> exited {code}. "
+            f"Core section 6 calls that a contradiction with a mechanical test, and the test "
+            f"did not run:\n{out[:400]}")
+        assert "CONTRADICTION" in out or "1 contradictions" in out, (
+            f"exit 1 without a contradiction the operator can read:\n{out[:400]}")
+
+        code, out = run("ready", "specification", tag="status")
+        assert code == 1, (
+            f"the pre-item-45 <status>ready</status> spelling escaped the rule (exit {code}). "
+            f"Core section 3 accepts that spelling on read, so a CRD not yet migrated is the "
+            f"same claim:\n{out[:400]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _closure_crd(gaps, workflow="draft", criteria=(1, 2)):
+    """A minimal CRD carrying the given <gap> lines, for the closure checks below."""
+    crit = "".join(
+        f'    <criterion id="{i}" pattern="event-driven" priority="P0">When a link is archived, '
+        f'the system shall hide it.</criterion>\n' for i in criteria)
+    return ("<crd>\n  <meta>\n    <slug>archive-links</slug>\n"
+            f"    <workflow>{workflow}</workflow>\n    <priority>must-have</priority>\n  </meta>\n"
+            f"  <acceptance-criteria>\n{crit}  </acceptance-criteria>\n"
+            "  <gaps>\n" + "".join(f"    {g}\n" for g in gaps) + "  </gaps>\n</crd>\n")
+
+
+def _closure_prd(root, gaps, definition="defined"):
+    """A one-feature PRD directory whose feature supports `defined` apart from its gaps."""
+    feats = os.path.join(root, "features")
+    os.makedirs(feats, exist_ok=True)
+    open(os.path.join(root, "index.md"), "w", encoding="utf-8", newline="\n").write(
+        "<prd>\n  <features>\n"
+        '    <feature priority="must-have" file="features/save-link.md">\n'
+        "      <name>Save link</name>\n    </feature>\n  </features>\n</prd>\n")
+    open(os.path.join(feats, "save-link.md"), "w", encoding="utf-8", newline="\n").write(
+        "<feature>\n  <meta>\n    <slug>save-link</slug>\n"
+        f"    <definition>{definition}</definition>\n  </meta>\n"
+        "  <user-story>As a reader, I want to save a link, so that I can read it later."
+        "</user-story>\n"
+        "  <acceptance-criteria>\n"
+        '    <criterion id="1" pattern="event-driven" priority="P0">When the reader saves a '
+        "link, the system shall store it.</criterion>\n"
+        "  </acceptance-criteria>\n"
+        "  <gaps>\n" + "".join(f"    {g}\n" for g in gaps) + "  </gaps>\n</feature>\n")
+    return root
+
+
+def _run_script(script, *argv):
+    p = subprocess.run([sys.executable, script, *argv], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return p.returncode, p.stdout + p.stderr
+
+
+@check("a closed gap is well-formed or refused, and its remainder takes a new id -- by running it")
+def _():
+    """Core section 6's closure rules that one file CAN show.
+
+    `closed` is a date, not earlier than `raised` and not later than today; `closed-by` sits only
+    on a closed gap and names criteria that exist in the same document; and ids stay unique
+    across open and closed gaps, which is what makes *close it and raise the rest as a new gap*
+    enforceable at all.
+
+    THE FUTURE DATE IS THE ONE THAT MATTERS. A malformed `raised` blocks too early, which is safe.
+    A `closed` dated next month opens a gate that should still be shut, so it is refused here --
+    and every reader treats a closure it cannot trust as no closure (the next check).
+
+    Each refusal is paired with a control that passes, or a script refusing every closed gap would
+    satisfy all of them.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-status.py")
+    root = tempfile.mkdtemp(prefix="closed-shape-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+
+        def run(*gaps):
+            open(crd, "w", encoding="utf-8", newline="\n").write(_closure_crd(gaps))
+            return _run_script(script, crd, "--today", "2026-09-09")
+
+        ok = ('<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-09" '
+              'closed-by="1 2">Answered</gap>')
+        code, out = run(ok)
+        assert code == 0, (
+            f"the control failed: a well-formed closed gap, closed today by two criteria that "
+            f"exist, was refused -- so every refusal below would pass against a script that "
+            f"refuses closure outright:\n{out[:500]}")
+
+        refusals = [
+            ("an unreal closed date",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed="2026-13-40">X</gap>',
+             "2026-13-40"),
+            ("a closed value that is not a date",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed="soon">X</gap>', "soon"),
+            ("closed before raised",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed="2026-08-31">X</gap>',
+             "2026-08-31"),
+            ("closed after --today",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-10">X</gap>',
+             "2026-09-10"),
+            ("closed-by on an open gap",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed-by="1">X</gap>', "closed-by"),
+            ("closed-by naming a criterion that does not exist",
+             '<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02" '
+             'closed-by="1 99">X</gap>', "99"),
+        ]
+        for label, gap, named in refusals:
+            code, out = run(gap)
+            assert code == 1, f"{label} was accepted (exit {code}):\n{out[:500]}"
+            assert named in out, (
+                f"{label} was refused without naming {named!r}, so an operator cannot find "
+                f"which value to fix:\n{out[:500]}")
+
+        # Found by the live run: the model wrote closed-by="8,9", the refusal said criteria "8,9"
+        # did not exist -- true, and no help. The separator is what is wrong, so it is what the
+        # refusal names.
+        code, out = run('<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02" '
+                        'closed-by="1,2">X</gap>')
+        assert code == 1 and "space-separated" in out, (
+            f"closed-by=\"1,2\" was not refused by naming the separator (exit {code}). Both "
+            f"criteria exist; the list is written wrong, and saying they do not exist sends the "
+            f"author looking for the wrong fault:\n{out[:500]}")
+
+        # Equal dates are legitimate: a gap raised and answered in one sitting.
+        code, out = run('<gap id="1" kind="decision" raised="2026-09-01" '
+                        'closed="2026-09-01">Same day</gap>')
+        assert code == 0, f"a gap closed the day it was raised was refused:\n{out[:500]}"
+
+        # The remainder of a partly resolved gap takes a NEW id. Reusing the closed one's id is
+        # the partial state core section 6 forbids, written as though it were not.
+        code, out = run('<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02">'
+                        'Half answered</gap>',
+                        '<gap id="1" kind="decision" raised="2026-09-02">The rest</gap>')
+        assert code == 1 and "repeats id 1" in out, (
+            f"an open gap reusing a closed gap's id was accepted, so a partial closure can be "
+            f"written as one gap with two states (exit {code}):\n{out[:500]}")
+        code, out = run('<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02">'
+                        'Half answered</gap>',
+                        '<gap id="2" kind="decision" raised="2026-09-02">The rest of 1</gap>')
+        assert code == 0, f"the remainder under a new id was refused:\n{out[:500]}"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a closed gap counts toward nothing -- the ceiling, ready, selection, the gate, "
+       "authoring-gaps -- on both paths, by running it")
+def _():
+    """Only an open gap counts, and every reader of `<gap>` agrees.
+
+    Five readers dispatch on gaps, and before `closed` all five counted every `<gap>` whatever its
+    body said -- so core section 6's *annotated, not deleted* capped `defined` and barred `ready`
+    for good, refused selection, blocked the gate, and listed an answered question as an authoring
+    gap. They share one parser, `select-features.gaps_of()`, and a check that exercised one of
+    them would pass while the other four read the file their own way. So every reader is run,
+    and on both document shapes where it takes both.
+
+    AND A CLOSURE A READER CANNOT TRUST IS NO CLOSURE. `/breakdown` never runs `check-status.py`,
+    so the validation in the previous check is not in front of the gate. A `closed="soon"` or a
+    date next year must leave the gap OPEN for the gate and for selection; otherwise one typo
+    opens the stop item 29 exists for.
+    """
+    import shutil
+    import tempfile
+
+    scripts = os.path.join(SKILLS, "breakdown", "scripts")
+    status = os.path.join(scripts, "check-status.py")
+    select = os.path.join(scripts, "select-features.py")
+    gate = os.path.join(scripts, "check-gate.py")
+    what_next = os.path.join(SCHEMA, "scripts", "build-what-next.py")
+
+    open_spec = '<gap id="1" kind="specification" raised="2026-09-01">Retention unspecified</gap>'
+    closed_spec = ('<gap id="1" kind="specification" raised="2026-09-01" closed="2026-09-05" '
+                   'closed-by="1">Retention unspecified. Closed by criterion 1.</gap>')
+    open_dec = '<gap id="1" kind="decision" raised="2026-09-01">Undecided</gap>'
+    closed_dec = '<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-05">Decided</gap>'
+    untrusted = [
+        '<gap id="1" kind="decision" raised="2026-09-01" closed="soon">Undecided</gap>',
+        '<gap id="1" kind="decision" raised="2026-09-01" closed="2999-01-01">Undecided</gap>',
+    ]
+
+    root = tempfile.mkdtemp(prefix="closed-count-")
+    try:
+        # ---- the PRD ceiling (C5)
+        prd = os.path.join(root, "prd")
+        _closure_prd(prd, [closed_spec])
+        code, out = _run_script(status, prd, "--today", "2026-09-09")
+        assert code == 0, (
+            f"a `defined` feature whose only specification gap is CLOSED was capped below "
+            f"defined. A closed gap is the record of a question answered:\n{out[:500]}")
+        _closure_prd(prd, [open_spec])
+        code, out = _run_script(status, prd, "--today", "2026-09-09")
+        assert code == 1 and "ceiling `in-progress`" in out, (
+            f"the control failed: an OPEN specification gap no longer caps `defined`, so the "
+            f"pass above measured nothing (exit {code}):\n{out[:500]}")
+
+        # ---- the CRD's ready rule (C6)
+        crd = os.path.join(root, "archive-links.md")
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            _closure_crd([closed_spec], workflow="ready"))
+        code, out = _run_script(status, crd, "--today", "2026-09-09")
+        assert code == 0, (
+            f"a `ready` CRD whose specification gap is CLOSED was called a contradiction:\n"
+            f"{out[:500]}")
+        open(crd, "w", encoding="utf-8", newline="\n").write(
+            _closure_crd([open_spec], workflow="ready"))
+        code, out = _run_script(status, crd, "--today", "2026-09-09")
+        assert code == 1, (
+            f"the control failed: a `ready` CRD with an OPEN specification gap passed, so the "
+            f"pass above measured nothing (exit {code}):\n{out[:500]}")
+
+        # ---- selection, both shapes (C7)
+        for label, doc, write in (
+                ("PRD", prd, lambda g: _closure_prd(prd, [g])),
+                ("CRD", crd, lambda g: open(crd, "w", encoding="utf-8", newline="\n").write(
+                    _closure_crd([g], workflow="ready")))):
+            write(closed_spec)
+            code, out = _run_script(select, doc, "--json")
+            assert "item 15" not in out, (
+                f"{label}: selection refused a CLOSED specification gap under item 15:\n"
+                f"{out[:500]}")
+            write(open_spec)
+            code, out = _run_script(select, doc, "--json")
+            assert "item 15" in out, (
+                f"{label}: the control failed -- an OPEN specification gap is no longer refused, "
+                f"so the pass above measured nothing:\n{out[:500]}")
+
+        # ---- the gate's assertion 3, both shapes (C7), and the untrusted closures
+        tasks = os.path.join(root, "tasks")
+        layer = os.path.join(tasks, "2-backend")
+        os.makedirs(layer)
+        for slug in ("save-link", "archive-links"):
+            open(os.path.join(layer, f"L2-00{1 if slug == 'save-link' else 2}-{slug}.xml"), "w",
+                 encoding="utf-8", newline="\n").write(
+                f"<task><meta><id>L2-00{1 if slug == 'save-link' else 2}</id>\n"
+                f"<source-feature slug=\"{slug}\" moscow=\"must-have\" satisfies-criteria=\"1\" "
+                f"requirement-level=\"P0\"/>\n</meta></task>\n")
+        json.dump({"total_tasks": 2, "task_inventory": [
+            {"id": "L2-001", "layer": "2-backend"}, {"id": "L2-002", "layer": "2-backend"}]},
+            open(os.path.join(tasks, "manifest.json"), "w", encoding="utf-8"))
+
+        for label, doc, write in (
+                ("PRD", prd, lambda g: _closure_prd(prd, [g])),
+                ("CRD", crd, lambda g: open(crd, "w", encoding="utf-8", newline="\n").write(
+                    _closure_crd([g])))):
+            write(closed_dec)
+            _code, out = _run_script(gate, doc, tasks)
+            assert "blocking gap" not in out, (
+                f"{label}: the gate blocked on a CLOSED decision gap:\n{out[:600]}")
+            write(open_dec)
+            _code, out = _run_script(gate, doc, tasks)
+            assert "blocking gap" in out, (
+                f"{label}: the control failed -- an OPEN decision gap no longer blocks, so the "
+                f"pass above measured nothing:\n{out[:600]}")
+            for gap in untrusted:
+                write(gap)
+                _code, out = _run_script(gate, doc, tasks)
+                value = re.search(r'closed="[^"]*"', gap).group(0)
+                assert "blocking gap" in out, (
+                    f"{label}: a closure the gate cannot trust unblocked it -- {value} is not a "
+                    f"past date, and /breakdown never runs the check that would refuse it:\n"
+                    f"{out[:600]}")
+
+        # ---- <authoring-gaps> (C8)
+        _closure_prd(prd, [closed_dec, '<gap id="2" kind="dependency" raised="2026-09-03">'
+                                       'Waiting</gap>'], definition="in-progress")
+        code, out = _run_script(what_next, prd, "--stdout")
+        assert code == 0, f"build-what-next.py failed:\n{out[:500]}"
+        assert 'id="2"' in out, (
+            f"the control failed: an OPEN gap is missing from <authoring-gaps>:\n{out[:500]}")
+        assert 'id="1"' not in out, (
+            f"<authoring-gaps> lists a CLOSED gap. It is a list of what is not yet specified, and "
+            f"a closed gap is a question already answered:\n{out[:500]}")
+
+        _closure_prd(prd, [closed_dec], definition="in-progress")
+        _code, out = _run_script(what_next, prd, "--stdout")
+        assert re.search(r'<feature slug="save-link" definition="in-progress">', out), (
+            f"an in-progress feature whose only gaps are closed got no <feature> row. With nothing "
+            f"open to point at, its shortfall has to be named directly -- or it vanishes from "
+            f"the list:\n{out[:500]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("gap ages count open gaps, and the gaps closed since a date can be listed -- by running it")
+def _():
+    """The report `/prd` and `/crd` read, and the feed the review of a fill is built from.
+
+    `AGE` lines and *N gaps open* are what both commands relay to a person. Counting a closed gap
+    there calls an answered question open for months. The summary names the closed count, so a
+    document whose gaps were all resolved does not read as one that never declared any.
+
+    `--closed-since` is what lets `/prd` hand the challenger the gaps closed since a feature's
+    last `<review>` without anybody reading the file by eye; the boundary is inclusive, and a gap
+    closed the day before is outside it.
+    """
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-status.py")
+    root = tempfile.mkdtemp(prefix="closed-age-")
+    try:
+        crd = os.path.join(root, "archive-links.md")
+        open(crd, "w", encoding="utf-8", newline="\n").write(_closure_crd([
+            '<gap id="1" kind="decision" raised="2026-08-01">Still open</gap>',
+            '<gap id="2" kind="decision" raised="2026-07-01" closed="2026-09-03" closed-by="1">'
+            'Answered</gap>',
+            '<gap id="3" kind="evidence" raised="2026-08-20" closed="2026-09-02">Measured</gap>',
+        ]))
+
+        code, out = _run_script(script, crd, "--today", "2026-09-09")
+        assert code == 0, f"a CRD with two valid closed gaps was refused:\n{out[:600]}"
+        ages = [ln for ln in out.splitlines() if "AGE" in ln]
+        assert len(ages) == 1 and "gap 1" in ages[0], (
+            f"AGE lines are not exactly the one open gap: {ages}. A closed gap aged beside open "
+            f"ones calls an answered question open:\n{out[:600]}")
+        assert re.search(r"\b1 gaps? open\b", out) and re.search(r"\b2 closed\b", out), (
+            f"the summary does not count 1 open and 2 closed separately:\n{out[:600]}")
+        assert "oldest gap 39 days" in out, (
+            f"the oldest age is not the open gap's 39 days -- gap 2, raised earlier and closed, "
+            f"must not be what `oldest` measures:\n{out[:600]}")
+
+        code, out = _run_script(script, crd, "--today", "2026-09-09", "--closed-since",
+                                "2026-09-03")
+        assert code == 0, f"--closed-since was refused:\n{out[:600]}"
+        listed = [ln for ln in out.splitlines() if "CLOSED" in ln]
+        assert len(listed) == 1 and "gap 2" in listed[0], (
+            f"--closed-since 2026-09-03 did not list exactly gap 2 (closed that day; gap 3 closed "
+            f"the day before): {listed}\n{out[:600]}")
+        assert "1" in listed[0].split("by", 1)[-1], (
+            f"the listed closure does not carry its closed-by criteria, which are what the "
+            f"review checks the fill against: {listed[0]!r}")
+
+        code, out = _run_script(script, crd, "--closed-since", "yesterday")
+        assert code == 2, f"--closed-since accepted a value that is not a date (exit {code})"
+
+        _code, out = _run_script(script, crd, "--today", "2026-09-09", "--json")
+        data = json.loads(out[out.index("{"):out.rindex("}") + 1])
+        assert [g["id"] for g in data["gaps"]] == ["1"], (
+            f"--json `gaps` is not the open gaps only: {data['gaps']}")
+        assert sorted(g["id"] for g in data.get("closed", [])) == ["2", "3"], (
+            f"--json carries no `closed` list of the closed gaps: {data.get('closed')}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a closed gap is never carried into the analysis or a task, and the report counts it")
+def _():
+    """Core section 6: a closed gap stays in its document and goes nowhere else.
+
+    Two hops take a gap out of the source document -- `breakdown-analyze-prd` copies it into
+    `analysis.json`, and the task format carries it into `<context>` -- and both were written as
+    "copy every gap, unchanged". A closed `decision` gap carried into a task is an instruction to
+    stop that nobody means, handed to the one reader with no way to check it against the source.
+    And a task file is written for a small context: a closed gap is context the implementer never
+    needed.
+
+    The report line is the third site. `/breakdown` tells the person what the documents said they
+    did not know; a document whose gaps were all resolved must not read as one that declared none.
+
+    SCOPED TO EACH SECTION, AND TO A SENTENCE SHAPE. `closed` appears elsewhere in both files, and
+    the word `open` would satisfy a whole-file search from any paragraph.
+    """
+    def section(text, heading, stop):
+        region = text.split(heading, 1)
+        assert len(region) == 2, f"no section {heading!r}"
+        return prose(region[1].split(stop, 1)[0])
+
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    body = section(analyzer, "are carried, never resolved", "\n### ")
+    assert re.search(r"Copy each feature's open <gap> entries", body), (
+        "analyze-prd's gaps section does not restrict the copy to OPEN gaps, so a closed gap "
+        "reaches analysis.json and every task generated from it")
+    assert re.search(r"A closed gap is not copied", body), (
+        "analyze-prd's gaps section never says a closed gap stays behind")
+
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    body = section(spec, "### 2. Context", "### 3. ")
+    assert re.search(r"Carry the source document's open <gaps> into <context>", body), (
+        "task-format-spec.md's Context section carries gaps without OPEN, so a generator copies "
+        "closed ones into the task")
+    assert re.search(r"A closed gap is never carried", body), (
+        "task-format-spec.md's Context section never says a closed gap stays out of the task")
+
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    lines = [ln for ln in skill.splitlines() if ln.startswith("gaps: ") and "blocking" in ln]
+    assert lines, "/breakdown's gap report line is gone"
+    assert all(re.search(r"\b\d+ closed\b", ln) for ln in lines), (
+        f"/breakdown's gap report line does not count closed gaps: {lines}. A PRD whose gaps "
+        f"were all resolved would report as one that declared none")
+
+
+@check("a person closes a gap in /prd and in /crd, and the challenger is handed the closures")
+def _():
+    """`closed` has readers in five scripts; this is its producer, on both paths.
+
+    A reader with no producer is P46's shape, and it is the defect this project has found most
+    often: without these steps `closed` is written by hand or not at all, and every gap annotated
+    "resolved" under the old rule stays open for good.
+
+    Three things per path, each scoped to the step that carries it:
+      1. the walk -- a table whose rows are the three answers a person gives, so a table with
+         `resolved` and no `partly resolved` (the partial state core section 6 forbids writing
+         as one gap) fails;
+      2. the boundary -- only the person closes a gap;
+      3. the review -- the challenger's dispatch carries the closed gaps, by the script that
+         lists them (`--closed-since` on the PRD path, which has a review date; every closed gap
+         on the CRD path, which does not).
+    """
+    def region(text, start, end):
+        assert start in text, f"no {start!r} to read"
+        tail = text.split(start, 1)[1]
+        assert end in tail, f"{start!r} has no {end!r} after it"
+        return tail.split(end, 1)[0]
+
+    def walk_rows(step):
+        rows = [ln for ln in step.splitlines() if ln.startswith("| ") and "|---" not in ln]
+        return {prose(ln.strip("|").split("|")[0]).strip() for ln in rows}
+
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    crd = open(os.path.join(COMMANDS, "crd.md"), encoding="utf-8").read()
+
+    for label, step in (
+            ("/prd Phase 3", region(prd, "#### A feature that already carries open gaps",
+                                    "#### Offer the challenger")),
+            ("/crd Phase 5", region(crd, "On a resume, walk the gaps already there",
+                                    "### Phase 6"))):
+        answers = walk_rows(step)
+        assert {"still open", "resolved", "partly resolved"} <= answers, (
+            f"{label}'s gap walk has answers {sorted(answers)}. Without all three a partial "
+            f"resolution has nowhere to go but a gap closed early or never")
+        flat = prose(step)
+        assert re.search(r'closed="\{today\}"', flat) and "closed-by" in flat, (
+            f"{label}'s walk no longer says what a resolved gap is written as")
+        assert re.search(r"new gap with the next unused id", flat), (
+            f"{label}'s walk does not raise the remainder of a partly resolved gap under a new id")
+        assert re.search(r"(Never write closed on your own judgement|Only the person closes a gap)",
+                         flat), (
+            f"{label}'s walk no longer says only the person closes a gap")
+
+    review = region(prd, "**The judgement half of the bar is not here.**",
+                    "**Record the review, once the author accepts it.**")
+    assert re.search(r"mode: review-definition[^)]*the gaps closed since its last review", review), (
+        "/prd's review-definition dispatch does not carry the gaps closed since the last review")
+    assert re.search(r"check-status\.py \{prd_dir\} \\\s*--closed-since", review), (
+        "/prd does not take the closed gaps from check-status.py --closed-since")
+
+    phase7 = region(crd, "### Phase 7: Interactive Review", "### Phase 8")
+    assert re.search(r'subagent_type:\s*"prd-criteria-author"[^)]*mode: review-closures', phase7), (
+        "/crd's review does not dispatch the challenger in review-closures mode")
+    assert "check-status.py" in phase7 and "--json" in phase7, (
+        "/crd's closure review does not take its list from check-status.py")
+
+    agent = open(os.path.join(REPO, "agents", "prd-criteria-author.md"), encoding="utf-8").read()
+    assert "| `review-closures` |" in agent, "the challenger's mode table has no review-closures"
+    section = prose(region(agent, "## Closed gaps", "## Mode 3"))
+    for verdict in ("answered", "not answered", "cannot tell"):
+        assert f"{verdict} —" in section or f"{verdict} -" in section, (
+            f"the challenger's closed-gap section has no `{verdict}` verdict")
+    assert re.search(r"Never propose removing closed", section), (
+        "the challenger may propose removing `closed`, which rewrites the dates core section 6 "
+        "says never change")
 
 
 @check("the gate never reports `blocked OK` for an assertion it could not make -- by running it",
