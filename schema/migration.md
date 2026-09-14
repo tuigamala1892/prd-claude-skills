@@ -144,7 +144,7 @@ design of it.
 | # | Precondition | Transformation | Postcondition |
 |---|---|---|---|
 | R4 | a PRD feature file with any `<criterion>` lacking `priority` | every criterion lacking `priority` gains `priority="P1"`; every one lacking `derived-from` gains `derived-from="{{its id}}"` | every criterion carries both, and the id list is unchanged |
-| R5 | a CRD, same condition | as R4 | as R4 |
+| R5 | a CRD, same condition | as R4 | as R4, except that a `complete` or `abandoned` CRD needs no `pattern` |
 
 **`priority="P1"` is written in rather than left to the documented default, and that is not
 noise.** An absent attribute and a deliberate `P1` are indistinguishable, so a partly-assigned
@@ -273,7 +273,7 @@ and its executor, so a number is never reused.
 
 | # | Precondition | Transformation | Postcondition |
 |---|---|---|---|
-| R10 | a CRD with a `<requirements>` element | each `<requirement>` becomes a `<criterion>` appended to `<acceptance-criteria>`, renumbered to continue after the highest existing criterion id, carrying `derived-from="requirement-N"` and its MoSCoW mapped to `P0\|P1\|P2`; `<requirements>` is removed | no `<requirements>`; every migrated criterion has a `priority` and a `derived-from`; **no `pattern`** |
+| R10 | a CRD with a `<requirements>` element | each `<requirement>` becomes a `<criterion>` appended to `<acceptance-criteria>`, renumbered to continue after the highest existing criterion id, carrying `derived-from="requirement-N"` and its MoSCoW mapped to `P0\|P1\|P2`; `<requirements>` is removed | no `<requirements>`; every migrated criterion has a `priority` and a `derived-from`; **no `pattern`**. The step is finished when every criterion has a `pattern` and `<meta>` has a `<priority>`, **except on a `complete` or `abandoned` CRD, which needs neither** |
 
 **The ids merge, so they have to be renumbered, and that is the only lossy-looking part of the
 step.** Requirement 1 and criterion 1 were two different things in two id spaces, and after item
@@ -311,7 +311,11 @@ unplaceable artefact is.
 **A CRD whose `<workflow>` is `complete` or `abandoned` is migrated but not re-reviewed**, per the
 rule already stated below. Its requirements still become criteria — that is a formatting change —
 but nobody is asked to supply the EARS sentences, the gaps or the document tier for a change that
-already happened. The `derived-from` attributes stay in place permanently on those files, because
+already happened. **So R5 and R10 do not wait for them.** For four schema versions both did: their
+completion tests asked every CRD for patterns and a tier. Every finished CRD stayed `PARTIAL` for
+good, and `--check` could never pass a corpus that held one. `check-artefacts.py` exempts the
+same files from the `<meta><priority>` it otherwise requires, using `migrate.py`'s definition of
+a record of the past rather than a second one. The `derived-from` attributes stay in place permanently on those files, because
 sign-off is a thing that happens to work in flight.
 
 ---

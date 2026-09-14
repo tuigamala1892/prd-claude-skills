@@ -270,7 +270,10 @@ def check_crd(text, version, problems, warnings):
     enum(problems, "<meta>", (workflow or "").strip() or None, WORKFLOW, "<workflow>")
 
     if at_least(version, "schema-5"):
-        if not (el(inner, "priority") or "").strip():
+        # A record of the past is never asked for its tier (migration.md), so its absence is the
+        # true state rather than a malformed one. One definition of `past`, migrate.py's: a second
+        # would let the validator and --check disagree about the same file.
+        if not (el(inner, "priority") or "").strip() and not _mig._is_past(text):
             problems.append("<meta> has no <priority> -- item 47 gave the document a MoSCoW tier, "
                             "and `--priority` has nothing to threshold against without it")
         enum(problems, "<meta>", (el(inner, "priority") or "").strip() or None,

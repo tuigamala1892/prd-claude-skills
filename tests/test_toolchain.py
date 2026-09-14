@@ -8065,6 +8065,75 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a finished CRD completes its migration without anyone re-specifying it -- by running it",
+       finding="P28")
+def _():
+    """migration.md: a `complete` or `abandoned` CRD is migrated as a formatting change and never
+    re-reviewed, so nobody supplies its patterns or its document tier. R5 and R10 demanded both
+    anyway, and every finished CRD stayed PARTIAL for good. Fixing only migrate.py moved the
+    refusal to the validator, which still required <meta><priority>, so both are held here.
+
+    Both directions. A finished CRD with nothing a person would supply passes --check and the
+    validator, and still carries no invented pattern. A `ready` CRD in exactly that state is held
+    on R10, and the validator judging it at the current schema still requires the tier.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    current = reg["current"]
+    source = None
+    for v in reg["versions"]:
+        p_ = os.path.join(REPO, "tests", "fixture", "prd", v, "link-shelf", "crd", "archive-links.md")
+        if os.path.isfile(p_) and "<requirements>" in open(p_, encoding="utf-8").read():
+            source = p_
+            break
+    assert source, "no fixture CRD still holds <requirements>, so there is nothing to migrate"
+    validator = os.path.join(SCHEMA, "scripts", "check-artefacts.py")
+
+    def validate(path, *extra):
+        return subprocess.run([sys.executable, validator, path, *extra], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+
+    root = tempfile.mkdtemp(prefix="crd-past-")
+    try:
+        for workflow in ("complete", "abandoned", "ready"):
+            path = os.path.join(root, f"{workflow}.md")
+            text = open(source, encoding="utf-8", newline="").read()
+            text = re.sub(r"<workflow>\s*[a-z-]+\s*</workflow>", f"<workflow>{workflow}</workflow>",
+                          text, 1)
+            text = re.sub(r"[ \t]*<priority>[^<]*</priority>\n(?=(?:(?!</meta>).)*</meta>)", "",
+                          text, flags=re.S)
+            open(path, "w", encoding="utf-8", newline="").write(text)
+            assert not re.search(r"<meta>.*?<priority>.*?</meta>", text, re.S), (
+                f"the {workflow} copy still has a <meta><priority>, so the check cannot run")
+
+            p = _run_migrate(path, "--to", current, "--quiet")
+            assert p.returncode == 0, f"migrating the {workflow} CRD exited {p.returncode}"
+            check = _run_migrate(path, "--to", current, "--check")
+            migrated = open(path, encoding="utf-8").read()
+            unread = re.findall(r"<criterion\b(?![^>]*\bpattern=)[^>]*derived-from=[^>]*>", migrated)
+            assert unread, f"the {workflow} CRD has no unread criterion to exercise"
+
+            if workflow == "ready":
+                assert check.returncode == 1 and "R10" in check.stdout + check.stderr, (
+                    f"a `ready` CRD with unread criteria and no tier passed --check "
+                    f"(exit {check.returncode}). The exemption is for records of the past only")
+                v = validate(path, "--schema", current)
+                assert v.returncode == 1 and "<priority>" in v.stdout + v.stderr, (
+                    f"the validator stopped requiring a live CRD's tier:\n{v.stdout}{v.stderr}")
+            else:
+                assert check.returncode == 0, (
+                    f"a `{workflow}` CRD is refused by --check (exit {check.returncode}) for "
+                    f"patterns and a tier nobody is asked to supply:\n{check.stdout}{check.stderr}")
+                v = validate(path)
+                assert v.returncode == 0, (
+                    f"the validator refuses a `{workflow}` CRD that --check accepts:"
+                    f"\n{v.stdout}{v.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------- the residue (10/24/32/38, group 5e)
 
 

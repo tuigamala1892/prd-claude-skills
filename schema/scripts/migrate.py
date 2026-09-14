@@ -464,10 +464,14 @@ RULES = [
      _stamp_criteria,
      lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
 
+    # A `complete` or `abandoned` CRD is a record of the past: migrated as a formatting change
+    # and never re-reviewed (migration.md), so nobody supplies its patterns. Requiring them left
+    # every finished CRD PARTIAL for good, the same defect R6 had with stories on `tbd` features.
     ("R5", "schema-3", "crd",
      lambda t: bool(_criteria_lacking(t, "priority")),
      _stamp_criteria,
-     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),
+     lambda t: not _criteria_lacking(t, "priority")
+               and (_is_past(t) or not _criteria_lacking(t, "pattern"))),
 
     # R6 is mixed for the same reason R4 is: the two mechanical halves are here, and
     # <user-story>, <depends-on>, <gaps> and <architecturally-significant> are content a
@@ -493,8 +497,8 @@ RULES = [
      _requirements_to_criteria,
      lambda t: "<requirements>" not in t
                and not _criteria_lacking(t, "priority")
-               and not _criteria_lacking(t, "pattern")
-               and _meta_has(t, "priority")),
+               and (_is_past(t) or (not _criteria_lacking(t, "pattern")
+                                    and _meta_has(t, "priority")))),
 
     # R11 and R12 are schema-6's mechanical half: a DOCUMENT status outside its own enum.
     # core section 3 gives `<status>` in index.md and what-next.md the values `in-progress` and
@@ -555,6 +559,17 @@ def _fix_doc_status(text):
 
 def _is_defined(text):
     return bool(re.search(r"<definition>\s*defined\s*</definition>", text))
+
+
+def _is_past(text):
+    """A CRD whose <workflow> is `complete` or `abandoned`: a record of something that happened.
+
+    Dual read, because core section 3 accepts the pre-item-45 <status> on read, and a record of
+    the past is exactly the kind of file nobody has opened since it was written.
+    """
+    meta = re.search(r"<meta>(.*?)</meta>", text, re.S)
+    state = re.search(r"<(workflow|status)>\s*([a-z-]+)\s*</\1>", meta.group(1) if meta else "")
+    return bool(state and state.group(2) in ("complete", "abandoned"))
 
 
 # Rules whose transform cannot reach their own postcondition, and what the mechanical half DOES

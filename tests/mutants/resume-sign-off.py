@@ -95,8 +95,8 @@ MUTANTS = [
     # --- the procedure: a sign-off --check would never accept ----------------------------------
     ("R4's postcondition demands derived-from, so a signed-off file is never finished",
      "schema/scripts/migrate.py",
-     '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),\n\n    ("R5"',
+     '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")),\n',
      '     lambda t: not _criteria_lacking(t, "pattern") and not _criteria_lacking(t, "priority")\n'
-     '               and not _criteria_lacking(t, "derived-from")),\n\n    ("R5"',
+     '               and not _criteria_lacking(t, "derived-from")),\n',
      CHECK),
 ]
