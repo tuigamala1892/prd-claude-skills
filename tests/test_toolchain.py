@@ -11951,6 +11951,54 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a closed gap is never carried into the analysis or a task, and the report counts it")
+def _():
+    """Core section 6: a closed gap stays in its document and goes nowhere else.
+
+    Two hops take a gap out of the source document -- `breakdown-analyze-prd` copies it into
+    `analysis.json`, and the task format carries it into `<context>` -- and both were written as
+    "copy every gap, unchanged". A closed `decision` gap carried into a task is an instruction to
+    stop that nobody means, handed to the one reader with no way to check it against the source.
+    And a task file is written for a small context: a closed gap is context the implementer never
+    needed.
+
+    The report line is the third site. `/breakdown` tells the person what the documents said they
+    did not know; a document whose gaps were all resolved must not read as one that declared none.
+
+    SCOPED TO EACH SECTION, AND TO A SENTENCE SHAPE. `closed` appears elsewhere in both files, and
+    the word `open` would satisfy a whole-file search from any paragraph.
+    """
+    def section(text, heading, stop):
+        region = text.split(heading, 1)
+        assert len(region) == 2, f"no section {heading!r}"
+        return prose(region[1].split(stop, 1)[0])
+
+    analyzer = open(os.path.join(SKILLS, "breakdown-analyze-prd", "SKILL.md"),
+                    encoding="utf-8").read()
+    body = section(analyzer, "are carried, never resolved", "\n### ")
+    assert re.search(r"Copy each feature's open <gap> entries", body), (
+        "analyze-prd's gaps section does not restrict the copy to OPEN gaps, so a closed gap "
+        "reaches analysis.json and every task generated from it")
+    assert re.search(r"A closed gap is not copied", body), (
+        "analyze-prd's gaps section never says a closed gap stays behind")
+
+    spec = open(os.path.join(SKILLS, "breakdown", "references", "task-format-spec.md"),
+                encoding="utf-8").read()
+    body = section(spec, "### 2. Context", "### 3. ")
+    assert re.search(r"Carry the source document's open <gaps> into <context>", body), (
+        "task-format-spec.md's Context section carries gaps without OPEN, so a generator copies "
+        "closed ones into the task")
+    assert re.search(r"A closed gap is never carried", body), (
+        "task-format-spec.md's Context section never says a closed gap stays out of the task")
+
+    skill = open(os.path.join(SKILLS, "breakdown", "SKILL.md"), encoding="utf-8").read()
+    lines = [ln for ln in skill.splitlines() if ln.startswith("gaps: ") and "blocking" in ln]
+    assert lines, "/breakdown's gap report line is gone"
+    assert all(re.search(r"\b\d+ closed\b", ln) for ln in lines), (
+        f"/breakdown's gap report line does not count closed gaps: {lines}. A PRD whose gaps "
+        f"were all resolved would report as one that declared none")
+
+
 @check("the gate never reports `blocked OK` for an assertion it could not make -- by running it",
        finding="P59")
 def _():
