@@ -530,12 +530,14 @@ RULES = [
      lambda t: not _is_defined(t) or "<review" in t),
 
     ("R6", "schema-4", "feature",
+     # The story is owed by `defined` features only (core section 2, migration.md). Asking it of
+     # every feature left a `tbd` one PARTIAL forever, on a judgement nobody owed it.
      lambda t: _meta_has(t, "priority") or ("<notes>" in t and "<considerations>" not in t)
-               or "<user-story>" not in t,
+               or (_is_defined(t) and "<user-story>" not in t),
      lambda t: _split_notes(_meta_drop(t, "priority")),
      lambda t: not _meta_has(t, "priority")
                and ("<notes>" not in t or "<considerations>" in t)
-               and "<user-story>" in t),
+               and (not _is_defined(t) or "<user-story>" in t)),
 ]
 
 DOC_STATUS = re.compile(r"<status>\s*([^<]*?)\s*</status>")

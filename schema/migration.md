@@ -165,6 +165,16 @@ to do and not otherwise.
 off, and it is the only way a reader can check a rewritten sentence against the triple it came
 from.
 
+**Sign-off is not this file's step, and nothing here performs it.** It happens in two steps, both
+a person's, per [core §2](core.md#2-acceptance-criteria). In `/prd --resume`,
+`prd-criteria-author` proposes a `pattern` for each migrated sentence, and the person accepts or
+corrects each one while `derived-from` stays. Recording the feature's review then removes
+`derived-from` from every classified criterion. That is why the fixtures from schema-3 onward
+carry both attributes: they are classified and not yet signed off. `/migrate` never dispatches
+that agent. A proposal nobody is present to accept is the unattended judgement this file forbids,
+however it is labelled. **The CRD path has no sign-off yet.** A migrated CRD's criteria keep
+`derived-from` until `/crd` gains the same step.
+
 **R4 and R5 are vacuously satisfied by an artefact with no criteria**, and that is correct rather
 than convenient. A feature carrying zero criteria is `excluded` or `superseded`; requiring at
 least one would turn a rule about criteria into a rule about features and escalate a legitimate
@@ -205,7 +215,7 @@ transformation of what is there, and the rest is content nothing in the file imp
 
 | # | Precondition | Transformation | Postcondition |
 |---|---|---|---|
-| R6 | a PRD feature file with `<meta><priority>`, or a `<notes>` not yet split, or no `<user-story>` | `<priority>` is deleted from `<meta>`; `<notes>` prose is split into `<data-model>` and `<considerations>` | no `<priority>` in `<meta>`; `<notes>` contains `<considerations>`; a `<user-story>` exists |
+| R6 | a PRD feature file with `<meta><priority>`, or a `<notes>` not yet split, or a `defined` feature with no `<user-story>` | `<priority>` is deleted from `<meta>`; `<notes>` prose is split into `<data-model>` and `<considerations>` | no `<priority>` in `<meta>`; `<notes>` contains `<considerations>`; a `defined` feature has a `<user-story>` |
 
 **`<priority>` is deleted only after the index entry is confirmed to carry it.** The index is the
 survivor of the pair, so removing the copy before checking the original would lose the fact
@@ -232,8 +242,11 @@ instruction to write some.
 | reclassifying `<definition>` | item 4. A `specification` gap bars `defined`, and applying that is a decision about the feature, not about its format |
 
 **`<user-story>` is required for `defined`, not for `tbd`.** A feature acquires one on promotion,
-so the migration owes stories only for the features already at `defined` — which is why R6's
-postcondition names the story and its precondition does not care how many are missing.
+so the migration owes stories only for the features already at `defined`. R6 asks exactly that,
+in its precondition and its postcondition alike. **For five schema versions it asked every
+feature.** The prose here said `defined` and the rule's code said everyone, so a `tbd` feature
+stayed `PARTIAL` on R6 for good. It was owed a story nobody could write, because a story arrives
+when a feature is promoted.
 
 ---
 

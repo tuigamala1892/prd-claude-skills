@@ -7708,6 +7708,208 @@ def _():
         "those is true and worthless")
 
 
+@check("R6 owes a user story to `defined` features only -- by running it", finding="P28")
+def _():
+    """Core section 2 and migration.md both say a story is required for `defined` and not for
+    `tbd`. R6's code asked every feature, so a migrated `tbd` feature could never pass `--check`:
+    it stayed PARTIAL on R6 for a story no one owed it. Found on sample data, where every `tbd`
+    feature was stuck.
+
+    Both directions, on the same migrated tree. A `tbd` feature with patterns assigned and no story
+    is finished. A `defined` one in exactly that state is still PARTIAL, and on R6.
+    """
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    oldest, current = list(reg["versions"])[0], reg["current"]
+    root = tempfile.mkdtemp(prefix="prd-r6-")
+    try:
+        work = os.path.join(root, "link-shelf")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", oldest, "link-shelf"), work)
+        feats = os.path.join(work, "features")
+        names = sorted(n for n in os.listdir(feats) if n.endswith(".md"))
+        assert len(names) >= 2, "the fixture needs two features for both directions"
+        tbd, defined = names[0], names[1]
+
+        # Demote one BEFORE migrating, in whichever spelling the oldest schema uses, so the
+        # migration meets a `tbd` feature as an author left it.
+        path = os.path.join(feats, tbd)
+        text = open(path, encoding="utf-8", newline="").read()
+        demoted = re.sub(r"<(status|definition)>\s*defined\s*</\1>", r"<\1>tbd</\1>", text, 1)
+        assert demoted != text, f"{tbd} was not `defined` to begin with, so nothing was demoted"
+        open(path, "w", encoding="utf-8", newline="").write(demoted)
+
+        p = _run_migrate(work, "--to", current, "--quiet")
+        assert p.returncode == 0, f"migrating the fixture exited {p.returncode}:\n{p.stderr}"
+
+        for name in (tbd, defined):
+            fp = os.path.join(feats, name)
+            t = open(fp, encoding="utf-8", newline="").read()
+            assert "<user-story>" not in t, f"{name} already has a story; the check needs none"
+            # The person's half: every criterion gets a pattern.
+            t = re.sub(r"<criterion\b(?![^>]*\bpattern=)", '<criterion pattern="event-driven"', t)
+            open(fp, "w", encoding="utf-8", newline="").write(t)
+
+        p = _run_migrate(os.path.join(feats, tbd), "--to", current, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a `tbd` feature with every pattern assigned and no story is refused by --check "
+            f"(exit {p.returncode}). A story is owed on promotion to `defined`, not before:"
+            f"\n{p.stdout}{p.stderr}")
+
+        p = _run_migrate(os.path.join(feats, defined), "--to", current, "--check")
+        out = p.stdout + p.stderr
+        assert p.returncode == 1 and re.search(r"\[[^\]]*R6[^\]]*\]", out), (
+            f"a `defined` feature with no story was not held on R6 (exit {p.returncode}), so the "
+            f"fix relaxed the case the story is owed in:\n{out}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("a migrated criterion is signed off by a person in /prd --resume, and the sign-off "
+       "reaches --check -- by running it", finding="P28")
+def _():
+    """Core section 2: `derived-from` lasts "until sign-off", and for six schema versions nothing
+    performed one. After a migration every criterion in a corpus carried it and no `pattern`, and
+    no step anywhere was shaped to finish them. `prd-criteria-author` was forbidden to propose a
+    pattern for an existing criterion, and `/prd` only assigned patterns while a criterion was
+    being written.
+
+    Three parts. The agent may propose for a MIGRATED sentence and still not for an authored one.
+    The resume step leaves `derived-from` alone on every row, because the reviewer needs it, and
+    records the review last. And the procedure, performed on a migrated fixture, reaches `--check`
+    exit 0. Recording the review removes `derived-from` from exactly the classified criteria,
+    keeps it on an unclassified one, and the review it writes is not STALE.
+
+    The fixtures from schema-3 on carry `pattern` and `derived-from` together, and that is the
+    classified-not-signed-off state core section 2 names. A first draft removed `derived-from` in
+    the same edit as the pattern, and that contradicted every one of them.
+    """
+    import shutil
+    import tempfile
+
+    # --- the agent ---------------------------------------------------------------------------
+    agent = open(os.path.join(AGENTS, "prd-criteria-author.md"), encoding="utf-8").read()
+    assert "| `sign-off` |" in agent, "the challenger's mode table has no sign-off mode"
+    assert "## Mode 3" in agent and "## What you return" in agent, "no Mode 3 section to read"
+    mode3 = agent[agent.index("## Mode 3"):agent.index("## What you return")]
+    assert "derived-from" in mode3, "sign-off mode does not say its subject is `derived-from`"
+    assert re.search(r"\bdo not rewrite a sentence\b", prose(mode3), re.I), (
+        "sign-off mode no longer forbids rewriting. It proposes patterns and names unsound "
+        "sentences; the person rewrites them")
+    start = "### `pattern` is proposed, never assumed"
+    assert start in agent, "Mode 1's pattern rule has no section to read"
+    rule = agent[agent.index(start):]
+    rule = rule[:rule.index("\n### ", 1)]
+    assert re.search(r"may not propose one for a criterion a person wrote", prose(rule)), (
+        "the challenger may now propose a pattern for an AUTHORED criterion. The exception is "
+        "for sentences a migration wrote, which nobody has agreed to; a person's sentence is "
+        "still theirs to classify")
+
+    # --- the resume step -----------------------------------------------------------------------
+    prd = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    s, e = "### If the PRD was migrated, offer the sign-off", "### Then ask what the repository"
+    assert s in prd and e in prd, "commands/prd.md has no sign-off step to read"
+    step = prd[prd.index(s):prd.index(e)]
+    assert "migrate.py" in step and "--check" in step, (
+        "the sign-off step does not ask the migration what is unsigned")
+    assert re.search(r'subagent_type:\s*"prd-criteria-author"[^)]*mode: sign-off[^)]*'
+                     r'run_in_background: false', step, re.S), (
+        "the sign-off step does not dispatch the challenger in sign-off mode, blocking")
+    assert re.search(r"one feature at a time", prose(step)), "sign-off is no longer per feature"
+    rows = [ln for ln in step.splitlines()
+            if ln.startswith("| ") and not ln.startswith("| The person") and "---" not in ln]
+    assert len(rows) == 4, f"the sign-off table has {len(rows)} rows, expected four"
+    for row in rows:
+        assert "derived-from" not in row, (
+            f"a classification row now touches derived-from: {row}. The reviewer checks each "
+            f"sentence against it, so it has to survive until the review is recorded")
+    assert re.search(r"recording it is the sign-off", prose(step), re.I), (
+        "the resume step no longer says recording the review is the sign-off, so nothing tells "
+        "a reader when derived-from goes")
+    assert step.index("--record-review") > step.index("| accepts"), (
+        "the review is recorded before the criteria are classified, so every classification "
+        "leaves it STALE")
+
+    # --- the procedure, performed ---------------------------------------------------------------
+    _path, reg = schema_registry()
+    oldest, current = list(reg["versions"])[0], reg["current"]
+    root = tempfile.mkdtemp(prefix="prd-signoff-")
+    try:
+        work = os.path.join(root, "link-shelf")
+        shutil.copytree(os.path.join(REPO, "tests", "fixture", "prd", oldest, "link-shelf"), work)
+        p = _run_migrate(work, "--to", current, "--quiet")
+        assert p.returncode == 0, f"migrating the fixture exited {p.returncode}:\n{p.stderr}"
+
+        feats = os.path.join(work, "features")
+        chosen = [n for n in sorted(os.listdir(feats))
+                  if "derived-from=" in open(os.path.join(feats, n), encoding="utf-8").read()
+                  and re.search(r"<definition>\s*defined\s*<",
+                                open(os.path.join(feats, n), encoding="utf-8").read())]
+        assert len(chosen) >= 2, ("fewer than two migrated `defined` features carry derived-from, "
+                                  "so both halves of the sign-off cannot be exercised")
+        whole, part = chosen[0], chosen[1]
+
+        p = _run_migrate(os.path.join(feats, whole), "--to", current, "--quiet", "--check")
+        assert p.returncode == 1, (
+            f"--check accepted {whole} before sign-off (exit {p.returncode}), so the check below "
+            f"proves nothing")
+
+        # The person's half: classify. `whole` gets every pattern and `part` all but its first.
+        # derived-from is left exactly where the migration put it.
+        for name, skip_first in ((whole, False), (part, True)):
+            fp = os.path.join(feats, name)
+            text = open(fp, encoding="utf-8", newline="").read()
+            seen = [0]
+
+            def classify(m, skip_first=skip_first, seen=seen):
+                seen[0] += 1
+                if skip_first and seen[0] == 1:
+                    return m.group(0)
+                return '<criterion pattern="event-driven"' + m.group(1)
+            text = re.sub(r"<criterion\b([^>]*>)", classify, text)
+            if "<user-story>" not in text:
+                text = text.replace(
+                    "<description>", "<user-story>As a reader, I want this feature, so that the "
+                                     "check can run.</user-story>\n  <description>", 1)
+            open(fp, "w", encoding="utf-8", newline="").write(text)
+            assert "derived-from=" in text, f"classifying {name} removed derived-from by itself"
+
+        cd = os.path.join(SKILLS, "breakdown", "scripts", "check-definition.py")
+        rec = subprocess.run([sys.executable, cd, work, "--record-review", "--by", "suite"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert rec.returncode == 0 and "signed off" in rec.stdout, (
+            f"recording the reviews did not sign anything off (exit {rec.returncode}):"
+            f"\n{rec.stdout}{rec.stderr}")
+
+        after = open(os.path.join(feats, whole), encoding="utf-8").read()
+        assert "derived-from=" not in after, (
+            f"{whole} was reviewed with every criterion classified and still carries derived-from, "
+            f"so the review signed nothing off")
+        tags_ = re.findall(r"<criterion\b[^>]*>", open(os.path.join(feats, part),
+                                                         encoding="utf-8").read())
+        assert "derived-from=" in tags_[0] and "pattern=" not in tags_[0], (
+            f"the unclassified criterion in {part} lost derived-from at review. Nobody has read "
+            f"that sentence, and removing the marker hides that a migration wrote it")
+        assert all("derived-from=" not in t for t in tags_[1:]), (
+            f"a classified criterion in {part} kept derived-from through its review")
+
+        p = _run_migrate(os.path.join(feats, whole), "--to", current, "--quiet", "--check")
+        assert p.returncode == 0, (
+            f"a feature classified and reviewed as core section 2 describes is still refused by "
+            f"--check (exit {p.returncode}), so the sign-off never finishes:\n{p.stdout}{p.stderr}")
+
+        report = subprocess.run([sys.executable, cd, work], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace").stdout
+        slug = os.path.splitext(whole)[0]
+        stale = [ln for ln in report.splitlines() if slug in ln and "STALE" in ln]
+        assert not stale, (
+            f"the review recorded with the sign-off is already STALE -- the hash was taken before "
+            f"derived-from was removed:\n" + "\n".join(stale))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------- the residue (10/24/32/38, group 5e)
 
 

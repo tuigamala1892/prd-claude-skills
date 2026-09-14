@@ -99,6 +99,72 @@ content in the first place, so a resume that checked only its own work would be 
 rather than the cure. Report what they say before asking where to continue — a `CONTRADICTION` in
 a feature nobody has opened for a month is the most useful thing this command can tell you.
 
+### If the PRD was migrated, offer the sign-off
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/migrate.py {prd_dir} --check
+```
+
+**Exit 0 means there is nothing to sign off, so say nothing about it.** Exit 1 lists every
+`PARTIAL` feature and the rules it is outstanding on. Only R4 is sign-off work: its criteria carry
+`derived-from` and no `pattern`, because `/migrate` rewrote the sentences and no person has read
+them. Report the count of features and migrated criteria. Say it plainly: every `defined` feature
+among them fails test 2 of the bar until its criteria carry a `pattern`, and only a person can
+supply one.
+
+**Then offer it, one feature at a time, and let the person choose which.** Never across the
+PRD in one pass. A person accepting a hundred proposed patterns in a list has approved a list,
+not read a hundred sentences, and the result is the unattended judgement the migration was
+forbidden to make.
+
+```
+Task(
+  subagent_type: "prd-criteria-author",
+  prompt: <mode: sign-off; the feature file path; its index entry; the feature files its
+           <depends-on> names and the ones that name it; any decision record it cites>,
+  run_in_background: false,
+  description: "Sign off migrated criteria for {slug}"
+)
+```
+
+It returns a proposed `pattern` for each migrated criterion, or `needs a person` with the reason.
+Walk them with the person, **criterion by criterion**:
+
+| The person | You write |
+|---|---|
+| accepts the sentence and the pattern | the `pattern` |
+| corrects the pattern | their `pattern` |
+| rewrites the sentence | their sentence, and the `pattern` they give it |
+| defers it | nothing. The criterion stays unclassified |
+
+**Leave `derived-from` in place, on every row.** It is how the reviewer checks each sentence
+against where it came from, so removing it now would take that away before the review uses it.
+Recording the review removes it, from exactly the criteria that carry a `pattern`
+([core §2](../schema/core.md#2-acceptance-criteria)). Never remove it by hand.
+
+**Splitting a criterion in two is the author's decision, not a formatting fix.** Give the new
+criterion the next free id, and keep the original id on whichever half still says what it said.
+
+Then, for a `defined` feature only:
+
+- **No `<user-story>`?** Offer the challenger in `propose-criteria` mode, as in Phase 3, and paste
+  only what the person accepts.
+- **Record the review last,** after every edit to the file. **Recording it is the sign-off.** It
+  removes `derived-from` from each criterion the person classified and reports how many. The
+  review hashes the content, so anything written after it leaves the review `STALE`:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/breakdown/scripts/check-definition.py {prd_dir} \
+  --record-review --by <name> --feature {slug}
+```
+
+**A `tbd` feature is classified but never signed off,** because it is not reviewed. Its criteria
+keep `derived-from` until it is promoted, and that is correct.
+
+Re-run `migrate.py {prd_dir} --check` when the person stops, and report what is still
+unclassified. A sign-off left half done is ordinary. The attributes record where each criterion
+stands, so the next `--resume` finds the rest.
+
 ### Then ask what the repository already knows about itself
 
 **Unconditionally, and regardless of how Phase 2's greenfield question will be answered:**
