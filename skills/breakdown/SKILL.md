@@ -16,6 +16,9 @@ You are orchestrating the breakdown of a PRD (Product Requirements Document) or 
 - `--review-only`: Only run review pass on existing tasks (optional)
 - `--output-dir <path>`: Target directory for greenfield projects (overrides default)
 - `--project-path <path>`: Existing project path for brownfield/CRD (overrides PRD value)
+- `--tasks-dir <path>`: Absolute directory for the task files, ending in the slug, when the
+  input is not under `docs/crd/` or `docs/prd/<slug>/` (optional; derived from the input's
+  location otherwise)
 - `--auto-setup`: Automatically execute Layer 0 tasks after generation (greenfield only)
 - `--priority <must-have|should-have|could-have>`: Lowest **feature** tier to build (default
   `could-have` — all three)
@@ -83,7 +86,7 @@ Two different directories, and they are resolved by a script rather than assembl
 
 | | What | Default |
 |---|---|---|
-| `{tasks_dir}` | Where task XML is written | `docs/tasks/<prd-slug>/` |
+| `{tasks_dir}` | Where task XML is written (`--tasks-dir`) | `tasks/<slug>/` beside the document's `crd/` or `prd/`, under the same `docs/` |
 | `{target_dir}` | Where code will be built (`--output-dir` / `--project-path`) | none — must be given |
 
 For greenfield with `--output-dir`:
@@ -132,11 +135,22 @@ Execute these phases in order:
 5. **Resolve both output paths, before creating anything:**
 
    ```bash
-   sh {skill_dir}/scripts/resolve-output.sh docs/tasks/{slug} [{--output-dir or --project-path value}]
+   sh {skill_dir}/scripts/resolve-output.sh --from {input_path} --slug {slug} [--tasks-dir {tasks_dir_given}] [{target_dir_given}]
    ```
 
    `{skill_dir}` is the base directory given at the top of this skill — the one ending in
-   `skills/breakdown`.
+   `skills/breakdown`. `{input_path}` is the input file as the absolute path step 1 read.
+   `{tasks_dir_given}` is `--tasks-dir` if the operator passed one, and `{target_dir_given}` is
+   the `--output-dir` or `--project-path` value; omit either when it was not given.
+
+   **The tasks directory is derived from where the document sits, never from a working
+   directory:** up to the `docs/` holding `crd/` or `prd/`, then `tasks/{slug}`. A CRD at
+   `<project>/docs/crd/<slug>.md` gives `<project>/docs/tasks/<slug>` — where `/crd`'s hand-off
+   tells the operator to run `/execute` — and a PRD at `<ws>/docs/prd/<slug>/index.md` gives
+   `<ws>/docs/tasks/<slug>`. This used to pass a relative tasks path and let the script resolve it
+   against its working directory; this skill `cd`s freely, so one command resolved to the
+   plugin checkout, the workspace and the target app on three runs, and step 8's resume check
+   found an empty directory each time it moved (**P75**).
 
    - **Exit 0**: stdout is `tasks_dir=<absolute>` and, when a target was given,
      `target_dir=<absolute>`. Use those two values everywhere below — in your own file writes,
@@ -146,8 +160,9 @@ Execute these phases in order:
      no directory, no analysis, no tasks. In particular do not "helpfully" convert the path
      yourself and carry on; the refusal exists because the right answer was not knowable.
 
-   What it refuses: a relative `--output-dir`/`--project-path`, and either path resolving
-   inside a Claude Code plugin. The second is F4 directly, and is pointless as well as wrong —
+   What it refuses: a relative `--output-dir`/`--project-path`/`--tasks-dir`, a document outside
+   `docs/crd/` or `docs/prd/<slug>/` with no `--tasks-dir`, and either path resolving inside a
+   Claude Code plugin. The second is F4 directly, and is pointless as well as wrong —
    `/execute` refuses a plugin as a target, so tasks generated there could never be run.
 
 6. **Echo both resolved paths** in your first line of output, before writing anything:
@@ -161,7 +176,28 @@ Execute these phases in order:
    directory.
 
 7. Create `{tasks_dir}`
-8. If it exists, check for existing `.done` markers to resume
+8. **Resume only from what these documents produced:**
+
+   ```bash
+   python {skill_dir}/scripts/check-resume.py {document} {tasks_dir} [--project-path {target_dir}]
+   ```
+
+   Pass `--project-path` whenever step 5 resolved a target — always, on the CRD path.
+
+   - **Exit 0, `nothing to resume`**: the sources are recorded in `{tasks_dir}/sources.json`
+     and every phase runs.
+   - **Exit 0, `resuming`**: every source hashes as it did when the existing artefacts were
+     built. The skips in Phases 2–4 are sound; take them.
+   - **Exit 1**: `REFUSED:`, naming each source `CHANGED`, `ADDED` or `REMOVED`, or saying no
+     record exists. **Stop and report it verbatim.** Do not delete anything and do not resume
+     anyway — the operator moves the directory aside.
+
+   **Every resume in this skill skips on existence**: Phase 2 when `analysis.json` exists,
+   Phase 3 when `layer_plan.json` does, Phase 4 each layer with a `.done`. None of those can ask
+   what the file was built *from*, so a document edited between two runs was analysed once, as
+   it used to be, and what the edit added reached no task — with coverage measured against the
+   manifest those same skipped phases wrote, so nothing downstream could say so (**P73**). This is
+   the one place that asks, and it runs before any step below reads the document.
 9. **Read the project's own rules first, and refuse a rule file that cannot be obeyed:**
 
    ```bash
@@ -221,8 +257,14 @@ Execute these phases in order:
 11. **Validate the references that leave the PRD, before Phase 2 reads a word of it:**
 
    ```bash
-   python {skill_dir}/scripts/check-references.py {document} [--adr-dir DIR] [--questions FILE]
+   python {skill_dir}/scripts/check-references.py {document} [--project-path {target_dir}] [--adr-dir DIR] [--questions FILE]
    ```
+
+   **On the CRD path `--project-path {target_dir}` is not optional.** A CRD's `<project-ref>`,
+   `<prd-ref>` and `<feature-ref>` are relative to the project, and without the flag the script
+   resolves them against the CRD's own directory: `<project-ref>PROJECT.md</project-ref>` becomes
+   `docs/crd/PROJECT.md`, and a well-formed CRD reports five `DANGLING` lines and stops the run
+   (**P72**). On the PRD path pass it when step 5 resolved a target; the PRD branch does not read it.
 
    `{document}` is what this run was given, **in the shape the input actually has**: on the PRD
    path the *directory* holding `index.md` and `features/` — the input file's directory, not the
@@ -273,7 +315,7 @@ Execute these phases in order:
 
 ### Phase 2: Analyze Input
 
-If analysis.json exists, skip this phase.
+If analysis.json exists, skip this phase — sound only because step 8's `check-resume.py` has shown it was built from these documents.
 
 **For PRD — one index pass, then one pass per feature. Never the whole PRD in one prompt.**
 
@@ -351,6 +393,12 @@ pass that owns it, and never as part of a larger blob.
 models, endpoints and components, keeping every `inferred_from` so a later reader can tell which
 feature produced an entry — when two features infer the same model, keep both attributions.
 
+**`gaps` is a list — the feature fragments' entries concatenated, each `{feature, id, kind, raised, body}`** as
+[`breakdown-analyze-prd`](../breakdown-analyze-prd/SKILL.md) documents it, open gaps only. Not an
+object, no count in it, and never `check-status.py --json`'s rows: those carry `file`, `days` and
+no `body`, and `body` is the gap text the generator carries into a task's `<context>`. The run
+that wrote `{open, closed_count}` handed every task a gap as a kind and a date (**P74**).
+
 **The merge is mostly arithmetic, and the exception is the point.** A feature pass sees one
 feature file and cannot see the index; the index pass sees no feature. So the merge is the only
 place that holds both, and some contradictions are visible **nowhere else**:
@@ -378,8 +426,10 @@ Extract directly from CRD structure:
   *is* a requirement. A CRD written before that carries one, and it is **read** as criteria with
   no `pattern` rather than refused — the same policy the other pre-migration shapes get
 - Document tier from `<meta><priority>` — MoSCoW, what `--priority` thresholds against
-- Open gaps from `<gaps>`, reported with the PRD path's, below. A closed gap is counted and never
-  carried (core §6)
+- Open gaps from `<gaps>`, into `gaps` — the PRD path's list shape, each
+  `{feature, id, kind, raised, body}`, with `feature` the CRD's `<slug>` and `body` the gap's text
+  (not `text`, which is what the gap-closure run invented, **P74**). Reported with the PRD path's,
+  below. A closed gap is counted and never carried (core §6)
 - Affected files from `<impact-analysis><affected-files>`
 - Affected features from `<impact-analysis><affected-features>`
 - **Schema contracts from `<impact-analysis><affected-contracts>`, into `data_models`** (item 75)
@@ -435,7 +485,7 @@ a refusal, because the flag is a judgement and its absence proves nothing.
 
 ### Phase 3: Plan Layers
 
-If layer_plan.json exists, skip this phase.
+If layer_plan.json exists, skip this phase — sound only because step 8's `check-resume.py` has shown it was built from these documents.
 
 **Both paths, one planner.** Invoke the `breakdown-plan-layers` skill with the analysis JSON
 **and, when it exists, `{tasks_dir}/architecture.json`** — the validated form of the project's
@@ -529,7 +579,7 @@ the batching loop below, and do not create a `.done` marker for a layer that was
 
 For each layer in order:
 
-1. **Check completion**: If `{layer}/.done` exists, skip this layer
+1. **Check completion**: If `{layer}/.done` exists, skip this layer — step 8 has already refused a marker built from different documents
 
 2. **Create directory**: `{tasks_dir}/{layer}/`
 
@@ -932,5 +982,5 @@ Breakdown complete!
 - 4-integration: 1 task
 
 To execute:
-  /execute docs/tasks/dark-mode-toggle/ --project-path /existing/project
+  /execute /existing/project/docs/tasks/dark-mode-toggle/ --project-path /existing/project
 ```

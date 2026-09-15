@@ -130,6 +130,10 @@ substitutes for the other.
 | **P69** | the CRD path's unbounded input is generated from a codebase, and nothing measures it | closed | `PROJECT.md fits the prompt it is about to be sent in -- by running it` |
 | **P70** | a CRD's `ready` rule is stated as mechanical, and no script runs it | closed | `a ready CRD carrying a specification gap is a contradiction the script reports -- by running it` |
 | **P71** | the mutation harness drops a failing check printed directly below another | closed | `the mutation harness sees every failing check, adjacent ones included -- by parsing two` |
+| **P72** | `/breakdown` resolves a CRD's references against the CRD's directory, and stops on every well-formed CRD | closed | `/breakdown hands check-references.py the project a CRD is against -- by running it` |
+| **P73** | every resume in `/breakdown` skips on existence, so a changed document is never re-analysed | closed | `a resumed /breakdown resumes from the documents it was given, or refuses -- by running it` |
+| **P74** | `analysis.json`'s `gaps` has no named shape where it is written, and a run wrote it without the gap text | closed | `analysis.json's gaps are one shape, named where the analysis is written` |
+| **P75** | `/breakdown`'s tasks directory is resolved against whatever directory its fork is in | closed | `the tasks directory is derived from the document, whatever directory it is resolved from -- by running it` |
 
 ---
 

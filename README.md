@@ -74,7 +74,9 @@ two flag-driven routes. See
 
 One usage note that bites immediately: **give `--output-dir` and `--project-path` absolute
 paths.** `resolve-output.sh` refuses a relative one rather than guess between the caller's
-directory and its own.
+directory and its own. Task files go beside the document: `docs/crd/<slug>.md` puts them in
+`docs/tasks/<slug>/` under the same `docs/`, and so does `docs/prd/<slug>/index.md`. A document
+kept anywhere else needs `--tasks-dir <absolute path>`.
 
 ## Develop from a checkout
 

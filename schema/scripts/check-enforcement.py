@@ -42,16 +42,19 @@ nothing about whether the code reaches. This repository has recorded nine false 
 THE MARKER IS A VALUE OR A PROTOCOL TOKEN, NEVER A SENTENCE
 
 Each probe names a string that must appear in the broken run's output and must NOT appear in the
-good one. Seven of the nine name the mutated value itself -- `decsion`, `wont-have`, `nope.md`,
+good one. Seven of the ten name the mutated value itself -- `decsion`, `wont-have`, `nope.md`,
 `banana` -- never the wording of a finding. Checks pinned to prose break when the prose improves,
 which is this plan's second recorded lesson, and a probe asserting a sentence would fail the next
 time somebody made a message clearer.
 
-**Two cannot, and they are recorded rather than bent into the shape.** `check-writable.py`'s
+**Three cannot, and they are recorded rather than bent into the shape.** `check-writable.py`'s
 assertion is about a file that already exists, so there is no bad value in any document and the
 two states are `absent` and `present`; it keys on `REFUSED`, the token every script here prints
 to refuse, which is a contract rather than a phrasing. `migrate.py` keys on `R2`, a rule id from
 `migration.md`'s registry -- still a value, and one that must fail here if the rule is renamed.
+`check-resume.py`'s assertion is about a document CHANGING after it was recorded, so both
+workspaces are recorded from the good CRD by a `prepare` hook before one is broken, and it keys
+on `CHANGED` -- the output names the changed source, never the changed value.
 
 Both of those markers are second attempts. The first pair -- the filename, and `schema-` --
 appeared in the good run as well as the broken one, so the probes distinguished nothing. **The
@@ -246,6 +249,18 @@ PROBES = {
         "marker": "R2",
         "note": "a CRD written in a superseded spelling, which --check must refuse to guess past",
     },
+    "check-resume.py": {
+        "script": os.path.join(BREAKDOWN, "check-resume.py"),
+        "argv": lambda ws: [_doc(ws), _tasks(ws), "--project-path", ws],
+        # Its assertion is about a document CHANGING, so both workspaces are recorded from the
+        # good CRD and made a resume before the break is applied -- see `prepare` in probe().
+        "prepare": lambda ws: _record_then_resume(ws),
+        "break": ("<scope>small</scope>", "<scope>large</scope>"),
+        # A protocol token rather than the value: the changed value is not in the output, the
+        # changed SOURCE is, and `CHANGED` is the line that names it.
+        "marker": "CHANGED",
+        "note": "a CRD edited after the analysis a resume would skip to was built from it",
+    },
     "check-writable.py": {
         "script": os.path.join(BREAKDOWN, "check-writable.py"),
         "argv": lambda ws: [_doc(ws)],
@@ -311,6 +326,16 @@ def run(script, argv):
     return p.returncode, p.stdout + p.stderr
 
 
+def _record_then_resume(ws):
+    """`check-resume.py`'s starting state: sources recorded, and an analysis to skip to."""
+    spec = PROBES["check-resume.py"]
+    code, out = run(spec["script"], spec["argv"](ws))
+    if code != 0:
+        raise RuntimeError(f"check-resume.py could not record a fresh workspace:\n{out[:300]}")
+    with open(os.path.join(_tasks(ws), "analysis.json"), "w", encoding="utf-8") as f:
+        f.write("{}")
+
+
 def probe(owner, spec, tmp):
     """Run one owner against a good CRD and a broken one. Returns a list of findings."""
     import shutil
@@ -331,7 +356,16 @@ def probe(owner, spec, tmp):
                 return [f"{owner}: its mutation anchor {old!r} is not in the good CRD, so the "
                         f"probe changes nothing and would pass against any script at all"]
             workspace(good_root, GOOD_CRD)
-            workspace(bad_root, GOOD_CRD.replace(old, new, 1))
+            if spec.get("prepare"):
+                # A probe whose assertion is about change: both start good and are prepared
+                # there, and only then is the bad one broken.
+                workspace(bad_root, GOOD_CRD)
+                spec["prepare"](good_root)
+                spec["prepare"](bad_root)
+                with open(_doc(bad_root), "w", encoding="utf-8", newline="\n") as f:
+                    f.write(GOOD_CRD.replace(old, new, 1))
+            else:
+                workspace(bad_root, GOOD_CRD.replace(old, new, 1))
 
         good_code, good_out = run(spec["script"], spec["argv"](good_root))
         bad_code, bad_out = run(spec["script"], spec["argv"](bad_root))
