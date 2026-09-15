@@ -94,10 +94,12 @@ USAGE
 
 DISCOVERY
 
-`--adr-dir` and `--questions` default to the corpus project's layout, tried in order and
-relative to <prd-dir>: ../../architecture/decisions, ../../../architecture/decisions,
-../../docs/architecture/decisions. The register is looked for as open-questions.md beside the
-decision directory and one level above it. A citation with nowhere to resolve *against* is an
+`--adr-dir` defaults to the corpus project's layout, tried in order and relative to <prd-dir>:
+../../architecture/decisions, ../../../architecture/decisions, ../../docs/architecture/decisions.
+The register is what-next.md's `<open-questions href=>` when it has one, resolved relative to
+<prd-dir> -- the document naming its register outranks any guess, and a broken href is reported
+rather than replaced. Without one it is looked for as open-questions.md beside the decision
+directory and one level above it. A citation with nowhere to resolve *against* is an
 error naming the flag to pass -- silently passing because the directory was not found is how a
 validator becomes decorative.
 
@@ -140,6 +142,7 @@ CROSS_CUTTING_AT = 3
 MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 # An id in a filename: `ADR-007-title.md`, `007-title.md`, `adr007.md`.
 FILENAME_ID = re.compile(r"^(?:adr[-_]?)?(\d{1,4})\b", re.I)
+OQ_HREF = re.compile(r"""<open-questions\b[^>]*\bhref=["']([^"']+)["']""")
 RESOLVED_HEADING = re.compile(r"^#{1,6}\s*(.*\bOQ-(\d{1,4})\b.*)$", re.M)
 # The hyphen separates a principle from item 34's criterion priorities (P0, P1, P2).
 PRINCIPLE_CITATION = re.compile(r"\bP-(\d{1,4})\b")
@@ -168,6 +171,27 @@ def discover_adr_dir(prd_dir):
         if os.path.isdir(cand):
             return cand
     return None
+
+
+def questions_href(prd_dir):
+    """(href, path) from what-next.md's `<open-questions href=>`, or None when it has none.
+
+    The document names its register, and that outranks discovery: prd-format.md permits the
+    pointer, and its own example path sits nowhere discovery looks. The href is relative to
+    what-next.md, which lives in <prd-dir>. A pointer to a missing file is returned as-is and
+    reported by the caller, never replaced by whatever discovery happens to find.
+    """
+    what_next = os.path.join(prd_dir, "what-next.md")
+    if not os.path.isfile(what_next):
+        return None
+    m = OQ_HREF.search(read(what_next))
+    if not m:
+        return None
+    href = m.group(1).strip()
+    target = href.split("#")[0]
+    if re.match(r"^[a-z]+://", target):
+        return href, None
+    return href, os.path.normpath(os.path.join(prd_dir, target))
 
 
 def discover_questions(prd_dir, adr_dir):
@@ -474,8 +498,14 @@ def main():
         return 2
 
     adr_dir = os.path.abspath(args.adr_dir) if args.adr_dir else discover_adr_dir(prd_dir)
-    q_path = os.path.abspath(args.questions) if args.questions else discover_questions(
-        prd_dir, adr_dir)
+    # --questions, then the document's own pointer, then discovery.
+    href = None if args.questions else questions_href(prd_dir)
+    if args.questions:
+        q_path = os.path.abspath(args.questions)
+    elif href:
+        q_path = href[1]
+    else:
+        q_path = discover_questions(prd_dir, adr_dir)
 
     arch_path = (os.path.abspath(args.architecture) if args.architecture
                  else discover_architecture(prd_dir))
@@ -519,7 +549,11 @@ def main():
 
         for qid, written, line in cite(text, OQ_CITATION):
             counted += 1
-            if questions is None:
+            if questions is None and href:
+                errors.append(f"{rel}:{line}: cites {written} and what-next.md's "
+                              f"<open-questions href=\"{href[0]}\"> is not a readable file "
+                              f"-- fix the href or pass --questions")
+            elif questions is None:
                 errors.append(f"{rel}:{line}: cites {written} and no open-questions register was "
                               f"found -- pass --questions")
             elif qid not in questions:

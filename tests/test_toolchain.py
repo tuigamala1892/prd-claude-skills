@@ -1475,6 +1475,60 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("an open-questions href in what-next.md names the register the check resolves against")
+def _():
+    # prd-format.md: `<open-questions>` may be a pointer, and the check validates OQ-NNN
+    # "either way". Its own example -- ../../product/open-questions.md -- sits nowhere discovery
+    # looked, so a PRD written to the template was refused for having no register.
+    import shutil
+    import tempfile
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="prd-oq-href-")
+    try:
+        prd = os.path.join(root, "docs", "prd", "demo")
+        os.makedirs(os.path.join(prd, "features"))
+        os.makedirs(os.path.join(root, "docs", "product"))
+
+        def write(path, text):
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+
+        def run(*extra):
+            return subprocess.run([sys.executable, script, prd, *extra],
+                                  capture_output=True, text=True)
+
+        def pointer(href):
+            write(os.path.join(prd, "what-next.md"),
+                  f'<what-next>\n  <open-questions href="{href}"/>\n</what-next>\n')
+
+        write(os.path.join(prd, "index.md"), "# Demo\nOpen: OQ-012.\n")
+        write(os.path.join(root, "docs", "product", "open-questions.md"),
+              "# Open Questions\n## OQ-012 -- which auth provider?\n")
+        pointer("../../product/open-questions.md")
+
+        p = run()
+        assert p.returncode == 0, f"the template's own href was not followed:\n{p.stdout}"
+
+        # The pointer wins over discovery. A discoverable register without OQ-012 must not be
+        # the one consulted, or the href is decoration that happens to agree.
+        write(os.path.join(root, "docs", "open-questions.md"), "# Open Questions\n## OQ-001\n")
+        p = run()
+        assert p.returncode == 0, f"a discovered register was read in place of the href:\n{p.stdout}"
+
+        # A pointer to nothing is named, and does not fall back to a register it did not name.
+        pointer("../../product/moved.md")
+        p = run()
+        assert p.returncode == 1, f"an href to a missing register exited {p.returncode}"
+        assert "moved.md" in p.stdout, f"the report does not name the broken href:\n{p.stdout}"
+
+        # --questions still overrides the document.
+        p = run("--questions", os.path.join(root, "docs", "product", "open-questions.md"))
+        assert p.returncode == 0, f"--questions did not override the href:\n{p.stdout}"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("both ends of the pipeline call the reference check", finding="P24")
 def _():
     # Item 39's own argument, applied to itself: a script nothing invokes is the producer
