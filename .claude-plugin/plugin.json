@@ -2,7 +2,7 @@
   "name": "prd-claude-skills",
   "displayName": "PRD → Breakdown → Execute",
   "description": "PRD to production workflow for Claude Code: capture requirements (/prd), break them into self-contained implementation tasks (/breakdown), execute them layer by layer in parallel git worktrees (/execute), and handle change requests against an existing codebase (/crd).",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "author": {
     "name": "Lee Morton",
     "email": "lee@wansford.com"
