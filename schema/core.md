@@ -71,10 +71,18 @@ document set. A feature slug is its filename under `features/`, its `file=` attr
 places, which is why renaming one is a script with postconditions (`rename-feature.py`) rather
 than an edit.
 
-**`id=` — stable, local, and never a filename.** An integer, unique within its parent element,
-and *not* reused when a sibling is deleted. Criteria and requirements carry one. Its job is
-citation: a commit message, a review comment or a task file naming criterion 3 of a feature must
-still mean the same criterion a month later.
+**`id=` — stable, local, and never a filename.** An integer, optionally followed by lowercase
+letters (`7`, `7a`), unique within its parent element, and *not* reused when a sibling is
+deleted. Criteria and requirements carry one. Its job is citation: a commit message, a review
+comment or a task file naming criterion 3 of a feature must still mean the same criterion a month
+later.
+
+**An id is never renumbered, so a suffix is kept.** A project that inserted a criterion as `7a`
+has cited `7a`, and renumbering it to tidy the list breaks the one thing the id is for. The next
+free integer is the default for a new id; a suffix is permitted, not required. Either way the id
+is one token, compared as a string: `7a` is not a version of `7` or a child of it, and nothing
+reads a relationship into the two. A new id is never an integer some suffixed id already starts
+with, so `7` is not handed out beside a surviving `7a`.
 
 **Neither is a version.** A reworded criterion keeps its `id`; a criterion replaced by a
 different requirement gets a new one. The test is whether a reader who cited it would now be
@@ -105,7 +113,7 @@ criteria here. One list, one id space, on both paths. The question that used to 
 
 | Part | Required | Holds |
 |---|---|---|
-| `id` | Yes | Integer, unique within `<acceptance-criteria>`; core §1 |
+| `id` | Yes | Integer, optionally letter-suffixed; unique within `<acceptance-criteria>`; core §1 |
 | `pattern` | Yes for `defined` | One of the six EARS patterns, below |
 | `priority` | Yes | `P0`, `P1` or `P2`; core §4 |
 | body | Yes | One sentence, containing the word **shall** |
@@ -360,7 +368,7 @@ do would produce a check that fires constantly and is therefore ignored.
 
 | Part | Required | Holds |
 |---|---|---|
-| `id` | Yes | Integer, unique within `<gaps>` — open and closed alike; core §1 — citable from a commit or a review |
+| `id` | Yes | Integer, optionally letter-suffixed; unique within `<gaps>` — open and closed alike; core §1 — citable from a commit or a review |
 | `kind` | Yes | One of the five below |
 | `raised` | Yes | `YYYY-MM-DD`. Without it an open item and a stale one look identical |
 | `closed` | No | `YYYY-MM-DD`. Present means **closed**; absent means **open**. Not earlier than `raised`, not later than today |

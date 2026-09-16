@@ -148,6 +148,8 @@ Recording the review removes it, from exactly the criteria that carry a `pattern
 
 **Splitting a criterion in two is the author's decision, not a formatting fix.** Give the new
 criterion the next free id, and keep the original id on whichever half still says what it said.
+A project whose convention is a suffix (`7a`) keeps it — [core §1](../schema/core.md#1-identity)
+permits one — and no existing id is ever renumbered.
 
 Then, for a `defined` feature only:
 

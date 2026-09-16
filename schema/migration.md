@@ -273,7 +273,7 @@ and its executor, so a number is never reused.
 
 | # | Precondition | Transformation | Postcondition |
 |---|---|---|---|
-| R10 | a CRD with a `<requirements>` element | each `<requirement>` becomes a `<criterion>` appended to `<acceptance-criteria>`, renumbered to continue after the highest existing criterion id, carrying `derived-from="requirement-N"` and its MoSCoW mapped to `P0\|P1\|P2`; `<requirements>` is removed | no `<requirements>`; every migrated criterion has a `priority` and a `derived-from`; **no `pattern`**. The step is finished when every criterion has a `pattern` and `<meta>` has a `<priority>`, **except on a `complete` or `abandoned` CRD, which needs neither** |
+| R10 | a CRD with a `<requirements>` element | each `<requirement>` becomes a `<criterion>` appended to `<acceptance-criteria>`, renumbered to continue after the highest integer an existing criterion id starts with (`7a` counts as 7, core §1), carrying `derived-from="requirement-N"` and its MoSCoW mapped to `P0\|P1\|P2`; `<requirements>` is removed | no `<requirements>`; every migrated criterion has a `priority` and a `derived-from`; **no `pattern`**. The step is finished when every criterion has a `pattern` and `<meta>` has a `<priority>`, **except on a `complete` or `abandoned` CRD, which needs neither** |
 
 **The ids merge, so they have to be renumbered, and that is the only lossy-looking part of the
 step.** Requirement 1 and criterion 1 were two different things in two id spaces, and after item
