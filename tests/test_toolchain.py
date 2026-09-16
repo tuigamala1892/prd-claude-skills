@@ -8232,6 +8232,55 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("the resume steps' migrate.py lines run as the commands write them")
+def _():
+    # /prd --resume and /crd --resume ran `migrate.py <dir> --check`, and the script refused it
+    # for want of --to. Every check above supplies --to itself, and the prose checks only asked
+    # whether the words were there, so the line as written was never once run. Run it: every
+    # migrate.py invocation in each command, placeholders filled, must answer the question --
+    # 0 on a tree in the current schema, 1 on one that is not -- and never a usage error.
+    import shlex
+    import shutil
+    import tempfile
+
+    _path, reg = schema_registry()
+    versions, current = list(reg["versions"]), reg["current"]
+    fixture = os.path.join(REPO, "tests", "fixture", "prd")
+    cases = [
+        # command, placeholder, where the artefacts sit inside the fixture project, and where
+        # the placeholder puts them
+        ("prd.md", "{prd_dir}", "", ""),
+        ("crd.md", "{project_path}", "crd", "docs/crd"),
+    ]
+    root = tempfile.mkdtemp(prefix="resume-check-")
+    try:
+        for name, placeholder, inside, placed in cases:
+            text = open(os.path.join(COMMANDS, name), encoding="utf-8").read()
+            lines = re.findall(r"migrate\.py[^`\n]*", text)
+            assert len(lines) >= 2, (
+                f"commands/{name} runs migrate.py {len(lines)} time(s); the resume step asks it "
+                f"once and asks it again when the person stops")
+            held = [v for v in versions
+                    if os.path.isdir(os.path.join(fixture, v, "link-shelf", inside))]
+            assert current in held and held[0] != current, (
+                f"no fixture older than {current} holds what commands/{name} checks")
+            for version, expected in ((current, 0), (held[0], 1)):
+                ws = os.path.join(root, name, version)
+                shutil.copytree(os.path.join(fixture, version, "link-shelf", inside),
+                                os.path.join(ws, placed))
+                for line in lines:
+                    argv = shlex.split(line.replace(placeholder, ws.replace("\\", "/")))[1:]
+                    assert not any("{" in a for a in argv), (
+                        f"commands/{name}: `{line}` has a placeholder this check cannot fill")
+                    p = _run_migrate(*argv)
+                    assert p.returncode == expected, (
+                        f"commands/{name}: `{line}` on a {version} tree exited {p.returncode}, "
+                        f"expected {expected}. The step reads only 0 and 1 as answers:\n"
+                        f"{p.stderr}{p.stdout[-400:]}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @check("a finished CRD completes its migration without anyone re-specifying it -- by running it",
        finding="P28")
 def _():

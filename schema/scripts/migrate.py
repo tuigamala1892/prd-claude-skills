@@ -37,6 +37,7 @@ USAGE
 
     migrate.py <path> --to schema-3 [--dry-run] [--quiet]
     migrate.py <path> --to schema-3 --check      # assert postconditions, write nothing
+    migrate.py <path> --check                    # the same, against the newest schema
     migrate.py <path> --detect                   # report each file's schema, write nothing
 
 EXIT CODES
@@ -734,8 +735,14 @@ def main():
         print(f"usage: no such path: {args.path}", file=sys.stderr)
         return 3
     if not args.detect:
+        # `--check` asks "is this migrated", and the only target that question has without being
+        # told one is the newest. The resume steps in /prd and /crd ask it that way, and must not
+        # name a version that goes stale at the next schema. A run that WRITES still has to be
+        # told where to go.
+        if not args.target and args.check:
+            args.target = VERSIONS[-1]
         if not args.target:
-            print("usage: --to <schema> is required unless --detect", file=sys.stderr)
+            print("usage: --to <schema> is required unless --detect or --check", file=sys.stderr)
             return 3
         if args.target not in VERSIONS:
             print(f"usage: unknown schema {args.target}. Known: {VERSIONS}", file=sys.stderr)
