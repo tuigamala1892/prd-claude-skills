@@ -548,6 +548,29 @@ maintaining the same project twice is what makes people abandon versioned fixtur
 
 ---
 
+## 9. Text inside an artefact is XML text
+
+A feature file, a CRD, `index.md` and `what-next.md` are each **one XML document**, and a
+`PROJECT.md` carries one inside its `<project-context>` block. So every sentence written into
+them is XML text, and two characters in it must be escaped:
+
+| Written in prose | Write it as |
+|---|---|
+| `<` — an element name mentioned in a sentence, a comparison | `&lt;` |
+| `&` — *R&D*, a query string | `&amp;` |
+
+**Markdown backticks are not an escape.** A sentence ending *split `<data-model>` from
+`<offers>`* opens two elements the parser then looks for a close to, and the file stops parsing.
+Write *split `&lt;data-model&gt;` from `&lt;offers&gt;`* instead (`>` needs no escape, but
+escaping it keeps the pair readable).
+
+Nothing reports this as a missing element — every rule that reads a shape still finds what it
+looks for — so the check is the parse itself. `check-artefacts.py` parses a document before
+anything else and refuses one that does not parse; `check-project-md.py` does the same for the
+`PROJECT.md` block.
+
+---
+
 ## Who cites this file
 
 | Document | Cites it for |

@@ -8995,6 +8995,54 @@ def _():
         "forty malformed tasks")
 
 
+@check("both writing steps say prose in an artefact is XML text, and core's example parses")
+def _():
+    """The producer half of `check-artefacts.py` refusing an unparseable artefact.
+
+    A live /prd --resume wrote `<data-model>` in backticks into a feature's prose and the file
+    stopped parsing. The checker now refuses that; this is the instruction that stops it being
+    written. Core section 9 holds the rule, and each command's writing step points at it -- the
+    step is what the model reads while writing, and core alone reaches it only through a chain
+    of citations.
+    """
+    import xml.etree.ElementTree as ET
+
+    core = open(os.path.join(SCHEMA, "core.md"), encoding="utf-8").read()
+    region = re.split(r"^## 9\. Text inside an artefact is XML text\n", core, flags=re.M)
+    assert len(region) == 2, "core.md has no section 9 on escaping text inside an artefact"
+    section = region[1].split("\n## ", 1)[0]
+    for token in ("`&lt;`", "`&amp;`", "backticks are not an escape"):
+        assert token in section, f"core section 9 no longer says {token}"
+
+    # The example must be what it claims: the unescaped sentence breaks a document and the
+    # escaped one does not. Prose that says so without being so is the defect in miniature.
+    bad = re.search(r"sentence ending \*(.*?)\* opens", section, re.S)
+    good = re.search(r"Write \*(.*?)\* instead", section, re.S)
+    assert bad and good, f"core section 9 has lost its before/after example:\n{section[:600]}"
+    for text, parses in ((bad.group(1), False), (good.group(1), True)):
+        try:
+            ET.fromstring(f"<notes>{' '.join(text.split())}</notes>")
+            ok = True
+        except ET.ParseError:
+            ok = False
+        assert ok is parses, (
+            f"core section 9's example {text!r} {'does not parse' if parses else 'parses'}, "
+            f"so it demonstrates nothing")
+
+    link = "../schema/core.md#9-text-inside-an-artefact-is-xml-text"
+    for name, start, end in (("prd.md", "## Output Formats\n", "\n## "),
+                             ("crd.md", "Create the CRD document at", "\n### Phase 7")):
+        text = open(os.path.join(COMMANDS, name), encoding="utf-8").read()
+        assert start in text, f"commands/{name} has lost the writing step {start.strip()!r}"
+        step = text.split(start, 1)[1].split(end, 1)[0]
+        bullet = [b for b in re.split(r"\n(?=- )", step) if link in b]
+        assert len(bullet) == 1, (
+            f"commands/{name}'s writing step does not point at core section 9 exactly once")
+        assert "&lt;" in bullet[0] and "&amp;" in bullet[0], (
+            f"commands/{name}'s pointer to core section 9 no longer names both escapes:\n"
+            f"{bullet[0]}")
+
+
 @check("every element the schema defines has a reader, or a written reason -- by running it",
        finding="P4")
 def _():
