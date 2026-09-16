@@ -684,6 +684,10 @@ is silent:
   no meaning inside the thing being ranked.
 - **A feature's `<definition>` is how completely it is *defined*, never how much of it is built.**
   Nothing has been built when `/prd` runs, which is why the tag stopped being called `<status>`.
+- **Every sentence in these files is XML text.** An element name mentioned in prose is written
+  `&lt;data-model&gt;` and a bare ampersand `&amp;` — backticks do not escape either
+  ([core §9](../schema/core.md#9-text-inside-an-artefact-is-xml-text)). An unescaped one leaves
+  the file unparseable, and Phase 9's `check-artefacts.py` refuses it.
 
 ## Tone & Style
 

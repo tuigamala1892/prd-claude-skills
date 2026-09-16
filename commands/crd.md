@@ -370,6 +370,10 @@ Two fields to check before writing, because they are the ones the drift lost:
 - **`<meta><priority>` is required and is MoSCoW**; every `<criterion priority=>` is `P0|P1|P2`.
   A MoSCoW value on a criterion is the pre-item-47 shape and must not be written.
 - **There is no `<requirements>` element.** If Phase 5 produced one, it produced the old shape.
+- **Every sentence in the CRD is XML text.** An element name mentioned in prose is written
+  `&lt;offers&gt;` and a bare ampersand `&amp;` — backticks do not escape either
+  ([core §9](../schema/core.md#9-text-inside-an-artefact-is-xml-text)). An unescaped one leaves
+  the CRD unparseable, and `/breakdown` refuses it before reading anything.
 
 ### Phase 7: Interactive Review
 
