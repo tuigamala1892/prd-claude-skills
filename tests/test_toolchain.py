@@ -13781,6 +13781,120 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("a letter-suffixed criterion id is one id to every reader and the migration -- by running it")
+def _():
+    """Core section 1: `7a` is an id, never renumbered, and not a relative of `7`.
+
+    A live run on another project found ids like `7a` and `22a`, and a rule there that criteria are
+    never renumbered because they are cited. The schema said integer; every reader already
+    compared ids as strings, so the suffix worked by accident and nothing held it. This holds it,
+    at each place an id is read or handed out: the bar's uniqueness test, a gap's `closed-by`,
+    coverage attribution, and the migration that numbers former requirements after the criteria.
+
+    Every acceptance is paired with a refusal on the same suffix, so a reader that stopped looking
+    at ids would fail here rather than pass.
+    """
+    import shutil
+    import tempfile
+
+    scripts = os.path.join(SKILLS, "breakdown", "scripts")
+    root = tempfile.mkdtemp(prefix="suffix-id-")
+    try:
+        # ---- the bar: `3` and `3a` are two ids, and `3a` twice is a duplicate.
+        definition = os.path.join(scripts, "check-definition.py")
+        d = os.path.join(root, "bar")
+        shutil.copytree(current_fixture("link-shelf"), d)
+        feature = os.path.join(d, "features", "save-link.md")
+        text = open(feature, encoding="utf-8").read()
+        assert '<criterion id="4" ' in text, "the fixture's save-link no longer has criterion 4"
+        open(feature, "w", encoding="utf-8", newline="\n").write(
+            text.replace('<criterion id="4" ', '<criterion id="3a" ', 1))
+        code, out = _run_script(definition, d)
+        assert code == 0, (
+            f"a feature with criteria 3 and 3a failed the bar. A suffixed id is an id, and the "
+            f"project that wrote it may not renumber it:\n{out[:500]}")
+        text = open(feature, encoding="utf-8").read()
+        open(feature, "w", encoding="utf-8", newline="\n").write(
+            text.replace('<criterion id="3" ', '<criterion id="3a" ', 1))
+        code, out = _run_script(definition, d)
+        assert code == 1 and "criterion id 3a is used twice" in out, (
+            f"two criteria both numbered 3a were not reported as a duplicate (exit {code}):\n"
+            f"{out[:500]}")
+
+        # ---- closed-by: `1a` resolves, `1b` does not.
+        status = os.path.join(scripts, "check-status.py")
+        crd = os.path.join(root, "archive-links.md")
+        for by, want in (("1 1a", 0), ("1b", 1)):
+            open(crd, "w", encoding="utf-8", newline="\n").write(_closure_crd(
+                ['<gap id="1" kind="decision" raised="2026-09-01" closed="2026-09-02" '
+                 f'closed-by="{by}">X</gap>'], criteria=("1", "1a")))
+            code, out = _run_script(status, crd, "--today", "2026-09-09")
+            assert code == want, (
+                f"closed-by=\"{by}\" against criteria 1 and 1a exited {code}, expected {want}:\n"
+                f"{out[:500]}")
+        assert "1b" in out, f"the refusal did not name the unresolved id 1b:\n{out[:500]}"
+
+        # ---- coverage: `1a` is covered only by a task that cites `1a`, never by one citing `1`.
+        prd = os.path.join(root, "prd")
+        os.makedirs(os.path.join(prd, "features"))
+        open(os.path.join(prd, "index.md"), "w", encoding="utf-8", newline="\n").write(
+            "<prd>\n<meta><slug>probe</slug></meta>\n<features>\n"
+            '  <feature priority="must-have" file="features/save-link.md">\n'
+            "    <name>save-link</name>\n  </feature>\n</features>\n</prd>\n")
+        open(os.path.join(prd, "features", "save-link.md"), "w", encoding="utf-8",
+             newline="\n").write(
+            "<feature>\n<meta><slug>save-link</slug><definition>defined</definition></meta>\n"
+            "<acceptance-criteria>\n"
+            '<criterion id="1" pattern="event-driven" priority="P0">One.</criterion>\n'
+            '<criterion id="1a" pattern="event-driven" priority="P0">One, inserted.</criterion>\n'
+            "</acceptance-criteria>\n</feature>\n")
+
+        def coverage(name, cited):
+            tasks = os.path.join(root, name)
+            layer = os.path.join(tasks, "4-integration")
+            os.makedirs(layer)
+            open(os.path.join(layer, "L4-001-probe.xml"), "w", encoding="utf-8",
+                 newline="\n").write(
+                _multi_task_xml("L4-001", [("save-link", "must-have", cited, "P0")]))
+            p = subprocess.run([sys.executable, os.path.join(scripts, "build-manifest.py"),
+                                tasks], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout + p.stderr
+            p = subprocess.run([sys.executable, os.path.join(scripts, "check-coverage.py"),
+                                prd, tasks, "--json"], capture_output=True, text=True)
+            out = json.loads(p.stdout)
+            return ({c["id"] for c in out["uncovered_criteria"]},
+                    {c["id"] for c in out["unknown_criteria"]})
+
+        uncovered, unknown = coverage("both", "1,1a")
+        assert not uncovered and not unknown, (
+            f"a task citing 1 and 1a did not cover them: uncovered {uncovered}, unknown {unknown}")
+        uncovered, unknown = coverage("prefix", "1")
+        assert uncovered == {"1a"}, (
+            f"a task citing only 1 left {uncovered or 'nothing'} uncovered, expected 1a. An id "
+            f"read by its number alone makes 1a a copy of 1")
+        uncovered, unknown = coverage("stray", "1,1a,1b")
+        assert unknown == {"1b"}, f"a task citing 1b, which does not exist, reported {unknown}"
+
+        # ---- the migration numbers former requirements past a surviving `2a`, never onto 2.
+        _p, reg = schema_registry()
+        path = os.path.join(root, "probe.md")
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            _crd(requirements=["must-have", "should-have"]).replace(
+                "  </acceptance-criteria>\n",
+                '    <criterion id="2a" pattern="ubiquitous" priority="P1">\n'
+                "    The system shall do the inserted thing.\n    </criterion>\n"
+                "  </acceptance-criteria>\n", 1))
+        p = _run_migrate(path, "--to", reg["current"], "--quiet")
+        assert p.returncode == 0, f"migrating the probe CRD exited {p.returncode}: {p.stderr}"
+        ids = re.findall(r'<criterion\b[^>]*\bid="([^"]*)"',
+                         open(path, encoding="utf-8").read())
+        assert ids == ["1", "2a", "3", "4"], (
+            f"the merged id space is {ids}; 1 and 2a must be kept as written and the migrated "
+            f"requirements numbered after 2a's integer, so no new 2 sits beside it")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ------------------------------------------------------------------------ runner
 
 def main():

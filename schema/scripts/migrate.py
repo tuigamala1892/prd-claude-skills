@@ -276,7 +276,9 @@ def _requirements_to_criteria(text):
     if not entries:
         return text[:block.start()] + text[block.end():]
 
-    ids = [int(i) for i in criterion_ids(text) if i and i.isdigit()]
+    # A suffixed id (`2a`, core §1) counts by its leading integer, so the next id is never one a
+    # surviving `2a` already starts with.
+    ids = [int(m.group()) for m in (re.match(r"\d+", i or "") for i in criterion_ids(text)) if m]
     nxt = (max(ids) + 1) if ids else 1
 
     criteria = CRITERIA_BLOCK.search(text)
