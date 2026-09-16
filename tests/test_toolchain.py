@@ -3782,10 +3782,34 @@ def _():
         for i, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
             if re.search(r'"schema-\d+"', line):
                 offenders.append(f"tests/fixture/{name}:{i}: {line.strip()}")
+    # The toolchain's own scripts may name a version as a THRESHOLD -- check-artefacts.py's
+    # at_least() calls say when a rule began, and that never changes. A migration TARGET is the other kind: it
+    # means "newest" and silently stops meaning it at the next schema. check-enforcement.py
+    # probed migrate.py with `--to schema-6` for exactly that reason, outside this scan.
+    # An argv element in Python, a command line in shell. Usage text and prose examples are
+    # neither, and name a version to illustrate rather than to run.
+    target = {".py": re.compile(r"""["']--to["']\s*,\s*["']schema-\d+"""),
+              ".sh": re.compile(r"^[^#]*--to[ =]schema-\d+")}
+    roots = [os.path.join(SCHEMA, "scripts"), os.path.join(REPO, "tests")] + [
+        os.path.join(SKILLS, s, "scripts") for s in sorted(os.listdir(SKILLS))]
+    for base in roots:
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if not name.endswith((".py", ".sh")):
+                continue
+            if base == roots[1] and name.endswith(".py"):
+                continue                      # already scanned above, for any version at all
+            path = os.path.join(base, name)
+            pattern = target[os.path.splitext(name)[1]]
+            for i, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
+                if pattern.search(line):
+                    offenders.append(f"{os.path.relpath(path, REPO)}:{i}: {line.strip()}")
 
     assert not offenders, (
         "these name a schema version directly instead of asking SCHEMAS.json which is "
-        "current:\n    " + "\n    ".join(offenders))
+        "current -- or, for a migrate.py --check, leaving out --to so it means the newest:\n    "
+        + "\n    ".join(offenders))
 # ------------------------------------------------------------ migration (41)
 
 MIGRATE = os.path.join(SCHEMA, "scripts", "migrate.py")

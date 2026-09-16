@@ -238,7 +238,9 @@ PROBES = {
     },
     "migrate.py": {
         "script": os.path.join(SCHEMA_SCRIPTS, "migrate.py"),
-        "argv": lambda ws: [_doc(ws), "--check", "--to", "schema-6"],
+        # No --to: `--check` alone means the newest schema, which is how /crd --resume asks it.
+        # A version named here went stale at the next schema and nothing would have said so.
+        "argv": lambda ws: [_doc(ws), "--check"],
         "break": ("<workflow>ready</workflow>",
                   "<status>ready</status>\n    <requirements>\n"
                   "      <requirement level=\"must-have\">Old shape</requirement>\n"
