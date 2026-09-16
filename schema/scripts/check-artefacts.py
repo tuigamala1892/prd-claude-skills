@@ -26,6 +26,21 @@ that says what it passes over. **NOT checked here:**
   `<priority>` residue in <meta>    `check-rename.py`
   a slug that resolves to nothing   `check-rename.py`
   ADR / OQ citations                `check-references.py`
+  PROJECT.md's block parses         `check-project-md.py`
+
+WELL-FORMEDNESS COMES FIRST
+
+A feature, CRD, index or what-next file is one XML document, and every other rule here reads it
+with a regex. A regex does not notice that the document does not parse: an element name written
+in prose -- `split <data-model> from <offers>` -- left a feature unparseable, and this script
+passed it, because each pattern still found what it looked for. Whether a reader downstream
+fails loudly or reads half the file depends on the reader.
+
+So an artefact is parsed before anything else is asked of it, and one that does not parse gets
+that as its only problem. The shape rules are not run on it: the one that did fire in that case
+reported `<notes> holds ['offers']`, which names a symptom and sends the author to the wrong
+edit. A `PROJECT.md` is prose around one `<project-context>` block, and that block's parse is
+`check-project-md.py`'s -- two owners for one assertion is what `checks.md` prevents.
 
 THE VERSION IS DETECTED, NEVER DECLARED
 
@@ -63,6 +78,8 @@ import json
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
+from xml.parsers.expat import ErrorString
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -361,6 +378,25 @@ def read(path):
         return f.read()
 
 
+def not_well_formed(text, kind):
+    """The parse error for an artefact that is not one XML document, or None when it is."""
+    if kind == "project-context":
+        return None
+    try:
+        ET.fromstring(text)
+        return None
+    except ET.ParseError as e:
+        line, col = e.position
+        lines = text.splitlines()
+        at = lines[line - 1].strip() if 0 < line <= len(lines) else ""
+        # ElementTree reports where it NOTICED, which for a stray tag in prose is the closing
+        # tag that no longer matches -- usually some lines below the text to fix.
+        return (f"is not well-formed XML ({ErrorString(e.code)}, noticed at line {line}, column {col + 1}: "
+                f"{at[:60]!r}). No other rule was checked. An element name written in prose "
+                f"must be escaped as `&lt;name&gt;`, and a bare `&` as `&amp;`; a stray tag "
+                f"sits on that line or above it")
+
+
 def current_schema():
     """The version the toolchain writes, declared by the core rather than by a fixture.
 
@@ -408,6 +444,11 @@ def main():
         checked += 1
         version = args.schema or _mig.detect(text, kind)
         problems, warnings = [], []
+        malformed = not_well_formed(text, kind)
+        if malformed:
+            rows.append({"path": path, "kind": kind, "version": version or "no version",
+                         "problems": [malformed], "warnings": []})
+            continue
         if version is None:
             # migrate.py's own escalation, and it is not this script's to route around: a file
             # matching no known shape is a file whose meaning would be guessed at.

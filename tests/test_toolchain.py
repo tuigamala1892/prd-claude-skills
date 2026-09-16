@@ -8933,6 +8933,49 @@ def _():
             f"an artefact in the pre-item-45 spelling was REFUSED. Accepted on read, never "
             f"written, is the policy all three renames share:\n{p.stdout}")
 
+        # A file that does not parse is refused FIRST, and for that alone. Found in a live
+        # /prd --resume: an element name in prose left a feature unparseable and every regex
+        # rule still passed it. Each placement below slips past a different rule -- the
+        # <data-model> one is a child <notes> allows, so the child-set rule cannot see it.
+        for rel, old, new in (
+                ("features/save-link.md", "</considerations>",
+                 "Keep `<data-model>` apart.</considerations>"),
+                # ...and this one DOES trip a shape rule, so the not-run assertion can fail.
+                ("features/save-link.md", "</considerations>",
+                 "Split `<data-model>` from `<offers>`.</considerations>"),
+                ("features/save-link.md", "</description>",
+                 "Split `<data-model>` from `<offers>`.</description>"),
+                ("crd/archive-links.md", "</summary>", "Touches `<offers>`.</summary>"),
+                ("index.md", "</prd>", "</prd>\nNext: `<offers>`.")):
+            d = work()
+            edit(d, rel, old, new)
+            p = run(d)
+            flagged = [ln for ln in p.stdout.splitlines()
+                       if "INVALID" in ln and "not well-formed" in ln]
+            assert p.returncode == 1 and len(flagged) == 1 and rel.split("/")[-1] in flagged[0], (
+                f"{rel} does not parse and was not refused for it:\n{p.stdout}")
+            others = [ln for ln in p.stdout.splitlines()
+                      if "INVALID" in ln and "not well-formed" not in ln]
+            assert not others, (
+                f"{rel} does not parse, and shape rules were still run on it -- their "
+                f"diagnoses describe a document nobody can read:\n{p.stdout}")
+
+        # A PROJECT.md is prose around one block, and the block's parse is
+        # check-project-md.py's. Prose that is not XML must not be refused here.
+        d = work()
+        open(os.path.join(d, "PROJECT.md"), "w", encoding="utf-8", newline="\n").write(
+            "# Project\n\nOffers & `<data-model>` notes, in prose.\n\n"
+            "<project-context>\n  <meta><name>x</name>\n"
+            "  <last-context-hash>abc123</last-context-hash></meta>\n"
+            "  <features>\n    <feature id=\"save-link\" built=\"complete\">\n"
+            "      <name>Save a link</name>\n      <files>app/api/links.py</files>\n"
+            "    </feature>\n  </features>\n  <api-registry>\n"
+            "    <endpoint method=\"GET\" path=\"/x\" request=\"none\" response=\"X\"/>\n"
+            "  </api-registry>\n</project-context>\n")
+        p = run(d)
+        assert p.returncode == 0 and "PROJECT.md" not in p.stdout, (
+            f"PROJECT.md's prose was parsed as XML; only its block is, and not here:\n{p.stdout}")
+
         # It does not decide what another script owns. Duplicate criterion ids are
         # check-definition.py's, and two owners for one assertion is what checks.md prevents.
         d = work()
