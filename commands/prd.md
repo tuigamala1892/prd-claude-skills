@@ -112,6 +112,10 @@ them. Report the count of features and migrated criteria. Say it plainly: every 
 among them fails test 2 of the bar until its criteria carry a `pattern`, and only a person can
 supply one.
 
+**Exit 3 is a usage error: this command and the script disagree.** Report it as a toolchain
+defect, quoting the message, and skip the sign-off. Never repair the command line yourself. A
+target you chose is an answer to a question the command did not ask.
+
 **Then offer it, one feature at a time, and let the person choose which.** Never across the
 PRD in one pass. A person accepting a hundred proposed patterns in a list has approved a list,
 not read a hundred sentences, and the result is the unattended judgement the migration was

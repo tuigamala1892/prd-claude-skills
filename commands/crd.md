@@ -97,6 +97,10 @@ criteria carry `derived-from` and no `pattern`, because `/migrate` rewrote the s
 person has read them. R10 may also be missing the document's `<meta><priority>`. Report the count
 of CRDs and migrated criteria.
 
+**Exit 3 is a usage error: this command and the script disagree.** Report it as a toolchain
+defect, quoting the message, and skip the sign-off. Never repair the command line yourself. A
+target you chose is an answer to a question the command did not ask.
+
 **A `complete` or `abandoned` CRD is not offered.** It is a record of something that already
 happened, and [migration.md](../schema/migration.md) keeps its `derived-from` permanently. Name
 those CRDs separately, so nobody mistakes them for work left undone.
