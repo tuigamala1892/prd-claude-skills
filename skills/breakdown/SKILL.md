@@ -480,7 +480,7 @@ generate would leave the person with neither tasks nor a list.
 it arrives at the implementer with the same authority as one somebody did.
 
 Significant features are reported because a design step is affordable only over the handful that
-warrant one. `check-references.py` says which of them no decision record names — a warning, never
+warrant one. `check-references.py` says which of them no current decision record names — a warning, never
 a refusal, because the flag is a judgement and its absence proves nothing.
 
 ### Phase 3: Plan Layers

@@ -11662,7 +11662,7 @@ def _():
         assert "swap-store" in out, (
             f"the blocking gap is not attributed by slug, so an operator cannot act on it:"
             f"\n{out[:400]}")
-        assert "undriven" in out or "no decision record names it" in out, (
+        assert "undriven" in out or "no current decision record names it" in out, (
             f"the gate reported no undriven significance for a CRD that declares itself "
             f"significant with nothing driving it. The CRD branch printed under NOTE and the "
             f"gate filters for STALE:\n{out[:600]}")
@@ -11676,9 +11676,101 @@ def _():
             [sys.executable, os.path.join(SKILLS, "breakdown", "scripts", "check-gate.py"),
              crd, os.path.join(root, "tasks")],
             capture_output=True, text=True, encoding="utf-8", errors="replace")
-        assert "no decision record names it" not in (p.stdout + p.stderr), (
+        assert "no current decision record names it" not in (p.stdout + p.stderr), (
             "a CRD whose significance IS driven by a decision record was still reported as "
             "undriven, so the check flags every flagged document and measures nothing")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@check("**Drives:** is append-only, and a superseded record's field is history, not coverage")
+def _():
+    """A significant feature named only by a superseded record is still undriven.
+
+    decision-record.md makes `**Drives:**` append-only: a superseded record keeps its field as
+    written, so the field says what the decision DROVE. Before 2.1.8 `check-references.py`
+    counted every record's field, so a feature whose only decision had been replaced passed as
+    driven. Asserted by running the script on both paths -- the PRD branch and the CRD branch
+    each build that set, and the CRD one has been the unwalked `else` before (P55, P56).
+    """
+    import shutil
+    import tempfile
+
+    text = open(os.path.join(SCHEMA, "decision-record.md"), encoding="utf-8").read()
+    region = text.split("## The three conventions that come with it", 1)
+    assert len(region) == 2, "decision-record.md lost its conventions section"
+    flat = prose(region[1].split("\n## ", 1)[0])
+    assert re.search(r"is append-only: a link is added, never removed", flat), (
+        "decision-record.md no longer says **Drives:** is append-only, so a reader may prune a "
+        "superseded record's links or rewrite an old record to match today's features")
+    assert re.search(r"history, not coverage", flat), (
+        "decision-record.md no longer says a superseded record's **Drives:** stops counting, so "
+        "nothing tells the author of a successor to name the features it still governs")
+
+    script = os.path.join(SKILLS, "breakdown", "scripts", "check-references.py")
+    root = tempfile.mkdtemp(prefix="drives-append-")
+    try:
+        prd = os.path.join(root, "prd")
+        crd_dir = os.path.join(root, "crd")
+        adr = os.path.join(root, "architecture", "decisions")
+        for d in (os.path.join(prd, "features"), crd_dir, adr):
+            os.makedirs(d)
+
+        def write(path, body):
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(body)
+
+        write(os.path.join(prd, "index.md"), "<prd><meta><slug>x</slug></meta></prd>\n")
+        write(os.path.join(prd, "features", "flagged.md"),
+              "<feature>\n  <meta>\n    <slug>flagged</slug>\n"
+              '    <architecturally-significant because="cross-cutting"/>\n'
+              "  </meta>\n</feature>\n")
+        crd = os.path.join(crd_dir, "swap-store.md")
+        write(crd, "<crd>\n  <meta>\n    <slug>swap-store</slug>\n"
+                   '    <architecturally-significant because="cross-cutting"/>\n'
+                   "  </meta>\n  <context>\n    <project-ref>PROJECT.md</project-ref>\n"
+                   "    <related-features>\n      <feature-ref>flagged</feature-ref>\n"
+                   "    </related-features>\n  </context>\n</crd>\n")
+        write(os.path.join(crd_dir, "PROJECT.md"), "# Project\n")
+        # Both documents are named by the superseded record ONLY. The successor exists and
+        # drives something else, so a checker that ignored **Status:** still finds a record.
+        write(os.path.join(adr, "ADR-001-old.md"),
+              "# ADR-001: Old\n\n**Status:** Superseded by ADR-002\n"
+              "**Drives:** [Flagged](../../prd/features/flagged.md), "
+              "[Swap](../../crd/swap-store.md)\n")
+        write(os.path.join(adr, "ADR-002-new.md"),
+              "# ADR-002: New\n\n**Status:** Accepted\n"
+              "**Drives:** [Other](../../prd/index.md)\n")
+
+        def run(target):
+            p = subprocess.run([sys.executable, script, target, "--adr-dir", adr],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace")
+            return p, p.stdout + p.stderr
+
+        undriven = re.compile(r"STALE\s+\S*(flagged|swap-store)\.md: is architecturally "
+                              r"significant \(cross-cutting\) and no current decision record")
+        for target, name in ((prd, "flagged"), (crd, "swap-store")):
+            p, out = run(target)
+            hits = [m.group(1) for m in undriven.finditer(out)]
+            assert hits == [name], (
+                f"{name}.md is named only by a superseded record and was not reported as "
+                f"undriven. A replaced decision counted as coverage:\n{out}")
+            assert p.returncode == 0, (
+                f"the undriven report REFUSED (exit {p.returncode}) -- it is a judgement and "
+                f"must report, never refuse:\n{out}")
+
+        # The successor names both, as the append-only rule asks: the report goes quiet.
+        write(os.path.join(adr, "ADR-002-new.md"),
+              "# ADR-002: New\n\n**Status:** Accepted\n"
+              "**Drives:** [Other](../../prd/index.md), "
+              "[Flagged](../../prd/features/flagged.md), [Swap](../../crd/swap-store.md)\n")
+        for target in (prd, crd):
+            p, out = run(target)
+            assert not undriven.search(out), (
+                f"a feature the current record names is still reported, so the check flags "
+                f"every significant feature and measures nothing:\n{out}")
+            assert p.returncode == 0, f"a clean tree exited {p.returncode}:\n{out}"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
