@@ -142,7 +142,7 @@ MUTANTS = [
     ("the record names no reader, so nothing keeps its conventions honest",
      RECORD,
      "| [`check-references.py`](../skills/breakdown/scripts/check-references.py) | `**Status:**`"
-     " for supersession; `**Drives:**` links resolve; a significant feature no record drives |",
+     " for supersession; `**Drives:**` links resolve; a significant feature no current record drives |",
      "| a person | the conventions above |",
      "the decision record has a template"),
 ]

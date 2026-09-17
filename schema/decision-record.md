@@ -103,6 +103,23 @@ identifier — stable, global, and a filename. That is why a rename is a script 
 postconditions rather than an edit: it has to carry every `**Drives:**` link pointing at the
 feature along with the five other places the slug appears.
 
+**`**Drives:**` is append-only: a link is added, never removed.** The field records what the
+decision drove, not a live list of what it governs today, so it does not track the feature set.
+Two cases need no edit, and one needs an addition:
+
+- **A feature is superseded or renamed.** Leave the link. A superseded feature keeps its file, so
+  the link still resolves, and a rename carries the link along with the slug.
+- **A later feature falls under a decision that still stands.** Add it to that record's
+  `**Drives:**`. A new record would fail the test above: nothing was weighed, so it is not a
+  decision. Adding the link changes nothing about what was decided.
+- **A later feature makes you reconsider the decision.** Write a new record that supersedes the
+  old one. The old record's `**Drives:**` stays exactly as it was.
+
+**A superseded record's `**Drives:**` is history, not coverage.** `check-references.py` counts only
+current records when it asks whether a significant feature is driven. A feature named only by a
+superseded record is reported until its successor names it, so the successor lists every feature
+that the decision still governs.
+
 ---
 
 ## Off by default
@@ -125,7 +142,7 @@ confirmation only matters if somebody is there, and the assertions are worth run
 
 | Reader | Reads |
 |---|---|
-| [`check-references.py`](../skills/breakdown/scripts/check-references.py) | `**Status:**` for supersession; `**Drives:**` links resolve; a significant feature no record drives |
+| [`check-references.py`](../skills/breakdown/scripts/check-references.py) | `**Status:**` for supersession; `**Drives:**` links resolve; a significant feature no current record drives |
 | `/prd` Phase 4 | where a rename or a scope change wants a record rather than a silent edit |
 | item 38's gate | every architecturally-significant feature is named, or explicitly needs no decision |
 

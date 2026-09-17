@@ -504,7 +504,7 @@ first refusal is not evidence about the other three. Report the combined output.
 | `AGE` | `check-status.py` | How old each **open** gap is. Reported, never judged: a gap raised months ago is a different object from one raised yesterday. Closed gaps are counted in the summary line and never aged |
 | `DANGLING` | `check-rename.py`, `check-references.py` | A reference resolves to nothing. Fix it here, while the person who knows the answer is present |
 | `RETIRED` | `check-rename.py` | A `superseded` pointer nothing references any more. Offer to remove it; it is housekeeping, not a defect |
-| `STALE` | `check-references.py` | A citation of a record that has been superseded, or a significant feature no record drives |
+| `STALE` | `check-references.py` | A citation of a record that has been superseded, or a significant feature no current record drives — add it to the `**Drives:**` of the record that governs it ([append-only](../schema/decision-record.md#the-three-conventions-that-come-with-it)) |
 | `BAR tN` | `check-definition.py` | A `defined` feature fails mechanical test N of the well-defined bar |
 | `EDGE` | `check-definition.py` | Another feature makes a claim on this one and declares no dependency. Triage each; **the fix belongs in the owning feature** |
 

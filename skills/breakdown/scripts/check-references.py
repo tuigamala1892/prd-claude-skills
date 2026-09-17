@@ -33,7 +33,8 @@ WHAT IS CHECKED
   **Drives:** links   in each decision record, resolve to a file that exists
                       (the record's template and conventions: schema/decision-record.md)
   P-NNN citations     resolve to a <principle id=> in architecture.md's <principles> section
-  significant features are named by some record's **Drives:**, or the absence is reported
+  significant features are named by some current record's **Drives:**, or the absence is
+                      reported -- a superseded record's field is history, not coverage
   unflagged features that LOOK significant are reported as candidates, and never flagged
 
 A FLAG WITH TWO DIRECTIONS, AND A THIRD READING THAT IS NEITHER
@@ -232,6 +233,22 @@ def index_records(adr_dir):
     return records
 
 
+
+def driven_by(records):
+    """Basenames of the features a CURRENT record names in **Drives:**.
+
+    A superseded record keeps its field as written -- the list is append-only history -- so it
+    says what the decision drove, not what a decision drives now. Counting it would let a
+    significant feature pass on a decision that no longer stands; the successor has to name it.
+    """
+    driven = set()
+    for rec in (records or {}).values():
+        if "supersed" in rec["status"].lower():
+            continue
+        for target in rec["drives"]:
+            driven.add(os.path.basename(target.split("#")[0]))
+    return driven
+
 def index_questions(path):
     """id -> resolution text, or None when the entry is still open."""
     text = read(path)
@@ -426,10 +443,10 @@ def check_crd(crd_path, project_path, records=None, driven=None):
             # always reported it under that prefix. A change request declaring itself
             # significant with nothing recording the decision is the case item 35 exists for.
             stale.append(f"{rel}: is architecturally significant ({because.group(1)}) and no "
-                         f"decision record names it in **Drives:**")
+                         f"current decision record names it in **Drives:**")
         else:
             warnings.append(f"{rel}: is architecturally significant ({because.group(1)}), and a "
-                            f"decision record names it")
+                            f"current decision record names it")
     candidates = [c for c in [crd_candidate(text, rel)] if c]
     return errors, warnings, stale, candidates, counted
 
@@ -465,11 +482,7 @@ def main():
                     crd_adr = cand
                     break
         crd_records = index_records(crd_adr) if crd_adr and os.path.isdir(crd_adr) else None
-        crd_driven = set()
-        if crd_records:
-            for rec in crd_records.values():
-                for target in rec["drives"]:
-                    crd_driven.add(os.path.basename(target.split("#")[0]))
+        crd_driven = driven_by(crd_records)
 
         errors, warnings, stale, candidates, counted = check_crd(prd_dir, project_path,
                                                                  crd_records, crd_driven)
@@ -578,11 +591,7 @@ def main():
 
     # Item 35's direction: a feature declaring itself architecturally significant, and no
     # record driving it. Reported, never refused -- see the docstring.
-    driven = set()
-    if records:
-        for rec in records.values():
-            for target in rec["drives"]:
-                driven.add(os.path.basename(target.split("#")[0]))
+    driven = driven_by(records)
 
     for path_ in markdown_files(prd_dir):
         rel = os.path.relpath(path_, prd_dir)
@@ -597,7 +606,7 @@ def main():
                                 f"directory was found -- pass --adr-dir")
             elif os.path.basename(path_) not in driven:
                 warnings.append(f"{rel}: is architecturally significant ({because.group(1)}) "
-                                f"and no decision record names it in **Drives:**")
+                                f"and no current decision record names it in **Drives:**")
 
     # Item 35's third direction: a feature nobody has flagged that the heuristics say is a
     # candidate. Reported, never applied -- significance cannot be derived, which is the whole
