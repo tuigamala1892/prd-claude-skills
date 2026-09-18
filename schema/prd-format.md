@@ -145,7 +145,24 @@ maintained.
 </what-next>
 ```
 
-**`<toolchain-version>` is written once and never updated** (item 24). `build-what-next.py`
+**`<last-updated>` is written by `build-what-next.py`, every time it rewrites the file**, and is
+not hand-maintained either. It had no producer at all until then: `/prd` wrote it at birth and
+nothing touched it again, so a resume that closed a gap rewrote `<authoring-gaps>` beside a date
+five weeks old. `list-prds.py` reads it for the `touched` column and falls back to the file's
+mtime, which **does not survive a clone** — in a fresh checkout every PRD reads as touched today,
+which is why the declared date is worth having and why it has to be true. `--check` never fails
+on it, for the same reason as the stamp below: the only staleness the builder can measure is the
+derived block's.
+
+A session that changed no feature derives nothing, so the builder writes nothing and the date
+would record when a feature last changed rather than when the document did. **`--touch` is for
+that case** — it dates the file without re-deriving anything, and the caller states that the file
+was updated because the caller is the only one who knows. It is refused with `--check`: one says
+write and the other says do not.
+
+**`<toolchain-version>` is written once and never updated** (item 24), which is the opposite rule
+to the line above and deliberately so — a date records *when*, so it is rewritten; a stamp records
+*what wrote it*, so it is not. `build-what-next.py`
 inserts it when it is absent, from the running plugin's `plugin.json`; `list-prds.py` reads it and
 says so before a resume, because a PRD authored against an older schema may want `/migrate` first.
 It is **provenance, not a version tracker** — rewriting it on every derivation would make every

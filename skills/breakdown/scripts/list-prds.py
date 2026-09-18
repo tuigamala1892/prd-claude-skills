@@ -14,8 +14,9 @@ that follows it has always been prose. This makes both an exit code.
 
 WHAT IT REPORTS
 
-One line per PRD: slug, feature count, the status each file declares, and how long since it was
-touched. Then the two conditions worth acting on:
+One line per PRD: slug, feature count, the status each file declares, and when it was last
+written -- from what-next.md's own `<last-updated>`, falling back to the file's mtime and saying
+which it used. Then the two conditions worth acting on:
 
   WROTE IT    what-next.md's <toolchain-version> (item 24), when it differs from the plugin
               running now. Provenance, never a refusal: a PRD written by an older toolchain is
@@ -24,6 +25,19 @@ touched. Then the two conditions worth acting on:
               safely, because the answer depends on which file the reader happens to check --
               which is F3 restated as a data defect rather than a code one.
   NO MARKER   neither file declares a status. `--resume` cannot see this PRD at all.
+
+WHY THE DATE IS READ FROM THE FILE AND NOT FROM mtime
+
+This column used to be mtime alone, which is wrong in the one case that matters: **mtime does not
+survive a clone.** Every PRD in a fresh checkout reads as touched today, so the column said
+nothing precisely when a person had least context about the tree in front of them. The declared
+date is the only answer that travels with the document.
+
+It is also what gave `<last-updated>` a reader. It had none -- the column that wanted its value
+computed its own from mtime instead, and the element was left declared, unwritten after birth and
+unread, which is the shape item 23 exists to catch. `build-what-next.py` now writes it whenever
+it rewrites the file; this reads it. mtime stays as the fallback for a file that declares no date,
+labelled `mtime` so a reader can tell a measurement from a declaration.
 
 USAGE
 
@@ -38,6 +52,7 @@ USAGE
 """
 
 import argparse
+import datetime
 import os
 import re
 import sys
@@ -48,6 +63,10 @@ NAME = re.compile(r"<name>\s*(.+?)\s*</name>", re.S)
 # Item 24's stamp, written by build-what-next.py. Read here because an element with no reader
 # is the defect this plan spends most of its items removing.
 TOOLCHAIN = re.compile(r"<toolchain-version>\s*([^<\s]+)\s*</toolchain-version>", re.I)
+# The date the same script writes when it rewrites the file. Only a well-formed one is read: a
+# malformed date is check-artefacts.py's to report, and guessing at one here would be a second
+# opinion about a shape that already has an owner.
+UPDATED = re.compile(r"<last-updated>\s*(\d{4}-\d{2}-\d{2})\s*</last-updated>", re.I)
 
 
 def read(path):
@@ -69,6 +88,28 @@ def stamp_of(path):
         return None
     m = TOOLCHAIN.search(read(path))
     return m.group(1) if m else None
+
+
+def declared_date_of(path):
+    """The date what-next.md says it was last written, or None."""
+    if not os.path.isfile(path):
+        return None
+    m = UPDATED.search(read(path))
+    return m.group(1) if m else None
+
+
+def days_since(iso):
+    """Whole days between an ISO date and today, or None if it will not parse.
+
+    A future date is reported as a negative age rather than clamped to today. A PRD dated ahead
+    of the clock is a data defect somebody should see, and hiding it behind `today` is how it
+    stays hidden.
+    """
+    try:
+        d = datetime.date.fromisoformat(iso)
+    except ValueError:
+        return None
+    return (datetime.date.today() - d).days
 
 
 def plugin_version():
@@ -107,9 +148,22 @@ def survey(root):
             "index": status_of(index),
             "what_next": status_of(what_next),
             "age_days": (time.time() - newest) / 86400 if newest else None,
+            "declared": declared_date_of(what_next),
             "wrote_it": stamp_of(what_next),
         })
     return out
+
+
+def touched(prd):
+    """The `touched` column: the declared date when there is one, mtime when there is not."""
+    declared = prd["declared"]
+    if declared:
+        age = days_since(declared)
+        return declared if age is None else f"{declared} ({age}d)"
+    if prd["age_days"] is None:
+        return "-"
+    return ("today (mtime)" if prd["age_days"] < 1
+            else f"{prd['age_days']:.0f}d ago (mtime)")
 
 
 def verdict(prd):
@@ -148,9 +202,8 @@ def main():
             state = verdict(prd)
             where = ", ".join(f for f, v in (("index.md", prd["index"]),
                                              ("what-next.md", prd["what_next"])) if v) or "-"
-            age = "-" if prd["age_days"] is None else (
-                "today" if prd["age_days"] < 1 else f"{prd['age_days']:.0f}d ago")
-            print(f"{prd['slug']:<24} {prd['features']:>4}  {state:<12} {where:<22} {age}")
+            print(f"{prd['slug']:<24} {prd['features']:>4}  {state:<12} {where:<22} "
+                  f"{touched(prd)}")
 
     running = plugin_version()
     for prd in prds:

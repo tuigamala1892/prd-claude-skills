@@ -78,8 +78,8 @@ MUTANTS = [
 
     ("the stamp stops being written at all",
      "schema/scripts/build-what-next.py",
-     "        f.write(stamp(text))",
-     "        f.write(text)",
+     "        f.write(touch(stamp(text)))",
+     "        f.write(touch(text))",
      "what-next.md records what wrote it, once, and something reads it"),
 
     ("the stamp loses its reader, so the element goes back to being stored rather than read",
