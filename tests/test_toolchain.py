@@ -8613,6 +8613,181 @@ def _():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@check("what-next.md's <last-updated> is written whenever the file is rewritten, and read")
+def _():
+    """The stamp's opposite rule, and the defect that made it necessary.
+
+    `<last-updated>` had NO PRODUCER. `/prd` wrote it at birth; nothing touched it again -- not
+    build-what-next.py, which rewrote <authoring-gaps> two lines below it, and not any
+    instruction, which names the builder and never names the date. So a `/prd --resume` that
+    closed a gap regenerated the block, stamped the version, and left the file dated five weeks
+    earlier. Reported from a live run and reproduced against this fixture.
+
+    It survived every existing check because `check-readers.py` keys on the element NAME, and
+    `<last-updated>` is also PROJECT.md's, where it has producers and readers to spare.
+
+    Four things are asserted, and the middle two are what stop the fix being worse than the bug:
+    the date moves when the builder writes, does NOT move when the builder finds the block
+    current, `--check` never fails on it, and something reads it.
+    """
+    import datetime
+    import shutil
+    import tempfile
+
+    builder = os.path.join(REPO, "schema", "scripts", "build-what-next.py")
+    checker = os.path.join(REPO, "schema", "scripts", "check-artefacts.py")
+    lister = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
+    today = datetime.date.today().isoformat()
+
+    root = tempfile.mkdtemp(prefix="updated-")
+    try:
+        prd = os.path.join(root, "docs", "prd", "link-shelf")
+        os.makedirs(os.path.dirname(prd), exist_ok=True)
+        shutil.copytree(current_fixture("link-shelf"), prd)
+        wn = os.path.join(prd, "what-next.md")
+
+        original = re.search(r"<last-updated>\s*([^<\s]+)\s*</last-updated>",
+                             open(wn, encoding="utf-8").read())
+        assert original, "the fixture declares no <last-updated>, so nothing here is measurable"
+        assert original.group(1) != today, (
+            f"the fixture is dated {original.group(1)}, which is today -- this check cannot tell "
+            f"a date that was written from one that was already right")
+
+        # 1. The builder writes, so the date says today.
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        text = open(wn, encoding="utf-8").read()
+        assert f"<last-updated>{today}</last-updated>" in text, (
+            f"build-what-next.py rewrote the file and left <last-updated> alone. That is the "
+            f"defect this check exists for:\n{text[:400]}")
+        assert text.index("<last-updated>") < text.index("</meta>"), (
+            "the date landed outside <meta>, where no reader looks for it")
+        assert text.count("<last-updated>") == 1, (
+            f"the file now declares {text.count('<last-updated>')} dates. A reader takes the "
+            f"first, so the second is a value that is written and never read:\n{text[:400]}")
+
+        # 2. It does NOT move when the builder finds nothing to do. A date that advanced on
+        #    every run would record when the check last ran, not when the PRD last changed --
+        #    and would make `--check` dirty the tree it is checking.
+        open(wn, "w", encoding="utf-8", newline="\n").write(
+            text.replace(f"<last-updated>{today}<", "<last-updated>2001-01-01<"))
+        p = subprocess.run([sys.executable, builder, prd], capture_output=True, text=True,
+                           encoding="utf-8")
+        assert "<last-updated>2001-01-01</last-updated>" in open(wn, encoding="utf-8").read(), (
+            f"the builder rewrote the date on a run that had nothing to derive, so the no-op "
+            f"path is no longer a no-op:\n{p.stdout}{p.stderr}")
+
+        # 3. `--check` never fails on the date, for the stamp's reason: the only staleness this
+        #    script can measure is the derived block's, and a human's edit to <next-steps> is
+        #    invisible to it. A check that fails on what it cannot measure is one nobody runs.
+        p = subprocess.run([sys.executable, builder, prd, "--check"], capture_output=True,
+                           text=True, encoding="utf-8")
+        assert p.returncode == 0, (
+            f"--check fails on a stale date, so every hand-edit to what-next.md would report "
+            f"the derived block as stale:\n{p.stdout}{p.stderr}")
+
+        # 4. It has a READER -- the column that wants this value used to compute its own from
+        #    mtime, which does not survive a clone.
+        p = subprocess.run([sys.executable, lister, os.path.join(root, "docs", "prd")],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert "2001-01-01" in p.stdout, (
+            f"list-prds.py does not report what-next.md's own <last-updated>, so the element is "
+            f"written and unread:\n{p.stdout}")
+
+        # 5. `--touch` is the answer for a session that derived nothing: it dates the file and
+        #    leaves the derivation alone. Without it the rule above leaves a prose-only resume
+        #    dated from whenever a feature last changed, which is not what the element is called.
+        held = open(wn, encoding="utf-8").read()
+        assert "<gap slug=" in held, (
+            "the fixture's derived block carries no rows, so this cannot tell a block that "
+            "survived --touch from one that was rebuilt to the same bytes")
+        p = subprocess.run([sys.executable, builder, prd, "--touch"], capture_output=True,
+                           text=True, encoding="utf-8")
+        touched = open(wn, encoding="utf-8").read()
+        assert p.returncode == 0 and f"<last-updated>{today}</last-updated>" in touched, (
+            f"--touch left the date alone on a PRD whose block was already current, which is "
+            f"the case it exists for:\n{p.stdout}{p.stderr}")
+        assert (re.search(r"<authoring-gaps>.*?</authoring-gaps>", touched, re.S).group(0)
+                == re.search(r"<authoring-gaps>.*?</authoring-gaps>", held, re.S).group(0)), (
+            "--touch rewrote the derived block. It is there to date a file, and a flag that "
+            "also derives is a second way to do the first thing")
+
+        # And it is refused with --check, which says the opposite. Guessing which the caller
+        # meant is worse than either answer.
+        p = subprocess.run([sys.executable, builder, prd, "--touch", "--check"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 2, (
+            f"`--touch --check` exited {p.returncode}. One writes and one does not, so a run "
+            f"that accepts both has silently picked one:\n{p.stdout}{p.stderr}")
+
+        # 6. Every build-what-next.py line commands/prd.md writes, run as written. The prose
+        #    checks only ask whether the words are there, and 2.1.3 was a `migrate.py` line that
+        #    no check had ever executed -- a flag named in a command and absent from the script
+        #    is a usage error at the one moment nobody is watching.
+        import shlex
+        lines = re.findall(r"build-what-next\.py[^`\n]*", open(
+            os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read())
+        assert len(lines) >= 2, (
+            f"commands/prd.md runs build-what-next.py {len(lines)} time(s); Phase 9 derives the "
+            f"block and dates the file, and those are not always the same run")
+        for line in lines:
+            argv = shlex.split(line.replace("{prd_dir}", prd.replace("\\", "/")))[1:]
+            assert not any("{" in a for a in argv), (
+                f"commands/prd.md: `{line}` has a placeholder this check cannot fill")
+            p = subprocess.run([sys.executable, builder] + argv, capture_output=True, text=True,
+                               encoding="utf-8")
+            assert p.returncode == 0, (
+                f"commands/prd.md: `{line}` exited {p.returncode}. The command writes it for a "
+                f"model to run verbatim:\n{p.stderr}{p.stdout[-300:]}")
+
+        # 7. Absent is the same defect as stale, so the producer fills it in rather than
+        #    reporting it. Both the date and the stamp are removed, because removing the date
+        #    alone leaves the builder with nothing to write and the no-op path correctly takes it.
+        stripped = re.sub(r"\n *<last-updated>[^<]*</last-updated>", "",
+                          open(wn, encoding="utf-8").read())
+        stripped = re.sub(r"\n *<toolchain-version>[^<]*</toolchain-version>", "", stripped)
+        open(wn, "w", encoding="utf-8", newline="\n").write(stripped)
+        subprocess.run([sys.executable, builder, prd], capture_output=True, text=True)
+        filled = open(wn, encoding="utf-8").read()
+        assert f"<last-updated>{today}</last-updated>" in filled, (
+            f"the builder left what-next.md with no date at all, which is the stale case with "
+            f"the value removed:\n{filled[:400]}")
+        assert filled.index("<last-updated>") < filled.index("</meta>"), (
+            "the inserted date landed outside <meta>")
+
+        # And the shape is asserted by the artefact checker, not by the producer -- a producer
+        # that reports on its own output is a check nobody can fail.
+        for bad, why in ((re.sub(r"\n *<last-updated>[^<]*</last-updated>", "",
+                                 open(wn, encoding="utf-8").read()), "no date at all"),
+                         (open(wn, encoding="utf-8").read().replace(
+                             f"<last-updated>{today}<", "<last-updated>1 Jan 2001<"),
+                          "a date nothing can parse")):
+            open(wn, "w", encoding="utf-8", newline="\n").write(bad)
+            p = subprocess.run([sys.executable, checker, prd], capture_output=True, text=True,
+                               encoding="utf-8")
+            assert p.returncode == 1 and "last-updated" in p.stdout + p.stderr, (
+                f"check-artefacts.py accepts {why} in what-next.md:\n{p.stdout}{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # And the rule is written where the element is defined, with all three parts: the date is
+    # rewritten, the stamp is not, and --touch covers the session that derived nothing. Scoped
+    # to the region that defines the element rather than to the whole file, because a phrase
+    # found anywhere in a 400-line schema document is a check that asserts nothing.
+    fmt = prose(open(os.path.join(REPO, "schema", "prd-format.md"), encoding="utf-8").read())
+    start = fmt.index("<last-updated> is written by")
+    region = fmt[start:fmt.index("<toolchain-version> is written once", start) + 600]
+    assert re.search(r"<last-updated> is written by build-what-next.py, every time it rewrites",
+                     region), (
+        "prd-format.md does not say who writes <last-updated>. An element whose producer is "
+        "named nowhere is the one that goes back to having none")
+    assert "does not survive a clone" in region, (
+        "prd-format.md does not say why the declared date is worth having over mtime, which is "
+        "the whole argument for not deleting the element instead")
+    assert "--touch is for" in region and "derives nothing" in region, (
+        "prd-format.md does not say which case --touch exists for. A flag whose reason is "
+        "recorded nowhere is one the next reader deletes as redundant with the default")
+
+
 @check("the gate asserts three things by name, and the switch decides only whether it stops",
        finding="P25")
 def _():

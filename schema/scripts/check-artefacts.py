@@ -111,6 +111,7 @@ DEPENDS_KIND = {"data", "runtime", "reference"}
 SIGNIFICANCE = {"quality-attribute", "risk", "first-of-a-kind", "cross-cutting",
                 "external-dependency", "constraint"}
 STEP_KIND = {"spike", "infrastructure", "data-model", "ux", "breakdown", "decision"}
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CRD_TYPE = {"feature-add", "feature-modify", "feature-remove", "refactor"}
 PROJECT_TYPE = {"greenfield", "brownfield"}
 
@@ -257,6 +258,20 @@ def check_what_next(text, version, problems, warnings):
         problems.append("<meta> has no <status>; `list-prds.py` reads both files and reports "
                         "DISAGREE, and it cannot report on a file that declares nothing")
     enum(problems, "what-next.md <meta>", status, DOC_STATUS, "<status>")
+
+    # <last-updated> has a producer -- build-what-next.py writes it whenever it rewrites the
+    # file -- so a file that carries no date, or one that is not a date, is a file something
+    # wrote by hand and got wrong. Checked here rather than in the builder because the builder
+    # FIXES it: a producer that also reports on its own output is a check nobody can fail.
+    updated = (el(inner, "last-updated") or "").strip() or None
+    if updated is None:
+        if at_least(version, "schema-4"):
+            problems.append("<meta> has no <last-updated>; `list-prds.py` reports when a PRD "
+                            "was last written and falls back to mtime, which does not survive a "
+                            "clone. Run build-what-next.py to write it")
+    elif not ISO_DATE.match(updated):
+        problems.append(f"<last-updated> is {updated!r}, not YYYY-MM-DD. A date nothing can "
+                        f"parse is read as no date at all")
 
     for i, s in enumerate(tags(text, "step"), start=1):
         enum(problems, f"<step> {i}", s.get("kind"), STEP_KIND, "kind")

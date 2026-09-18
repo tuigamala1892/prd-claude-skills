@@ -29,11 +29,14 @@ Everything else in what-next.md. <next-steps>, <risks>, <session-notes> and <ope
 human-authored, and a generator that rewrote them would be the second producer for one artefact
 that item 27 spent its whole argument refusing.
 
+  <last-updated>       EXCEPT this one, and the exception is the point -- see touch()
+
 USAGE
 
     build-what-next.py <prd-dir>                 # rewrite <authoring-gaps> in place
     build-what-next.py <prd-dir> --check         # exit 1 if the block is stale. Writes nothing
     build-what-next.py <prd-dir> --stdout        # print the block, write nothing
+    build-what-next.py <prd-dir> --touch         # date the file, deriving nothing
 
 EXIT CODES
 
@@ -43,6 +46,7 @@ EXIT CODES
 """
 
 import argparse
+import datetime
 import importlib.util
 import json
 import os
@@ -72,6 +76,7 @@ DEFINITION = re.compile(r"<(definition|status)>\s*([a-z-]+)\s*</\1>")
 BLOCK = re.compile(r"( *)<authoring-gaps>.*?</authoring-gaps>", re.S)
 META_CLOSE = re.compile(r"( *)</meta>")
 STAMP = re.compile(r"<toolchain-version>\s*[^<]*</toolchain-version>")
+UPDATED = re.compile(r"<last-updated>\s*[^<]*</last-updated>")
 
 # The order counts appear in <summary>. Fixed rather than sorted, so a diff between two runs
 # shows what changed rather than where a value happened to sort.
@@ -157,12 +162,72 @@ def stamp(text):
     return text[:m.start()] + line + text[m.start():]
 
 
+def touch(text, today=None):
+    """Set <last-updated> to today, because this script is about to rewrite the file.
+
+    THE OPPOSITE RULE TO stamp(), AND FOR THE OPPOSITE REASON
+
+    <toolchain-version> is PROVENANCE: it records what wrote the file, so it is written once and
+    an older value is the ordinary case. <last-updated> is CURRENCY: it records WHEN, so a value
+    that outlives the write is not provenance, it is false. The two elements sit two lines apart
+    in the same <meta> and want opposite treatment, which is exactly why this is written down.
+
+    WHY THIS EXISTS AT ALL
+
+    It had no producer. `/prd` wrote the date once, at birth, and nothing ever touched it again:
+    not this script, which rewrote <authoring-gaps> beside it and left it alone, and not any
+    instruction in `/prd`, which names the builder and never names the date. So a resume that
+    closed a gap changed the block, stamped the version, and left a file dated five weeks earlier
+    -- reported from a live `/prd --resume`, and reproduced against the fixture. An element with
+    no producer is the defect this plan spends most of its items removing, and this one survived
+    because `check-readers.py` keys on the element NAME: `<last-updated>` is also PROJECT.md's,
+    where it has three producers and five readers, so what-next.md's copy was credited with all
+    of them (readers.md states that blind spot; this is the first thing it hid).
+
+    WHEN IT FIRES, AND WHY NOT MORE OFTEN
+
+    Whenever this script writes -- and only then. A version that stamped the date on every run
+    would turn `--check`'s no-op into a write, so a scheduled check would dirty the tree and the
+    date would record when the check last ran rather than when the PRD last changed. The rule is
+    therefore statable in one line: *if this script changed the file, the date says today.*
+
+    `--check` never fails on the date, deliberately. The staleness this script can see is the
+    derived block's; a date behind a human's edit to <next-steps> is invisible to it, and failing
+    on what it cannot measure is how a check becomes one nobody runs.
+
+    WHICH LEAVES A SESSION THAT DERIVED NOTHING, AND THAT IS WHAT --touch IS FOR
+
+    A resume that only edited <next-steps> or <session-notes> changes no feature, so the block is
+    already current and this script correctly writes nothing -- and the date correctly records
+    when a feature last changed, which is not what the element is called. `--touch` closes that
+    without weakening the rule above: the CALLER states that the file was updated, because the
+    caller is the only one who knows, and this stays the one thing that writes the date.
+    """
+    today = today or datetime.date.today().isoformat()
+    if UPDATED.search(text):
+        return UPDATED.sub(f"<last-updated>{today}</last-updated>", text, count=1)
+    # Absent is the same defect as stale, so it is filled in rather than reported. Placed inside
+    # <meta> for the same reason as the stamp: a date outside it is a date no reader looks for.
+    m = META_CLOSE.search(text)
+    if not m:
+        return text
+    line = f"{m.group(1)}  <last-updated>{today}</last-updated>\n"
+    return text[:m.start()] + line + text[m.start():]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("prd_dir")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--stdout", action="store_true")
+    ap.add_argument("--touch", action="store_true",
+                    help="date the file whether or not the derived block changed")
     args = ap.parse_args()
+    if args.touch and args.check:
+        # One says "change nothing" and the other says "change this". Refusing is the only
+        # answer that cannot be the wrong guess about which the caller meant.
+        print("REFUSED: --touch writes and --check does not. Pick one", file=sys.stderr)
+        return 2
 
     prd_dir = os.path.abspath(args.prd_dir)
     if not os.path.isdir(prd_dir):
@@ -185,11 +250,19 @@ def main():
 
     stamped = stamp(text)
     if existing and existing.group(0) == wanted and stamped == text:
+        if args.touch:
+            # Nothing to derive, and the caller says the file changed anyway. Write the date
+            # and say which of the two things happened, so a log does not read as a rebuild.
+            with open(target, "w", encoding="utf-8", newline="\n") as f:
+                f.write(touch(text))
+            print(f"authoring-gaps is current: {len(features(prd_dir))} feature(s); dated today")
+            return 0
         print(f"authoring-gaps is current: {len(features(prd_dir))} feature(s)")
         return 0
 
     if args.check:
-        # The stamp is never a staleness condition -- see stamp(). Only the derived block is.
+        # Neither the stamp nor the date is a staleness condition -- see stamp() and touch().
+        # Only the derived block is.
         if existing and existing.group(0) == wanted:
             print(f"authoring-gaps is current: {len(features(prd_dir))} feature(s)")
             return 0
@@ -212,7 +285,7 @@ def main():
         text = text[:cut] + "\n\n" + wanted + text[cut:]
 
     with open(target, "w", encoding="utf-8", newline="\n") as f:
-        f.write(stamp(text))
+        f.write(touch(stamp(text)))
     print(f"authoring-gaps rebuilt from {len(features(prd_dir))} feature(s)")
     return 0
 

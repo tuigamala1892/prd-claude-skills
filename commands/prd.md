@@ -619,7 +619,24 @@ Three rules follow, and they cost nothing:
 
 `what-next.md`'s `<authoring-gaps>` is not written by hand at all — run
 `${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir}` once the feature files exist
-and it derives the block, and stamps `<toolchain-version>` while it is there.
+and it derives the block, stamps `<toolchain-version>` and sets `<last-updated>` to today while
+it is there.
+
+**Run it at the end of every writing session, including a resume**, and `--touch` when nothing
+was derived:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir} --touch
+```
+
+It is the only thing that writes `<last-updated>`, and it deliberately writes nothing when the
+derived block is already current — so a session that edited `<next-steps>` or `<session-notes>`
+and nothing else would otherwise leave the file dated from whenever a feature last changed. That
+is how the date came to be five weeks stale on a PRD somebody was working on daily. `--touch`
+dates the file without re-deriving anything, and is the whole reason it exists.
+
+Do not hand-edit the date instead: [`prd-format.md`](../schema/prd-format.md) names one producer
+for it, and a second one is how two producers for one element start.
 
 **Check before writing, every time. This is a script and its exit code is binding:**
 
