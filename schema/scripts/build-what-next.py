@@ -29,7 +29,8 @@ Everything else in what-next.md. <next-steps>, <risks>, <session-notes> and <ope
 human-authored, and a generator that rewrote them would be the second producer for one artefact
 that item 27 spent its whole argument refusing.
 
-  <last-updated>       EXCEPT this one, and the exception is the point -- see touch()
+  <last-updated>       EXCEPT this one, and the exception is the point -- see touch(),
+                       whose one implementation lives in touch-artefact.py
 
 USAGE
 
@@ -63,6 +64,14 @@ _sspec = importlib.util.spec_from_file_location(
 _sel = importlib.util.module_from_spec(_sspec)
 _sspec.loader.exec_module(_sel)
 
+# And dating an artefact has ONE answer too, for the same reason: two artefacts carry the date
+# under two names and one rule maintains both. Imported rather than copied, exactly as above.
+_tspec = importlib.util.spec_from_file_location(
+    "touch_artefact", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "touch-artefact.py"))
+_touch = importlib.util.module_from_spec(_tspec)
+_tspec.loader.exec_module(_touch)
+
 FEATURE_SLUG = re.compile(r"<slug>\s*([a-z0-9-]+)\s*</slug>")
 # EITHER spelling, per core section 3: a reader that finds <status> where it expects
 # <definition> treats it as that element and carries on, because a hard cutover strands the
@@ -76,7 +85,6 @@ DEFINITION = re.compile(r"<(definition|status)>\s*([a-z-]+)\s*</\1>")
 BLOCK = re.compile(r"( *)<authoring-gaps>.*?</authoring-gaps>", re.S)
 META_CLOSE = re.compile(r"( *)</meta>")
 STAMP = re.compile(r"<toolchain-version>\s*[^<]*</toolchain-version>")
-UPDATED = re.compile(r"<last-updated>\s*[^<]*</last-updated>")
 
 # The order counts appear in <summary>. Fixed rather than sorted, so a diff between two runs
 # shows what changed rather than where a value happened to sort.
@@ -163,7 +171,7 @@ def stamp(text):
 
 
 def touch(text, today=None):
-    """Set <last-updated> to today, because this script is about to rewrite the file.
+    """Set what-next.md's <last-updated> to today, because this script is about to rewrite it.
 
     THE OPPOSITE RULE TO stamp(), AND FOR THE OPPOSITE REASON
 
@@ -184,35 +192,31 @@ def touch(text, today=None):
     where it has three producers and five readers, so what-next.md's copy was credited with all
     of them (readers.md states that blind spot; this is the first thing it hid).
 
-    WHEN IT FIRES, AND WHY NOT MORE OFTEN
+    WHEN IT FIRES
 
-    Whenever this script writes -- and only then. A version that stamped the date on every run
-    would turn `--check`'s no-op into a write, so a scheduled check would dirty the tree and the
-    date would record when the check last ran rather than when the PRD last changed. The rule is
-    therefore statable in one line: *if this script changed the file, the date says today.*
+    Whenever this script writes -- which is whenever a gap is opened or closed, or a feature's
+    <definition> changes, because those are what the derived block is made of. The rule is
+    statable in one line: *if this script changed the file, the date says today.*
+
+    Not at the end of a session, which was the first version and was wrong: it assumes a session
+    is one sitting that ends the day it began, and a PRD is resumed across days with gaps opened
+    and closed part-way through. `touch-artefact.py` carries that argument in full.
 
     `--check` never fails on the date, deliberately. The staleness this script can see is the
     derived block's; a date behind a human's edit to <next-steps> is invisible to it, and failing
     on what it cannot measure is how a check becomes one nobody runs.
 
-    WHICH LEAVES A SESSION THAT DERIVED NOTHING, AND THAT IS WHAT --touch IS FOR
+    WHICH LEAVES A WRITE THIS SCRIPT DID NOT MAKE, AND THAT IS WHAT --touch IS FOR
 
-    A resume that only edited <next-steps> or <session-notes> changes no feature, so the block is
-    already current and this script correctly writes nothing -- and the date correctly records
-    when a feature last changed, which is not what the element is called. `--touch` closes that
-    without weakening the rule above: the CALLER states that the file was updated, because the
-    caller is the only one who knows, and this stays the one thing that writes the date.
+    A session that only edited <next-steps> or <session-notes> changes no feature, so the block
+    is already current and this script correctly writes nothing -- and the date would go on
+    recording when a feature last changed, which is not what the element is called. `--touch`
+    closes that without weakening the rule above: the CALLER states that the file was updated,
+    because the caller is the only one who knows.
     """
     today = today or datetime.date.today().isoformat()
-    if UPDATED.search(text):
-        return UPDATED.sub(f"<last-updated>{today}</last-updated>", text, count=1)
-    # Absent is the same defect as stale, so it is filled in rather than reported. Placed inside
-    # <meta> for the same reason as the stamp: a date outside it is a date no reader looks for.
-    m = META_CLOSE.search(text)
-    if not m:
-        return text
-    line = f"{m.group(1)}  <last-updated>{today}</last-updated>\n"
-    return text[:m.start()] + line + text[m.start():]
+    # One implementation, in touch-artefact.py, which also owns index.md's <updated>.
+    return _touch.touch(text, "last-updated", today) or text
 
 
 def main():

@@ -94,6 +94,19 @@ The first three belong to one PRD. `architecture.md` does not: it describes the 
 </prd>
 ```
 
+**`<updated>` is written by `touch-artefact.py`, whenever an index entry changes** — a feature
+written, an entry's `priority` changed — and `<created>` is never rewritten, being a birth date
+that cannot go stale. It had no producer at all until 2.1.10: `/prd` wrote it once and nothing
+touched it again, the same defect as `what-next.md`'s `<last-updated>` and hidden the same way,
+by `check-readers.py` crediting a quoted `"status": "updated"` in a CRD skill's JSON example as
+a reader. `list-prds.py` reads it now, taking the later of this and `what-next.md`'s date.
+
+**The two dates are not one fact stored twice.** They move at different moments: closing a gap
+rewrites `what-next.md` and not the index, writing a feature changes both, and changing a
+feature's `priority` changes the index alone — because priority lives on the index entry and
+nowhere else. Which is also why neither is dated at *the end of a session*: a PRD is resumed
+across days, so each write dates its own file when it happens.
+
 **Three elements here are defined in [`core.md`](core.md), not above.** `<slug>` is core §1.
 `<status>` is core §3's first row — the *interview*'s progress, not any feature's. `priority=` on
 each `<feature>` entry is core §4, and **this is the only place a PRD records feature priority**:
@@ -159,6 +172,11 @@ would record when a feature last changed rather than when the document did. **`-
 that case** — it dates the file without re-deriving anything, and the caller states that the file
 was updated because the caller is the only one who knows. It is refused with `--check`: one says
 write and the other says do not.
+
+**The trigger is the write, not the session.** Run the builder when a gap is opened or closed or
+a `<definition>` changes, not at some end-of-session moment that a PRD spanning three days does
+not have. Both dates are idempotent — a run that would write the value already there writes
+nothing — which is what makes *after every edit* a runnable instruction.
 
 **`<toolchain-version>` is written once and never updated** (item 24), which is the opposite rule
 to the line above and deliberately so — a date records *when*, so it is rewritten; a stamp records

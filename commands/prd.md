@@ -306,6 +306,17 @@ answered by a new gap citing the closed one. Re-run `check-status.py {prd_dir}` 
 malformed `closed` or a `closed-by` naming a criterion that does not exist is a `CONTRADICTION`,
 and until it is fixed every reader holds the gap open.
 
+**Then rebuild the derived block, here rather than at the end of the session:**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir}
+```
+
+A gap opened or closed is exactly what `<authoring-gaps>` is made of, so the block is stale from
+the moment you write `closed` until this runs — and it dates `what-next.md` while it is there.
+Waiting for the end of the session assumes a session ends the day it began, and this one may be
+day three. Phase 9 has the table of which write dates which file.
+
 This is also how a gap annotated *"resolved"* in its body under the old rule gets closed. Nothing
 searches bodies for that word; the person closes it here.
 
@@ -615,28 +626,43 @@ Three rules follow, and they cost nothing:
   neighbours its `<depends-on>` names — the same three things the
   [`prd-criteria-author`](../agents/prd-criteria-author.md) agent is given, for the same reason.
 - **`index.md` last.** It is derived from what was actually written, and writing it first turns
-  the interview's intentions into a list the feature files then have to match.
+  the interview's intentions into a list the feature files then have to match. **Date it when you
+  write it** — `touch-artefact.py {prd_dir}/index.md`, per the table below.
 
 `what-next.md`'s `<authoring-gaps>` is not written by hand at all — run
 `${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir}` once the feature files exist
 and it derives the block, stamps `<toolchain-version>` and sets `<last-updated>` to today while
 it is there.
 
-**Run it at the end of every writing session, including a resume**, and `--touch` when nothing
-was derived:
+#### The two dates, and what triggers each
+
+**Neither date is a session boundary.** A PRD is worked on across days and a session is not one
+sitting — gaps are opened and closed part-way through — so there is no single moment called *the
+end* to date a file at. **Each write dates its own file, when it happens:**
+
+| What you just did | Run |
+|---|---|
+| opened or closed a `<gap>`, or changed a `<definition>` | `build-what-next.py {prd_dir}` |
+| wrote a feature spec, or changed an index entry — including its `priority` | `touch-artefact.py {prd_dir}/index.md` |
+| edited `<next-steps>`, `<risks>` or `<session-notes>` and derived nothing | `build-what-next.py {prd_dir} --touch` |
 
 ```bash
+python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/touch-artefact.py {prd_dir}/index.md
 python ${CLAUDE_PLUGIN_ROOT}/schema/scripts/build-what-next.py {prd_dir} --touch
 ```
 
-It is the only thing that writes `<last-updated>`, and it deliberately writes nothing when the
-derived block is already current — so a session that edited `<next-steps>` or `<session-notes>`
-and nothing else would otherwise leave the file dated from whenever a feature last changed. That
-is how the date came to be five weeks stale on a PRD somebody was working on daily. `--touch`
-dates the file without re-deriving anything, and is the whole reason it exists.
+**Run them as you go, not in a batch at the end.** Both are cheap and both are idempotent: a run
+that would write the date the file already carries writes nothing and says `already`, so running
+one four times in an afternoon leaves one changed file rather than four identical rewrites. That
+is what makes *after every edit* a runnable instruction rather than advice.
 
-Do not hand-edit the date instead: [`prd-format.md`](../schema/prd-format.md) names one producer
-for it, and a second one is how two producers for one element start.
+**The two dates are not the same fact twice.** Closing a gap changes `what-next.md` and not the
+index; writing a feature changes both; changing a feature's `priority` changes the index alone,
+because priority lives on the index entry and nowhere else. `list-prds.py` reports the later of
+the two, which is when the PRD was last worked on.
+
+Do not hand-edit either date: [`prd-format.md`](../schema/prd-format.md) names one producer for
+both, and a second one is how two producers for one element start.
 
 **Check before writing, every time. This is a script and its exit code is binding:**
 

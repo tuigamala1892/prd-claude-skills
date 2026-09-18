@@ -8636,6 +8636,7 @@ def _():
 
     builder = os.path.join(REPO, "schema", "scripts", "build-what-next.py")
     checker = os.path.join(REPO, "schema", "scripts", "check-artefacts.py")
+    toucher = os.path.join(REPO, "schema", "scripts", "touch-artefact.py")
     lister = os.path.join(SKILLS, "breakdown", "scripts", "list-prds.py")
     today = datetime.date.today().isoformat()
 
@@ -8685,13 +8686,26 @@ def _():
             f"--check fails on a stale date, so every hand-edit to what-next.md would report "
             f"the derived block as stale:\n{p.stdout}{p.stderr}")
 
-        # 4. It has a READER -- the column that wants this value used to compute its own from
-        #    mtime, which does not survive a clone.
-        p = subprocess.run([sys.executable, lister, os.path.join(root, "docs", "prd")],
-                           capture_output=True, text=True, encoding="utf-8")
-        assert "2001-01-01" in p.stdout, (
-            f"list-prds.py does not report what-next.md's own <last-updated>, so the element is "
-            f"written and unread:\n{p.stdout}")
+        # 4. BOTH dates have a READER -- the column that wants this value used to compute its
+        #    own from mtime, which does not survive a clone. It reports the LATER of the two,
+        #    because they move at different moments and reading one would report a PRD as
+        #    untouched for a fortnight when the last thing done to it was in the other file.
+        #    Asserted in both directions, because a column that always shows one file's date
+        #    passes a one-directional check while reading only that file.
+        for index_date, wn_date, expected, whose in (("2026-03-01", "2026-05-01", "2026-05-01",
+                                                      "what-next.md"),
+                                                     ("2026-07-01", "2026-05-01", "2026-07-01",
+                                                      "index.md")):
+            subprocess.run([sys.executable, toucher, os.path.join(prd, "index.md"),
+                            "--date", index_date, "--quiet"], capture_output=True, text=True)
+            subprocess.run([sys.executable, toucher, wn, "--date", wn_date, "--quiet"],
+                           capture_output=True, text=True)
+            p = subprocess.run([sys.executable, lister, os.path.join(root, "docs", "prd")],
+                               capture_output=True, text=True, encoding="utf-8")
+            assert expected in p.stdout, (
+                f"index.md says {index_date} and what-next.md says {wn_date}; list-prds.py "
+                f"should report {expected}, from {whose}. A date with no reader is the shape "
+                f"item 23 exists to catch:\n{p.stdout}")
 
         # 5. `--touch` is the answer for a session that derived nothing: it dates the file and
         #    leaves the derivation alone. Without it the rule above leaves a prose-only resume
@@ -8724,20 +8738,33 @@ def _():
         #    no check had ever executed -- a flag named in a command and absent from the script
         #    is a usage error at the one moment nobody is watching.
         import shlex
-        lines = re.findall(r"build-what-next\.py[^`\n]*", open(
-            os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read())
-        assert len(lines) >= 2, (
-            f"commands/prd.md runs build-what-next.py {len(lines)} time(s); Phase 9 derives the "
-            f"block and dates the file, and those are not always the same run")
-        for line in lines:
-            argv = shlex.split(line.replace("{prd_dir}", prd.replace("\\", "/")))[1:]
-            assert not any("{" in a for a in argv), (
-                f"commands/prd.md: `{line}` has a placeholder this check cannot fill")
-            p = subprocess.run([sys.executable, builder] + argv, capture_output=True, text=True,
-                               encoding="utf-8")
-            assert p.returncode == 0, (
-                f"commands/prd.md: `{line}` exited {p.returncode}. The command writes it for a "
-                f"model to run verbatim:\n{p.stderr}{p.stdout[-300:]}")
+        text = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+        for script, path in (("build-what-next.py", builder), ("touch-artefact.py", toucher)):
+            lines = re.findall(r"%s[^`\n]*" % re.escape(script), text)
+            assert len(lines) >= 2, (
+                f"commands/prd.md runs {script} {len(lines)} time(s); the dates follow the "
+                f"writes, and a write happens in more than one phase")
+            for line in lines:
+                argv = shlex.split(line.replace("{prd_dir}", prd.replace("\\", "/")))[1:]
+                assert not any("{" in a for a in argv), (
+                    f"commands/prd.md: `{line}` has a placeholder this check cannot fill")
+                p = subprocess.run([sys.executable, path] + argv, capture_output=True,
+                                   text=True, encoding="utf-8")
+                assert p.returncode == 0, (
+                    f"commands/prd.md: `{line}` exited {p.returncode}. The command writes it "
+                    f"for a model to run verbatim:\n{p.stderr}{p.stdout[-300:]}")
+        # And the TABLE pairs each write with the thing that dates it. `>= 2 lines that run`
+        # passes on two invocations of the same shape, and a bare `--touch appears somewhere`
+        # passes while nothing says when to use it -- the routing is the instruction.
+        table = text[text.index("| What you just did | Run |"):][:900]
+        for trigger, command in (("<definition>", "build-what-next.py {prd_dir}`"),
+                                 ("index entry", "touch-artefact.py {prd_dir}/index.md"),
+                                 ("derived nothing", "build-what-next.py {prd_dir} --touch")):
+            row = [r for r in table.splitlines() if trigger in r]
+            assert row and command in row[0], (
+                f"commands/prd.md's trigger table has no row pairing `{trigger}` with "
+                f"`{command}`. The dates follow the writes, and a table that names a write "
+                f"without naming what dates it leaves the model to guess")
 
         # 7. Absent is the same defect as stale, so the producer fills it in rather than
         #    reporting it. Both the date and the stamp are removed, because removing the date
@@ -8786,6 +8813,134 @@ def _():
     assert "--touch is for" in region and "derives nothing" in region, (
         "prd-format.md does not say which case --touch exists for. A flag whose reason is "
         "recorded nowhere is one the next reader deletes as redundant with the default")
+
+
+@check("one script dates every artefact that carries a date, and today's date is not a write")
+def _():
+    """touch-artefact.py, and the correction that produced it.
+
+    The first version of the date lived in build-what-next.py and `/prd` was told to run it "at
+    the end of every writing session" -- which assumes a session is one sitting that ends the day
+    it began. A PRD is neither: it is resumed across days, and gaps are opened and closed
+    part-way through, so there is no single moment called the end to hang a date on. The trigger
+    is the write. Which makes idempotence load-bearing rather than tidy: an instruction to run
+    something after every edit is only runnable if running it four times in an afternoon leaves
+    one changed file.
+
+    Three artefacts carry a date under two names, and ONE script owns all of them -- the same
+    rule that put the gap parser in select-features.py and imports it here rather than keeping a
+    second regex. A per-artefact implementation is how three definitions of <criterion> came to
+    disagree.
+    """
+    import shutil
+    import tempfile
+
+    toucher = os.path.join(REPO, "schema", "scripts", "touch-artefact.py")
+    assert os.path.isfile(toucher), (
+        "schema/scripts/touch-artefact.py does not exist, so the date rule is prose again")
+
+    root = tempfile.mkdtemp(prefix="touch-")
+    try:
+        prd = os.path.join(root, "link-shelf")
+        shutil.copytree(current_fixture("link-shelf"), prd)
+        index, wn = os.path.join(prd, "index.md"), os.path.join(prd, "what-next.md")
+
+        # Each artefact gets the element IT uses, decided by root element rather than filename.
+        # index.md has said <updated> since schema-1; renaming it would be a migration for a word.
+        p = subprocess.run([sys.executable, toucher, index, wn, "--date", "2026-04-02"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0, f"dating two artefacts failed:\n{p.stdout}{p.stderr}"
+        assert "<updated>2026-04-02</updated>" in open(index, encoding="utf-8").read(), (
+            "index.md did not get <updated>; the script wrote the wrong element or none")
+        assert "<last-updated>2026-04-02</last-updated>" in open(wn, encoding="utf-8").read(), (
+            "what-next.md did not get <last-updated>")
+        assert "<last-updated>" not in open(index, encoding="utf-8").read(), (
+            "index.md grew what-next.md's element name, so one artefact now declares two dates "
+            "and a reader takes whichever it looks for first")
+
+        # Already today is NOT a write. This is what makes `run it after every edit` runnable.
+        before = open(index, "rb").read()
+        p = subprocess.run([sys.executable, toucher, index, "--date", "2026-04-02"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 0 and "already" in p.stdout, (
+            f"re-dating to the value already there did not report `already`:\n{p.stdout}")
+        assert open(index, "rb").read() == before, (
+            "a re-run rewrote a file whose date was already correct. Four edits in an afternoon "
+            "would then be four identical diffs, and the instruction to run it after every edit "
+            "stops being one anybody follows")
+
+        # A date that is not a date is refused rather than written.
+        p = subprocess.run([sys.executable, toucher, index, "--date", "2 April"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert p.returncode == 2, (
+            f"`--date '2 April'` exited {p.returncode}; a producer that writes an unparseable "
+            f"date makes work for the checker that refuses it")
+
+        # An artefact that carries no date is refused by name, not dated on a guess.
+        feature = os.path.join(prd, "features", sorted(os.listdir(
+            os.path.join(prd, "features")))[0])
+        p = subprocess.run([sys.executable, toucher, feature], capture_output=True, text=True,
+                           encoding="utf-8")
+        assert p.returncode == 2 and "not an artefact that carries a date" in p.stderr, (
+            f"a feature file was dated. Only three artefacts carry a date, and inventing one on "
+            f"a fourth is a producer nobody asked for:\n{p.stdout}{p.stderr}")
+
+        # The shape is the checker's to assert, not the producer's -- same division as
+        # what-next.md's date, and for the same reason.
+        checker = os.path.join(REPO, "schema", "scripts", "check-artefacts.py")
+        for bad, why in ((re.sub(r"\n *<updated>[^<]*</updated>", "",
+                                 open(index, encoding="utf-8").read()), "no date at all"),
+                         (open(index, encoding="utf-8").read().replace(
+                             "<updated>2026-04-02<", "<updated>2 April 2026<"),
+                          "a date nothing can parse")):
+            open(index, "w", encoding="utf-8", newline="\n").write(bad)
+            p = subprocess.run([sys.executable, checker, prd], capture_output=True, text=True,
+                               encoding="utf-8")
+            assert p.returncode == 1 and "<updated>" in p.stdout + p.stderr, (
+                f"check-artefacts.py accepts {why} in index.md:\n{p.stdout}{p.stderr}")
+
+        # Nowhere to put it is reported, never appended outside <meta> where nothing reads it.
+        stripped = os.path.join(root, "no-meta")
+        os.makedirs(stripped)
+        target = os.path.join(stripped, "index.md")
+        open(target, "w", encoding="utf-8", newline="\n").write(
+            re.sub(r"<meta>.*?</meta>", "", open(index, encoding="utf-8").read(), flags=re.S))
+        p = subprocess.run([sys.executable, toucher, target], capture_output=True, text=True,
+                           encoding="utf-8")
+        assert p.returncode == 1 and "NO META" in p.stderr, (
+            f"an artefact with no <meta> was dated anyway, outside the block every reader looks "
+            f"in:\n{p.stdout}{p.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # ONE implementation. build-what-next.py imports this rather than keeping its own, the way
+    # it already imports select-features.py's gap parser.
+    builder_src = open(os.path.join(REPO, "schema", "scripts", "build-what-next.py"),
+                       encoding="utf-8").read()
+    assert "touch-artefact.py" in builder_src, (
+        "build-what-next.py no longer imports touch-artefact.py, so there are two "
+        "implementations of dating an artefact and they will disagree")
+    assert not re.search(r"re\.compile\([^)]*last-updated", builder_src), (
+        "build-what-next.py has grown its own <last-updated> pattern again. That is the second "
+        "implementation this import exists to prevent")
+
+    # And the command says the trigger is the write, not the end of a session -- the whole
+    # correction. Asserted against the phase that closes a gap, not just anywhere in the file.
+    raw = open(os.path.join(COMMANDS, "prd.md"), encoding="utf-8").read()
+    assert "Neither date is a session boundary" in prose(raw), (
+        "commands/prd.md no longer says the date is not a session boundary. A PRD is resumed "
+        "across days; an end-of-session trigger is the defect this replaced")
+    # Raw, not prose(): a command line is code, and prose() strips the underscores out of
+    # {prd_dir}. The window is the gap-closure step, because the point is WHERE it is run.
+    closure = raw[raw.index("**Never write `closed` on your own judgement**"):][:1400]
+    assert "build-what-next.py {prd_dir}" in closure, (
+        "the gap-closure step does not rebuild the derived block. <authoring-gaps> is made of "
+        "gaps, so it is stale from the moment `closed` is written until the builder runs")
+    # The command AND the reason it is here. Asserting only the command passes a rewrite that
+    # keeps the line and sends the reader to a later phase for it, which is the defect restated.
+    assert "here rather than at the end of the session" in closure, (
+        "the gap-closure step no longer says why the rebuild belongs here. Deferring it to a "
+        "later phase is the end-of-session trigger coming back under another name")
 
 
 @check("the gate asserts three things by name, and the switch decides only whether it stops",
