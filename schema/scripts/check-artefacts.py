@@ -233,6 +233,18 @@ def check_prd(text, version, problems, warnings):
                         "new PRD on this slug would replace it without warning")
     enum(problems, "index.md <meta>", status, DOC_STATUS, "<status>")
 
+    # `<updated>` has a producer -- touch-artefact.py, run when an index entry changes -- and a
+    # reader in list-prds.py, which takes the later of this and what-next.md's date. `<created>`
+    # deliberately has neither and is declared in readers.md: a birth date cannot go stale.
+    updated = (el(inner, "updated") or "").strip() or None
+    if updated is None:
+        problems.append("<meta> has no <updated>; `list-prds.py` reports when a PRD was last "
+                        "worked on and falls back to mtime, which does not survive a clone. "
+                        "Run touch-artefact.py to write it")
+    elif not ISO_DATE.match(updated):
+        problems.append(f"<updated> is {updated!r}, not YYYY-MM-DD. A date nothing can parse is "
+                        f"read as no date at all")
+
     enum(problems, "<tech-stack>", (el(text, "type") or "").strip() or None,
          PROJECT_TYPE, "<type>")
 

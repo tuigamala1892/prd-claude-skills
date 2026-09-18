@@ -15,8 +15,9 @@ that follows it has always been prose. This makes both an exit code.
 WHAT IT REPORTS
 
 One line per PRD: slug, feature count, the status each file declares, and when it was last
-written -- from what-next.md's own `<last-updated>`, falling back to the file's mtime and saying
-which it used. Then the two conditions worth acting on:
+written -- the more recent of the two dates the PRD declares, `index.md`'s `<updated>` and
+`what-next.md`'s `<last-updated>`, falling back to the file's mtime and saying which it used.
+Then the two conditions worth acting on:
 
   WROTE IT    what-next.md's <toolchain-version> (item 24), when it differs from the plugin
               running now. Provenance, never a refusal: a PRD written by an older toolchain is
@@ -33,11 +34,21 @@ survive a clone.** Every PRD in a fresh checkout reads as touched today, so the 
 nothing precisely when a person had least context about the tree in front of them. The declared
 date is the only answer that travels with the document.
 
-It is also what gave `<last-updated>` a reader. It had none -- the column that wanted its value
-computed its own from mtime instead, and the element was left declared, unwritten after birth and
-unread, which is the shape item 23 exists to catch. `build-what-next.py` now writes it whenever
-it rewrites the file; this reads it. mtime stays as the fallback for a file that declares no date,
-labelled `mtime` so a reader can tell a measurement from a declaration.
+It is also what gave both dates a reader. Neither had one -- the column that wanted the value
+computed its own from mtime instead, and the elements were left declared, unwritten after birth
+and unread, which is the shape item 23 exists to catch. `build-what-next.py` writes
+`<last-updated>` whenever it rewrites what-next.md and `touch-artefact.py` writes `<updated>`
+when an index entry changes; this reads them. mtime stays as the fallback for a PRD that declares
+neither, labelled `mtime` so a reader can tell a measurement from a declaration.
+
+WHY THE MORE RECENT OF THE TWO, RATHER THAN EITHER ONE
+
+Because they move at different moments and both are true. Closing a gap rewrites what-next.md and
+not the index; adding a feature changes both; changing a feature's priority changes the index
+alone, since core section 4 puts priority on the index entry and nowhere else. The question this
+column answers is *when was this PRD last worked on*, and that is the later of the two -- reading
+one file would report a PRD as untouched for a fortnight because the last thing done to it
+happened in the other.
 
 USAGE
 
@@ -63,10 +74,11 @@ NAME = re.compile(r"<name>\s*(.+?)\s*</name>", re.S)
 # Item 24's stamp, written by build-what-next.py. Read here because an element with no reader
 # is the defect this plan spends most of its items removing.
 TOOLCHAIN = re.compile(r"<toolchain-version>\s*([^<\s]+)\s*</toolchain-version>", re.I)
-# The date the same script writes when it rewrites the file. Only a well-formed one is read: a
-# malformed date is check-artefacts.py's to report, and guessing at one here would be a second
-# opinion about a shape that already has an owner.
+# The two dates a PRD declares, under the two names its artefacts use. Only a well-formed one is
+# read: a malformed date is check-artefacts.py's to report, and guessing at one here would be a
+# second opinion about a shape that already has an owner.
 UPDATED = re.compile(r"<last-updated>\s*(\d{4}-\d{2}-\d{2})\s*</last-updated>", re.I)
+INDEX_UPDATED = re.compile(r"<updated>\s*(\d{4}-\d{2}-\d{2})\s*</updated>", re.I)
 
 
 def read(path):
@@ -90,11 +102,11 @@ def stamp_of(path):
     return m.group(1) if m else None
 
 
-def declared_date_of(path):
-    """The date what-next.md says it was last written, or None."""
+def declared_date_of(path, pattern=UPDATED):
+    """The date this artefact says it was last written, or None."""
     if not os.path.isfile(path):
         return None
-    m = UPDATED.search(read(path))
+    m = pattern.search(read(path))
     return m.group(1) if m else None
 
 
@@ -148,7 +160,11 @@ def survey(root):
             "index": status_of(index),
             "what_next": status_of(what_next),
             "age_days": (time.time() - newest) / 86400 if newest else None,
-            "declared": declared_date_of(what_next),
+            # The later of the two, because both are true and they move at different moments.
+            # ISO dates sort as strings, which is the one thing that format is for.
+            "declared": max([d for d in (declared_date_of(what_next),
+                                         declared_date_of(index, INDEX_UPDATED)) if d],
+                            default=None),
             "wrote_it": stamp_of(what_next),
         })
     return out
